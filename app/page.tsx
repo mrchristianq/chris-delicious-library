@@ -1,6 +1,6 @@
 /* =====================================================================================
-   Chris' Delicious Library
-   Version: 0.9.0
+  Chris' Delicious Library
+  Version: 1.1.0
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -27,8 +27,16 @@ type Show = {
   showStatus?: string;
 };
 
+type Book = {
+  title: string;
+  posterUrl: string;
+  isbn?: string;
+  releaseDate?: string;
+};
+
 const APP_TITLE = "Chris’ Delicious Library";
 const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
+const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const SHELF_IMAGE = "/shelves-light-single2.png";
@@ -52,6 +60,28 @@ function rowToShow(r: Row): Show | null {
     lastAirDate: safeStr(r["LastAirDate"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
+  };
+}
+
+function rowToBook(r: Row): Book | null {
+  const title = safeStr(r["Title"]);
+  if (!title) return null;
+
+  const posterUrl =
+    safeStr(r["ImageURL"]) ||
+    safeStr(r["Image URL"]) ||
+    safeStr(r["Image"]) ||
+    safeStr(r["CoverURL"]) ||
+    safeStr(r["Cover URL"]) ||
+    safeStr(r["PosterURL"]) ||
+    safeStr(r["Poster URL"]) ||
+    safeStr(r["Poster"]) ||
+    "";
+  return {
+    title,
+    posterUrl,
+    isbn: safeStr(r["ISBN"]) || undefined,
+    releaseDate: safeStr(r["ReleaseDate"]) || safeStr(r["Published"]) || undefined,
   };
 }
 
@@ -81,11 +111,13 @@ function useElementWidth<T extends HTMLElement>() {
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "settings";
 
 export default function Page() {
-  const csvUrl = (process.env as any)[ENV_KEY] as string | undefined;
+  const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
+  const booksCsvUrl = (process.env as any)[BOOKS_ENV_KEY] as string | undefined;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [tvRows, setTvRows] = useState<Row[]>([]);
+  const [bookRows, setBookRows] = useState<Row[]>([]);
   const [syncState, setSyncState] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [syncMsg, setSyncMsg] = useState<string>("");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
@@ -106,7 +138,7 @@ export default function Page() {
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
-  const SHELF_SIDE_PADDING = 44;
+  const SHELF_SIDE_PADDING = 30;
   const LIP_FROM_BOTTOM = 5;
   const gap = tight ? 6 : 12;
 
@@ -129,12 +161,13 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (!csvUrl) {
+    // Need at least one CSV URL to proceed
+    if (!tvCsvUrl && !booksCsvUrl) {
       setError(
-        `CSV URL not found in env.\n\nCreate / update .env.local in project root (same folder as package.json) and add:\n${ENV_KEY}=PASTE_YOUR_PUBLISHED_CSV_URL_HERE\n\nThen stop + restart dev server:\nCtrl+C\nnpm run dev`
+        `No CSV URL(s) found in env.\n\nCreate / update .env.local in project root and add at least one of:\n${ENV_KEY}=PASTE_YOUR_TV_PUBLISHED_CSV_URL_HERE\n${BOOKS_ENV_KEY}=PASTE_YOUR_BOOKS_PUBLISHED_CSV_URL_HERE\n\nThen stop + restart dev server.`
       );
       setSyncState("error");
-      setSyncMsg("Missing CSV URL");
+      setSyncMsg("Missing CSV URL(s)");
       return;
     }
 
@@ -144,25 +177,37 @@ export default function Page() {
     setSyncMsg("Syncing…");
     setError(null);
 
-    fetch(csvUrl, { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
-        return await res.text();
-      })
-      .then((text) => {
+    const fetchCsv = async (url: string) => {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
+      return await res.text();
+    };
+
+    Promise.allSettled([
+      tvCsvUrl ? fetchCsv(tvCsvUrl) : Promise.resolve(null),
+      booksCsvUrl ? fetchCsv(booksCsvUrl) : Promise.resolve(null),
+    ])
+      .then((results) => {
         if (cancelled) return;
 
-        const parsed = Papa.parse<Row>(text, {
-          header: true,
-          skipEmptyLines: true,
-          dynamicTyping: false,
-        });
+        const [tvRes, booksRes] = results;
 
-        const data = (parsed.data || [])
-          .map((r) => r as Row)
-          .filter((r) => Boolean(safeStr(r["Title"])));
+        if (tvRes && tvRes.status === "fulfilled" && typeof tvRes.value === "string") {
+          const parsed = Papa.parse<Row>(tvRes.value, { header: true, skipEmptyLines: true });
+          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+          setTvRows(data);
+        } else if (tvRes && tvRes.status === "rejected") {
+          setError(`TV CSV: ${tvRes.reason?.message || String(tvRes.reason)}`);
+        }
 
-        setRows(data);
+        if (booksRes && booksRes.status === "fulfilled" && typeof booksRes.value === "string") {
+          const parsed = Papa.parse<Row>(booksRes.value, { header: true, skipEmptyLines: true });
+          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+          setBookRows(data);
+        } else if (booksRes && booksRes.status === "rejected") {
+          setError((prev) => (prev ? prev + "\n" : "") + `Books CSV: ${booksRes.reason?.message || String(booksRes.reason)}`);
+        }
+
         setSyncState("ok");
         setSyncMsg("Synced");
         setLastSyncAt(Date.now());
@@ -170,7 +215,7 @@ export default function Page() {
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e?.message || "Failed to load CSV");
+        setError(e?.message || "Failed to load CSV(s)");
         setSyncState("error");
         setSyncMsg(e?.message || "Sync failed");
         setLoading(false);
@@ -179,7 +224,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [csvUrl, refreshNonce]);
+  }, [tvCsvUrl, booksCsvUrl, refreshNonce]);
 
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
@@ -191,8 +236,12 @@ export default function Page() {
   }
 
   const allShows = useMemo(() => {
-    return rows.map(rowToShow).filter(Boolean) as Show[];
-  }, [rows]);
+    return tvRows.map(rowToShow).filter(Boolean) as Show[];
+  }, [tvRows]);
+
+  const allBooks = useMemo(() => {
+    return bookRows.map(rowToBook).filter(Boolean) as Book[];
+  }, [bookRows]);
 
   const normalizeStatus = (value?: string) =>
     safeStr(value)
@@ -238,17 +287,49 @@ export default function Page() {
 
   // (Placeholder logic) keep it simple for now
   const shows = useMemo(() => {
+    const q = safeStr(query).toLowerCase();
+    if (nav === "books") {
+      const filtered = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
+      return [...filtered].sort((a, b) => {
+        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        return bTime - aTime;
+      }) as any[];
+    }
+
+    // Home: combine books + TV and sort by book.releaseDate or show.lastAirDate (descending)
+    if (nav === "home") {
+      const qb = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
+      const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q)) : allShows;
+
+      const combined = [
+        ...qb.map((b) => ({ ...b, __type: "book" })),
+        ...qs.map((s) => ({ ...s, __type: "tv" })),
+      ];
+
+      return combined.sort((a, b) => {
+        const aTime = a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN);
+        const bTime = b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) : (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN);
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        return bTime - aTime;
+      }) as any[];
+    }
+
+    // TV default path
     const filteredByWatch = watchFilter
       ? allShows.filter((s) => normalizeStatus(s.watchStatus) === normalizeStatus(watchFilter))
       : allShows;
     const filteredByShow = showFilter
       ? filteredByWatch.filter((s) => normalizeStatus(s.showStatus) === normalizeStatus(showFilter))
       : filteredByWatch;
-    const q = safeStr(query).toLowerCase();
-    const filteredByQuery = q
-      ? filteredByShow.filter((s) => safeStr(s.title).toLowerCase().includes(q))
-      : filteredByShow;
-    if (nav !== "tv") return filteredByQuery;
+    const filteredByQuery = q ? filteredByShow.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : filteredByShow;
+
+    if (nav !== "tv") return filteredByQuery as any[];
 
     return [...filteredByQuery].sort((a, b) => {
       const aTime = a.lastAirDate ? Date.parse(a.lastAirDate) : NaN;
@@ -258,18 +339,17 @@ export default function Page() {
       if (Number.isNaN(aTime)) return 1;
       if (Number.isNaN(bTime)) return -1;
       return bTime - aTime;
-    });
-  }, [allShows, watchFilter, showFilter, nav, query]);
+    }) as any[];
+  }, [allShows, allBooks, watchFilter, showFilter, nav, query]);
 
   const stats = useMemo(() => {
-    const totalShows = allShows.length;
     return {
       movies: 0,
-      tv: totalShows,
-      books: 0,
+      tv: allShows.length,
+      books: allBooks.length,
       games: 0,
     };
-  }, [allShows.length]);
+  }, [allShows.length, allBooks.length]);
 
   const postersPerShelf = useMemo(() => {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
@@ -277,7 +357,7 @@ export default function Page() {
   }, [stageWidth, posterSize, gap]);
 
   const shelves = useMemo(() => {
-    const out: Show[][] = [];
+    const out: any[][] = [];
     for (let i = 0; i < shows.length; i += postersPerShelf) {
       out.push(shows.slice(i, i + postersPerShelf));
     }
@@ -551,7 +631,7 @@ export default function Page() {
                     <path d="M5 10v10h14V10" />
                   </svg>
                 </span>
-                Home
+                HOME
               </button>
               <button
                 onClick={() => setNav("search")}
