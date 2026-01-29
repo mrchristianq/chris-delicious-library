@@ -702,7 +702,10 @@ export default function Page() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <button
-                  onClick={() => setNav("books")}
+                  onClick={() => {
+                    setNav("books");
+                    setOpenSection((s) => (s === "books" ? null : "books"));
+                  }}
                   className={`sideItem ${nav === "books" ? "active" : ""}`}
                   style={{
                     width: "100%",
@@ -733,7 +736,10 @@ export default function Page() {
                 </button>
 
                 <button
-                  onClick={() => setNav("movies")}
+                  onClick={() => {
+                    setNav("movies");
+                    setOpenSection((s) => (s === "movies" ? null : "movies"));
+                  }}
                   className={`sideItem ${nav === "movies" ? "active" : ""}`}
                   style={{
                     width: "100%",
@@ -768,6 +774,7 @@ export default function Page() {
                     setWatchFilter(null);
                     setShowFilter(null);
                     setNav("tv");
+                    setOpenSection((s) => (s === "tv" ? null : "tv"));
                   }}
                   className={`sideItem primary ${nav === "tv" ? "active" : ""}`}
                   style={{
@@ -809,7 +816,7 @@ export default function Page() {
                   <span />
                 </button>
 
-                {nav === "tv" ? (
+                {openSection === "tv" ? (
                   <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
                     <button
                       onClick={() => setWatchStatusOpen((v) => !v)}
@@ -936,7 +943,10 @@ export default function Page() {
                 ) : null}
 
                 <button
-                  onClick={() => setNav("games")}
+                  onClick={() => {
+                    setNav("games");
+                    setOpenSection((s) => (s === "games" ? null : "games"));
+                  }}
                   className={`sideItem ${nav === "games" ? "active" : ""}`}
                   style={{
                     width: "100%",
