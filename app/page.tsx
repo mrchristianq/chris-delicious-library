@@ -1420,37 +1420,34 @@ export default function Page() {
       <style jsx>{`
         .sidebar {
           font-family: "Geist Sans", "Geist", "Segoe UI", sans-serif;
+          background-image: url('/sidebar-texture.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%);
+          background-repeat: repeat, no-repeat;
+          background-size: auto 28px, cover;
+          background-position: top left, center;
         }
         .sideItem {
           width: 100%;
-          padding: 6px 8px;
-          border-radius: 10px;
+          padding: 8px 10px;
+          border-radius: 999px;
           border: 1px solid transparent;
           background: transparent;
           color: #1b1b1b;
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
           font-family: "Nunito", "Inter", "Segoe UI", sans-serif;
           cursor: pointer;
-          transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+          transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
         }
-        .sideItem:hover {
-          background: rgba(0, 0, 0, 0.04);
-        }
+        .sideItem:hover { background: rgba(0,0,0,0.04); }
         .sideItem.active {
-          background: rgba(140, 58, 58, 0.18);
-          border-color: rgba(0, 0, 0, 0.08);
-          font-weight: 700;
+          background: rgba(255,255,255,0.95);
+          box-shadow: 0 6px 14px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+          border-color: rgba(0,0,0,0.06);
+          font-weight: 800;
+          transform: translateY(-1px);
         }
-        .sideItem.primary {
-          background: rgba(255, 255, 255, 0.7);
-          border: 1px solid rgba(0, 0, 0, 0.06);
-        }
-        .sideItem.primary.active {
-          background: #8a4c4c;
-          color: #fff;
-          box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
-        }
+        .sideItem.primary { background: transparent; }
+        .sideItem.primary.active { background: rgba(255,255,255,0.95); color: #1b1b1b; }
         .sideSubItem {
           width: 100%;
           padding: 5px 8px;
