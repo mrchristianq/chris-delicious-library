@@ -41,6 +41,7 @@ const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 // ✅ Put these in /public
 const SHELF_IMAGE = "/shelves-light-single2.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
+const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const APP_ICON = "/logo.png";
 
 function safeStr(v: unknown) {
@@ -126,9 +127,12 @@ export default function Page() {
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
+  const [showSettings, setShowSettings] = useState<boolean>(false);
 
   // UI
-  const [posterSize, setPosterSize] = useState<number>(110);
+  const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
+  const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
+  const [bookHeightMultiplier, setBookHeightMultiplier] = useState<number>(1.5);
   const [tight, setTight] = useState<boolean>(true);
   const [watchFilter, setWatchFilter] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<string | null>(null);
@@ -138,7 +142,7 @@ export default function Page() {
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
-  const SHELF_SIDE_PADDING = 30;
+  const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
   const gap = tight ? 6 : 12;
 
@@ -149,6 +153,15 @@ export default function Page() {
   const [caseInsetRightPx, setCaseInsetRightPx] = useState(121);
   const [caseInsetBottomPx, setCaseInsetBottomPx] = useState(136);
   const [caseInsetLeftPx, setCaseInsetLeftPx] = useState(74);
+  
+  // Book frame: separate insets for book covers
+  const BOOK_SRC_W = 1024;
+  const BOOK_SRC_H = 1536;
+  const [bookInsetTopPx, setBookInsetTopPx] = useState(99);
+  const [bookInsetRightPx, setBookInsetRightPx] = useState(75);
+  const [bookInsetBottomPx, setBookInsetBottomPx] = useState(104);
+  const [bookInsetLeftPx, setBookInsetLeftPx] = useState(62);
+  
   const [showInsetGuide, setShowInsetGuide] = useState(false);
 
   const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
@@ -290,14 +303,16 @@ export default function Page() {
     const q = safeStr(query).toLowerCase();
     if (nav === "books") {
       const filtered = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
-      return [...filtered].sort((a, b) => {
-        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
+      return [...filtered]
+        .map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" }))
+        .sort((a, b) => {
+          const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+          const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+          if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+          if (Number.isNaN(aTime)) return 1;
+          if (Number.isNaN(bTime)) return -1;
+          return bTime - aTime;
+        }) as any[];
     }
 
     // Home: combine books + TV and sort by book.releaseDate or show.lastAirDate (descending)
@@ -306,9 +321,9 @@ export default function Page() {
       const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q)) : allShows;
 
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" })),
-      ];
+        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" })>;
 
       return combined.sort((a, b) => {
         const aTime = a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN);
@@ -352,9 +367,10 @@ export default function Page() {
   }, [allShows.length, allBooks.length]);
 
   const postersPerShelf = useMemo(() => {
+    const size = nav === "books" ? posterSizeBooks : posterSizeTv;
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
-    return Math.max(1, Math.floor((usable + gap) / (posterSize + gap)));
-  }, [stageWidth, posterSize, gap]);
+    return Math.max(1, Math.floor((usable + gap) / (size + gap)));
+  }, [stageWidth, posterSizeTv, posterSizeBooks, nav, gap]);
 
   const shelves = useMemo(() => {
     const out: any[][] = [];
@@ -957,8 +973,8 @@ export default function Page() {
                 SETTINGS
               </div>
               <button
-                onClick={() => setNav("settings")}
-                className={`sideItem primary ${nav === "settings" ? "active" : ""}`}
+                onClick={() => setShowSettings(!showSettings)}
+                className={`sideItem primary ${showSettings ? "active" : ""}`}
                 style={{
                   width: "100%",
                   textAlign: "left",
@@ -973,7 +989,7 @@ export default function Page() {
                     width: 18,
                     height: 18,
                     borderRadius: 6,
-                    background: nav === "settings" ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.06)",
+                    background: showSettings ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.06)",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -987,20 +1003,46 @@ export default function Page() {
                 Settings
               </button>
 
-              {nav === "settings" ? (
+              {showSettings ? (
                 <div style={{ marginTop: 8, paddingLeft: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
-                    Size
+                    TV Size
                     <input
                       type="range"
                       min={70}
                       max={125}
                       step={5}
-                      value={posterSize}
-                      onChange={(e) => setPosterSize(Number(e.target.value))}
+                      value={posterSizeTv}
+                      onChange={(e) => setPosterSizeTv(Number(e.target.value))}
                       style={{ flex: 1 }}
                     />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSize}</span>
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
+                    Books Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeBooks}
+                      onChange={(e) => setPosterSizeBooks(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
+                    Books Height
+                    <input
+                      type="range"
+                      min={1.0}
+                      max={2.0}
+                      step={0.1}
+                      value={bookHeightMultiplier}
+                      onChange={(e) => setBookHeightMultiplier(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{bookHeightMultiplier.toFixed(1)}</span>
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
                     <input type="checkbox" checked={tight} onChange={(e) => setTight(e.target.checked)} />
@@ -1052,6 +1094,47 @@ export default function Page() {
                   </label>
                   <div style={{ fontSize: 11, opacity: 0.6 }}>
                     Frame: {CASE_SRC_W}×{CASE_SRC_H}
+                  </div>
+                  
+                  <div style={{ fontSize: 11, fontWeight: 700, marginTop: 8, opacity: 0.7 }}>BOOK INSETS</div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                    Top
+                    <input
+                      type="number"
+                      value={bookInsetTopPx}
+                      onChange={(e) => setBookInsetTopPx(Number(e.target.value) || 0)}
+                      style={{ width: 64 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                    Right
+                    <input
+                      type="number"
+                      value={bookInsetRightPx}
+                      onChange={(e) => setBookInsetRightPx(Number(e.target.value) || 0)}
+                      style={{ width: 64 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                    Bottom
+                    <input
+                      type="number"
+                      value={bookInsetBottomPx}
+                      onChange={(e) => setBookInsetBottomPx(Number(e.target.value) || 0)}
+                      style={{ width: 64 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                    Left
+                    <input
+                      type="number"
+                      value={bookInsetLeftPx}
+                      onChange={(e) => setBookInsetLeftPx(Number(e.target.value) || 0)}
+                      style={{ width: 64 }}
+                    />
+                  </label>
+                  <div style={{ fontSize: 11, opacity: 0.6 }}>
+                    Frame: {BOOK_SRC_W}×{BOOK_SRC_H}
                   </div>
                 </div>
               ) : null}
@@ -1122,14 +1205,31 @@ export default function Page() {
                     }}
                   >
                     {shelfShows.map((show, i) => {
-                      const x = i * (posterSize + gap);
-                      const caseWidth = posterSize;
-                      const caseHeight = Math.round(posterSize * 1.5);
+                      const isBook = show.__type === "book";
+                      const itemSize = isBook ? posterSizeBooks : posterSizeTv;
+                      // Calculate x as cumulative sum of all previous items + gaps
+                      let x = 0;
+                      for (let j = 0; j < i; j++) {
+                        const prevShow = shelfShows[j];
+                        const prevIsBook = prevShow.__type === "book";
+                        const prevSize = prevIsBook ? posterSizeBooks : posterSizeTv;
+                        x += prevSize + gap;
+                      }
+                      const caseWidth = itemSize;
+                      const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
-                      const insetTop = Math.round((caseInsetTopPx / CASE_SRC_H) * caseHeight);
-                      const insetRight = Math.round((caseInsetRightPx / CASE_SRC_W) * caseWidth);
-                      const insetBottom = Math.round((caseInsetBottomPx / CASE_SRC_H) * caseHeight);
-                      const insetLeft = Math.round((caseInsetLeftPx / CASE_SRC_W) * caseWidth);
+                      // Use appropriate insets based on item type
+                      const insetTopVal = isBook ? bookInsetTopPx : caseInsetTopPx;
+                      const insetRightVal = isBook ? bookInsetRightPx : caseInsetRightPx;
+                      const insetBottomVal = isBook ? bookInsetBottomPx : caseInsetBottomPx;
+                      const insetLeftVal = isBook ? bookInsetLeftPx : caseInsetLeftPx;
+                      const srcW = isBook ? BOOK_SRC_W : CASE_SRC_W;
+                      const srcH = isBook ? BOOK_SRC_H : CASE_SRC_H;
+
+                      const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
+                      const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
+                      const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
+                      const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
 
                       return (
                         <div
@@ -1255,7 +1355,7 @@ export default function Page() {
                           {/* Case frame overlay */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={CASE_FRAME_IMAGE}
+                            src={isBook ? BOOK_FRAME_IMAGE : CASE_FRAME_IMAGE}
                             alt=""
                             style={{
                               position: "absolute",
