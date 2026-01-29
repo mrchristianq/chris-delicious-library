@@ -411,7 +411,9 @@ export default function Page() {
             minHeight: "100vh",
             borderRadius: "0 0 0 0",
             overflow: "hidden",
-            background: "linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+            background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+            backgroundSize: "auto, 100% 100%",
+            backgroundPosition: "0 0, 0 0",
             border: "1px solid rgba(0,0,0,0.12)",
             borderRight: "none",
             boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
@@ -478,7 +480,7 @@ export default function Page() {
                 >
                   <div
                     style={{
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: 500,
                       color:
                         item.label === "Movies"
@@ -497,8 +499,8 @@ export default function Page() {
                   </div>
                   <div
                     style={{
-                      fontSize: 15,
-                      fontWeight: 800,
+                      fontSize: 14,
+                      fontWeight: 700,
                       color: "#8a4c4c",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
@@ -520,10 +522,10 @@ export default function Page() {
                 justifyContent: "space-between",
                 gap: 10,
                 padding: "10px 12px",
-                borderRadius: 14,
-                background: "rgba(255,255,255,0.7)",
-                border: "1px solid rgba(0,0,0,0.12)",
-                boxShadow: "0 10px 18px rgba(0,0,0,0.08)",
+                borderRadius: 12,
+                background: "rgba(255,255,255,0.25)",
+                border: "1px solid rgba(0,0,0,0.08)",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.06)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -546,7 +548,7 @@ export default function Page() {
                 />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ color: "#1b1b1b", fontSize: 12, fontWeight: 500 }}>
+                    <div style={{ color: "#2A2A2A", fontSize: 17, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                       {syncState === "saving"
                         ? "Syncing"
                         : syncState === "ok"
@@ -555,7 +557,7 @@ export default function Page() {
                         ? "Error"
                         : "Idle"}
                     </div>
-                    <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>
+                    <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
                       {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                     </div>
                   </div>
@@ -599,22 +601,32 @@ export default function Page() {
           </div>
 
           <div style={{ padding: "10px 12px 0 12px" }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
+            <div
               style={{
-                width: "100%",
-                padding: "9px 10px",
                 borderRadius: 12,
-                border: "1px solid rgba(0,0,0,0.16)",
-                background: "rgba(255,255,255,0.9)",
-                color: "#1b1b1b",
-                fontSize: 12,
-                fontWeight: 600,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
+                background: "rgba(255,255,255,0.25)",
+                border: "1px solid rgba(0,0,0,0.08)",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.06)",
+                padding: "8px 10px",
               }}
-            />
+            >
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search…"
+                style={{
+                  width: "100%",
+                  padding: "9px 10px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(0,0,0,0.16)",
+                  background: "rgba(255,255,255,0.9)",
+                  color: "#1b1b1b",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
+                }}
+              />
+            </div>
           </div>
 
           <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
@@ -628,27 +640,28 @@ export default function Page() {
                   textAlign: "left",
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 10,
                 }}
               >
                 <span
                   aria-hidden
                   style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 6,
-                    background: "rgba(0,0,0,0.06)",
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    flex: "0 0 auto",
                   }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 11l9-8 9 8" />
                     <path d="M5 10v10h14V10" />
                   </svg>
                 </span>
-                HOME
+                Home
               </button>
               <button
                 onClick={() => setNav("search")}
@@ -658,22 +671,23 @@ export default function Page() {
                   textAlign: "left",
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 10,
                 }}
               >
                 <span
                   aria-hidden
                   style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 6,
-                    background: "rgba(0,0,0,0.06)",
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    background: nav === "search" ? "rgba(0,0,0,0.05)" : "transparent",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    flex: "0 0 auto",
                   }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="11" cy="11" r="7" />
                     <path d="M20 20l-3.5-3.5" />
                   </svg>
@@ -683,14 +697,24 @@ export default function Page() {
             </div>
 
             {/* Library section */}
-            <div>
+            <div
+              style={{
+                margin: "12px 12px 0 12px",
+                padding: "12px",
+                borderRadius: 12,
+                background: "rgba(255,255,255,0.25)",
+                border: "1px solid rgba(0,0,0,0.08)",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.06)",
+              }}
+            >
               <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: 0.4,
-                  opacity: 0.55,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  color: "#7A6A5E",
                   marginBottom: 6,
+                  fontFamily: "Nunito, sans-serif",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -700,7 +724,7 @@ export default function Page() {
                 <span />
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
                   onClick={() => {
                     setNav("books");
@@ -712,27 +736,33 @@ export default function Page() {
                     textAlign: "left",
                     display: "flex",
                     alignItems: "center",
+                    justifyContent: "space-between",
                     gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 6,
-                      background: "rgba(0,0,0,0.06)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M4 5h13a2 2 0 0 1 2 2v11H6a2 2 0 0 0-2 2V5z" />
-                      <path d="M4 17h15" />
-                    </svg>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "books" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 5h13a2 2 0 0 1 2 2v11H6a2 2 0 0 0-2 2V5z" />
+                        <path d="M4 17h15" />
+                      </svg>
+                    </span>
+                    Books
                   </span>
-                  Books
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
                 </button>
 
                 <button
@@ -746,22 +776,24 @@ export default function Page() {
                     textAlign: "left",
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
+                    gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
                   <span
                     aria-hidden
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 6,
-                      background: "rgba(0,0,0,0.06)",
+                      width: 20,
+                      height: 20,
+                      borderRadius: 4,
+                      background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      flex: "0 0 auto",
                     }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="3" y="6" width="18" height="12" rx="2" />
                       <path d="M7 6v12M11 6v12M15 6v12M19 6v12" />
                     </svg>
@@ -784,24 +816,26 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span
                       aria-hidden
                       style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 6,
-                        background: nav === "tv" ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.06)",
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "tv" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        flex: "0 0 auto",
                       }}
                     >
                       <svg
-                        width="12"
-                        height="12"
+                        width="16"
+                        height="16"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -813,7 +847,7 @@ export default function Page() {
                     </span>
                     TV Shows
                   </span>
-                  <span />
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
                 </button>
 
                 {openSection === "tv" ? (
@@ -953,69 +987,71 @@ export default function Page() {
                     textAlign: "left",
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
+                    gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
                   <span
                     aria-hidden
                     style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 6,
-                      background: "rgba(0,0,0,0.06)",
+                      width: 20,
+                      height: 20,
+                      borderRadius: 4,
+                      background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      flex: "0 0 auto",
                     }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="3" y="8" width="18" height="8" rx="4" />
                       <path d="M8 10v4M6 12h4M16 11h2M15 13h2" />
                     </svg>
                   </span>
                   Games
                 </button>
+
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className={`sideItem primary ${showSettings ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: showSettings ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2-2 .1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-3h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-2 .1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h3v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2 2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v3h-.1a1.7 1.7 0 0 0-1.5 1z" />
+                      </svg>
+                    </span>
+                    Settings
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
+                </button>
               </div>
             </div>
 
-            {/* Alignment section */}
-            <div style={{ marginTop: "auto" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, opacity: 0.55, marginBottom: 6 }}>
-                SETTINGS
-              </div>
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className={`sideItem primary ${showSettings ? "active" : ""}`}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 6,
-                    background: showSettings ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.06)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2-2 .1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-3h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-2 .1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h3v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2 2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v3h-.1a1.7 1.7 0 0 0-1.5 1z" />
-                  </svg>
-                </span>
-                Settings
-              </button>
-
-              {showSettings ? (
-                <div style={{ marginTop: 8, paddingLeft: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            {showSettings ? (
+              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
                     TV Size
                     <input
@@ -1149,7 +1185,6 @@ export default function Page() {
                   </div>
                 </div>
               ) : null}
-            </div>
           </div>
         </aside>
 
@@ -1427,27 +1462,29 @@ export default function Page() {
         }
         .sideItem {
           width: 100%;
-          padding: 8px 10px;
-          border-radius: 999px;
+          padding: 3px 12px;
+          border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
-          color: #1b1b1b;
-          font-size: 13px;
-          font-weight: 600;
-          font-family: "Nunito", "Inter", "Segoe UI", sans-serif;
+          color: #2A2A2A;
+          font-size: 17px;
+          font-weight: 500;
+          font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
-          transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
+          transition: all 150ms ease;
         }
-        .sideItem:hover { background: rgba(0,0,0,0.04); }
+        .sideItem:hover { 
+          background: rgba(0,0,0,0.02);
+        }
         .sideItem.active {
-          background: rgba(255,255,255,0.95);
-          box-shadow: 0 6px 14px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6);
-          border-color: rgba(0,0,0,0.06);
-          font-weight: 800;
-          transform: translateY(-1px);
+          background: rgba(255,255,255,0.35);
+          box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+          border-color: rgba(0,0,0,0.08);
+          font-weight: 600;
+          color: #555555;
         }
         .sideItem.primary { background: transparent; }
-        .sideItem.primary.active { background: rgba(255,255,255,0.95); color: #1b1b1b; }
+        .sideItem.primary.active { background: rgba(255,255,255,0.85); color: #1b1b1b; }
         .sideSubItem {
           width: 100%;
           padding: 5px 8px;
