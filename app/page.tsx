@@ -128,6 +128,7 @@ export default function Page() {
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [openSection, setOpenSection] = useState<NavKey | null>(null);
 
   // UI
   const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
@@ -409,8 +410,7 @@ export default function Page() {
             height: "100vh",
             minHeight: "100vh",
             borderRadius: "0 0 0 0",
-            overflow: "hidden",
-            background: "linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+            overflowY: "auto",
             border: "1px solid rgba(0,0,0,0.12)",
             borderRight: "none",
             boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
@@ -846,225 +846,180 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ fontFamily: "Inter, sans-serif", color: "rgba(0,0,0,0.7)" }}>
-                                {status}
-                              </span>
-                              <span
-                                style={{
-                                  minWidth: 18,
-                                  height: 16,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
-                                  lineHeight: "16px",
-                                  textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
-                                }}
-                              >
-                                {watchCounts[status] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
+                              {/* Library section */}
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    letterSpacing: 0.4,
+                                    opacity: 0.55,
+                                    marginBottom: 6,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                  }}
+                                >
+                                  <span>LIBRARY</span>
+                                  <span />
+                                </div>
 
-                    <button
-                      onClick={() => setShowStatusOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#8A8A8A" }}>Show Status</span>
-                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 12 }}>+</span>
-                    </button>
-                    {showStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {showStatuses.map((status) => {
-                          const active = showFilter === status;
-                          return (
-                            <button
-                              key={`show-${status}`}
-                              onClick={() => setShowFilter(active ? null : status)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ fontFamily: "Inter, sans-serif", color: "rgba(0,0,0,0.7)" }}>
-                                {status}
-                              </span>
-                              <span
-                                style={{
-                                  minWidth: 18,
-                                  height: 16,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
-                                  lineHeight: "16px",
-                                  textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
-                                }}
-                              >
-                                {showCounts[status] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                  <button
+                                    onClick={() => {
+                                      setNav("home");
+                                      setOpenSection((s) => (s === "home" ? null : "home"));
+                                    }}
+                                    className={`sideItem ${nav === "home" ? "active" : ""}`}
+                                  >
+                                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M3 11l9-8 9 8" />
+                                        <path d="M5 10v10h14V10" />
+                                      </svg>
+                                    </span>
+                                    <span style={{ marginLeft: 8 }}>Home</span>
+                                  </button>
 
-                <button
-                  onClick={() => setNav("games")}
-                  className={`sideItem ${nav === "games" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 6,
-                      background: "rgba(0,0,0,0.06)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="8" width="18" height="8" rx="4" />
-                      <path d="M8 10v4M6 12h4M16 11h2M15 13h2" />
-                    </svg>
-                  </span>
-                  Games
-                </button>
-              </div>
-            </div>
+                                  <button
+                                    onClick={() => {
+                                      setNav("books");
+                                      setOpenSection((s) => (s === "books" ? null : "books"));
+                                    }}
+                                    className={`sideItem ${nav === "books" ? "active" : ""}`}
+                                  >
+                                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M4 5h13a2 2 0 0 1 2 2v11H6a2 2 0 0 0-2 2V5z" />
+                                        <path d="M4 17h15" />
+                                      </svg>
+                                    </span>
+                                    <span style={{ marginLeft: 8 }}>Books</span>
+                                  </button>
 
-            {/* Alignment section */}
-            <div style={{ marginTop: "auto" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, opacity: 0.55, marginBottom: 6 }}>
-                SETTINGS
-              </div>
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className={`sideItem primary ${showSettings ? "active" : ""}`}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 6,
-                    background: showSettings ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.06)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2-2 .1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-3h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-2 .1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h3v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2 2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v3h-.1a1.7 1.7 0 0 0-1.5 1z" />
-                  </svg>
-                </span>
-                Settings
-              </button>
+                                  <button
+                                    onClick={() => {
+                                      setNav("movies");
+                                      setOpenSection((s) => (s === "movies" ? null : "movies"));
+                                    }}
+                                    className={`sideItem ${nav === "movies" ? "active" : ""}`}
+                                  >
+                                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="3" y="6" width="18" height="12" rx="2" />
+                                        <path d="M7 6v12M11 6v12M15 6v12M19 6v12" />
+                                      </svg>
+                                    </span>
+                                    <span style={{ marginLeft: 8 }}>Movies</span>
+                                  </button>
 
-              {showSettings ? (
-                <div style={{ marginTop: 8, paddingLeft: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
-                    TV Size
-                    <input
-                      type="range"
-                      min={70}
-                      max={125}
-                      step={5}
-                      value={posterSizeTv}
-                      onChange={(e) => setPosterSizeTv(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
-                    Books Size
-                    <input
-                      type="range"
-                      min={70}
-                      max={125}
-                      step={5}
-                      value={posterSizeBooks}
-                      onChange={(e) => setPosterSizeBooks(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
-                    Books Height
-                    <input
-                      type="range"
-                      min={1.0}
-                      max={2.0}
-                      step={0.1}
-                      value={bookHeightMultiplier}
-                      onChange={(e) => setBookHeightMultiplier(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{bookHeightMultiplier.toFixed(1)}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
-                    <input type="checkbox" checked={tight} onChange={(e) => setTight(e.target.checked)} />
-                    Tight
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
-                    Top
-                    <input
-                      type="number"
-                      value={caseInsetTopPx}
-                      onChange={(e) => setCaseInsetTopPx(Number(e.target.value) || 0)}
-                      style={{ width: 64 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
-                    Right
-                    <input
-                      type="number"
-                      value={caseInsetRightPx}
-                      onChange={(e) => setCaseInsetRightPx(Number(e.target.value) || 0)}
-                      style={{ width: 64 }}
-                    />
+                                  <div>
+                                    <button
+                                      onClick={() => {
+                                        setWatchFilter(null);
+                                        setShowFilter(null);
+                                        setNav("tv");
+                                        setOpenSection((s) => (s === "tv" ? null : "tv"));
+                                      }}
+                                      className={`sideItem ${nav === "tv" ? "active primary" : "primary"}`}
+                                      style={{ justifyContent: "space-between" }}
+                                    >
+                                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span
+                                          aria-hidden
+                                          style={{
+                                            width: 18,
+                                            height: 18,
+                                            borderRadius: 6,
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                          }}
+                                        >
+                                          <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                          >
+                                            <rect x="3" y="7" width="18" height="10" rx="2" />
+                                            <path d="M8 21h8M12 17v4" />
+                                          </svg>
+                                        </span>
+                                        TV Shows
+                                      </span>
+                                      <span>{openSection === "tv" ? "−" : "+"}</span>
+                                    </button>
+
+                                    {openSection === "tv" ? (
+                                      <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 6 }}>
+                                        <button
+                                          onClick={() => setWatchStatusOpen((v) => !v)}
+                                          className="sideSubItem"
+                                        >
+                                          Watch Status
+                                        </button>
+                                        {watchStatusOpen ? (
+                                          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                                            {watchStatuses.map((status) => {
+                                              const active = watchFilter === status;
+                                              return (
+                                                <button
+                                                  key={status}
+                                                  onClick={() => setWatchFilter(active ? null : status)}
+                                                  className={`sideSubItem ${active ? "active" : ""}`}
+                                                  style={{ fontSize: 12 }}
+                                                >
+                                                  {status} ({watchCounts[status] || 0})
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : null}
+
+                                        <button onClick={() => setShowStatusOpen((v) => !v)} className="sideSubItem">
+                                          Show Status
+                                        </button>
+                                        {showStatusOpen ? (
+                                          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                                            {showStatuses.map((status) => {
+                                              const active = showFilter === status;
+                                              return (
+                                                <button
+                                                  key={status}
+                                                  onClick={() => setShowFilter(active ? null : status)}
+                                                  className={`sideSubItem ${active ? "active" : ""}`}
+                                                  style={{ fontSize: 12 }}
+                                                >
+                                                  {status} ({showCounts[status] || 0})
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </div>
+
+                                  <button
+                                    onClick={() => {
+                                      setNav("games");
+                                      setOpenSection((s) => (s === "games" ? null : "games"));
+                                    }}
+                                    className={`sideItem ${nav === "games" ? "active" : ""}`}
+                                  >
+                                    <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="3" y="8" width="18" height="8" rx="4" />
+                                        <path d="M8 10v4M6 12h4M16 11h2M15 13h2" />
+                                      </svg>
+                                    </span>
+                                    <span style={{ marginLeft: 8 }}>Games</span>
+                                  </button>
+                                </div>
+                              </div>
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
                     Bottom
@@ -1409,37 +1364,63 @@ export default function Page() {
       <style jsx>{`
         .sidebar {
           font-family: "Geist Sans", "Geist", "Segoe UI", sans-serif;
+          /* textured background: place your texture PNG at /public/sidebar-texture.png */
+          background-image: url('/sidebar-texture.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%);
+          background-repeat: repeat, no-repeat;
+          background-size: auto 28px, cover;
+          background-position: top left, center;
         }
         .sideItem {
           width: 100%;
-          padding: 6px 8px;
-          border-radius: 10px;
+          padding: 8px 10px;
+          border-radius: 999px;
           border: 1px solid transparent;
           background: transparent;
           color: #1b1b1b;
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
           font-family: "Nunito", "Inter", "Segoe UI", sans-serif;
           cursor: pointer;
-          transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+          transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
         }
         .sideItem:hover {
           background: rgba(0, 0, 0, 0.04);
         }
+        /* subtle bubble for active state */
         .sideItem.active {
-          background: rgba(140, 58, 58, 0.18);
-          border-color: rgba(0, 0, 0, 0.08);
-          font-weight: 700;
+          background: rgba(255,255,255,0.9);
+          box-shadow: 0 6px 14px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+          border-color: rgba(0,0,0,0.06);
+          font-weight: 800;
+          transform: translateY(-1px);
+        }
+        .sideItem.primary {
+          background: transparent;
+        }
+        .sideItem.primary.active {
+          background: rgba(255,255,255,0.95);
+          color: #1b1b1b;
         }
         .sideItem.primary {
           background: rgba(255, 255, 255, 0.7);
           border: 1px solid rgba(0, 0, 0, 0.06);
         }
-        .sideItem.primary.active {
-          background: #8a4c4c;
-          color: #fff;
-          box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
+        
+        .sideSubItem {
+          width: 100%;
+          padding: 6px 8px;
+          border-radius: 8px;
+          border: 1px solid transparent;
+          background: rgba(255,255,255,0.6);
+          color: #1b1b1b;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 140ms ease, border-color 140ms ease;
+          text-align: left;
         }
+        .sideSubItem:hover { background: rgba(0,0,0,0.04); }
+        .sideSubItem.active { background: rgba(140,58,58,0.08); border-color: rgba(0,0,0,0.06); font-weight: 700; }
         .sideSubItem {
           width: 100%;
           padding: 5px 8px;
