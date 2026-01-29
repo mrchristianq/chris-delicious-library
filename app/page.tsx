@@ -42,7 +42,7 @@ const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const SHELF_IMAGE = "/shelves-light-single2.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
-const APP_ICON = "/logo.png";
+const APP_ICON = "/Logo2.png";
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
@@ -140,6 +140,11 @@ export default function Page() {
   const [watchStatusOpen, setWatchStatusOpen] = useState<boolean>(false);
   const [showStatusOpen, setShowStatusOpen] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
+
+  // Logo positioning and sizing
+  const [logoSize, setLogoSize] = useState<number>(158);
+  const [logoTop, setLogoTop] = useState<number>(-41);
+  const [logoLeft, setLogoLeft] = useState<number>(0);
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
@@ -410,7 +415,8 @@ export default function Page() {
             height: "100vh",
             minHeight: "100vh",
             borderRadius: "0 0 0 0",
-            overflow: "hidden",
+            overflowY: "auto",
+            overflowX: "hidden",
             background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
             backgroundSize: "auto, 100% 100%",
             backgroundPosition: "0 0, 0 0",
@@ -419,49 +425,66 @@ export default function Page() {
             boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
             display: "flex",
             flexDirection: "column",
+            padding: "6px",
           }}
         >
-          {/* Logo header + stats */}
+          {/* Transparent module bubble wrapper */}
+          <div
+            style={{
+              background: "rgba(255, 255, 255, 0.4)",
+              borderRadius: 16,
+              boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.3)",
+              display: "flex",
+              flexDirection: "column",
+              flex: 1,
+              overflow: "hidden",
+              overflowY: "auto",
+            }}
+          >
+          {/* Logo header with stats */}
           <div
             style={{
               background: "transparent",
               borderBottom: "none",
-              position: "relative",
-              padding: 0,
-              border: "1px solid rgba(0,0,0,0.08)",
-              borderLeft: "none",
-              borderRight: "none",
-              overflow: "hidden",
+              padding: "0px 12px 10px 12px",
+              border: "none",
+              overflow: "visible",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 12,
+              minHeight: "auto",
             }}
           >
+            {/* Logo on the left */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={APP_ICON}
               alt={APP_TITLE}
               style={{
-                width: "100%",
-                height: "auto",
+                width: logoSize,
+                height: logoSize,
                 objectFit: "contain",
                 objectPosition: "center",
-                display: "block",
+                flexShrink: 0,
+                marginTop: logoTop,
+                marginLeft: logoLeft,
               }}
             />
+            {/* Stats on the right */}
             <div
               style={{
-                position: "absolute",
-                top: "50%",
-                transform: "translateY(-50%)",
-                right: 10,
                 display: "grid",
                 gridTemplateColumns: "1fr",
                 rowGap: 2,
-                padding: "0 8px",
+                padding: "16px 8px 0 8px",
                 borderRadius: 0,
                 background: "transparent",
                 border: "none",
                 backdropFilter: "none",
                 WebkitBackdropFilter: "none",
-                width: "40%",
+                width: "auto",
               }}
             >
               {[
@@ -475,32 +498,34 @@ export default function Page() {
                     display: "grid",
                     gridTemplateColumns: "max-content 1fr",
                     alignItems: "baseline",
-                    columnGap: 2,
+                    columnGap: 12,
+                    justifyItems: "end",
                   }}
                 >
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: 500,
                       color:
                         item.label === "Movies"
-                          ? "#549cfa"
+                          ? "#77829c"
                           : item.label === "TV Shows"
-                          ? "#fa8c07"
+                          ? "#ac7542"
                           : item.label === "Books"
-                          ? "#638818"
+                          ? "#64663c"
                           : "#1A1A1A",
-                      fontFamily: "Inter, sans-serif",
+                      fontFamily: "Arial, Helvetica, sans-serif",
                       whiteSpace: "nowrap",
                       lineHeight: 1.15,
+                      textAlign: "right",
                     }}
                   >
                     {item.label}
                   </div>
                   <div
                     style={{
-                      fontSize: 14,
-                      fontWeight: 700,
+                      fontSize: 15,
+                      fontWeight: 600,
                       color: "#8a4c4c",
                       textAlign: "right",
                       fontVariantNumeric: "tabular-nums",
@@ -514,7 +539,7 @@ export default function Page() {
             </div>
           </div>
 
-          <div style={{ padding: "10px 12px 0 12px" }}>
+          <div style={{ padding: "0 12px", marginTop: "-30px" }}>
             <div
               style={{
                 display: "flex",
@@ -523,9 +548,9 @@ export default function Page() {
                 gap: 10,
                 padding: "10px 12px",
                 borderRadius: 12,
-                background: "rgba(255,255,255,0.25)",
-                border: "1px solid rgba(0,0,0,0.08)",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.06)",
+                background: "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(255, 255, 255, 0.3)",
+                boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -548,7 +573,7 @@ export default function Page() {
                 />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ color: "#2A2A2A", fontSize: 17, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
+                    <div style={{ color: "#754738", fontSize: 13, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                       {syncState === "saving"
                         ? "Syncing"
                         : syncState === "ok"
@@ -557,7 +582,7 @@ export default function Page() {
                         ? "Error"
                         : "Idle"}
                     </div>
-                    <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>
+                    <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap" }}>
                       {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                     </div>
                   </div>
@@ -584,11 +609,11 @@ export default function Page() {
                 style={{
                   border: "1px solid rgba(0,0,0,0.18)",
                   background: "rgba(255,255,255,0.85)",
-                  color: "#1b1b1b",
+                  color: "#754738",
                   borderRadius: 999,
                   padding: "7px 10px",
                   cursor: "pointer",
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 500,
                   flex: "0 0 auto",
                   whiteSpace: "nowrap",
@@ -601,115 +626,34 @@ export default function Page() {
           </div>
 
           <div style={{ padding: "10px 12px 0 12px" }}>
-            <div
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
               style={{
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.25)",
-                border: "1px solid rgba(0,0,0,0.08)",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.06)",
-                padding: "8px 10px",
+                width: "100%",
+                padding: "9px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(0,0,0,0.16)",
+                background: "rgba(255,255,255,0.9)",
+                color: "#1b1b1b",
+                fontSize: 11,
+                fontWeight: 500,
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
               }}
-            >
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…"
-                style={{
-                  width: "100%",
-                  padding: "9px 10px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(0,0,0,0.16)",
-                  background: "rgba(255,255,255,0.9)",
-                  color: "#1b1b1b",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-                }}
-              />
-            </div>
+            />
           </div>
 
           <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
             {/* Top actions */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <button
-                onClick={() => setNav("home")}
-                className={`sideItem ${nav === "home" ? "active" : ""}`}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 4,
-                    background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 11l9-8 9 8" />
-                    <path d="M5 10v10h14V10" />
-                  </svg>
-                </span>
-                Home
-              </button>
-              <button
-                onClick={() => setNav("search")}
-                className={`sideItem ${nav === "search" ? "active" : ""}`}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 4,
-                    background: nav === "search" ? "rgba(0,0,0,0.05)" : "transparent",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="M20 20l-3.5-3.5" />
-                  </svg>
-                </span>
-                Search
-              </button>
             </div>
 
             {/* Library section */}
-            <div
-              style={{
-                margin: "12px 12px 0 12px",
-                padding: "12px",
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.25)",
-                border: "1px solid rgba(0,0,0,0.08)",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.06)",
-              }}
-            >
+            <div style={{ padding: "0px 12px 0 12px", marginTop: "-6px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 600,
                   letterSpacing: "0.04em",
                   color: "#7A6A5E",
@@ -726,6 +670,42 @@ export default function Page() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
+                  onClick={() => setNav("home")}
+                  className={`sideItem ${nav === "home" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 11l9-8 9 8" />
+                        <path d="M5 10v10h14V10" />
+                      </svg>
+                    </span>
+                    Home
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
+                </button>
+                <button
                   onClick={() => {
                     setNav("books");
                     setOpenSection((s) => (s === "books" ? null : "books"));
@@ -741,7 +721,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
                     <span
                       aria-hidden
                       style={{
@@ -762,7 +742,7 @@ export default function Page() {
                     </span>
                     Books
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
                 <button
@@ -780,25 +760,27 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="6" width="18" height="12" rx="2" />
-                      <path d="M7 6v12M11 6v12M15 6v12M19 6v12" />
-                    </svg>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="6" width="18" height="12" rx="2" />
+                        <path d="M7 6v12M11 6v12M15 6v12M19 6v12" />
+                      </svg>
+                    </span>
+                    Movies
                   </span>
-                  Movies
                 </button>
 
                 <button
@@ -819,7 +801,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
                     <span
                       aria-hidden
                       style={{
@@ -847,7 +829,7 @@ export default function Page() {
                     </span>
                     TV Shows
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
                 {openSection === "tv" ? (
@@ -867,8 +849,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#8A8A8A" }}>Watch Status</span>
-                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 12 }}>+</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>Watch Status</span>
+                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 11 }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -897,7 +879,7 @@ export default function Page() {
                                   height: 16,
                                   padding: "0 6px",
                                   borderRadius: 10,
-                                  fontSize: 11,
+                                  fontSize: 10,
                                   lineHeight: "16px",
                                   textAlign: "center",
                                   background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
@@ -928,8 +910,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#8A8A8A" }}>Show Status</span>
-                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 12 }}>+</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>Show Status</span>
+                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 11 }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -958,7 +940,7 @@ export default function Page() {
                                   height: 16,
                                   padding: "0 6px",
                                   borderRadius: 10,
-                                  fontSize: 11,
+                                  fontSize: 10,
                                   lineHeight: "16px",
                                   textAlign: "center",
                                   background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
@@ -991,25 +973,27 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="8" width="18" height="8" rx="4" />
-                      <path d="M8 10v4M6 12h4M16 11h2M15 13h2" />
-                    </svg>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="8" width="18" height="8" rx="4" />
+                        <path d="M8 10v4M6 12h4M16 11h2M15 13h2" />
+                      </svg>
+                    </span>
+                    Games
                   </span>
-                  Games
                 </button>
 
                 <button
@@ -1024,7 +1008,7 @@ export default function Page() {
                     gap: 10,
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
                     <span
                       aria-hidden
                       style={{
@@ -1045,15 +1029,14 @@ export default function Page() {
                     </span>
                     Settings
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
               </div>
-            </div>
             </div>
 
             {showSettings ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
                     TV Size
                     <input
                       type="range"
@@ -1066,7 +1049,7 @@ export default function Page() {
                     />
                     <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
                     Books Size
                     <input
                       type="range"
@@ -1079,7 +1062,7 @@ export default function Page() {
                     />
                     <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
                     Books Height
                     <input
                       type="range"
@@ -1092,11 +1075,11 @@ export default function Page() {
                     />
                     <span style={{ width: 28, textAlign: "right" }}>{bookHeightMultiplier.toFixed(1)}</span>
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, opacity: 0.85 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
                     <input type="checkbox" checked={tight} onChange={(e) => setTight(e.target.checked)} />
                     Tight
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
                     Top
                     <input
                       type="number"
@@ -1105,7 +1088,7 @@ export default function Page() {
                       style={{ width: 64 }}
                     />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
                     Right
                     <input
                       type="number"
@@ -1114,7 +1097,7 @@ export default function Page() {
                       style={{ width: 64 }}
                     />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
                     Bottom
                     <input
                       type="number"
@@ -1132,7 +1115,7 @@ export default function Page() {
                       style={{ width: 64 }}
                     />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
                     <input
                       type="checkbox"
                       checked={showInsetGuide}
@@ -1172,7 +1155,7 @@ export default function Page() {
                       style={{ width: 64 }}
                     />
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
                     Left
                     <input
                       type="number"
@@ -1184,8 +1167,50 @@ export default function Page() {
                   <div style={{ fontSize: 11, opacity: 0.6 }}>
                     Frame: {BOOK_SRC_W}×{BOOK_SRC_H}
                   </div>
+
+                  <div style={{ fontSize: 11, fontWeight: 700, marginTop: 8, opacity: 0.7 }}>LOGO</div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Size
+                    <input
+                      type="range"
+                      min={60}
+                      max={200}
+                      step={5}
+                      value={logoSize}
+                      onChange={(e) => setLogoSize(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{logoSize}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Top
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={1}
+                      value={logoTop}
+                      onChange={(e) => setLogoTop(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{logoTop}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Left
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={1}
+                      value={logoLeft}
+                      onChange={(e) => setLogoLeft(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{logoLeft}</span>
+                  </label>
                 </div>
               ) : null}
+            </div>
           </div>
         </aside>
 
