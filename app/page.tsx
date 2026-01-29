@@ -50,217 +50,27 @@
     };
   }, [tvCsvUrl, booksCsvUrl, refreshNonce]);
 
-  function formatLastSync(ts: number | null) {
-    if (!ts) return "—";
-    try {
-      return new Date(ts).toLocaleString();
-    } catch {
-      return "—";
-    }
-  }
-
-  const allShows = useMemo(() => {
-    return tvRows.map(rowToShow).filter(Boolean) as Show[];
-  }, [tvRows]);
-
-  const allBooks = useMemo(() => {
-    return bookRows.map(rowToBook).filter(Boolean) as Book[];
-  }, [bookRows]);
-
-  const normalizeStatus = (value?: string) =>
-    safeStr(value)
-      .toLowerCase()
-      .replace("cancelled", "canceled");
-
-  const watchStatuses = useMemo(
-    () => [
-      "Currently Watching",
-      "Completed",
-      "Backlog",
-      "Abandoned",
-      "Watch Next",
-      "Paused",
-      "Pending Return",
-    ],
-    []
-  );
-
-  const showStatuses = useMemo(() => ["Ended", "Returning Series", "Canceled"], []);
-
-  const watchCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of watchStatuses) counts[s] = 0;
-    for (const show of allShows) {
-      const status = normalizeStatus(show.watchStatus);
-      const match = watchStatuses.find((s) => normalizeStatus(s) === status);
-      if (match) counts[match] += 1;
-    }
-    return counts;
-  }, [allShows, watchStatuses]);
-
-  const showCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of showStatuses) counts[s] = 0;
-    for (const show of allShows) {
-      const status = normalizeStatus(show.showStatus);
-      const match = showStatuses.find((s) => normalizeStatus(s) === status);
-      if (match) counts[match] += 1;
-    }
-    return counts;
-  }, [allShows, showStatuses]);
-
-  // (Placeholder logic) keep it simple for now
-  const shows = useMemo(() => {
-    const q = safeStr(query).toLowerCase();
-    if (nav === "books") {
-      const filtered = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
-      return [...filtered]
-        .map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" }))
-        .sort((a, b) => {
-          const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-          const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-          if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-          if (Number.isNaN(aTime)) return 1;
-          if (Number.isNaN(bTime)) return -1;
-          return bTime - aTime;
-        }) as any[];
-    }
-
-    // Home: combine books + TV and sort by book.releaseDate or show.lastAirDate (descending)
-    if (nav === "home") {
-      const qb = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
-      const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q)) : allShows;
-
-      const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" })>;
-
-      return combined.sort((a, b) => {
-        const aTime = a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN);
-        const bTime = b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) : (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN);
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
-    }
-
-    // TV default path
-    const filteredByWatch = watchFilter
-      ? allShows.filter((s) => normalizeStatus(s.watchStatus) === normalizeStatus(watchFilter))
-      : allShows;
-    const filteredByShow = showFilter
-      ? filteredByWatch.filter((s) => normalizeStatus(s.showStatus) === normalizeStatus(showFilter))
-      : filteredByWatch;
-    const filteredByQuery = q ? filteredByShow.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : filteredByShow;
-
-    if (nav !== "tv") return filteredByQuery as any[];
-
-    return [...filteredByQuery].sort((a, b) => {
-      const aTime = a.lastAirDate ? Date.parse(a.lastAirDate) : NaN;
-      const bTime = b.lastAirDate ? Date.parse(b.lastAirDate) : NaN;
-
-      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-      if (Number.isNaN(aTime)) return 1;
-      if (Number.isNaN(bTime)) return -1;
-      return bTime - aTime;
-    }) as any[];
-  }, [allShows, allBooks, watchFilter, showFilter, nav, query]);
-
-  const stats = useMemo(() => {
-    return {
-      movies: 0,
-      tv: allShows.length,
-      books: allBooks.length,
-      games: 0,
-    };
-  }, [allShows.length, allBooks.length]);
-
-  const postersPerShelf = useMemo(() => {
-    const size = nav === "books" ? posterSizeBooks : posterSizeTv;
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
-    return Math.max(1, Math.floor((usable + gap) / (size + gap)));
-  }, [stageWidth, posterSizeTv, posterSizeBooks, nav, gap]);
-
-  const shelves = useMemo(() => {
-    const out: any[][] = [];
-    for (let i = 0; i < shows.length; i += postersPerShelf) {
-      out.push(shows.slice(i, i + postersPerShelf));
-    }
-
-    const headerOffset = 140;
-    const minShelves = Math.max(1, Math.ceil(Math.max(0, viewportH - headerOffset) / SHELF_HEIGHT));
-    while (out.length < minShelves) out.push([]);
-
-    return out;
-  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT]);
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111" }}>
-      {/* Main layout: Sidebar + Content */}
-      <div
-        style={{
-          width: "100%",
-          margin: 0,
-          padding: 0,
-          display: "grid",
-          gridTemplateColumns: "320px 1fr",
-          gap: 0,
-          alignItems: "stretch",
-        }}
-      >
-        {/* LEFT MENU */}
-        <aside
-          className="sidebar"
-          style={{
-            position: "sticky",
-            top: 0,
-            alignSelf: "start",
-            height: "100vh",
-            minHeight: "100vh",
-            borderRadius: "0 0 0 0",
-            overflowY: "auto",
-            border: "1px solid rgba(0,0,0,0.12)",
-            borderRight: "none",
-            boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          {/* Logo header + stats */}
-          <div
-            style={{
-              background: "transparent",
-              borderBottom: "none",
-              position: "relative",
-              padding: 0,
-              border: "1px solid rgba(0,0,0,0.08)",
-              borderLeft: "none",
-              borderRight: "none",
-              overflow: "hidden",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={APP_ICON}
-              alt={APP_TITLE}
-              style={{
-                width: "100%",
-                height: "auto",
-                objectFit: "contain",
-                objectPosition: "center",
-                display: "block",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                transform: "translateY(-50%)",
-                right: 10,
-                display: "grid",
-                gridTemplateColumns: "1fr",
+                        {watchStatuses.map((status) => {
+                          const active = watchFilter === status;
+                          return (
+                            <button
+                              key={`watch-${status}`}
+                              onClick={() => setWatchFilter(active ? null : status)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span>{status}</span>
+                              <span style={{ fontWeight: 800 }}>{watchCounts[status] || 0}</span>
+                            </button>
+                          );
+                        })}
                 rowGap: 2,
                 padding: "0 8px",
                 borderRadius: 0,
