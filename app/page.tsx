@@ -1,215 +1,25 @@
 /* =====================================================================================
-  Chris' Delicious Library
-  Version: 1.1.0
-   Notes:
-   - Client-side CSV load from Google Sheets (published CSV)
-   - Left sidebar menu (Delicious Library style)
-   - 1 shelf image per row (no gaps between shelves)
-   - Posters only (no title labels)
-   - Posters align to shelf lip
-   - DVD case frame overlay (no left border) + glossy black edge
-===================================================================================== */
-
-"use client";
-
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import Papa from "papaparse";
-
-type Row = Record<string, string>;
-
-type Show = {
-  title: string;
-  posterUrl: string;
-  tmdbId?: string;
-  firstAirDate?: string;
-  lastAirDate?: string;
-  watchStatus?: string;
-  showStatus?: string;
-};
-
-type Book = {
-  title: string;
-  posterUrl: string;
-  isbn?: string;
-  releaseDate?: string;
-};
-
-const APP_TITLE = "Chris’ Delicious Library";
-const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
-const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
-
-// ✅ Put these in /public
-const SHELF_IMAGE = "/shelves-light-single2.png";
-const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
-const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
-const APP_ICON = "/logo.png";
-
-function safeStr(v: unknown) {
-  return (v ?? "").toString().trim();
-}
-
-function rowToShow(r: Row): Show | null {
-  const title = safeStr(r["Title"]);
-  if (!title) return null;
-
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  return {
-    title,
-    posterUrl,
-    tmdbId: safeStr(r["TMDB_ID"]) || undefined,
-    firstAirDate: safeStr(r["FirstAirDate"]) || undefined,
-    lastAirDate: safeStr(r["LastAirDate"]) || undefined,
-    watchStatus: safeStr(r["WatchStatus"]) || undefined,
-    showStatus: safeStr(r["Status"]) || undefined,
-  };
-}
-
-function rowToBook(r: Row): Book | null {
-  const title = safeStr(r["Title"]);
-  if (!title) return null;
-
-  const posterUrl =
-    safeStr(r["ImageURL"]) ||
-    safeStr(r["Image URL"]) ||
-    safeStr(r["Image"]) ||
-    safeStr(r["CoverURL"]) ||
-    safeStr(r["Cover URL"]) ||
-    safeStr(r["PosterURL"]) ||
-    safeStr(r["Poster URL"]) ||
-    safeStr(r["Poster"]) ||
-    "";
-  return {
-    title,
-    posterUrl,
-    isbn: safeStr(r["ISBN"]) || undefined,
-    releaseDate: safeStr(r["ReleaseDate"]) || safeStr(r["Published"]) || undefined,
-  };
-}
-
-function useElementWidth<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [width, setWidth] = useState(0);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      setWidth(Math.floor(entry.contentRect.width));
-    });
-
-    ro.observe(el);
-    setWidth(Math.floor(el.getBoundingClientRect().width));
-
-    return () => ro.disconnect();
-  }, []);
-
-  return { ref, width };
-}
-
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "settings";
-
-export default function Page() {
-  const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
-  const booksCsvUrl = (process.env as any)[BOOKS_ENV_KEY] as string | undefined;
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tvRows, setTvRows] = useState<Row[]>([]);
-  const [bookRows, setBookRows] = useState<Row[]>([]);
-  const [syncState, setSyncState] = useState<"idle" | "saving" | "ok" | "error">("idle");
-  const [syncMsg, setSyncMsg] = useState<string>("");
-  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const [query, setQuery] = useState("");
-
-  // Sidebar nav
-  const [nav, setNav] = useState<NavKey>("home");
-  const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [openSection, setOpenSection] = useState<NavKey | null>(null);
-
-  // UI
-  const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
-  const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
-  const [bookHeightMultiplier, setBookHeightMultiplier] = useState<number>(1.5);
-  const [tight, setTight] = useState<boolean>(true);
-  const [watchFilter, setWatchFilter] = useState<string | null>(null);
-  const [showFilter, setShowFilter] = useState<string | null>(null);
-  const [watchStatusOpen, setWatchStatusOpen] = useState<boolean>(false);
-  const [showStatusOpen, setShowStatusOpen] = useState<boolean>(false);
-  const [viewportH, setViewportH] = useState(0);
-
-  // Layout tuning
-  const SHELF_HEIGHT = 190;
-  const SHELF_SIDE_PADDING = 10;
-  const LIP_FROM_BOTTOM = 5;
-  const gap = tight ? 6 : 12;
-
-  // DVD case: poster inset inside the frame
-  const CASE_SRC_W = 1024;
-  const CASE_SRC_H = 1536;
-  const [caseInsetTopPx, setCaseInsetTopPx] = useState(156);
-  const [caseInsetRightPx, setCaseInsetRightPx] = useState(121);
-  const [caseInsetBottomPx, setCaseInsetBottomPx] = useState(136);
-  const [caseInsetLeftPx, setCaseInsetLeftPx] = useState(74);
-  
-  // Book frame: separate insets for book covers
-  const BOOK_SRC_W = 1024;
-  const BOOK_SRC_H = 1536;
-  const [bookInsetTopPx, setBookInsetTopPx] = useState(99);
-  const [bookInsetRightPx, setBookInsetRightPx] = useState(75);
-  const [bookInsetBottomPx, setBookInsetBottomPx] = useState(104);
-  const [bookInsetLeftPx, setBookInsetLeftPx] = useState(62);
-  
-  const [showInsetGuide, setShowInsetGuide] = useState(false);
-
-  const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
-
-  useEffect(() => {
-    const onResize = () => setViewportH(window.innerHeight || 0);
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  useEffect(() => {
-    // Need at least one CSV URL to proceed
-    if (!tvCsvUrl && !booksCsvUrl) {
-      setError(
-        `No CSV URL(s) found in env.\n\nCreate / update .env.local in project root and add at least one of:\n${ENV_KEY}=PASTE_YOUR_TV_PUBLISHED_CSV_URL_HERE\n${BOOKS_ENV_KEY}=PASTE_YOUR_BOOKS_PUBLISHED_CSV_URL_HERE\n\nThen stop + restart dev server.`
-      );
-      setSyncState("error");
-      setSyncMsg("Missing CSV URL(s)");
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setSyncState("saving");
-    setSyncMsg("Syncing…");
-    setError(null);
-
-    const fetchCsv = async (url: string) => {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
-      return await res.text();
-    };
-
-    Promise.allSettled([
-      tvCsvUrl ? fetchCsv(tvCsvUrl) : Promise.resolve(null),
-      booksCsvUrl ? fetchCsv(booksCsvUrl) : Promise.resolve(null),
-    ])
-      .then((results) => {
-        if (cancelled) return;
-
-        const [tvRes, booksRes] = results;
-
-        if (tvRes && tvRes.status === "fulfilled" && typeof tvRes.value === "string") {
-          const parsed = Papa.parse<Row>(tvRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
-          setTvRows(data);
+                        {watchStatuses.map((status) => {
+                          const active = watchFilter === status;
+                          return (
+                            <button
+                              key={`watch-${status}`}
+                              onClick={() => setWatchFilter(active ? null : status)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span>{status}</span>
+                              <span style={{ fontWeight: 800 }}>{watchCounts[status] || 0}</span>
+                            </button>
+                          );
+                        })}
         } else if (tvRes && tvRes.status === "rejected") {
           setError(`TV CSV: ${tvRes.reason?.message || String(tvRes.reason)}`);
         }
