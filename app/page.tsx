@@ -1049,6 +1049,7 @@ export default function Page() {
                 </button>
               </div>
             </div>
+            </div>
 
             {showSettings ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
