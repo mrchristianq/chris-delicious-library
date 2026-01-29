@@ -1020,7 +1020,6 @@ export default function Page() {
                                   </button>
                                 </div>
                               </div>
-                  </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
                     Bottom
                     <input
