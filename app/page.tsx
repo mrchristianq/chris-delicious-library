@@ -1,6 +1,6 @@
 /* =====================================================================================
   Chris' Delicious Library
-  Version: 1.1.0
+  Version: 1.6.0
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -8,6 +8,12 @@
    - Posters only (no title labels)
    - Posters align to shelf lip
    - DVD case frame overlay (no left border) + glossy black edge
+   
+   v1.6.0 Changes:
+   - Reduced font sizes throughout sidebar by 1px for tighter typography
+   - Added explicit font size (13px) to Library section buttons (Home, Books, Movies, TV Shows, Games, Settings)
+   - Updated Synced and Re-sync styling: font size 13px, color #754738
+   - Refined typography hierarchy and visual spacing
 ===================================================================================== */
 
 "use client";
@@ -42,7 +48,7 @@ const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const SHELF_IMAGE = "/shelves-light-single2.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
-const APP_ICON = "/Logo2.png";
+const APP_ICON = "/logo4.png";
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
@@ -142,9 +148,9 @@ export default function Page() {
   const [viewportH, setViewportH] = useState(0);
 
   // Logo positioning and sizing
-  const [logoSize, setLogoSize] = useState<number>(158);
-  const [logoTop, setLogoTop] = useState<number>(-41);
-  const [logoLeft, setLogoLeft] = useState<number>(0);
+  const [logoSize, setLogoSize] = useState<number>(230);
+  const [logoTop, setLogoTop] = useState<number>(12);
+  const [logoLeft, setLogoLeft] = useState<number>(-28);
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
@@ -431,10 +437,10 @@ export default function Page() {
           {/* Transparent module bubble wrapper */}
           <div
             style={{
-              background: "rgba(255, 255, 255, 0.4)",
+              background: "rgba(255, 255, 255, 0.125)",
               borderRadius: 16,
-              boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
-              border: "1px solid rgba(255, 255, 255, 0.3)",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.4)",
               display: "flex",
               flexDirection: "column",
               flex: 1,
@@ -451,40 +457,43 @@ export default function Page() {
               border: "none",
               overflow: "visible",
               display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              gap: 8,
               minHeight: "auto",
             }}
           >
-            {/* Logo on the left */}
+            {/* Logo taking full width */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={APP_ICON}
               alt={APP_TITLE}
               style={{
                 width: logoSize,
-                height: logoSize,
+                height: "auto",
                 objectFit: "contain",
                 objectPosition: "center",
                 flexShrink: 0,
                 marginTop: logoTop,
                 marginLeft: logoLeft,
+                filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45))",
               }}
             />
-            {/* Stats on the right */}
+            {/* Stats below */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr",
-                rowGap: 2,
-                padding: "16px 8px 0 8px",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                columnGap: 12,
+                rowGap: 6,
+                padding: "8px 0 0 0",
                 borderRadius: 0,
                 background: "transparent",
                 border: "none",
                 backdropFilter: "none",
                 WebkitBackdropFilter: "none",
-                width: "auto",
+                width: "100%",
               }}
             >
               {[
@@ -495,11 +504,10 @@ export default function Page() {
                 <div
                   key={item.label}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "max-content 1fr",
-                    alignItems: "baseline",
-                    columnGap: 12,
-                    justifyItems: "end",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   <div
@@ -517,17 +525,17 @@ export default function Page() {
                       fontFamily: "Arial, Helvetica, sans-serif",
                       whiteSpace: "nowrap",
                       lineHeight: 1.15,
-                      textAlign: "right",
+                      textAlign: "center",
                     }}
                   >
                     {item.label}
                   </div>
                   <div
                     style={{
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: 600,
                       color: "#8a4c4c",
-                      textAlign: "right",
+                      textAlign: "center",
                       fontVariantNumeric: "tabular-nums",
                       lineHeight: 1.15,
                     }}
@@ -539,7 +547,7 @@ export default function Page() {
             </div>
           </div>
 
-          <div style={{ padding: "0 12px", marginTop: "-30px" }}>
+          <div style={{ padding: "0 12px", marginTop: "16px" }}>
             <div
               style={{
                 display: "flex",
@@ -548,16 +556,16 @@ export default function Page() {
                 gap: 10,
                 padding: "10px 12px",
                 borderRadius: 12,
-                background: "rgba(255,255,255,0.4)",
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-                boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                border: "1px solid rgba(92, 60, 56, 0.2)",
+                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
                 <span
                   style={{
-                    width: 9,
-                    height: 9,
+                    width: 12,
+                    height: 12,
                     borderRadius: 999,
                     background:
                       syncState === "saving"
@@ -567,13 +575,16 @@ export default function Page() {
                         : syncState === "error"
                         ? "#b23b3b"
                         : "rgba(0,0,0,0.35)",
-                    opacity: 0.9,
+                    opacity: 0.95,
                     flex: "0 0 auto",
+                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.25)",
+                    border: "1.5px solid rgba(255, 255, 255, 0.6)",
+                    marginTop: 8,
                   }}
                 />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ color: "#754738", fontSize: 13, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
+                    <div style={{ color: "#754738", fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                       {syncState === "saving"
                         ? "Syncing"
                         : syncState === "ok"
@@ -626,22 +637,34 @@ export default function Page() {
           </div>
 
           <div style={{ padding: "10px 12px 0 12px" }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
+            <div
               style={{
-                width: "100%",
-                padding: "9px 10px",
-                borderRadius: 8,
-                border: "1px solid rgba(0,0,0,0.16)",
-                background: "rgba(255,255,255,0.9)",
-                color: "#1b1b1b",
-                fontSize: 11,
-                fontWeight: 500,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
+                display: "flex",
+                alignItems: "center",
+                borderRadius: 16,
+                border: "1px solid rgba(92, 60, 56, 0.2)",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
+                paddingLeft: "10px",
               }}
-            />
+            >
+              <span style={{ color: "#1b1b1b", fontSize: 13, marginRight: "6px" }}>🔍</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search…"
+                style={{
+                  flex: 1,
+                  padding: "9px 10px",
+                  border: "none",
+                  background: "transparent",
+                  color: "#1b1b1b",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  outline: "none",
+                }}
+              />
+            </div>
           </div>
 
           <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
@@ -656,7 +679,7 @@ export default function Page() {
                   fontSize: 11,
                   fontWeight: 600,
                   letterSpacing: "0.04em",
-                  color: "#7A6A5E",
+                  color: "#954949",
                   marginBottom: 6,
                   fontFamily: "Nunito, sans-serif",
                   display: "flex",
@@ -996,6 +1019,30 @@ export default function Page() {
                   </span>
                 </button>
 
+
+              </div>
+            </div>
+
+            {/* DISCOVER section */}
+            <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  color: "#954949",
+                  marginBottom: 6,
+                  fontFamily: "Nunito, sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>DISCOVER</span>
+                <span />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
                   onClick={() => setShowSettings(!showSettings)}
                   className={`sideItem primary ${showSettings ? "active" : ""}`}
@@ -1006,6 +1053,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
@@ -1028,6 +1076,40 @@ export default function Page() {
                       </svg>
                     </span>
                     Settings
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+
+                <button
+                  className="sideItem"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 12h18M3 6h18M3 18h18" />
+                      </svg>
+                    </span>
+                    Statistics
                   </span>
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
@@ -1174,7 +1256,7 @@ export default function Page() {
                     <input
                       type="range"
                       min={60}
-                      max={200}
+                      max={500}
                       step={5}
                       value={logoSize}
                       onChange={(e) => setLogoSize(Number(e.target.value))}
