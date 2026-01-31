@@ -1,6 +1,6 @@
 /* =====================================================================================
   Chris' Delicious Library
-  Version: 1.7.5
+  Version: 2.0.0
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -8,6 +8,55 @@
    - Posters only (no title labels)
    - Posters align to shelf lip
    - DVD case frame overlay (no left border) + glossy black edge
+   
+   v2.0.0 Changes:
+   - Added full Games support with CSV integration
+   - Games now display in library alongside TV shows, movies, and books
+   - Games tracked in statistics and filterable
+   - Games have dedicated cover size and inset settings
+   
+   v1.11.0 Changes:
+   - Enhanced settings spreadsheet with Category and Description columns
+   - Settings now organized by category for easier management
+   - Human-readable descriptions for all settings
+   
+   v1.10.1 Changes:
+   - Added "Save All Settings to Sheet" button in Settings
+   - Allows manual saving of all current settings to spreadsheet
+   
+   v1.10.0 Changes:
+   - Added settings sync with Google Sheets
+   - Settings are loaded from settings spreadsheet on startup
+   - Settings can be written back to Google Sheets (requires API setup)
+   - All cover sizes, insets, and positioning now persistable
+   
+   v1.9.3 Changes:
+   - Changed movie left inset to 120 and right inset to 100
+   
+   v1.9.2 Changes:
+   - Changed default movies poster size to 108
+   
+   v1.9.1 Changes:
+   - Changed default movie left inset to 100
+   
+   v1.9.0 Changes:
+   - Added Movie Insets settings section to customize movie poster positioning within frame
+   - Movies now have independent inset controls separate from TV shows and books
+   
+   v1.8.3 Changes:
+   - Changed default movies poster size to 110
+   
+   v1.8.2 Changes:
+   - Changed default movies poster size to 115 (same as books)
+   
+   v1.8.1 Changes:
+   - Movies now use movie-frame.png overlay instead of DVD case frame
+   
+   v1.8.0 Changes:
+   - Added full Movies support with CSV integration
+   - Movies now display in library alongside TV shows and books
+   - Movies tracked in statistics and filterable
+   - Movies use DVD case frame overlay like TV shows
    
    v1.7.5 Changes:
    - Reorganized Settings into 5 collapsible submenus (Cover Size, Frame Position, Book Insets, Logo Size & Placement, Sync Status Icon Size & Placement)
@@ -33,6 +82,7 @@ type Show = {
   lastAirDate?: string;
   watchStatus?: string;
   showStatus?: string;
+  tag?: string;
 };
 
 type Book = {
@@ -40,15 +90,43 @@ type Book = {
   posterUrl: string;
   isbn?: string;
   releaseDate?: string;
+  completedDate?: string;
+  tag?: string;
 };
+
+type Movie = {
+  title: string;
+  posterUrl: string;
+  tmdbId?: string;
+  releaseDate?: string;
+  watchStatus?: string;
+  movieStatus?: string;
+  tag?: string;
+};
+
+type Game = {
+  title: string;
+  posterUrl: string;
+  platform?: string;
+  releaseDate?: string;
+  playStatus?: string;
+  gameStatus?: string;
+  yearPlayed?: string;
+  tag?: string;
+};
+
 
 const APP_TITLE = "Chris’ Delicious Library";
 const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
+const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
+const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
+const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const SHELF_IMAGE = "/shelves-light-single2.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
+const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const APP_ICON = "/logo4.png";
 
@@ -69,6 +147,7 @@ function rowToShow(r: Row): Show | null {
     lastAirDate: safeStr(r["LastAirDate"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
+    tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
   };
 }
 
@@ -91,6 +170,41 @@ function rowToBook(r: Row): Book | null {
     posterUrl,
     isbn: safeStr(r["ISBN"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || safeStr(r["Published"]) || undefined,
+    completedDate: safeStr(r["CompletedDate"]) || undefined,
+    tag: safeStr(r["Tag"]) || undefined,
+  };
+}
+
+function rowToMovie(r: Row): Movie | null {
+  const title = safeStr(r["Title"]);
+  if (!title) return null;
+
+  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  return {
+    title,
+    posterUrl,
+    tmdbId: safeStr(r["TMDB_ID"]) || undefined,
+    releaseDate: safeStr(r["ReleaseDate"]) || undefined,
+    watchStatus: safeStr(r["WatchStatus"]) || undefined,
+    movieStatus: safeStr(r["Status"]) || undefined,
+    tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
+  };
+}
+
+function rowToGame(r: Row): Game | null {
+  const title = safeStr(r["Title"]);
+  if (!title) return null;
+
+  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
+  return {
+    title,
+    posterUrl,
+    platform: safeStr(r["Platform"]) || undefined,
+    releaseDate: safeStr(r["ReleaseDate"]) || undefined,
+    playStatus: safeStr(r["PlayStatus"]) || undefined,
+    gameStatus: safeStr(r["Status"]) || undefined,
+    yearPlayed: safeStr(r["Year Played"]) || safeStr(r["YearPlayed"]) || safeStr(r["Year played"]) || safeStr(r["Yearplayed"]) || undefined,
+    tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
   };
 }
 
@@ -117,16 +231,23 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "settings";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
   const booksCsvUrl = (process.env as any)[BOOKS_ENV_KEY] as string | undefined;
+  const moviesCsvUrl = (process.env as any)[MOVIES_ENV_KEY] as string | undefined;
+  const gamesCsvUrl = (process.env as any)[GAMES_ENV_KEY] as string | undefined;
+  const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
+  const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tvRows, setTvRows] = useState<Row[]>([]);
   const [bookRows, setBookRows] = useState<Row[]>([]);
+  const [movieRows, setMovieRows] = useState<Row[]>([]);
+  const [gameRows, setGameRows] = useState<Row[]>([]);
+  const [settingsRows, setSettingsRows] = useState<Row[]>([]);
   const [syncState, setSyncState] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [syncMsg, setSyncMsg] = useState<string>("");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
@@ -137,24 +258,31 @@ export default function Page() {
   const [nav, setNav] = useState<NavKey>("home");
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
+  const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
+  const [selectedPreviousYear, setSelectedPreviousYear] = useState<number>(2025);
 
   // Settings submenus
   const [settingsOpen, setSettingsOpen] = useState<{
     coverSize: boolean;
     framePosition: boolean;
     bookInsets: boolean;
+    movieInsets: boolean;
+    gameInsets: boolean;
     logoSize: boolean;
     syncIcon: boolean;
   }>({
     coverSize: false,
     framePosition: false,
     bookInsets: false,
+    movieInsets: false,
+    gameInsets: false,
     logoSize: false,
     syncIcon: false,
   });
 
   // UI
   const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
+  const [posterSizeMovies, setPosterSizeMovies] = useState<number>(108);
   const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
   const [bookHeightMultiplier, setBookHeightMultiplier] = useState<number>(1.5);
   const [tight, setTight] = useState<boolean>(true);
@@ -195,6 +323,24 @@ export default function Page() {
   const [bookInsetBottomPx, setBookInsetBottomPx] = useState(104);
   const [bookInsetLeftPx, setBookInsetLeftPx] = useState(62);
   
+  // Movie frame: separate insets for movie covers
+  const MOVIE_SRC_W = 1024;
+  const MOVIE_SRC_H = 1536;
+  const [movieInsetTopPx, setMovieInsetTopPx] = useState(156);
+  const [movieInsetRightPx, setMovieInsetRightPx] = useState(100);
+  const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
+  const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
+  
+  // Game frame: separate insets for game covers
+  const GAME_SRC_W = 1024;
+  const GAME_SRC_H = 1536;
+  const [gameInsetTopPx, setGameInsetTopPx] = useState(0);
+  const [gameInsetRightPx, setGameInsetRightPx] = useState(0);
+  const [gameInsetBottomPx, setGameInsetBottomPx] = useState(0);
+  const [gameInsetLeftPx, setGameInsetLeftPx] = useState(0);
+  
+  const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
+  
   const [showInsetGuide, setShowInsetGuide] = useState(false);
 
   const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
@@ -208,9 +354,9 @@ export default function Page() {
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
-    if (!tvCsvUrl && !booksCsvUrl) {
+    if (!tvCsvUrl && !booksCsvUrl && !moviesCsvUrl && !gamesCsvUrl) {
       setError(
-        `No CSV URL(s) found in env.\n\nCreate / update .env.local in project root and add at least one of:\n${ENV_KEY}=PASTE_YOUR_TV_PUBLISHED_CSV_URL_HERE\n${BOOKS_ENV_KEY}=PASTE_YOUR_BOOKS_PUBLISHED_CSV_URL_HERE\n\nThen stop + restart dev server.`
+        `No CSV URL(s) found in env.\n\nCreate / update .env.local in project root and add at least one of:\n${ENV_KEY}=PASTE_YOUR_TV_PUBLISHED_CSV_URL_HERE\n${BOOKS_ENV_KEY}=PASTE_YOUR_BOOKS_PUBLISHED_CSV_URL_HERE\n${MOVIES_ENV_KEY}=PASTE_YOUR_MOVIES_PUBLISHED_CSV_URL_HERE\n${GAMES_ENV_KEY}=PASTE_YOUR_GAMES_PUBLISHED_CSV_URL_HERE\n\nThen stop + restart dev server.`
       );
       setSyncState("error");
       setSyncMsg("Missing CSV URL(s)");
@@ -232,11 +378,14 @@ export default function Page() {
     Promise.allSettled([
       tvCsvUrl ? fetchCsv(tvCsvUrl) : Promise.resolve(null),
       booksCsvUrl ? fetchCsv(booksCsvUrl) : Promise.resolve(null),
+      moviesCsvUrl ? fetchCsv(moviesCsvUrl) : Promise.resolve(null),
+      gamesCsvUrl ? fetchCsv(gamesCsvUrl) : Promise.resolve(null),
+      settingsCsvUrl ? fetchCsv(settingsCsvUrl) : Promise.resolve(null),
     ])
       .then((results) => {
         if (cancelled) return;
 
-        const [tvRes, booksRes] = results;
+        const [tvRes, booksRes, moviesRes, gamesRes, settingsRes] = results;
 
         if (tvRes && tvRes.status === "fulfilled" && typeof tvRes.value === "string") {
           const parsed = Papa.parse<Row>(tvRes.value, { header: true, skipEmptyLines: true });
@@ -252,6 +401,30 @@ export default function Page() {
           setBookRows(data);
         } else if (booksRes && booksRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Books CSV: ${booksRes.reason?.message || String(booksRes.reason)}`);
+        }
+
+        if (moviesRes && moviesRes.status === "fulfilled" && typeof moviesRes.value === "string") {
+          const parsed = Papa.parse<Row>(moviesRes.value, { header: true, skipEmptyLines: true });
+          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+          setMovieRows(data);
+        } else if (moviesRes && moviesRes.status === "rejected") {
+          setError((prev) => (prev ? prev + "\n" : "") + `Movies CSV: ${moviesRes.reason?.message || String(moviesRes.reason)}`);
+        }
+
+        if (gamesRes && gamesRes.status === "fulfilled" && typeof gamesRes.value === "string") {
+          const parsed = Papa.parse<Row>(gamesRes.value, { header: true, skipEmptyLines: true });
+          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+          setGameRows(data);
+        } else if (gamesRes && gamesRes.status === "rejected") {
+          setError((prev) => (prev ? prev + "\n" : "") + `Games CSV: ${gamesRes.reason?.message || String(gamesRes.reason)}`);
+        }
+
+        if (settingsRes && settingsRes.status === "fulfilled" && typeof settingsRes.value === "string") {
+          const parsed = Papa.parse<Row>(settingsRes.value, { header: true, skipEmptyLines: true });
+          const data = (parsed.data || []).map((r) => r as Row);
+          setSettingsRows(data);
+        } else if (settingsRes && settingsRes.status === "rejected") {
+          setError((prev) => (prev ? prev + "\n" : "") + `Settings CSV: ${settingsRes.reason?.message || String(settingsRes.reason)}`);
         }
 
         setSyncState("ok");
@@ -270,7 +443,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [tvCsvUrl, booksCsvUrl, refreshNonce]);
+  }, [tvCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce]);
 
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
@@ -281,6 +454,249 @@ export default function Page() {
     }
   }
 
+  // Settings helper functions
+  const getSetting = (key: string, defaultValue: any) => {
+    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
+    if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
+      const value = setting["Value"];
+      // Try to parse as number if it looks like one
+      if (!isNaN(Number(value))) return Number(value);
+      // Try to parse as boolean
+      if (value === "true") return true;
+      if (value === "false") return false;
+      return value;
+    }
+    return defaultValue;
+  };
+
+  const saveSetting = async (key: string, value: any, category: string = "", description: string = "") => {
+    if (!settingsWriteUrl) {
+      console.warn("No settings write URL configured");
+      return;
+    }
+    
+    try {
+      await fetch(settingsWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value: String(value), category, description }),
+      });
+    } catch (e) {
+      console.error("Failed to save setting:", e);
+    }
+  };
+
+  // Apply settings from spreadsheet on load
+  useEffect(() => {
+    if (settingsRows.length === 0) return;
+    
+    setPosterSizeTv(getSetting("posterSizeTv", 100));
+    setPosterSizeMovies(getSetting("posterSizeMovies", 108));
+    setPosterSizeBooks(getSetting("posterSizeBooks", 115));
+    setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
+    setTight(getSetting("tight", true));
+    
+    setCaseInsetTopPx(getSetting("caseInsetTopPx", 156));
+    setCaseInsetRightPx(getSetting("caseInsetRightPx", 121));
+    setCaseInsetBottomPx(getSetting("caseInsetBottomPx", 136));
+    setCaseInsetLeftPx(getSetting("caseInsetLeftPx", 74));
+    
+    setBookInsetTopPx(getSetting("bookInsetTopPx", 99));
+    setBookInsetRightPx(getSetting("bookInsetRightPx", 75));
+    setBookInsetBottomPx(getSetting("bookInsetBottomPx", 104));
+    setBookInsetLeftPx(getSetting("bookInsetLeftPx", 62));
+    
+    setMovieInsetTopPx(getSetting("movieInsetTopPx", 156));
+    setMovieInsetRightPx(getSetting("movieInsetRightPx", 100));
+    setMovieInsetBottomPx(getSetting("movieInsetBottomPx", 136));
+    setMovieInsetLeftPx(getSetting("movieInsetLeftPx", 120));
+    
+    setPosterSizeGames(getSetting("posterSizeGames", 108));
+    setGameInsetTopPx(getSetting("gameInsetTopPx", 0));
+    setGameInsetRightPx(getSetting("gameInsetRightPx", 0));
+    setGameInsetBottomPx(getSetting("gameInsetBottomPx", 0));
+    setGameInsetLeftPx(getSetting("gameInsetLeftPx", 0));
+    
+    setLogoSize(getSetting("logoSize", 230));
+    setLogoTop(getSetting("logoTop", 12));
+    setLogoLeft(getSetting("logoLeft", -28));
+    
+    setSyncIconSize(getSetting("syncIconSize", 12));
+    setSyncIconTop(getSetting("syncIconTop", 8));
+  }, [settingsRows]);
+
+  // Function to save all current settings to spreadsheet
+  const saveAllSettings = async () => {
+    if (!settingsWriteUrl) {
+      alert("No settings write URL configured");
+      return;
+    }
+    
+    setSyncState("saving");
+    setSyncMsg("Saving settings...");
+    
+    const settings = [
+      { key: "posterSizeTv", value: posterSizeTv, category: "Cover Sizes", description: "TV Show Cover Size" },
+      { key: "posterSizeMovies", value: posterSizeMovies, category: "Cover Sizes", description: "Movie Cover Size" },
+      { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
+      { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
+      { key: "tight", value: tight, category: "Spacing", description: "Tight spacing between items" },
+      { key: "caseInsetTopPx", value: caseInsetTopPx, category: "TV Insets", description: "TV Case Top Inset (px)" },
+      { key: "caseInsetRightPx", value: caseInsetRightPx, category: "TV Insets", description: "TV Case Right Inset (px)" },
+      { key: "caseInsetBottomPx", value: caseInsetBottomPx, category: "TV Insets", description: "TV Case Bottom Inset (px)" },
+      { key: "caseInsetLeftPx", value: caseInsetLeftPx, category: "TV Insets", description: "TV Case Left Inset (px)" },
+      { key: "bookInsetTopPx", value: bookInsetTopPx, category: "Book Insets", description: "Book Top Inset (px)" },
+      { key: "bookInsetRightPx", value: bookInsetRightPx, category: "Book Insets", description: "Book Right Inset (px)" },
+      { key: "bookInsetBottomPx", value: bookInsetBottomPx, category: "Book Insets", description: "Book Bottom Inset (px)" },
+      { key: "bookInsetLeftPx", value: bookInsetLeftPx, category: "Book Insets", description: "Book Left Inset (px)" },
+      { key: "movieInsetTopPx", value: movieInsetTopPx, category: "Movie Insets", description: "Movie Top Inset (px)" },
+      { key: "movieInsetRightPx", value: movieInsetRightPx, category: "Movie Insets", description: "Movie Right Inset (px)" },
+      { key: "movieInsetBottomPx", value: movieInsetBottomPx, category: "Movie Insets", description: "Movie Bottom Inset (px)" },
+      { key: "movieInsetLeftPx", value: movieInsetLeftPx, category: "Movie Insets", description: "Movie Left Inset (px)" },
+      { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
+      { key: "gameInsetTopPx", value: gameInsetTopPx, category: "Game Insets", description: "Game Top Inset (px)" },
+      { key: "gameInsetRightPx", value: gameInsetRightPx, category: "Game Insets", description: "Game Right Inset (px)" },
+      { key: "gameInsetBottomPx", value: gameInsetBottomPx, category: "Game Insets", description: "Game Bottom Inset (px)" },
+      { key: "gameInsetLeftPx", value: gameInsetLeftPx, category: "Game Insets", description: "Game Left Inset (px)" },
+      { key: "logoSize", value: logoSize, category: "Logo Settings", description: "Logo Size (px)" },
+      { key: "logoTop", value: logoTop, category: "Logo Settings", description: "Logo Top Position" },
+      { key: "logoLeft", value: logoLeft, category: "Logo Settings", description: "Logo Left Position" },
+      { key: "syncIconSize", value: syncIconSize, category: "Sync Icon", description: "Sync Icon Size (px)" },
+      { key: "syncIconTop", value: syncIconTop, category: "Sync Icon", description: "Sync Icon Top Position" },
+    ];
+    
+    try {
+      for (const setting of settings) {
+        await fetch(settingsWriteUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(setting),
+        });
+      }
+      setSyncState("ok");
+      setSyncMsg("Settings saved!");
+      setTimeout(() => {
+        setSyncMsg("Synced");
+      }, 2000);
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+      setSyncState("error");
+      setSyncMsg("Save failed");
+    }
+  };
+
+  // Wrapper functions that update state AND save to spreadsheet
+  const updatePosterSizeTv = (value: number) => {
+    setPosterSizeTv(value);
+    saveSetting("posterSizeTv", value, "Cover Sizes", "TV Show Cover Size");
+  };
+  const updatePosterSizeMovies = (value: number) => {
+    setPosterSizeMovies(value);
+    saveSetting("posterSizeMovies", value, "Cover Sizes", "Movie Cover Size");
+  };
+  const updatePosterSizeBooks = (value: number) => {
+    setPosterSizeBooks(value);
+    saveSetting("posterSizeBooks", value, "Cover Sizes", "Book Cover Size");
+  };
+  const updateBookHeightMultiplier = (value: number) => {
+    setBookHeightMultiplier(value);
+    saveSetting("bookHeightMultiplier", value, "Cover Sizes", "Book Height Multiplier");
+  };
+  const updateTight = (value: boolean) => {
+    setTight(value);
+    saveSetting("tight", value, "Spacing", "Tight spacing between items");
+  };
+  const updateCaseInsetTopPx = (value: number) => {
+    setCaseInsetTopPx(value);
+    saveSetting("caseInsetTopPx", value, "TV Insets", "TV Case Top Inset (px)");
+  };
+  const updateCaseInsetRightPx = (value: number) => {
+    setCaseInsetRightPx(value);
+    saveSetting("caseInsetRightPx", value, "TV Insets", "TV Case Right Inset (px)");
+  };
+  const updateCaseInsetBottomPx = (value: number) => {
+    setCaseInsetBottomPx(value);
+    saveSetting("caseInsetBottomPx", value, "TV Insets", "TV Case Bottom Inset (px)");
+  };
+  const updateCaseInsetLeftPx = (value: number) => {
+    setCaseInsetLeftPx(value);
+    saveSetting("caseInsetLeftPx", value, "TV Insets", "TV Case Left Inset (px)");
+  };
+  const updateBookInsetTopPx = (value: number) => {
+    setBookInsetTopPx(value);
+    saveSetting("bookInsetTopPx", value, "Book Insets", "Book Top Inset (px)");
+  };
+  const updateBookInsetRightPx = (value: number) => {
+    setBookInsetRightPx(value);
+    saveSetting("bookInsetRightPx", value, "Book Insets", "Book Right Inset (px)");
+  };
+  const updateBookInsetBottomPx = (value: number) => {
+    setBookInsetBottomPx(value);
+    saveSetting("bookInsetBottomPx", value, "Book Insets", "Book Bottom Inset (px)");
+  };
+  const updateBookInsetLeftPx = (value: number) => {
+    setBookInsetLeftPx(value);
+    saveSetting("bookInsetLeftPx", value, "Book Insets", "Book Left Inset (px)");
+  };
+  const updateMovieInsetTopPx = (value: number) => {
+    setMovieInsetTopPx(value);
+    saveSetting("movieInsetTopPx", value, "Movie Insets", "Movie Top Inset (px)");
+  };
+  const updateMovieInsetRightPx = (value: number) => {
+    setMovieInsetRightPx(value);
+    saveSetting("movieInsetRightPx", value, "Movie Insets", "Movie Right Inset (px)");
+  };
+  const updateMovieInsetBottomPx = (value: number) => {
+    setMovieInsetBottomPx(value);
+    saveSetting("movieInsetBottomPx", value, "Movie Insets", "Movie Bottom Inset (px)");
+  };
+  const updateMovieInsetLeftPx = (value: number) => {
+    setMovieInsetLeftPx(value);
+    saveSetting("movieInsetLeftPx", value, "Movie Insets", "Movie Left Inset (px)");
+  };
+  const updatePosterSizeGames = (value: number) => {
+    setPosterSizeGames(value);
+    saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
+  };
+  const updateGameInsetTopPx = (value: number) => {
+    setGameInsetTopPx(value);
+    saveSetting("gameInsetTopPx", value, "Game Insets", "Game Top Inset (px)");
+  };
+  const updateGameInsetRightPx = (value: number) => {
+    setGameInsetRightPx(value);
+    saveSetting("gameInsetRightPx", value, "Game Insets", "Game Right Inset (px)");
+  };
+  const updateGameInsetBottomPx = (value: number) => {
+    setGameInsetBottomPx(value);
+    saveSetting("gameInsetBottomPx", value, "Game Insets", "Game Bottom Inset (px)");
+  };
+  const updateGameInsetLeftPx = (value: number) => {
+    setGameInsetLeftPx(value);
+    saveSetting("gameInsetLeftPx", value, "Game Insets", "Game Left Inset (px)");
+  };
+  const updateLogoSize = (value: number) => {
+    setLogoSize(value);
+    saveSetting("logoSize", value, "Logo Settings", "Logo Size (px)");
+  };
+  const updateLogoTop = (value: number) => {
+    setLogoTop(value);
+    saveSetting("logoTop", value, "Logo Settings", "Logo Top Position");
+  };
+  const updateLogoLeft = (value: number) => {
+    setLogoLeft(value);
+    saveSetting("logoLeft", value, "Logo Settings", "Logo Left Position");
+  };
+  const updateSyncIconSize = (value: number) => {
+    setSyncIconSize(value);
+    saveSetting("syncIconSize", value, "Sync Icon", "Sync Icon Size (px)");
+  };
+  const updateSyncIconTop = (value: number) => {
+    setSyncIconTop(value);
+    saveSetting("syncIconTop", value, "Sync Icon", "Sync Icon Top Position");
+  };
+
   const allShows = useMemo(() => {
     return tvRows.map(rowToShow).filter(Boolean) as Show[];
   }, [tvRows]);
@@ -288,6 +704,14 @@ export default function Page() {
   const allBooks = useMemo(() => {
     return bookRows.map(rowToBook).filter(Boolean) as Book[];
   }, [bookRows]);
+
+  const allMovies = useMemo(() => {
+    return movieRows.map(rowToMovie).filter(Boolean) as Movie[];
+  }, [movieRows]);
+
+  const allGames = useMemo(() => {
+    return gameRows.map(rowToGame).filter(Boolean) as Game[];
+  }, [gameRows]);
 
   const normalizeStatus = (value?: string) =>
     safeStr(value)
@@ -348,19 +772,168 @@ export default function Page() {
         }) as any[];
     }
 
-    // Home: combine books + TV and sort by book.releaseDate or show.lastAirDate (descending)
+    // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
+    // Filter out Wishlist items - only show owned items
     if (nav === "home") {
       const qb = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
-      const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q)) : allShows;
+      const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q) && normalizeStatus(s.watchStatus) !== "wishlist") : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist");
+      const qm = q ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && normalizeStatus(m.watchStatus) !== "wishlist") : allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist");
+      const qg = q ? allGames.filter((g) => g.title.toLowerCase().includes(q) && normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist") : allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist");
 
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" })>;
+        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       return combined.sort((a, b) => {
-        const aTime = a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN);
-        const bTime = b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) : (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN);
+        const aTime = 
+          a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : 
+          a.__type === "tv" ? (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN) :
+          a.__type === "game" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) :
+          (a.releaseDate ? Date.parse(a.releaseDate) : NaN);
+        const bTime = 
+          b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
+          b.__type === "tv" ? (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN) :
+          b.__type === "game" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
+          (b.releaseDate ? Date.parse(b.releaseDate) : NaN);
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        return bTime - aTime;
+      }) as any[];
+    }
+
+    // Movies path
+    if (nav === "movies") {
+      const filteredByQuery = q ? allMovies.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : allMovies;
+      return [...filteredByQuery].sort((a, b) => {
+        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        return bTime - aTime;
+      }) as any[];
+    }
+
+    // Games path
+    if (nav === "games") {
+      const filteredByQuery = q ? allGames.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : allGames;
+      return [...filteredByQuery].sort((a, b) => {
+        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
+        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        return bTime - aTime;
+      }) as any[];
+    }
+
+    // Smart List: This Year - Filter all items with appropriate year field matching current year
+    if (nav === "year-this") {
+      const currentYear = new Date().getFullYear().toString();
+      
+      // Books: Use year from CompletedDate
+      const qb = q 
+        ? allBooks.filter((b) => {
+            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
+            return b.title.toLowerCase().includes(q) && year === currentYear;
+          })
+        : allBooks.filter((b) => {
+            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
+            return year === currentYear;
+          });
+      
+      // TV Shows: Use Tags column
+      const qs = q 
+        ? allShows.filter((s) => s.title.toLowerCase().includes(q) && safeStr(s.tag) === currentYear)
+        : allShows.filter((s) => safeStr(s.tag) === currentYear);
+      
+      // Movies: Use Tags column
+      const qm = q 
+        ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && safeStr(m.tag) === currentYear)
+        : allMovies.filter((m) => safeStr(m.tag) === currentYear);
+      
+      // Games: Use Year Played column
+      const qg = q 
+        ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
+        : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
+
+      const combined = [
+        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      return combined.sort((a, b) => {
+        const aTime = 
+          a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : 
+          a.__type === "tv" ? (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN) :
+          a.__type === "game" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) :
+          (a.releaseDate ? Date.parse(a.releaseDate) : NaN);
+        const bTime = 
+          b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
+          b.__type === "tv" ? (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN) :
+          b.__type === "game" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
+          (b.releaseDate ? Date.parse(b.releaseDate) : NaN);
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+        if (Number.isNaN(aTime)) return 1;
+        if (Number.isNaN(bTime)) return -1;
+        return bTime - aTime;
+      }) as any[];
+    }
+
+    // Smart List: Previous Year - Filter all items with appropriate year field matching selected year
+    if (nav === "year-previous") {
+      const yearStr = selectedPreviousYear.toString();
+      
+      // Books: Use year from CompletedDate
+      const qb = q 
+        ? allBooks.filter((b) => {
+            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
+            return b.title.toLowerCase().includes(q) && year === yearStr;
+          })
+        : allBooks.filter((b) => {
+            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
+            return year === yearStr;
+          });
+      
+      // TV Shows: Use Tags column
+      const qs = q 
+        ? allShows.filter((s) => s.title.toLowerCase().includes(q) && safeStr(s.tag) === yearStr)
+        : allShows.filter((s) => safeStr(s.tag) === yearStr);
+      
+      // Movies: Use Tags column
+      const qm = q 
+        ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && safeStr(m.tag) === yearStr)
+        : allMovies.filter((m) => safeStr(m.tag) === yearStr);
+      
+      // Games: Use Year Played column
+      const qg = q 
+        ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === yearStr)
+        : allGames.filter((g) => safeStr(g.yearPlayed) === yearStr);
+
+      const combined = [
+        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      return combined.sort((a, b) => {
+        const aTime = 
+          a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : 
+          a.__type === "tv" ? (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN) :
+          a.__type === "game" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) :
+          (a.releaseDate ? Date.parse(a.releaseDate) : NaN);
+        const bTime = 
+          b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
+          b.__type === "tv" ? (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN) :
+          b.__type === "game" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
+          (b.releaseDate ? Date.parse(b.releaseDate) : NaN);
         if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
         if (Number.isNaN(aTime)) return 1;
         if (Number.isNaN(bTime)) return -1;
@@ -388,22 +961,22 @@ export default function Page() {
       if (Number.isNaN(bTime)) return -1;
       return bTime - aTime;
     }) as any[];
-  }, [allShows, allBooks, watchFilter, showFilter, nav, query]);
+  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, nav, query]);
 
   const stats = useMemo(() => {
     return {
-      movies: 0,
-      tv: allShows.length,
+      movies: allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist").length,
+      tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist").length,
       books: allBooks.length,
-      games: 0,
+      games: allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist").length,
     };
-  }, [allShows.length, allBooks.length]);
+  }, [allShows, allBooks, allMovies, allGames]);
 
   const postersPerShelf = useMemo(() => {
-    const size = nav === "books" ? posterSizeBooks : posterSizeTv;
+    const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
-  }, [stageWidth, posterSizeTv, posterSizeBooks, nav, gap]);
+  }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
   const shelves = useMemo(() => {
     const out: any[][] = [];
@@ -505,7 +1078,7 @@ export default function Page() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
+                gridTemplateColumns: "1fr 1fr 1fr 1fr",
                 columnGap: 12,
                 rowGap: 6,
                 padding: "8px 0 0 0",
@@ -521,6 +1094,7 @@ export default function Page() {
                 { label: "Movies", value: stats.movies },
                 { label: "TV Shows", value: stats.tv },
                 { label: "Books", value: stats.books },
+                { label: "Games", value: stats.games },
               ].map((item) => (
                 <div
                   key={item.label}
@@ -565,98 +1139,6 @@ export default function Page() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <div style={{ padding: "0 12px", marginTop: "16px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                padding: "10px 12px",
-                borderRadius: 12,
-                background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                border: "1px solid rgba(92, 60, 56, 0.2)",
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
-                position: "relative",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  left: 12,
-                  top: 10 + syncIconTop,
-                  width: syncIconSize,
-                  height: syncIconSize,
-                  borderRadius: 999,
-                  background:
-                    syncState === "saving"
-                      ? "#d08a2c"
-                      : syncState === "ok"
-                      ? "#2f8f5b"
-                      : syncState === "error"
-                      ? "#b23b3b"
-                      : "rgba(0,0,0,0.35)",
-                  opacity: 0.95,
-                  flex: "0 0 auto",
-                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.25)",
-                  border: "1.5px solid rgba(255, 255, 255, 0.6)",
-                }}
-              />
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ color: "#754738", fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
-                      {syncState === "saving"
-                        ? "Syncing"
-                        : syncState === "ok"
-                        ? "Synced"
-                        : syncState === "error"
-                        ? "Error"
-                        : "Idle"}
-                    </div>
-                    <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap" }}>
-                      {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
-                    </div>
-                  </div>
-                  {syncState === "error" && syncMsg ? (
-                    <div
-                      style={{
-                        color: "#8b0000",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        marginTop: 4,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {syncMsg}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <button
-                onClick={() => setRefreshNonce((n) => n + 1)}
-                style={{
-                  border: "1px solid rgba(0,0,0,0.18)",
-                  background: "rgba(255,255,255,0.85)",
-                  color: "#754738",
-                  borderRadius: 999,
-                  padding: "7px 10px",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  flex: "0 0 auto",
-                  whiteSpace: "nowrap",
-                }}
-                title="Re-sync (re-fetch CSV)"
-              >
-                Re-sync
-                </button>
             </div>
           </div>
 
@@ -1047,6 +1529,130 @@ export default function Page() {
               </div>
             </div>
 
+            {/* SMART LISTS section */}
+            <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  color: "#954949",
+                  marginBottom: 6,
+                  fontFamily: "Nunito, sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>SMART LISTS</span>
+                <span />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {/* Year submenu */}
+                <button
+                  onClick={() => setYearMenuOpen(!yearMenuOpen)}
+                  className="sideItem"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: yearMenuOpen ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                      </svg>
+                    </span>
+                    Year
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>
+                    {yearMenuOpen ? "−" : "+"}
+                  </span>
+                </button>
+
+                {yearMenuOpen && (
+                  <div style={{ paddingLeft: 30, display: "flex", flexDirection: "column", gap: 0 }}>
+                    <button
+                      onClick={() => setNav("year-this")}
+                      className={`sideItem ${nav === "year-this" ? "active" : ""}`}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                        padding: "8px 0",
+                        fontSize: 12,
+                      }}
+                    >
+                      <span style={{ fontWeight: "400" }}>{new Date().getFullYear()}</span>
+                      <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    </button>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <button
+                        onClick={() => setNav("year-previous")}
+                        className={`sideItem ${nav === "year-previous" ? "active" : ""}`}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          borderBottom: "1px solid rgba(0,0,0,0.06)",
+                          padding: "8px 0",
+                          fontSize: 12,
+                        }}
+                      >
+                        <span style={{ fontWeight: "400" }}>Previous Year</span>
+                        <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                      </button>
+
+                      {nav === "year-previous" && (
+                        <div style={{ paddingLeft: 16, paddingTop: 4, paddingBottom: 8 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                            Select Year:
+                            <input
+                              type="number"
+                              min="1900"
+                              max="2025"
+                              value={selectedPreviousYear}
+                              onChange={(e) => setSelectedPreviousYear(Number(e.target.value) || 2025)}
+                              style={{ width: 80, fontSize: 11 }}
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* DISCOVER section */}
             <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
@@ -1067,6 +1673,40 @@ export default function Page() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                <button
+                  className="sideItem"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 12h18M3 6h18M3 18h18" />
+                      </svg>
+                    </span>
+                    Statistics
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+
                 <button
                   onClick={() => setShowSettings(!showSettings)}
                   className={`sideItem primary ${showSettings ? "active" : ""}`}
@@ -1100,40 +1740,6 @@ export default function Page() {
                       </svg>
                     </span>
                     Settings
-                  </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-
-                <button
-                  className="sideItem"
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: 4,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 12h18M3 6h18M3 18h18" />
-                      </svg>
-                    </span>
-                    Statistics
                   </span>
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
@@ -1173,10 +1779,23 @@ export default function Page() {
                         max={125}
                         step={5}
                         value={posterSizeTv}
-                        onChange={(e) => setPosterSizeTv(Number(e.target.value))}
+                        onChange={(e) => updatePosterSizeTv(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Movies Size
+                      <input
+                        type="range"
+                        min={70}
+                        max={125}
+                        step={5}
+                        value={posterSizeMovies}
+                        onChange={(e) => updatePosterSizeMovies(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeMovies}</span>
                     </label>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
                       Books Size
@@ -1186,10 +1805,23 @@ export default function Page() {
                         max={125}
                         step={5}
                         value={posterSizeBooks}
-                        onChange={(e) => setPosterSizeBooks(Number(e.target.value))}
+                        onChange={(e) => updatePosterSizeBooks(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Games Size
+                      <input
+                        type="range"
+                        min={70}
+                        max={125}
+                        step={5}
+                        value={posterSizeGames}
+                        onChange={(e) => updatePosterSizeGames(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeGames}</span>
                     </label>
                   </div>
                 ) : null}
@@ -1219,7 +1851,7 @@ export default function Page() {
                 {settingsOpen.framePosition ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      <input type="checkbox" checked={tight} onChange={(e) => setTight(e.target.checked)} />
+                      <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
                       Tight
                     </label>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
@@ -1227,7 +1859,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={caseInsetTopPx}
-                        onChange={(e) => setCaseInsetTopPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateCaseInsetTopPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1236,7 +1868,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={caseInsetRightPx}
-                        onChange={(e) => setCaseInsetRightPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateCaseInsetRightPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1245,7 +1877,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={caseInsetBottomPx}
-                        onChange={(e) => setCaseInsetBottomPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateCaseInsetBottomPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1254,7 +1886,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={caseInsetLeftPx}
-                        onChange={(e) => setCaseInsetLeftPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateCaseInsetLeftPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1304,7 +1936,7 @@ export default function Page() {
                         max={2.0}
                         step={0.1}
                         value={bookHeightMultiplier}
-                        onChange={(e) => setBookHeightMultiplier(Number(e.target.value))}
+                        onChange={(e) => updateBookHeightMultiplier(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{bookHeightMultiplier.toFixed(1)}</span>
@@ -1314,7 +1946,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={bookInsetTopPx}
-                        onChange={(e) => setBookInsetTopPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateBookInsetTopPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1323,7 +1955,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={bookInsetRightPx}
-                        onChange={(e) => setBookInsetRightPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateBookInsetRightPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1332,7 +1964,7 @@ export default function Page() {
                       <input
                         type="number"
                         value={bookInsetBottomPx}
-                        onChange={(e) => setBookInsetBottomPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateBookInsetBottomPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -1341,12 +1973,144 @@ export default function Page() {
                       <input
                         type="number"
                         value={bookInsetLeftPx}
-                        onChange={(e) => setBookInsetLeftPx(Number(e.target.value) || 0)}
+                        onChange={(e) => updateBookInsetLeftPx(Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
                     <div style={{ fontSize: 11, opacity: 0.6 }}>
                       Frame: {BOOK_SRC_W}×{BOOK_SRC_H}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Movie Insets */}
+                <button
+                  onClick={() => setSettingsOpen({ ...settingsOpen, movieInsets: !settingsOpen.movieInsets })}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#8A8A8A",
+                    marginTop: 4,
+                  }}
+                >
+                  <span>MOVIE INSETS</span>
+                  <span>{settingsOpen.movieInsets ? "−" : "+"}</span>
+                </button>
+                {settingsOpen.movieInsets ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                      Top
+                      <input
+                        type="number"
+                        value={movieInsetTopPx}
+                        onChange={(e) => updateMovieInsetTopPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                      Right
+                      <input
+                        type="number"
+                        value={movieInsetRightPx}
+                        onChange={(e) => updateMovieInsetRightPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                      Bottom
+                      <input
+                        type="number"
+                        value={movieInsetBottomPx}
+                        onChange={(e) => updateMovieInsetBottomPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
+                      Left
+                      <input
+                        type="number"
+                        value={movieInsetLeftPx}
+                        onChange={(e) => updateMovieInsetLeftPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <div style={{ fontSize: 11, opacity: 0.6 }}>
+                      Frame: {MOVIE_SRC_W}×{MOVIE_SRC_H}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Game Insets */}
+                <button
+                  onClick={() => setSettingsOpen({ ...settingsOpen, gameInsets: !settingsOpen.gameInsets })}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#8A8A8A",
+                    marginTop: 4,
+                  }}
+                >
+                  <span>GAME INSETS</span>
+                  <span>{settingsOpen.gameInsets ? "−" : "+"}</span>
+                </button>
+                {settingsOpen.gameInsets ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                      Top
+                      <input
+                        type="number"
+                        value={gameInsetTopPx}
+                        onChange={(e) => updateGameInsetTopPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                      Right
+                      <input
+                        type="number"
+                        value={gameInsetRightPx}
+                        onChange={(e) => updateGameInsetRightPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
+                      Bottom
+                      <input
+                        type="number"
+                        value={gameInsetBottomPx}
+                        onChange={(e) => updateGameInsetBottomPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
+                      Left
+                      <input
+                        type="number"
+                        value={gameInsetLeftPx}
+                        onChange={(e) => updateGameInsetLeftPx(Number(e.target.value) || 0)}
+                        style={{ width: 64 }}
+                      />
+                    </label>
+                    <div style={{ fontSize: 11, opacity: 0.6 }}>
+                      Frame: {GAME_SRC_W}×{GAME_SRC_H}
                     </div>
                   </div>
                 ) : null}
@@ -1383,7 +2147,7 @@ export default function Page() {
                         max={500}
                         step={5}
                         value={logoSize}
-                        onChange={(e) => setLogoSize(Number(e.target.value))}
+                        onChange={(e) => updateLogoSize(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{logoSize}</span>
@@ -1396,7 +2160,7 @@ export default function Page() {
                         max={50}
                         step={1}
                         value={logoTop}
-                        onChange={(e) => setLogoTop(Number(e.target.value))}
+                        onChange={(e) => updateLogoTop(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{logoTop}</span>
@@ -1409,7 +2173,7 @@ export default function Page() {
                         max={50}
                         step={1}
                         value={logoLeft}
-                        onChange={(e) => setLogoLeft(Number(e.target.value))}
+                        onChange={(e) => updateLogoLeft(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{logoLeft}</span>
@@ -1449,7 +2213,7 @@ export default function Page() {
                         max={24}
                         step={1}
                         value={syncIconSize}
-                        onChange={(e) => setSyncIconSize(Number(e.target.value))}
+                        onChange={(e) => updateSyncIconSize(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{syncIconSize}</span>
@@ -1462,15 +2226,143 @@ export default function Page() {
                         max={50}
                         step={1}
                         value={syncIconTop}
-                        onChange={(e) => setSyncIconTop(Number(e.target.value))}
+                        onChange={(e) => updateSyncIconTop(Number(e.target.value))}
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{syncIconTop}</span>
                     </label>
                   </div>
                 ) : null}
+
+                {/* Save All Settings Button */}
+                <button
+                  onClick={saveAllSettings}
+                  style={{
+                    width: "100%",
+                    marginTop: 12,
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(92, 60, 56, 0.3)",
+                    background: "linear-gradient(180deg, rgba(139, 76, 76, 0.9) 0%, rgba(115, 62, 62, 0.9) 100%)",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
+                  }}
+                >
+                  💾 Save All Settings to Sheet
+                </button>
               </div>
             ) : null}
+            </div>
+
+            {/* Synced Module at Bottom */}
+            <div style={{ padding: "0 12px", marginTop: "auto", marginBottom: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                  border: "1px solid rgba(92, 60, 56, 0.2)",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
+                  position: "relative",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 12,
+                    top: 10 + syncIconTop,
+                    width: syncIconSize,
+                    height: syncIconSize,
+                    borderRadius: 999,
+                    background:
+                      syncState === "saving"
+                        ? "#d08a2c"
+                        : syncState === "ok"
+                        ? "#2f8f5b"
+                        : syncState === "error"
+                        ? "#b23b3b"
+                        : "rgba(0,0,0,0.35)",
+                    opacity: 0.95,
+                    flex: "0 0 auto",
+                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.25)",
+                    border: "1.5px solid rgba(255, 255, 255, 0.6)",
+                  }}
+                />
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ color: "#754738", fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
+                        {syncState === "saving"
+                          ? "Syncing"
+                          : syncState === "ok"
+                          ? "Synced"
+                          : syncState === "error"
+                          ? "Error"
+                          : "Idle"}
+                      </div>
+                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap" }}>
+                        {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
+                      </div>
+                    </div>
+                    {syncState === "error" && syncMsg ? (
+                      <div
+                        style={{
+                          color: "#8b0000",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          marginTop: 4,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {syncMsg}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setRefreshNonce((n) => n + 1)}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.18)",
+                    background: "rgba(255,255,255,0.85)",
+                    color: "#754738",
+                    borderRadius: 999,
+                    padding: "5px 6px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    flex: "0 0 auto",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 28,
+                    minHeight: 28,
+                  }}
+                  title="Re-sync (re-fetch CSV)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 2v6h-6M3 22v-6h6M3 12c0-4.418 3.582-8 8-8 3.5 0 6.456 2.272 7.619 5.362M21 12c0 4.418-3.582 8-8 8-3.5 0-6.456-2.272-7.619-5.362" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </aside>
@@ -1525,7 +2417,7 @@ export default function Page() {
                     backgroundPosition: "center",
                     backgroundSize: "100% 100%",
                     borderRadius: 0,
-                    boxShadow: shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18)" : "none",
+                    boxShadow: `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
                   }}
                 >
                   <div
@@ -1539,25 +2431,29 @@ export default function Page() {
                   >
                     {shelfShows.map((show, i) => {
                       const isBook = show.__type === "book";
-                      const itemSize = isBook ? posterSizeBooks : posterSizeTv;
+                      const isMovie = show.__type === "movie";
+                      const isGame = show.__type === "game";
+                      const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
                       // Calculate x as cumulative sum of all previous items + gaps
                       let x = 0;
                       for (let j = 0; j < i; j++) {
                         const prevShow = shelfShows[j];
                         const prevIsBook = prevShow.__type === "book";
-                        const prevSize = prevIsBook ? posterSizeBooks : posterSizeTv;
+                        const prevIsMovie = prevShow.__type === "movie";
+                        const prevIsGame = prevShow.__type === "game";
+                        const prevSize = prevIsBook ? posterSizeBooks : prevIsMovie ? posterSizeMovies : prevIsGame ? posterSizeGames : posterSizeTv;
                         x += prevSize + gap;
                       }
                       const caseWidth = itemSize;
                       const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
                       // Use appropriate insets based on item type
-                      const insetTopVal = isBook ? bookInsetTopPx : caseInsetTopPx;
-                      const insetRightVal = isBook ? bookInsetRightPx : caseInsetRightPx;
-                      const insetBottomVal = isBook ? bookInsetBottomPx : caseInsetBottomPx;
-                      const insetLeftVal = isBook ? bookInsetLeftPx : caseInsetLeftPx;
-                      const srcW = isBook ? BOOK_SRC_W : CASE_SRC_W;
-                      const srcH = isBook ? BOOK_SRC_H : CASE_SRC_H;
+                      const insetTopVal = isBook ? bookInsetTopPx : isMovie ? movieInsetTopPx : isGame ? gameInsetTopPx : caseInsetTopPx;
+                      const insetRightVal = isBook ? bookInsetRightPx : isMovie ? movieInsetRightPx : isGame ? gameInsetRightPx : caseInsetRightPx;
+                      const insetBottomVal = isBook ? bookInsetBottomPx : isMovie ? movieInsetBottomPx : isGame ? gameInsetBottomPx : caseInsetBottomPx;
+                      const insetLeftVal = isBook ? bookInsetLeftPx : isMovie ? movieInsetLeftPx : isGame ? gameInsetLeftPx : caseInsetLeftPx;
+                      const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
+                      const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
 
                       const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
                       const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
@@ -1686,11 +2582,12 @@ export default function Page() {
                           </div>
 
                           {/* Case frame overlay */}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={isBook ? BOOK_FRAME_IMAGE : CASE_FRAME_IMAGE}
-                            alt=""
-                            style={{
+                          {!isGame && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={isBook ? BOOK_FRAME_IMAGE : isMovie ? MOVIE_FRAME_IMAGE : CASE_FRAME_IMAGE}
+                              alt=""
+                              style={{
                               position: "absolute",
                               inset: 0,
                               width: "100%",
@@ -1701,6 +2598,7 @@ export default function Page() {
                             }}
                             draggable={false}
                           />
+                          )}
 
                           {/* Optional: extra spec highlight */}
                           <div
