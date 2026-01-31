@@ -185,7 +185,7 @@ function rowToMovie(r: Row): Movie | null {
     posterUrl,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
-    watchStatus: safeStr(r["WatchStatus"]) || undefined,
+    watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     movieStatus: safeStr(r["Status"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
   };
