@@ -128,6 +128,7 @@ const SHELF_IMAGE = "/shelves-light-single2.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
+const GAME_FRAME_IMAGE = "/game-frame.png";
 const APP_ICON = "/logo4.png";
 
 function safeStr(v: unknown) {
@@ -348,10 +349,10 @@ export default function Page() {
   // Game frame: separate insets for game covers
   const GAME_SRC_W = 1024;
   const GAME_SRC_H = 1536;
-  const [gameInsetTopPx, setGameInsetTopPx] = useState(0);
-  const [gameInsetRightPx, setGameInsetRightPx] = useState(0);
-  const [gameInsetBottomPx, setGameInsetBottomPx] = useState(0);
-  const [gameInsetLeftPx, setGameInsetLeftPx] = useState(0);
+  const [gameInsetTopPx, setGameInsetTopPx] = useState(5);
+  const [gameInsetRightPx, setGameInsetRightPx] = useState(5);
+  const [gameInsetBottomPx, setGameInsetBottomPx] = useState(5);
+  const [gameInsetLeftPx, setGameInsetLeftPx] = useState(5);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   
@@ -1026,7 +1027,7 @@ export default function Page() {
 
   const postersPerShelf = useMemo(() => {
     const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
+    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
@@ -1194,7 +1195,8 @@ export default function Page() {
             </div>
           </div>
 
-          <div style={{ padding: "10px 12px 0 12px" }}>
+          {/* Search */}
+          <div style={{ padding: "10px 18px 0 18px" }}>
             <div
               style={{
                 display: "flex",
@@ -1206,7 +1208,7 @@ export default function Page() {
                 paddingLeft: "10px",
               }}
             >
-              <span style={{ color: "#1b1b1b", fontSize: 13, marginRight: "6px" }}>🔍</span>
+              <img src="/icon-search.png" alt="" width={iconSize * 0.6} height={iconSize * 0.6} style={{ display: "block", background: "transparent", marginRight: "6px" }} />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -1225,13 +1227,19 @@ export default function Page() {
             </div>
           </div>
 
-          <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
-            {/* Top actions */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            </div>
-
-            {/* Library section */}
-            <div style={{ padding: "0px 12px 0 12px", marginTop: "-6px", display: "flex", flexDirection: "column", gap: 0 }}>
+          <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 12, flex: 1, marginTop: 14 }}>
+            {/* Library Module */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.125)",
+                borderRadius: 16,
+                boxShadow: "0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.5)",
+                borderBottom: "1px solid rgba(0, 0, 0, 0.15)",
+                padding: "12px",
+              }}
+            >
+              <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
                 style={{
                   fontSize: sidebarHeaderFontSize,
@@ -1562,10 +1570,9 @@ export default function Page() {
 
 
               </div>
-            </div>
 
-            {/* SMART LISTS section */}
-            <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
+              {/* SMART LISTS section */}
+              <div style={{ marginTop: "16px" }}>
               <div
                 style={{
                   fontSize: sidebarHeaderFontSize,
@@ -1683,9 +1690,21 @@ export default function Page() {
                 )}
               </div>
             </div>
+            </div>
+            </div>
 
-            {/* DISCOVER section */}
-            <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
+            {/* DISCOVER Module */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.125)",
+                borderRadius: 16,
+                boxShadow: "0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.5)",
+                borderBottom: "1px solid rgba(0, 0, 0, 0.15)",
+                padding: "12px",
+              }}
+            >
+              <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
                 style={{
                   fontSize: sidebarHeaderFontSize,
@@ -1775,6 +1794,7 @@ export default function Page() {
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
               </div>
+            </div>
             </div>
 
             {showSettings ? (
@@ -2506,7 +2526,32 @@ export default function Page() {
         </aside>
 
         {/* RIGHT CONTENT */}
-        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box" }}>
+        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative" }}>
+          {/* Item Counter - Top Right */}
+          <div
+            style={{
+              position: "fixed",
+              top: 8,
+              right: 12,
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#5c3c38",
+              fontFamily: "Nunito, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
+              textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
+              opacity: 0.75,
+              letterSpacing: "-0.01em",
+              pointerEvents: "none",
+              zIndex: 1000,
+              background: "rgba(244, 241, 234, 0.5)",
+              padding: "2px 6px",
+              borderRadius: 6,
+              border: "1px solid rgba(92, 60, 56, 0.15)",
+              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.08)",
+            }}
+          >
+            {shows.length}
+          </div>
+
           {error ? (
             <div
               style={{
@@ -2720,23 +2765,21 @@ export default function Page() {
                           </div>
 
                           {/* Case frame overlay */}
-                          {!isGame && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={isBook ? BOOK_FRAME_IMAGE : isMovie ? MOVIE_FRAME_IMAGE : CASE_FRAME_IMAGE}
-                              alt=""
-                              style={{
-                              position: "absolute",
-                              inset: 0,
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "fill",
-                              pointerEvents: "none",
-                              userSelect: "none",
-                            }}
-                            draggable={false}
-                          />
-                          )}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={isBook ? BOOK_FRAME_IMAGE : isMovie ? MOVIE_FRAME_IMAGE : isGame ? GAME_FRAME_IMAGE : CASE_FRAME_IMAGE}
+                            alt=""
+                            style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "fill",
+                            pointerEvents: "none",
+                            userSelect: "none",
+                          }}
+                          draggable={false}
+                        />
 
                           {/* Optional: extra spec highlight */}
                           <div
