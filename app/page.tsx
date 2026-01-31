@@ -406,14 +406,9 @@ export default function Page() {
         if (moviesRes && moviesRes.status === "fulfilled" && typeof moviesRes.value === "string") {
           const parsed = Papa.parse<Row>(moviesRes.value, { header: true, skipEmptyLines: true });
           const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
-          console.log(`Movies CSV loaded: ${data.length} movies found`);
-          console.log('First movie:', data[0]);
           setMovieRows(data);
         } else if (moviesRes && moviesRes.status === "rejected") {
-          console.error('Movies CSV failed:', moviesRes.reason);
           setError((prev) => (prev ? prev + "\n" : "") + `Movies CSV: ${moviesRes.reason?.message || String(moviesRes.reason)}`);
-        } else {
-          console.log('Movies CSV status:', moviesRes?.status, 'value type:', typeof moviesRes?.value);
         }
 
         if (gamesRes && gamesRes.status === "fulfilled" && typeof gamesRes.value === "string") {
