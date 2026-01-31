@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "Chris' Delicious Library",
   description: "Chris' personal library of books, TV shows, movies, and games",
   icons: {
-    icon: "/logo4.png",
+    icon: "/cdl-icon.png",
   },
 };
 
