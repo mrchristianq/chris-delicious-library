@@ -15,9 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Chris' Delicious Library",
   description: "Chris' personal library of books, TV shows, movies, and games",
-  icons: {
-    icon: "/cdl-icon.png",
-  },
 };
 
 export default function RootLayout({

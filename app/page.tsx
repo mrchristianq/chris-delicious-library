@@ -270,6 +270,8 @@ export default function Page() {
     gameInsets: boolean;
     logoSize: boolean;
     syncIcon: boolean;
+    icons: boolean;
+    sidebar: boolean;
   }>({
     coverSize: false,
     framePosition: false,
@@ -278,6 +280,8 @@ export default function Page() {
     gameInsets: false,
     logoSize: false,
     syncIcon: false,
+    icons: false,
+    sidebar: false,
   });
 
   // UI
@@ -300,6 +304,16 @@ export default function Page() {
   // Synced icon positioning and sizing
   const [syncIconSize, setSyncIconSize] = useState<number>(12);
   const [syncIconTop, setSyncIconTop] = useState<number>(8);
+
+  // Sidebar icon size
+  const [iconSize, setIconSize] = useState<number>(16);
+
+  // Sidebar text styling
+  const [sidebarFontSize, setSidebarFontSize] = useState<number>(13);
+  const [sidebarFontWeight, setSidebarFontWeight] = useState<string>("400");
+  const [sidebarGap, setSidebarGap] = useState<number>(10);
+  const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
+  const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("600");
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
@@ -524,6 +538,14 @@ export default function Page() {
     
     setSyncIconSize(getSetting("syncIconSize", 12));
     setSyncIconTop(getSetting("syncIconTop", 8));
+    
+    setIconSize(getSetting("iconSize", 16));
+    
+    setSidebarFontSize(getSetting("sidebarFontSize", 13));
+    setSidebarFontWeight(getSetting("sidebarFontWeight", "400"));
+    setSidebarGap(getSetting("sidebarGap", 10));
+    setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
+    setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
   }, [settingsRows]);
 
   // Function to save all current settings to spreadsheet
@@ -564,6 +586,12 @@ export default function Page() {
       { key: "logoLeft", value: logoLeft, category: "Logo Settings", description: "Logo Left Position" },
       { key: "syncIconSize", value: syncIconSize, category: "Sync Icon", description: "Sync Icon Size (px)" },
       { key: "syncIconTop", value: syncIconTop, category: "Sync Icon", description: "Sync Icon Top Position" },
+      { key: "iconSize", value: iconSize, category: "Icons", description: "Sidebar Icon Size (px)" },
+      { key: "sidebarFontSize", value: sidebarFontSize, category: "Sidebar", description: "Sidebar Font Size" },
+      { key: "sidebarFontWeight", value: sidebarFontWeight, category: "Sidebar", description: "Sidebar Font Weight" },
+      { key: "sidebarGap", value: sidebarGap, category: "Sidebar", description: "Sidebar Icon Gap" },
+      { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
+      { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
     ];
     
     try {
@@ -695,6 +723,30 @@ export default function Page() {
   const updateSyncIconTop = (value: number) => {
     setSyncIconTop(value);
     saveSetting("syncIconTop", value, "Sync Icon", "Sync Icon Top Position");
+  };
+  const updateIconSize = (value: number) => {
+    setIconSize(value);
+    saveSetting("iconSize", value, "Icons", "Sidebar Icon Size (px)");
+  };
+  const updateSidebarFontSize = (value: number) => {
+    setSidebarFontSize(value);
+    saveSetting("sidebarFontSize", value, "Sidebar", "Sidebar Font Size");
+  };
+  const updateSidebarFontWeight = (value: string) => {
+    setSidebarFontWeight(value);
+    saveSetting("sidebarFontWeight", value, "Sidebar", "Sidebar Font Weight");
+  };
+  const updateSidebarGap = (value: number) => {
+    setSidebarGap(value);
+    saveSetting("sidebarGap", value, "Sidebar", "Sidebar Icon Gap");
+  };
+  const updateSidebarHeaderFontSize = (value: number) => {
+    setSidebarHeaderFontSize(value);
+    saveSetting("sidebarHeaderFontSize", value, "Sidebar", "Sidebar Header Font Size");
+  };
+  const updateSidebarHeaderFontWeight = (value: string) => {
+    setSidebarHeaderFontWeight(value);
+    saveSetting("sidebarHeaderFontWeight", value, "Sidebar", "Sidebar Header Font Weight");
   };
 
   const allShows = useMemo(() => {
@@ -1182,8 +1234,8 @@ export default function Page() {
             <div style={{ padding: "0px 12px 0 12px", marginTop: "-6px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 600,
+                  fontSize: sidebarHeaderFontSize,
+                  fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
                   color: "#954949",
                   marginBottom: 6,
@@ -1211,7 +1263,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "home" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1223,12 +1275,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 11l9-8 9 8" />
-                        <path d="M5 10v10h14V10" />
-                      </svg>
+                      <img src="/icon-home.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Home
                   </span>
@@ -1250,7 +1300,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1262,12 +1312,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 5h13a2 2 0 0 1 2 2v11H6a2 2 0 0 0-2 2V5z" />
-                        <path d="M4 17h15" />
-                      </svg>
+                      <img src="/icon-books.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Books
                   </span>
@@ -1289,7 +1337,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1301,12 +1349,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="6" width="18" height="12" rx="2" />
-                        <path d="M7 6v12M11 6v12M15 6v12M19 6v12" />
-                      </svg>
+                      <img src="/icon-movies.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Movies
                   </span>
@@ -1330,7 +1376,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1342,19 +1388,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <rect x="3" y="7" width="18" height="10" rx="2" />
-                        <path d="M8 21h8M12 17v4" />
-                      </svg>
+                      <img src="/icon-tv.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     TV Shows
                   </span>
@@ -1399,7 +1436,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ fontFamily: "Inter, sans-serif", color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
@@ -1460,7 +1497,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ fontFamily: "Inter, sans-serif", color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
@@ -1502,7 +1539,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1514,12 +1551,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="8" width="18" height="8" rx="4" />
-                        <path d="M8 10v4M6 12h4M16 11h2M15 13h2" />
-                      </svg>
+                      <img src="/icon-games.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Games
                   </span>
@@ -1533,8 +1568,8 @@ export default function Page() {
             <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 600,
+                  fontSize: sidebarHeaderFontSize,
+                  fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
                   color: "#954949",
                   marginBottom: 6,
@@ -1563,7 +1598,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: yearMenuOpen ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1575,14 +1610,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                        <line x1="16" y1="2" x2="16" y2="6" />
-                        <line x1="8" y1="2" x2="8" y2="6" />
-                        <line x1="3" y1="10" x2="21" y2="10" />
-                      </svg>
+                      <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Year
                   </span>
@@ -1657,8 +1688,8 @@ export default function Page() {
             <div style={{ padding: "0px 12px 0 12px", marginTop: "12px", display: "flex", flexDirection: "column", gap: 0 }}>
               <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 600,
+                  fontSize: sidebarHeaderFontSize,
+                  fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
                   color: "#954949",
                   marginBottom: 6,
@@ -1685,7 +1716,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1696,11 +1727,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 12h18M3 6h18M3 18h18" />
-                      </svg>
+                      <img src="/icon-statistics.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Statistics
                   </span>
@@ -1708,7 +1738,10 @@ export default function Page() {
                 </button>
 
                 <button
-                  onClick={() => setShowSettings(!showSettings)}
+                  onClick={() => {
+                    console.log("Settings button clicked, current state:", showSettings);
+                    setShowSettings(!showSettings);
+                  }}
                   className={`sideItem primary ${showSettings ? "active" : ""}`}
                   style={{
                     width: "100%",
@@ -1720,7 +1753,7 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: "400", fontSize: 13 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: showSettings ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
@@ -1732,12 +1765,10 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         flex: "0 0 auto",
+                        overflow: "visible",
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="3" />
-                        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-3v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2-2 .1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-3h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-2 .1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h3v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2 2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21v3h-.1a1.7 1.7 0 0 0-1.5 1z" />
-                      </svg>
+                      <img src="/icon-settings.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Settings
                   </span>
@@ -2234,6 +2265,113 @@ export default function Page() {
                   </div>
                 ) : null}
 
+                {/* Icons */}
+                <button
+                  onClick={() => setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar })}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#8A8A8A",
+                    marginTop: 4,
+                  }}
+                >
+                  <span>SIDEBAR</span>
+                  <span>{settingsOpen.sidebar ? "−" : "+"}</span>
+                </button>
+                {settingsOpen.sidebar ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Icon Size
+                      <input
+                        type="range"
+                        min={8}
+                        max={64}
+                        step={1}
+                        value={iconSize}
+                        onChange={(e) => updateIconSize(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{iconSize}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Font Size
+                      <input
+                        type="range"
+                        min={10}
+                        max={20}
+                        step={1}
+                        value={sidebarFontSize}
+                        onChange={(e) => updateSidebarFontSize(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{sidebarFontSize}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Font Weight
+                      <select
+                        value={sidebarFontWeight}
+                        onChange={(e) => updateSidebarFontWeight(e.target.value)}
+                        style={{ flex: 1, fontSize: 11 }}
+                      >
+                        <option value="300">Light (300)</option>
+                        <option value="400">Normal (400)</option>
+                        <option value="500">Medium (500)</option>
+                        <option value="600">Semi-Bold (600)</option>
+                        <option value="700">Bold (700)</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Icon Gap
+                      <input
+                        type="range"
+                        min={4}
+                        max={20}
+                        step={1}
+                        value={sidebarGap}
+                        onChange={(e) => updateSidebarGap(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{sidebarGap}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Header Font Size
+                      <input
+                        type="range"
+                        min={8}
+                        max={16}
+                        step={1}
+                        value={sidebarHeaderFontSize}
+                        onChange={(e) => updateSidebarHeaderFontSize(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{sidebarHeaderFontSize}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Header Font Weight
+                      <select
+                        value={sidebarHeaderFontWeight}
+                        onChange={(e) => updateSidebarHeaderFontWeight(e.target.value)}
+                        style={{ flex: 1, fontSize: 11 }}
+                      >
+                        <option value="300">Light (300)</option>
+                        <option value="400">Normal (400)</option>
+                        <option value="500">Medium (500)</option>
+                        <option value="600">Semi-Bold (600)</option>
+                        <option value="700">Bold (700)</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+
                 {/* Save All Settings Button */}
                 <button
                   onClick={saveAllSettings}
@@ -2662,14 +2800,14 @@ export default function Page() {
           background: rgba(0,0,0,0.02);
         }
         .sideItem.active {
-          background: rgba(255,255,255,0.35);
+          background: rgba(138, 76, 76, 0.15);
           box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-          border-color: rgba(0,0,0,0.08);
+          border-color: rgba(138, 76, 76, 0.25);
           font-weight: 600;
-          color: #555555;
+          color: #8a4c4c;
         }
         .sideItem.primary { background: transparent; }
-        .sideItem.primary.active { background: rgba(255,255,255,0.85); color: #1b1b1b; }
+        .sideItem.primary.active { background: rgba(138, 76, 76, 0.12); color: #8a4c4c; }
         .sideSubItem {
           width: 100%;
           padding: 5px 8px;
@@ -2679,6 +2817,7 @@ export default function Page() {
           color: #1b1b1b;
           font-size: 11.5px;
           font-weight: 600;
+          font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
           transition: background 140ms ease, border-color 140ms ease;
         }
@@ -2686,7 +2825,7 @@ export default function Page() {
           background: rgba(0, 0, 0, 0.05);
         }
         .sideSubItem.active {
-          background: rgba(140, 58, 58, 0.18);
+          background: rgba(138, 76, 76, 0.18);
           border-color: rgba(0, 0, 0, 0.08);
           font-weight: 700;
         }
