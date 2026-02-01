@@ -91,6 +91,11 @@ type Book = {
   isbn?: string;
   releaseDate?: string;
   completedDate?: string;
+  status?: string;
+  types?: string;
+  series?: string;
+  categories?: string;
+  ownership?: string;
   tag?: string;
 };
 
@@ -102,6 +107,7 @@ type Movie = {
   watchStatus?: string;
   movieStatus?: string;
   tag?: string;
+  genres?: string;
 };
 
 type Game = {
@@ -130,6 +136,16 @@ const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const GAME_FRAME_IMAGE = "/game-frame.png";
 const APP_ICON = "/logo4.png";
+
+// Helper function to convert platform name to frame filename
+function getPlatformFrameFilename(platform?: string): string {
+  if (!platform || platform === "Default") {
+    return GAME_FRAME_IMAGE;
+  }
+  // Convert platform name to lowercase and replace spaces with hyphens
+  const normalizedName = platform.toLowerCase().replace(/\s+/g, '-');
+  return `/${normalizedName}-frame.png`;
+}
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
@@ -172,6 +188,11 @@ function rowToBook(r: Row): Book | null {
     isbn: safeStr(r["ISBN"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || safeStr(r["Published"]) || undefined,
     completedDate: safeStr(r["CompletedDate"]) || undefined,
+    status: safeStr(r["Status"]) || undefined,
+    types: safeStr(r["Types"]) || safeStr(r["Type"]) || undefined,
+    series: safeStr(r["Series"]) || undefined,
+    categories: safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || undefined,
   };
 }
@@ -189,6 +210,7 @@ function rowToMovie(r: Row): Movie | null {
     watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     movieStatus: safeStr(r["Status"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
+    genres: safeStr(r["Genres"]) || safeStr(r["Genre"]) || undefined,
   };
 }
 
@@ -293,8 +315,26 @@ export default function Page() {
   const [tight, setTight] = useState<boolean>(true);
   const [watchFilter, setWatchFilter] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [movieWatchFilter, setMovieWatchFilter] = useState<string | null>(null);
+  const [movieGenreFilter, setMovieGenreFilter] = useState<string | null>(null);
+  const [readingStatusFilter, setReadingStatusFilter] = useState<string | null>(null);
+  const [formatFilter, setFormatFilter] = useState<string | null>(null);
+  const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
+  const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
+  const [sortField, setSortField] = useState<string>("ReleaseDate");
+  const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
   const [watchStatusOpen, setWatchStatusOpen] = useState<boolean>(false);
   const [showStatusOpen, setShowStatusOpen] = useState<boolean>(false);
+  const [tagOpen, setTagOpen] = useState<boolean>(false);
+  const [movieWatchStatusOpen, setMovieWatchStatusOpen] = useState<boolean>(false);
+  const [movieGenreOpen, setMovieGenreOpen] = useState<boolean>(false);
+  const [readingStatusOpen, setReadingStatusOpen] = useState<boolean>(false);
+  const [formatOpen, setFormatOpen] = useState<boolean>(false);
+  const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
+  const [genreOpen, setGenreOpen] = useState<boolean>(false);
+  const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
 
   // Logo positioning and sizing
@@ -346,13 +386,20 @@ export default function Page() {
   const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
   const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
   
-  // Game frame: separate insets for game covers
+  // Game frame: platform-based insets for game covers
   const GAME_SRC_W = 1024;
   const GAME_SRC_H = 1536;
-  const [gameInsetTopPx, setGameInsetTopPx] = useState(5);
-  const [gameInsetRightPx, setGameInsetRightPx] = useState(5);
-  const [gameInsetBottomPx, setGameInsetBottomPx] = useState(5);
-  const [gameInsetLeftPx, setGameInsetLeftPx] = useState(5);
+  
+  // Platform-specific insets (stored as a single object)
+  const [platformInsets, setPlatformInsets] = useState<Record<string, { top: number; right: number; bottom: number; left: number }>>({
+    "Default": { top: 5, right: 5, bottom: 5, left: 5 },
+  });
+  
+  // Track which platforms have been explicitly customized (not using Default)
+  const [customizedPlatforms, setCustomizedPlatforms] = useState<Set<string>>(new Set());
+  
+  // UI: Selected platform for editing insets
+  const [selectedPlatformForInsets, setSelectedPlatformForInsets] = useState<string>("Default");
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   
@@ -528,10 +575,41 @@ export default function Page() {
     setMovieInsetLeftPx(getSetting("movieInsetLeftPx", 120));
     
     setPosterSizeGames(getSetting("posterSizeGames", 108));
-    setGameInsetTopPx(getSetting("gameInsetTopPx", 0));
-    setGameInsetRightPx(getSetting("gameInsetRightPx", 0));
-    setGameInsetBottomPx(getSetting("gameInsetBottomPx", 0));
-    setGameInsetLeftPx(getSetting("gameInsetLeftPx", 0));
+    
+    // Load platform insets from settings
+    // We'll load all settings that match the pattern and dynamically populate
+    const loadedPlatformInsets: Record<string, { top: number; right: number; bottom: number; left: number }> = {
+      "Default": { 
+        top: getSetting("DefaultInsetTopPx", 5),
+        right: getSetting("DefaultInsetRightPx", 5),
+        bottom: getSetting("DefaultInsetBottomPx", 5),
+        left: getSetting("DefaultInsetLeftPx", 5),
+      }
+    };
+    
+    const loadedCustomizedPlatforms = new Set<string>();
+    
+    // Load settings for any platforms found in settings
+    settingsRows.forEach(row => {
+      const key = safeStr(row["Key"]);
+      const match = key.match(/^(.+)InsetTopPx$/);
+      if (match && match[1] !== "Default") {
+        const platform = match[1];
+        if (!loadedPlatformInsets[platform]) {
+          loadedPlatformInsets[platform] = {
+            top: getSetting(`${platform}InsetTopPx`, 5),
+            right: getSetting(`${platform}InsetRightPx`, 5),
+            bottom: getSetting(`${platform}InsetBottomPx`, 5),
+            left: getSetting(`${platform}InsetLeftPx`, 5),
+          };
+          // Mark this platform as customized since it was saved in settings
+          loadedCustomizedPlatforms.add(platform);
+        }
+      }
+    });
+    
+    setPlatformInsets(loadedPlatformInsets);
+    setCustomizedPlatforms(loadedCustomizedPlatforms);
     
     setLogoSize(getSetting("logoSize", 230));
     setLogoTop(getSetting("logoTop", 12));
@@ -578,10 +656,13 @@ export default function Page() {
       { key: "movieInsetBottomPx", value: movieInsetBottomPx, category: "Movie Insets", description: "Movie Bottom Inset (px)" },
       { key: "movieInsetLeftPx", value: movieInsetLeftPx, category: "Movie Insets", description: "Movie Left Inset (px)" },
       { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
-      { key: "gameInsetTopPx", value: gameInsetTopPx, category: "Game Insets", description: "Game Top Inset (px)" },
-      { key: "gameInsetRightPx", value: gameInsetRightPx, category: "Game Insets", description: "Game Right Inset (px)" },
-      { key: "gameInsetBottomPx", value: gameInsetBottomPx, category: "Game Insets", description: "Game Bottom Inset (px)" },
-      { key: "gameInsetLeftPx", value: gameInsetLeftPx, category: "Game Insets", description: "Game Left Inset (px)" },
+      // Platform-specific game insets (dynamically from all detected platforms)
+      ...Object.keys(platformInsets).flatMap(platform => [
+        { key: `${platform}InsetTopPx`, value: platformInsets[platform]?.top ?? 5, category: `${platform} Insets`, description: `${platform} Top Inset (px)` },
+        { key: `${platform}InsetRightPx`, value: platformInsets[platform]?.right ?? 5, category: `${platform} Insets`, description: `${platform} Right Inset (px)` },
+        { key: `${platform}InsetBottomPx`, value: platformInsets[platform]?.bottom ?? 5, category: `${platform} Insets`, description: `${platform} Bottom Inset (px)` },
+        { key: `${platform}InsetLeftPx`, value: platformInsets[platform]?.left ?? 5, category: `${platform} Insets`, description: `${platform} Left Inset (px)` },
+      ]),
       { key: "logoSize", value: logoSize, category: "Logo Settings", description: "Logo Size (px)" },
       { key: "logoTop", value: logoTop, category: "Logo Settings", description: "Logo Top Position" },
       { key: "logoLeft", value: logoLeft, category: "Logo Settings", description: "Logo Left Position" },
@@ -689,22 +770,26 @@ export default function Page() {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
   };
-  const updateGameInsetTopPx = (value: number) => {
-    setGameInsetTopPx(value);
-    saveSetting("gameInsetTopPx", value, "Game Insets", "Game Top Inset (px)");
+  
+  // Update platform-specific insets
+  const updatePlatformInset = (platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
+    setPlatformInsets(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        [edge]: value,
+      }
+    }));
+    
+    // Mark this platform as customized if it's not Default
+    if (platform !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    }
+    
+    const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
+    saveSetting(`${platform}Inset${edgeCapitalized}Px`, value, `${platform} Insets`, `${platform} ${edgeCapitalized} Inset (px)`);
   };
-  const updateGameInsetRightPx = (value: number) => {
-    setGameInsetRightPx(value);
-    saveSetting("gameInsetRightPx", value, "Game Insets", "Game Right Inset (px)");
-  };
-  const updateGameInsetBottomPx = (value: number) => {
-    setGameInsetBottomPx(value);
-    saveSetting("gameInsetBottomPx", value, "Game Insets", "Game Bottom Inset (px)");
-  };
-  const updateGameInsetLeftPx = (value: number) => {
-    setGameInsetLeftPx(value);
-    saveSetting("gameInsetLeftPx", value, "Game Insets", "Game Left Inset (px)");
-  };
+  
   const updateLogoSize = (value: number) => {
     setLogoSize(value);
     saveSetting("logoSize", value, "Logo Settings", "Logo Size (px)");
@@ -750,21 +835,91 @@ export default function Page() {
     saveSetting("sidebarHeaderFontWeight", value, "Sidebar", "Sidebar Header Font Weight");
   };
 
+  // Helper to check if a value contains spreadsheet error #REF!
+  const hasRefError = (value: any): boolean => {
+    if (value == null) return false;
+    const str = String(value);
+    return str.includes('#REF!');
+  };
+
   const allShows = useMemo(() => {
-    return tvRows.map(rowToShow).filter(Boolean) as Show[];
+    return tvRows.map(rowToShow).filter(show => {
+      if (!show) return false;
+      // Filter out items with #REF! errors in key fields
+      if (hasRefError(show.title) || hasRefError(show.tmdbId)) return false;
+      return true;
+    }) as Show[];
   }, [tvRows]);
 
   const allBooks = useMemo(() => {
-    return bookRows.map(rowToBook).filter(Boolean) as Book[];
+    return bookRows.map(rowToBook).filter(book => {
+      if (!book) return false;
+      // Filter out items with #REF! errors in key fields
+      if (hasRefError(book.title) || hasRefError(book.isbn)) return false;
+      return true;
+    }) as Book[];
   }, [bookRows]);
 
   const allMovies = useMemo(() => {
-    return movieRows.map(rowToMovie).filter(Boolean) as Movie[];
+    return movieRows.map(rowToMovie).filter(movie => {
+      if (!movie) return false;
+      // Filter out items with #REF! errors in key fields
+      if (hasRefError(movie.title) || hasRefError(movie.tmdbId)) return false;
+      return true;
+    }) as Movie[];
   }, [movieRows]);
 
   const allGames = useMemo(() => {
-    return gameRows.map(rowToGame).filter(Boolean) as Game[];
+    return gameRows.map(rowToGame).filter(game => {
+      if (!game) return false;
+      // Filter out items with #REF! errors in key fields
+      if (hasRefError(game.title) || hasRefError(game.platform)) return false;
+      return true;
+    }) as Game[];
   }, [gameRows]);
+
+  // Helper to parse comma-separated platforms and determine primary platform
+  // Priority: Steam > Epic Games Store > First platform in list
+  const getPrimaryPlatform = (platformString: string | undefined): string => {
+    if (!platformString) return "Default";
+    
+    // Split by comma and trim whitespace
+    const platforms = platformString.split(',').map(p => p.trim()).filter(Boolean);
+    
+    if (platforms.length === 0) return "Default";
+    
+    // Check for Steam first (highest priority)
+    if (platforms.some(p => p === "Steam")) return "Steam";
+    
+    // Check for Epic Games Store second
+    if (platforms.some(p => p === "Epic Games Store")) return "Epic Games Store";
+    
+    // Return the first platform in the list
+    return platforms[0];
+  };
+
+  // Dynamically detect all unique platforms from games data
+  // Parse comma-separated platform values to get individual platforms
+  const detectedPlatforms = useMemo(() => {
+    const platforms = new Set<string>(["Default"]); // Always include Default
+    allGames.forEach(game => {
+      if (game.platform) {
+        // Split comma-separated platforms and add each individually
+        const individualPlatforms = game.platform.split(',').map(p => p.trim()).filter(Boolean);
+        individualPlatforms.forEach(p => platforms.add(p));
+      }
+    });
+    return Array.from(platforms).sort((a, b) => {
+      // Keep "Default" first
+      if (a === "Default") return -1;
+      if (b === "Default") return 1;
+      return a.localeCompare(b);
+    });
+  }, [allGames]);
+
+  // Note: We do NOT auto-initialize platformInsets for detected platforms
+  // Only platforms explicitly customized (or loaded from settings) get entries
+  // This ensures uncustomized platforms always inherit from Default insets
 
   const normalizeStatus = (value?: string) =>
     safeStr(value)
@@ -785,6 +940,103 @@ export default function Page() {
   );
 
   const showStatuses = useMemo(() => ["Ended", "Returning Series", "Canceled"], []);
+
+  const readingStatuses = useMemo(
+    () => ["Reading", "Completed", "Backlog", "Abandoned", "Read Next", "Paused"],
+    []
+  );
+
+  const readingStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of readingStatuses) counts[s] = 0;
+    for (const book of allBooks) {
+      const status = normalizeStatus(book.status);
+      const match = readingStatuses.find((s) => normalizeStatus(s) === status);
+      if (match) counts[match] += 1;
+    }
+    return counts;
+  }, [allBooks, readingStatuses]);
+
+  // Extract unique book formats from comma-separated types
+  const bookFormats = useMemo(() => {
+    const formats = new Set<string>();
+    allBooks.forEach(book => {
+      if (book.types) {
+        const individualTypes = book.types.split(',').map(t => t.trim()).filter(Boolean);
+        individualTypes.forEach(t => formats.add(t));
+      }
+    });
+    return Array.from(formats).sort();
+  }, [allBooks]);
+
+  const formatCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const f of bookFormats) counts[f] = 0;
+    for (const book of allBooks) {
+      if (book.types) {
+        const individualTypes = book.types.split(',').map(t => t.trim()).filter(Boolean);
+        individualTypes.forEach(type => {
+          const match = bookFormats.find(f => f === type);
+          if (match) counts[match] += 1;
+        });
+      }
+    }
+    return counts;
+  }, [allBooks, bookFormats]);
+
+  // Extract unique book series
+  const bookSeries = useMemo(() => {
+    const series = new Set<string>();
+    allBooks.forEach(book => {
+      if (book.series) {
+        series.add(book.series);
+      }
+    });
+    return Array.from(series).sort();
+  }, [allBooks]);
+
+  const seriesCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of bookSeries) counts[s] = 0;
+    for (const book of allBooks) {
+      if (book.series) {
+        const match = bookSeries.find(s => s === book.series);
+        if (match) counts[match] += 1;
+      }
+    }
+    return counts;
+  }, [allBooks, bookSeries]);
+
+  // Extract unique book genres from comma-separated categories
+  const bookGenres = useMemo(() => {
+    const genres = new Set<string>();
+    allBooks.forEach(book => {
+      if (book.categories) {
+        const individualCategories = book.categories.split(',').map(c => c.trim()).filter(Boolean);
+        individualCategories.forEach(c => genres.add(c));
+      }
+    });
+    return Array.from(genres).sort();
+  }, [allBooks]);
+
+  const genreCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const g of bookGenres) counts[g] = 0;
+    for (const book of allBooks) {
+      if (book.categories) {
+        const individualCategories = book.categories.split(',').map(c => c.trim()).filter(Boolean);
+        individualCategories.forEach(category => {
+          const match = bookGenres.find(g => g === category);
+          if (match) counts[match] += 1;
+        });
+      }
+    }
+    return counts;
+  }, [allBooks, bookGenres]);
+
+  const wishlistCount = useMemo(() => {
+    return allBooks.filter(b => normalizeStatus(b.ownership) === 'wishlist').length;
+  }, [allBooks]);
 
   const watchCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -808,21 +1060,158 @@ export default function Page() {
     return counts;
   }, [allShows, showStatuses]);
 
+  // Extract unique TV show tags
+  const tvTags = useMemo(() => {
+    const tags = new Set<string>();
+    allShows.forEach(show => {
+      if (show.tag) {
+        // Split comma-separated tags and add each individually
+        const individualTags = show.tag.split(',').map(t => t.trim()).filter(Boolean);
+        individualTags.forEach(t => tags.add(t));
+      }
+    });
+    return Array.from(tags).sort();
+  }, [allShows]);
+
+  const tvTagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of tvTags) counts[t] = 0;
+    for (const show of allShows) {
+      if (show.tag) {
+        const individualTags = show.tag.split(',').map(t => t.trim()).filter(Boolean);
+        individualTags.forEach(tag => {
+          const match = tvTags.find(t => t === tag);
+          if (match) counts[match] += 1;
+        });
+      }
+    }
+    return counts;
+  }, [allShows, tvTags]);
+
+  // Movie watch status counts (Watched vs Unwatched)
+  const movieWatchCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      "Watched": 0,
+      "Unwatched": 0
+    };
+    for (const movie of allMovies) {
+      // Check if watchStatus is truthy (checkbox marked) or has a value like "TRUE", "true", "Yes", etc.
+      const watched = movie.watchStatus && 
+        (movie.watchStatus.toLowerCase() === "true" || 
+         movie.watchStatus.toLowerCase() === "yes" || 
+         movie.watchStatus === "1" ||
+         movie.watchStatus.toLowerCase() === "watched");
+      if (watched) {
+        counts["Watched"] += 1;
+      } else {
+        counts["Unwatched"] += 1;
+      }
+    }
+    return counts;
+  }, [allMovies]);
+
+  // Extract unique movie genres from comma-separated genres
+  const movieGenres = useMemo(() => {
+    const genres = new Set<string>();
+    allMovies.forEach(movie => {
+      if (movie.genres) {
+        const individualGenres = movie.genres.split(',').map(g => g.trim()).filter(Boolean);
+        individualGenres.forEach(g => genres.add(g));
+      }
+    });
+    return Array.from(genres).sort();
+  }, [allMovies]);
+
+  const movieGenreCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const g of movieGenres) counts[g] = 0;
+    for (const movie of allMovies) {
+      if (movie.genres) {
+        const individualGenres = movie.genres.split(',').map(g => g.trim()).filter(Boolean);
+        individualGenres.forEach(genre => {
+          const match = movieGenres.find(g => g === genre);
+          if (match) counts[match] += 1;
+        });
+      }
+    }
+    return counts;
+  }, [allMovies, movieGenres]);
+
+  // Generic sorting function
+  const applySorting = <T extends any>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
+    return [...items].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      // Get the appropriate field value based on sortField
+      if (field === "Title") {
+        aVal = safeStr((a as any).title).toLowerCase();
+        bVal = safeStr((b as any).title).toLowerCase();
+        const result = aVal.localeCompare(bVal);
+        return order === "Asc" ? result : -result;
+      } else if (field === "ReleaseDate") {
+        aVal = (a as any).releaseDate ? Date.parse((a as any).releaseDate) : NaN;
+        bVal = (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
+      } else if (field === "CompletedDate") {
+        aVal = (a as any).completedDate ? Date.parse((a as any).completedDate) : NaN;
+        bVal = (b as any).completedDate ? Date.parse((b as any).completedDate) : NaN;
+      } else if (field === "LastAirDate") {
+        aVal = (a as any).lastAirDate ? Date.parse((a as any).lastAirDate) : NaN;
+        bVal = (b as any).lastAirDate ? Date.parse((b as any).lastAirDate) : NaN;
+      } else if (field === "FirstAirDate") {
+        aVal = (a as any).firstAirDate ? Date.parse((a as any).firstAirDate) : NaN;
+        bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) : NaN;
+      } else {
+        // Default to releaseDate
+        aVal = (a as any).releaseDate ? Date.parse((a as any).releaseDate) : NaN;
+        bVal = (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
+      }
+
+      // Handle NaN values (push them to the end)
+      if (Number.isNaN(aVal) && Number.isNaN(bVal)) return 0;
+      if (Number.isNaN(aVal)) return 1;
+      if (Number.isNaN(bVal)) return -1;
+
+      // Apply sort order
+      return order === "Asc" ? aVal - bVal : bVal - aVal;
+    });
+  };
+
   // (Placeholder logic) keep it simple for now
   const shows = useMemo(() => {
     const q = safeStr(query).toLowerCase();
     if (nav === "books") {
-      const filtered = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
-      return [...filtered]
-        .map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" }))
-        .sort((a, b) => {
-          const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-          const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-          if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-          if (Number.isNaN(aTime)) return 1;
-          if (Number.isNaN(bTime)) return -1;
-          return bTime - aTime;
-        }) as any[];
+      let filtered = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
+      // Apply reading status filter if set
+      if (readingStatusFilter) {
+        filtered = filtered.filter((b) => normalizeStatus(b.status) === normalizeStatus(readingStatusFilter));
+      }
+      // Apply format filter if set
+      if (formatFilter) {
+        filtered = filtered.filter((b) => {
+          if (!b.types) return false;
+          const individualTypes = b.types.split(',').map(t => t.trim()).filter(Boolean);
+          return individualTypes.includes(formatFilter);
+        });
+      }
+      // Apply series filter if set
+      if (seriesFilter) {
+        filtered = filtered.filter((b) => b.series === seriesFilter);
+      }
+      // Apply genre filter if set
+      if (genreFilter) {
+        filtered = filtered.filter((b) => {
+          if (!b.categories) return false;
+          const individualCategories = b.categories.split(',').map(c => c.trim()).filter(Boolean);
+          return individualCategories.includes(genreFilter);
+        });
+      }
+      // Apply wishlist filter if set
+      if (wishlistFilter) {
+        filtered = filtered.filter((b) => normalizeStatus(b.ownership) === 'wishlist');
+      }
+      const sorted = applySorting(filtered, sortField, sortOrder);
+      return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
     // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
@@ -831,7 +1220,32 @@ export default function Page() {
       const qb = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
       const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q) && normalizeStatus(s.watchStatus) !== "wishlist") : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist");
       const qm = q ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && normalizeStatus(m.watchStatus) !== "wishlist") : allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist");
-      const qg = q ? allGames.filter((g) => g.title.toLowerCase().includes(q) && normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist") : allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist");
+      let qg = q ? allGames.filter((g) => g.title.toLowerCase().includes(q) && normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist") : allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist");
+      
+      // Deduplicate games by title - keep only primary platform version
+      const gamesByTitle = new Map<string, Game>();
+      qg.forEach(game => {
+        const existingGame = gamesByTitle.get(game.title);
+        if (!existingGame) {
+          gamesByTitle.set(game.title, game);
+        } else {
+          // Compare platforms and keep the one with higher priority
+          const existingPlatform = getPrimaryPlatform(existingGame.platform);
+          const currentPlatform = getPrimaryPlatform(game.platform);
+          
+          // Priority: Steam > Epic Games Store > first listed
+          const priority = (platform: string) => {
+            if (platform === "Steam") return 3;
+            if (platform === "Epic Games Store") return 2;
+            return 1;
+          };
+          
+          if (priority(currentPlatform) > priority(existingPlatform)) {
+            gamesByTitle.set(game.title, game);
+          }
+        }
+      });
+      qg = Array.from(gamesByTitle.values());
 
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
@@ -840,48 +1254,45 @@ export default function Page() {
         ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
-      return combined.sort((a, b) => {
-        const aTime = 
-          a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : 
-          a.__type === "tv" ? (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN) :
-          a.__type === "game" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) :
-          (a.releaseDate ? Date.parse(a.releaseDate) : NaN);
-        const bTime = 
-          b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
-          b.__type === "tv" ? (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN) :
-          b.__type === "game" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
-          (b.releaseDate ? Date.parse(b.releaseDate) : NaN);
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
     }
 
     // Movies path
     if (nav === "movies") {
-      const filteredByQuery = q ? allMovies.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : allMovies;
-      return [...filteredByQuery].sort((a, b) => {
-        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
+      let filtered = allMovies;
+      
+      // Apply watch status filter if set
+      if (movieWatchFilter) {
+        filtered = filtered.filter((m) => {
+          const watched = m.watchStatus && 
+            (m.watchStatus.toLowerCase() === "true" || 
+             m.watchStatus.toLowerCase() === "yes" || 
+             m.watchStatus === "1" ||
+             m.watchStatus.toLowerCase() === "watched");
+          return movieWatchFilter === "Watched" ? watched : !watched;
+        });
+      }
+      
+      // Apply genre filter if set
+      if (movieGenreFilter) {
+        filtered = filtered.filter((m) => {
+          if (!m.genres) return false;
+          const individualGenres = m.genres.split(',').map(g => g.trim()).filter(Boolean);
+          return individualGenres.includes(movieGenreFilter);
+        });
+      }
+      
+      const filteredByQuery = q ? filtered.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : filtered;
+      const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+      return sorted.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })) as any[];
     }
 
     // Games path
     if (nav === "games") {
       const filteredByQuery = q ? allGames.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : allGames;
-      return [...filteredByQuery].sort((a, b) => {
-        const aTime = a.releaseDate ? Date.parse(a.releaseDate) : NaN;
-        const bTime = b.releaseDate ? Date.parse(b.releaseDate) : NaN;
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
+      const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+      return sorted.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })) as any[];
     }
 
     // Smart List: This Year - Filter all items with appropriate year field matching current year
@@ -910,9 +1321,30 @@ export default function Page() {
         : allMovies.filter((m) => safeStr(m.tag) === currentYear);
       
       // Games: Use Year Played column
-      const qg = q 
+      let qg = q 
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
         : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
+      
+      // Deduplicate games by title - keep only primary platform version
+      const gamesByTitle = new Map<string, Game>();
+      qg.forEach(game => {
+        const existingGame = gamesByTitle.get(game.title);
+        if (!existingGame) {
+          gamesByTitle.set(game.title, game);
+        } else {
+          const existingPlatform = getPrimaryPlatform(existingGame.platform);
+          const currentPlatform = getPrimaryPlatform(game.platform);
+          const priority = (platform: string) => {
+            if (platform === "Steam") return 3;
+            if (platform === "Epic Games Store") return 2;
+            return 1;
+          };
+          if (priority(currentPlatform) > priority(existingPlatform)) {
+            gamesByTitle.set(game.title, game);
+          }
+        }
+      });
+      qg = Array.from(gamesByTitle.values());
 
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
@@ -921,22 +1353,8 @@ export default function Page() {
         ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
-      return combined.sort((a, b) => {
-        const aTime = 
-          a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : 
-          a.__type === "tv" ? (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN) :
-          a.__type === "game" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) :
-          (a.releaseDate ? Date.parse(a.releaseDate) : NaN);
-        const bTime = 
-          b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
-          b.__type === "tv" ? (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN) :
-          b.__type === "game" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
-          (b.releaseDate ? Date.parse(b.releaseDate) : NaN);
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
     }
 
     // Smart List: Previous Year - Filter all items with appropriate year field matching selected year
@@ -965,9 +1383,30 @@ export default function Page() {
         : allMovies.filter((m) => safeStr(m.tag) === yearStr);
       
       // Games: Use Year Played column
-      const qg = q 
+      let qg = q 
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === yearStr)
         : allGames.filter((g) => safeStr(g.yearPlayed) === yearStr);
+      
+      // Deduplicate games by title - keep only primary platform version
+      const gamesByTitle2 = new Map<string, Game>();
+      qg.forEach(game => {
+        const existingGame = gamesByTitle2.get(game.title);
+        if (!existingGame) {
+          gamesByTitle2.set(game.title, game);
+        } else {
+          const existingPlatform = getPrimaryPlatform(existingGame.platform);
+          const currentPlatform = getPrimaryPlatform(game.platform);
+          const priority = (platform: string) => {
+            if (platform === "Steam") return 3;
+            if (platform === "Epic Games Store") return 2;
+            return 1;
+          };
+          if (priority(currentPlatform) > priority(existingPlatform)) {
+            gamesByTitle2.set(game.title, game);
+          }
+        }
+      });
+      qg = Array.from(gamesByTitle2.values());
 
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
@@ -976,22 +1415,8 @@ export default function Page() {
         ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
-      return combined.sort((a, b) => {
-        const aTime = 
-          a.__type === "book" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) : 
-          a.__type === "tv" ? (a.lastAirDate ? Date.parse(a.lastAirDate) : NaN) :
-          a.__type === "game" ? (a.releaseDate ? Date.parse(a.releaseDate) : NaN) :
-          (a.releaseDate ? Date.parse(a.releaseDate) : NaN);
-        const bTime = 
-          b.__type === "book" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
-          b.__type === "tv" ? (b.lastAirDate ? Date.parse(b.lastAirDate) : NaN) :
-          b.__type === "game" ? (b.releaseDate ? Date.parse(b.releaseDate) : NaN) :
-          (b.releaseDate ? Date.parse(b.releaseDate) : NaN);
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-        if (Number.isNaN(aTime)) return 1;
-        if (Number.isNaN(bTime)) return -1;
-        return bTime - aTime;
-      }) as any[];
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
     }
 
     // TV default path
@@ -1001,20 +1426,20 @@ export default function Page() {
     const filteredByShow = showFilter
       ? filteredByWatch.filter((s) => normalizeStatus(s.showStatus) === normalizeStatus(showFilter))
       : filteredByWatch;
-    const filteredByQuery = q ? filteredByShow.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : filteredByShow;
+    const filteredByTag = tagFilter
+      ? filteredByShow.filter((s) => {
+          if (!s.tag) return false;
+          const individualTags = s.tag.split(',').map(t => t.trim()).filter(Boolean);
+          return individualTags.includes(tagFilter);
+        })
+      : filteredByShow;
+    const filteredByQuery = q ? filteredByTag.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : filteredByTag;
 
     if (nav !== "tv") return filteredByQuery as any[];
 
-    return [...filteredByQuery].sort((a, b) => {
-      const aTime = a.lastAirDate ? Date.parse(a.lastAirDate) : NaN;
-      const bTime = b.lastAirDate ? Date.parse(b.lastAirDate) : NaN;
-
-      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-      if (Number.isNaN(aTime)) return 1;
-      if (Number.isNaN(bTime)) return -1;
-      return bTime - aTime;
-    }) as any[];
-  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, nav, query]);
+    const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+    return sorted as any[];
+  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, nav, query, sortField, sortOrder]);
 
   const stats = useMemo(() => {
     return {
@@ -1227,6 +1652,101 @@ export default function Page() {
             </div>
           </div>
 
+          {/* Sort Module */}
+          <div style={{ padding: "0 18px", marginTop: 10 }}>
+            <div
+              style={{
+                fontSize: sidebarHeaderFontSize,
+                fontWeight: sidebarHeaderFontWeight,
+                letterSpacing: "0.04em",
+                color: "#954949",
+                marginBottom: 6,
+                fontFamily: "Nunito, sans-serif",
+              }}
+            >
+              SORT
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {/* Sort Field Dropdown */}
+              <div style={{ flex: 1 }}>
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(92, 60, 56, 0.2)",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
+                    color: "#1b1b1b",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {nav === "books" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="CompletedDate">Completed Date</option>
+                    </>
+                  )}
+                  {nav === "movies" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                    </>
+                  )}
+                  {nav === "tv" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="LastAirDate">Last Air Date</option>
+                      <option value="FirstAirDate">First Air Date</option>
+                    </>
+                  )}
+                  {nav === "games" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                    </>
+                  )}
+                  {(nav === "home" || nav === "year-this" || nav === "year-previous") && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                    </>
+                  )}
+                </select>
+              </div>
+              
+              {/* Sort Order Dropdown */}
+              <div style={{ flex: 1 }}>
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(92, 60, 56, 0.2)",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
+                    color: "#1b1b1b",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="Asc">Asc</option>
+                  <option value="Desc">Desc</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 12, flex: 1, marginTop: 14 }}>
             {/* Library Module */}
             <div
@@ -1330,8 +1850,323 @@ export default function Page() {
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
+                {openSection === "books" ? (
+                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <button
+                      onClick={() => setReadingStatusOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                    </button>
+                    {readingStatusOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {readingStatuses.map((status) => {
+                          const active = readingStatusFilter === status;
+                          return (
+                            <button
+                              key={`reading-${status}`}
+                              onClick={() => setReadingStatusFilter(active ? null : status)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {status}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {readingStatusCounts[status] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setFormatOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                    </button>
+                    {formatOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {bookFormats.map((format) => {
+                          const active = formatFilter === format;
+                          return (
+                            <button
+                              key={`format-${format}`}
+                              onClick={() => setFormatFilter(active ? null : format)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {format}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {formatCounts[format] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setSeriesOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                    </button>
+                    {seriesOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {bookSeries.map((series) => {
+                          const active = seriesFilter === series;
+                          return (
+                            <button
+                              key={`series-${series}`}
+                              onClick={() => setSeriesFilter(active ? null : series)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {series}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {seriesCounts[series] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setGenreOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
+                    </button>
+                    {genreOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {bookGenres.map((genre) => {
+                          const active = genreFilter === genre;
+                          return (
+                            <button
+                              key={`genre-${genre}`}
+                              onClick={() => setGenreFilter(active ? null : genre)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {genre}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {genreCounts[genre] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setWishlistOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
+                    </button>
+                    {wishlistOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <button
+                          onClick={() => setWishlistFilter((v) => !v)}
+                          className={`sideSubItem ${wishlistFilter ? "active" : ""}`}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                          }}
+                        >
+                          <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                            Wishlist Books
+                          </span>
+                          <span
+                            style={{
+                              minWidth: 24,
+                              height: 20,
+                              padding: "0 8px",
+                              borderRadius: 12,
+                              fontSize: 12,
+                              textAlign: "center",
+                              background: wishlistFilter ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                              color: "#333",
+                              border: "1px solid rgba(0,0,0,0.12)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {wishlistCount}
+                          </span>
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <button
                   onClick={() => {
+                    setMovieWatchFilter(null);
+                    setMovieGenreFilter(null);
                     setNav("movies");
                     setOpenSection((s) => (s === "movies" ? null : "movies"));
                   }}
@@ -1364,12 +2199,144 @@ export default function Page() {
                     </span>
                     Movies
                   </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
+
+                {openSection === "movies" ? (
+                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <button
+                      onClick={() => setMovieWatchStatusOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
+                    </button>
+                    {movieWatchStatusOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {["Watched", "Unwatched"].map((status) => {
+                          const active = movieWatchFilter === status;
+                          return (
+                            <button
+                              key={`movie-watch-${status}`}
+                              onClick={() => setMovieWatchFilter(active ? null : status)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {status}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {movieWatchCounts[status] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setMovieGenreOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
+                    </button>
+                    {movieGenreOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {movieGenres.map((genre) => {
+                          const active = movieGenreFilter === genre;
+                          return (
+                            <button
+                              key={`movie-genre-${genre}`}
+                              onClick={() => setMovieGenreFilter(active ? null : genre)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {genre}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {movieGenreCounts[genre] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <button
                   onClick={() => {
                     setWatchFilter(null);
                     setShowFilter(null);
+                    setTagFilter(null);
                     setNav("tv");
                     setOpenSection((s) => (s === "tv" ? null : "tv"));
                   }}
@@ -1423,8 +2390,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>Watch Status</span>
-                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 11 }}>+</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1449,16 +2416,18 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 18,
-                                  height: 16,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 10,
-                                  lineHeight: "16px",
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
                                   textAlign: "center",
                                   background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
                                   color: "#333",
                                   border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
                                 }}
                               >
                                 {watchCounts[status] ?? 0}
@@ -1484,8 +2453,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>Show Status</span>
-                      <span style={{ color: "#8A8A8A", fontWeight: 700, fontSize: 11 }}>+</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1510,19 +2479,84 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 18,
-                                  height: 16,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 10,
-                                  lineHeight: "16px",
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
                                   textAlign: "center",
                                   background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
                                   color: "#333",
                                   border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
                                 }}
                               >
                                 {showCounts[status] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setTagOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
+                    </button>
+                    {tagOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {tvTags.map((tag) => {
+                          const active = tagFilter === tag;
+                          return (
+                            <button
+                              key={`tag-${tag}`}
+                              onClick={() => setTagFilter(active ? null : tag)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                                {tag}
+                              </span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {tvTagCounts[tag] ?? 0}
                               </span>
                             </button>
                           );
@@ -1633,7 +2667,6 @@ export default function Page() {
                   <div style={{ paddingLeft: 30, display: "flex", flexDirection: "column", gap: 0 }}>
                     <button
                       onClick={() => setNav("year-this")}
-                      className={`sideItem ${nav === "year-this" ? "active" : ""}`}
                       style={{
                         width: "100%",
                         textAlign: "left",
@@ -1643,17 +2676,22 @@ export default function Page() {
                         gap: 8,
                         borderBottom: "1px solid rgba(0,0,0,0.06)",
                         padding: "8px 0",
-                        fontSize: 12,
+                        fontSize: 14,
+                        fontFamily: "Nunito, sans-serif",
+                        color: "#4A4A4A",
+                        background: nav === "year-this" ? "rgba(138, 76, 76, 0.15)" : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        borderRadius: 0,
                       }}
                     >
-                      <span style={{ fontWeight: "400" }}>{new Date().getFullYear()}</span>
+                      <span style={{ fontWeight: "600", fontFamily: "Nunito, sans-serif" }}>{new Date().getFullYear()}</span>
                       <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                     </button>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                       <button
                         onClick={() => setNav("year-previous")}
-                        className={`sideItem ${nav === "year-previous" ? "active" : ""}`}
                         style={{
                           width: "100%",
                           textAlign: "left",
@@ -1663,16 +2701,22 @@ export default function Page() {
                           gap: 8,
                           borderBottom: "1px solid rgba(0,0,0,0.06)",
                           padding: "8px 0",
-                          fontSize: 12,
+                          fontSize: 14,
+                          fontFamily: "Nunito, sans-serif",
+                          color: "#4A4A4A",
+                          background: nav === "year-previous" ? "rgba(138, 76, 76, 0.15)" : "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          borderRadius: 0,
                         }}
                       >
-                        <span style={{ fontWeight: "400" }}>Previous Year</span>
+                        <span style={{ fontWeight: "600", fontFamily: "Nunito, sans-serif" }}>Previous Year</span>
                         <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                       </button>
 
                       {nav === "year-previous" && (
                         <div style={{ paddingLeft: 16, paddingTop: 4, paddingBottom: 8 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif", color: "rgba(0, 0, 0, 0.7)" }}>
                             Select Year:
                             <input
                               type="number"
@@ -1680,7 +2724,7 @@ export default function Page() {
                               max="2025"
                               value={selectedPreviousYear}
                               onChange={(e) => setSelectedPreviousYear(Number(e.target.value) || 2025)}
-                              style={{ width: 80, fontSize: 11 }}
+                              style={{ width: 80, fontSize: 14 }}
                             />
                           </label>
                         </div>
@@ -2124,12 +3168,24 @@ export default function Page() {
                 </button>
                 {settingsOpen.gameInsets ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.85 }}>
+                      Platform
+                      <select
+                        value={selectedPlatformForInsets}
+                        onChange={(e) => setSelectedPlatformForInsets(e.target.value)}
+                        style={{ flex: 1, padding: "4px 8px", fontSize: 11 }}
+                      >
+                        {detectedPlatforms.map(platform => (
+                          <option key={platform} value={platform}>{platform}</option>
+                        ))}
+                      </select>
+                    </label>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.8 }}>
                       Top
                       <input
                         type="number"
-                        value={gameInsetTopPx}
-                        onChange={(e) => updateGameInsetTopPx(Number(e.target.value) || 0)}
+                        value={platformInsets[selectedPlatformForInsets]?.top ?? 5}
+                        onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -2137,8 +3193,8 @@ export default function Page() {
                       Right
                       <input
                         type="number"
-                        value={gameInsetRightPx}
-                        onChange={(e) => updateGameInsetRightPx(Number(e.target.value) || 0)}
+                        value={platformInsets[selectedPlatformForInsets]?.right ?? 5}
+                        onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'right', Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -2146,8 +3202,8 @@ export default function Page() {
                       Bottom
                       <input
                         type="number"
-                        value={gameInsetBottomPx}
-                        onChange={(e) => updateGameInsetBottomPx(Number(e.target.value) || 0)}
+                        value={platformInsets[selectedPlatformForInsets]?.bottom ?? 5}
+                        onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'bottom', Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
@@ -2155,13 +3211,23 @@ export default function Page() {
                       Left
                       <input
                         type="number"
-                        value={gameInsetLeftPx}
-                        onChange={(e) => updateGameInsetLeftPx(Number(e.target.value) || 0)}
+                        value={platformInsets[selectedPlatformForInsets]?.left ?? 5}
+                        onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
                         style={{ width: 64 }}
                       />
                     </label>
-                    <div style={{ fontSize: 11, opacity: 0.6 }}>
+                    <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
                       Frame: {GAME_SRC_W}×{GAME_SRC_H}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4, padding: "6px 8px", background: "rgba(0,0,0,0.05)", borderRadius: 4 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>Frame File:</div>
+                      <code style={{ fontSize: 10, background: "rgba(0,0,0,0.08)", padding: "2px 6px", borderRadius: 3, fontFamily: "monospace" }}>
+                        {getPlatformFrameFilename(selectedPlatformForInsets)}
+                      </code>
+                      <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
+                        Place in /public folder
+                        {selectedPlatformForInsets === "Default" ? " (falls back to game-frame.png)" : ""}
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -2616,6 +3682,10 @@ export default function Page() {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
+                      const gamePlatformRaw = isGame && 'platform' in show ? show.platform : undefined;
+                      // Determine primary platform based on priority (Steam > Epic > Default)
+                      const gamePlatform = isGame ? getPrimaryPlatform(gamePlatformRaw) : undefined;
+                      const isSteam = gamePlatform === "Steam";
                       const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
                       // Calculate x as cumulative sum of all previous items + gaps
                       let x = 0;
@@ -2631,10 +3701,38 @@ export default function Page() {
                       const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
                       // Use appropriate insets based on item type
-                      const insetTopVal = isBook ? bookInsetTopPx : isMovie ? movieInsetTopPx : isGame ? gameInsetTopPx : caseInsetTopPx;
-                      const insetRightVal = isBook ? bookInsetRightPx : isMovie ? movieInsetRightPx : isGame ? gameInsetRightPx : caseInsetRightPx;
-                      const insetBottomVal = isBook ? bookInsetBottomPx : isMovie ? movieInsetBottomPx : isGame ? gameInsetBottomPx : caseInsetBottomPx;
-                      const insetLeftVal = isBook ? bookInsetLeftPx : isMovie ? movieInsetLeftPx : isGame ? gameInsetLeftPx : caseInsetLeftPx;
+                      // For games, look up platform-specific insets or use Default
+                      let insetTopVal, insetRightVal, insetBottomVal, insetLeftVal;
+                      if (isBook) {
+                        insetTopVal = bookInsetTopPx;
+                        insetRightVal = bookInsetRightPx;
+                        insetBottomVal = bookInsetBottomPx;
+                        insetLeftVal = bookInsetLeftPx;
+                      } else if (isMovie) {
+                        insetTopVal = movieInsetTopPx;
+                        insetRightVal = movieInsetRightPx;
+                        insetBottomVal = movieInsetBottomPx;
+                        insetLeftVal = movieInsetLeftPx;
+                      } else if (isGame) {
+                        const platformKey = gamePlatform || "Default";
+                        const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+                        
+                        // Use platform-specific insets only if this platform has been explicitly customized
+                        // Otherwise use Default insets for all platforms
+                        const usePlatformSpecific = customizedPlatforms.has(platformKey) && platformKey !== "Default";
+                        const insets = usePlatformSpecific ? (platformInsets[platformKey] || defaultInsets) : defaultInsets;
+                        
+                        insetTopVal = insets.top;
+                        insetRightVal = insets.right;
+                        insetBottomVal = insets.bottom;
+                        insetLeftVal = insets.left;
+                      } else {
+                        insetTopVal = caseInsetTopPx;
+                        insetRightVal = caseInsetRightPx;
+                        insetBottomVal = caseInsetBottomPx;
+                        insetLeftVal = caseInsetLeftPx;
+                      }
+                      
                       const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
                       const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
 
@@ -2767,7 +3865,18 @@ export default function Page() {
                           {/* Case frame overlay */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={isBook ? BOOK_FRAME_IMAGE : isMovie ? MOVIE_FRAME_IMAGE : isGame ? GAME_FRAME_IMAGE : CASE_FRAME_IMAGE}
+                            src={
+                              isBook ? BOOK_FRAME_IMAGE : 
+                              isMovie ? MOVIE_FRAME_IMAGE : 
+                              isGame ? getPlatformFrameFilename(gamePlatform) : 
+                              CASE_FRAME_IMAGE
+                            }
+                            onError={(e) => {
+                              // Fall back to default game frame if platform-specific frame fails to load
+                              if (isGame && e.currentTarget.src !== GAME_FRAME_IMAGE) {
+                                e.currentTarget.src = GAME_FRAME_IMAGE;
+                              }
+                            }}
                             alt=""
                             style={{
                             position: "absolute",
@@ -2850,6 +3959,7 @@ export default function Page() {
           color: #8a4c4c;
         }
         .sideItem.primary { background: transparent; }
+        .sideItem.primary:hover { background: rgba(0,0,0,0.02); }
         .sideItem.primary.active { background: rgba(138, 76, 76, 0.12); color: #8a4c4c; }
         .sideSubItem {
           width: 100%;
@@ -2857,9 +3967,9 @@ export default function Page() {
           border-radius: 8px;
           border: 1px solid rgba(0, 0, 0, 0.06);
           background: rgba(255, 255, 255, 0.6);
-          color: #1b1b1b;
-          font-size: 11.5px;
-          font-weight: 600;
+          color: rgba(0, 0, 0, 0.7);
+          font-size: 14px;
+          font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
           transition: background 140ms ease, border-color 140ms ease;
