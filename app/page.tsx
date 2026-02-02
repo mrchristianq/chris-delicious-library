@@ -130,7 +130,7 @@ const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
 const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
-const SHELF_IMAGE = "/shelves-light-single2.png";
+const DEFAULT_SHELF_IMAGE = "/shelves-light-single2.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -307,6 +307,8 @@ export default function Page() {
     sidebar: false,
   });
 
+  const [showThemes, setShowThemes] = useState(false);
+
   // UI
   const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
   const [posterSizeMovies, setPosterSizeMovies] = useState<number>(108);
@@ -355,6 +357,9 @@ export default function Page() {
   const [sidebarGap, setSidebarGap] = useState<number>(10);
   const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
   const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("600");
+
+  // Shelf theme
+  const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
@@ -625,6 +630,8 @@ export default function Page() {
     setSidebarGap(getSetting("sidebarGap", 10));
     setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
     setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
+    
+    setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
   }, [settingsRows]);
 
   // Function to save all current settings to spreadsheet
@@ -674,6 +681,7 @@ export default function Page() {
       { key: "sidebarGap", value: sidebarGap, category: "Sidebar", description: "Sidebar Icon Gap" },
       { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
       { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
+      { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Wood Type" },
     ];
     
     try {
@@ -769,6 +777,10 @@ export default function Page() {
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
+  };
+  const updateShelfTheme = (value: string) => {
+    setShelfTheme(value);
+    saveSetting("shelfTheme", value, "Themes", "Shelf Wood Type");
   };
   
   // Update platform-specific insets
@@ -1150,8 +1162,11 @@ export default function Page() {
         const result = aVal.localeCompare(bVal);
         return order === "Asc" ? result : -result;
       } else if (field === "ReleaseDate") {
-        aVal = (a as any).releaseDate ? Date.parse((a as any).releaseDate) : NaN;
-        bVal = (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
+        // For TV shows, use firstAirDate; for others use releaseDate
+        aVal = (a as any).firstAirDate ? Date.parse((a as any).firstAirDate) : 
+               (a as any).releaseDate ? Date.parse((a as any).releaseDate) : NaN;
+        bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) : 
+               (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
       } else if (field === "CompletedDate") {
         aVal = (a as any).completedDate ? Date.parse((a as any).completedDate) : NaN;
         bVal = (b as any).completedDate ? Date.parse((b as any).completedDate) : NaN;
@@ -1457,9 +1472,44 @@ export default function Page() {
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
   const shelves = useMemo(() => {
+    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
     const out: any[][] = [];
-    for (let i = 0; i < shows.length; i += postersPerShelf) {
-      out.push(shows.slice(i, i + postersPerShelf));
+    
+    // For home page with mixed item types, calculate shelf distribution based on actual item sizes
+    if (nav === "home") {
+      let currentShelf: any[] = [];
+      let currentWidth = 0;
+      
+      for (let i = 0; i < shows.length; i++) {
+        const show = shows[i];
+        const isBook = show.__type === "book";
+        const isMovie = show.__type === "movie";
+        const isGame = show.__type === "game";
+        const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
+        const itemWidth = itemSize + (currentShelf.length > 0 ? gap : 0);
+        
+        // Check if adding this item would exceed the usable width
+        if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
+          // Start a new shelf
+          out.push(currentShelf);
+          currentShelf = [show];
+          currentWidth = itemSize;
+        } else {
+          // Add to current shelf
+          currentShelf.push(show);
+          currentWidth += itemWidth;
+        }
+      }
+      
+      // Push the last shelf if it has items
+      if (currentShelf.length > 0) {
+        out.push(currentShelf);
+      }
+    } else {
+      // For single-type views (books, movies, games, tv), use the simple fixed-size calculation
+      for (let i = 0; i < shows.length; i += postersPerShelf) {
+        out.push(shows.slice(i, i + postersPerShelf));
+      }
     }
 
     const headerOffset = 140;
@@ -1467,7 +1517,7 @@ export default function Page() {
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT]);
+  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, posterSizeBooks, posterSizeMovies, posterSizeGames, posterSizeTv, gap]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111" }}>
@@ -2802,6 +2852,43 @@ export default function Page() {
 
                 <button
                   onClick={() => {
+                    setShowThemes(!showThemes);
+                  }}
+                  className={`sideItem primary ${showThemes ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: showThemes ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: showThemes ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-theme.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Themes
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     console.log("Settings button clicked, current state:", showSettings);
                     setShowSettings(!showSettings);
                   }}
@@ -2840,6 +2927,94 @@ export default function Page() {
               </div>
             </div>
             </div>
+
+            {showThemes ? (
+              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>SHELF WOOD TYPE</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    onClick={() => updateShelfTheme("/shelves-light-single2.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelves-light-single2.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelves-light-single2.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: shelfTheme === "/shelves-light-single2.png" ? 600 : 400,
+                    }}
+                  >
+                    Default (Light Oak)
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf-dark-walnut.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf-dark-walnut.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf-dark-walnut.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: shelfTheme === "/shelf-dark-walnut.png" ? 600 : 400,
+                    }}
+                  >
+                    Dark Walnut
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf-weathered-oak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf-weathered-oak.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf-weathered-oak.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: shelfTheme === "/shelf-weathered-oak.png" ? 600 : 400,
+                    }}
+                  >
+                    Weathered Oak
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf-honey-oak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf-honey-oak.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf-honey-oak.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: shelfTheme === "/shelf-honey-oak.png" ? 600 : 400,
+                    }}
+                  >
+                    Honey Oak
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf-teak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf-teak.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf-teak.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: shelfTheme === "/shelf-teak.png" ? 600 : 400,
+                    }}
+                  >
+                    Teak
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {showSettings ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3661,7 +3836,7 @@ export default function Page() {
                     position: "relative",
                     height: SHELF_HEIGHT,
                     overflow: "hidden",
-                    backgroundImage: `url(${SHELF_IMAGE})`,
+                    backgroundImage: `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
                     backgroundSize: "100% 100%",
