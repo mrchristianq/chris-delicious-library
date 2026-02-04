@@ -415,6 +415,16 @@ export default function Page() {
     "Default": { top: 5, right: 5, bottom: 5, left: 5 },
   });
   
+  // Platform-specific overlay size and position
+  const [platformOverlaySettings, setPlatformOverlaySettings] = useState<Record<string, { width: number; height: number; top: number; left: number }>>({
+    "Default": { width: 100, height: 100, top: 0, left: 0 },
+  });
+  
+  // Platform-specific cover scale (for the poster image inside the inset)
+  const [platformCoverScale, setPlatformCoverScale] = useState<Record<string, number>>({
+    "Default": 100,
+  });
+  
   // Track which platforms have been explicitly customized (not using Default)
   const [customizedPlatforms, setCustomizedPlatforms] = useState<Set<string>>(new Set());
   
@@ -671,15 +681,22 @@ export default function Page() {
           saveSettingToSheet("movieInsetLeftPx", movieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)"),
         ];
       } else if (insetType === 'game') {
-        // Save only the currently selected platform's insets
+        // Save only the currently selected platform's insets, overlay settings, and cover scale
         const platform = selectedPlatformForInsets;
         const insets = platformInsets[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
+        const overlaySettings = platformOverlaySettings[platform] || { width: 100, height: 100, top: 0, left: 0 };
+        const coverScale = platformCoverScale[platform] || 100;
         
         savePromises = [
           saveSettingToSheet(`${platform}InsetTopPx`, insets.top, `${platform} Insets`, `${platform} Top Inset (px)`),
           saveSettingToSheet(`${platform}InsetRightPx`, insets.right, `${platform} Insets`, `${platform} Right Inset (px)`),
           saveSettingToSheet(`${platform}InsetBottomPx`, insets.bottom, `${platform} Insets`, `${platform} Bottom Inset (px)`),
           saveSettingToSheet(`${platform}InsetLeftPx`, insets.left, `${platform} Insets`, `${platform} Left Inset (px)`),
+          saveSettingToSheet(`${platform}OverlayWidth`, overlaySettings.width, `${platform} Overlay`, `${platform} Overlay Width (%)`),
+          saveSettingToSheet(`${platform}OverlayHeight`, overlaySettings.height, `${platform} Overlay`, `${platform} Overlay Height (%)`),
+          saveSettingToSheet(`${platform}OverlayTop`, overlaySettings.top, `${platform} Overlay`, `${platform} Overlay Top (%)`),
+          saveSettingToSheet(`${platform}OverlayLeft`, overlaySettings.left, `${platform} Overlay`, `${platform} Overlay Left (%)`),
+          saveSettingToSheet(`${platform}CoverScale`, coverScale, `${platform} Cover`, `${platform} Cover Scale (%)`),
         ];
       }
 
@@ -738,6 +755,21 @@ export default function Page() {
     
     const loadedCustomizedPlatforms = new Set<string>();
     
+    // Also prepare overlay settings structure
+    const loadedPlatformOverlaySettings: Record<string, { width: number; height: number; top: number; left: number }> = {
+      "Default": {
+        width: getSetting("DefaultOverlayWidth", 100),
+        height: getSetting("DefaultOverlayHeight", 100),
+        top: getSetting("DefaultOverlayTop", 0),
+        left: getSetting("DefaultOverlayLeft", 0),
+      }
+    };
+    
+    // Also prepare cover scale settings structure
+    const loadedPlatformCoverScale: Record<string, number> = {
+      "Default": getSetting("DefaultCoverScale", 100),
+    };
+    
     // Load settings for any platforms found in settings
     settingsRows.forEach(row => {
       const key = safeStr(row["Key"]);
@@ -755,9 +787,34 @@ export default function Page() {
           loadedCustomizedPlatforms.add(platform);
         }
       }
+      
+      // Also check for overlay settings
+      const overlayMatch = key.match(/^(.+)OverlayWidth$/);
+      if (overlayMatch && overlayMatch[1] !== "Default") {
+        const platform = overlayMatch[1];
+        if (!loadedPlatformOverlaySettings[platform]) {
+          loadedPlatformOverlaySettings[platform] = {
+            width: getSetting(`${platform}OverlayWidth`, 100),
+            height: getSetting(`${platform}OverlayHeight`, 100),
+            top: getSetting(`${platform}OverlayTop`, 0),
+            left: getSetting(`${platform}OverlayLeft`, 0),
+          };
+          loadedCustomizedPlatforms.add(platform);
+        }
+      }
+      
+      // Also check for cover scale settings
+      const coverScaleMatch = key.match(/^(.+)CoverScale$/);
+      if (coverScaleMatch && coverScaleMatch[1] !== "Default") {
+        const platform = coverScaleMatch[1];
+        loadedPlatformCoverScale[platform] = getSetting(`${platform}CoverScale`, 100);
+        loadedCustomizedPlatforms.add(platform);
+      }
     });
     
     setPlatformInsets(loadedPlatformInsets);
+    setPlatformOverlaySettings(loadedPlatformOverlaySettings);
+    setPlatformCoverScale(loadedPlatformCoverScale);
     setCustomizedPlatforms(loadedCustomizedPlatforms);
     
     setLogoSize(getSetting("logoSize", 230));
@@ -1073,6 +1130,43 @@ export default function Page() {
     
     const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
     saveSetting(`${platform}Inset${edgeCapitalized}Px`, value, `${platform} Insets`, `${platform} ${edgeCapitalized} Inset (px)`);
+  };
+  
+  // Update platform-specific overlay settings
+  const updatePlatformOverlay = (platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
+    setPlatformOverlaySettings(prev => {
+      const currentOverlaySettings = prev[platform] || { width: 100, height: 100, top: 0, left: 0 };
+      return {
+        ...prev,
+        [platform]: {
+          ...currentOverlaySettings,
+          [property]: value,
+        }
+      };
+    });
+    
+    // Mark this platform as customized if it's not Default
+    if (platform !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    }
+    
+    const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
+    saveSetting(`${platform}Overlay${propertyCapitalized}`, value, `${platform} Overlay`, `${platform} Overlay ${propertyCapitalized} (%)`);
+  };
+  
+  // Update platform-specific cover scale
+  const updatePlatformCoverScale = (platform: string, value: number) => {
+    setPlatformCoverScale(prev => ({
+      ...prev,
+      [platform]: value,
+    }));
+    
+    // Mark this platform as customized if it's not Default
+    if (platform !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    }
+    
+    saveSetting(`${platform}CoverScale`, value, `${platform} Cover`, `${platform} Cover Scale (%)`);
   };
   
   const updateLogoSize = (value: number) => {
@@ -3729,7 +3823,91 @@ export default function Page() {
                           <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
                             Frame: {GAME_SRC_W}×{GAME_SRC_H}
                           </div>
-                          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4, padding: "6px 8px", background: "rgba(0,0,0,0.05)", borderRadius: 4 }}>
+                          
+                          {/* Overlay Size & Position Controls */}
+                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.1)" }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 4 }}>OVERLAY ADJUSTMENTS</div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                Width
+                                <input
+                                  type="number"
+                                  value={platformOverlaySettings[selectedPlatformForInsets]?.width ?? 100}
+                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'width', Number(e.target.value) || 100)}
+                                  style={{ width: 50 }}
+                                  min={50}
+                                  max={150}
+                                  step={0.1}
+                                />
+                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                Height
+                                <input
+                                  type="number"
+                                  value={platformOverlaySettings[selectedPlatformForInsets]?.height ?? 100}
+                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'height', Number(e.target.value) || 100)}
+                                  style={{ width: 50 }}
+                                  min={50}
+                                  max={150}
+                                  step={0.1}
+                                />
+                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                Top
+                                <input
+                                  type="number"
+                                  value={platformOverlaySettings[selectedPlatformForInsets]?.top ?? 0}
+                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
+                                  style={{ width: 50 }}
+                                  min={-50}
+                                  max={50}
+                                  step={0.1}
+                                />
+                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                Left
+                                <input
+                                  type="number"
+                                  value={platformOverlaySettings[selectedPlatformForInsets]?.left ?? 0}
+                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
+                                  style={{ width: 50 }}
+                                  min={-50}
+                                  max={50}
+                                  step={0.1}
+                                />
+                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
+                              </label>
+                            </div>
+                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
+                              Adjust overlay frame size and position
+                            </div>
+                          </div>
+                          
+                          {/* Cover Scale Control */}
+                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.1)" }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 4 }}>COVER IMAGE SCALE</div>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
+                              Scale
+                              <input
+                                type="number"
+                                value={platformCoverScale[selectedPlatformForInsets] ?? 100}
+                                onChange={(e) => updatePlatformCoverScale(selectedPlatformForInsets, Number(e.target.value) || 100)}
+                                style={{ width: 60 }}
+                                min={50}
+                                max={200}
+                                step={1}
+                              />
+                              <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
+                            </label>
+                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
+                              Scale the cover art to prevent cutoff (100% = original size)
+                            </div>
+                          </div>
+                          
+                          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 8, padding: "6px 8px", background: "rgba(0,0,0,0.05)", borderRadius: 4 }}>
                             <div style={{ fontWeight: 600, marginBottom: 2 }}>Frame File:</div>
                             <code style={{ fontSize: 10, background: "rgba(0,0,0,0.08)", padding: "2px 6px", borderRadius: 3, fontFamily: "monospace" }}>
                               {getPlatformFrameFilename(selectedPlatformForInsets)}
@@ -4295,6 +4473,27 @@ export default function Page() {
                         insetLeftVal = caseInsetLeftPx;
                       }
                       
+                      // Get overlay settings and cover scale for games
+                      let overlayWidth = 100;
+                      let overlayHeight = 100;
+                      let overlayTop = 0;
+                      let overlayLeft = 0;
+                      let coverScale = 100;
+                      
+                      if (isGame) {
+                        const platformKey = gamePlatform || "Default";
+                        const defaultOverlay = platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+                        const platformOverlay = platformOverlaySettings[platformKey];
+                        const overlay = platformOverlay || defaultOverlay;
+                        
+                        overlayWidth = overlay.width;
+                        overlayHeight = overlay.height;
+                        overlayTop = overlay.top;
+                        overlayLeft = overlay.left;
+                        
+                        coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || 100;
+                      }
+                      
                       const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
                       const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
 
@@ -4357,7 +4556,7 @@ export default function Page() {
                               left: insetLeft,
                               overflow: "hidden",
                               borderRadius: 0,
-                              background: "rgba(255,255,255,0.12)",
+                              background: isGame ? "transparent" : "rgba(255,255,255,0.12)",
                             }}
                           >
                             {showInsetGuide ? (
@@ -4385,6 +4584,7 @@ export default function Page() {
                                   height: "100%",
                                   objectFit: "cover",
                                   display: "block",
+                                  transform: isGame ? `scale(${coverScale / 100})` : "none",
                                 }}
                               />
                             ) : (
@@ -4420,6 +4620,7 @@ export default function Page() {
                               background:
                                 "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
                               mixBlendMode: "screen",
+                              transform: isGame ? `scale(${coverScale / 100})` : "none",
                             }}
                           />
                           </div>
@@ -4442,9 +4643,11 @@ export default function Page() {
                             alt=""
                             style={{
                             position: "absolute",
-                            inset: 0,
-                            width: "100%",
-                            height: "100%",
+                            top: isGame ? `${50 + overlayTop}%` : 0,
+                            left: isGame ? `${50 + overlayLeft}%` : 0,
+                            width: isGame ? "100%" : "100%",
+                            height: isGame ? "100%" : "100%",
+                            transform: isGame ? `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})` : "none",
                             objectFit: "fill",
                             pointerEvents: "none",
                             userSelect: "none",
