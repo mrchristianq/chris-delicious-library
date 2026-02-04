@@ -78,6 +78,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
+import { RolodexCounter } from "./components/RolodexCounter";
 
 type Row = Record<string, string>;
 
@@ -306,6 +307,7 @@ export default function Page() {
     syncIcon: boolean;
     icons: boolean;
     sidebar: boolean;
+    counter: boolean;
   }>({
     coverSize: false,
     framePosition: false,
@@ -320,6 +322,7 @@ export default function Page() {
     syncIcon: false,
     icons: false,
     sidebar: false,
+    counter: false,
   });
 
   const [showThemes, setShowThemes] = useState(false);
@@ -372,6 +375,17 @@ export default function Page() {
   const [sidebarGap, setSidebarGap] = useState<number>(10);
   const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
   const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("600");
+
+  // Counter configuration
+  const [counterTileSize, setCounterTileSize] = useState<number>(44);
+  const [counterTileSpacing, setCounterTileSpacing] = useState<number>(3);
+  const [counterNumberFontSize, setCounterNumberFontSize] = useState<number>(22);
+  const [counterLabelFontSize, setCounterLabelFontSize] = useState<number>(16);
+  const [counterLabelFontWeight, setCounterLabelFontWeight] = useState<string>("600");
+  const [counterLabelTop, setCounterLabelTop] = useState<number>(0);
+  const [counterLabelLeft, setCounterLabelLeft] = useState<number>(0);
+  const [counterTop, setCounterTop] = useState<number>(0);
+  const [counterLeft, setCounterLeft] = useState<number>(0);
 
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
@@ -832,6 +846,16 @@ export default function Page() {
     setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
     setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
     
+    setCounterTileSize(getSetting("counterTileSize", 44));
+    setCounterTileSpacing(getSetting("counterTileSpacing", 3));
+    setCounterNumberFontSize(getSetting("counterNumberFontSize", 22));
+    setCounterLabelFontSize(getSetting("counterLabelFontSize", 16));
+    setCounterLabelFontWeight(getSetting("counterLabelFontWeight", "600"));
+    setCounterLabelTop(getSetting("counterLabelTop", 0));
+    setCounterLabelLeft(getSetting("counterLabelLeft", 0));
+    setCounterTop(getSetting("counterTop", 0));
+    setCounterLeft(getSetting("counterLeft", 0));
+    
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
   }, [settingsRows]);
 
@@ -1212,6 +1236,44 @@ export default function Page() {
   const updateSidebarHeaderFontWeight = (value: string) => {
     setSidebarHeaderFontWeight(value);
     saveSetting("sidebarHeaderFontWeight", value, "Sidebar", "Sidebar Header Font Weight");
+  };
+
+  // Counter configuration update functions
+  const updateCounterTileSize = (value: number) => {
+    setCounterTileSize(value);
+    saveSetting("counterTileSize", value, "Counter", "Counter Tile Size (px)");
+  };
+  const updateCounterTileSpacing = (value: number) => {
+    setCounterTileSpacing(value);
+    saveSetting("counterTileSpacing", value, "Counter", "Counter Tile Spacing (px)");
+  };
+  const updateCounterNumberFontSize = (value: number) => {
+    setCounterNumberFontSize(value);
+    saveSetting("counterNumberFontSize", value, "Counter", "Counter Number Font Size");
+  };
+  const updateCounterLabelFontSize = (value: number) => {
+    setCounterLabelFontSize(value);
+    saveSetting("counterLabelFontSize", value, "Counter", "Counter Label Font Size");
+  };
+  const updateCounterLabelFontWeight = (value: string) => {
+    setCounterLabelFontWeight(value);
+    saveSetting("counterLabelFontWeight", value, "Counter", "Counter Label Font Weight");
+  };
+  const updateCounterLabelTop = (value: number) => {
+    setCounterLabelTop(value);
+    saveSetting("counterLabelTop", value, "Counter", "Counter Label Top Offset");
+  };
+  const updateCounterLabelLeft = (value: number) => {
+    setCounterLabelLeft(value);
+    saveSetting("counterLabelLeft", value, "Counter", "Counter Label Left Offset");
+  };
+  const updateCounterTop = (value: number) => {
+    setCounterTop(value);
+    saveSetting("counterTop", value, "Counter", "Counter Top Offset");
+  };
+  const updateCounterLeft = (value: number) => {
+    setCounterLeft(value);
+    saveSetting("counterLeft", value, "Counter", "Counter Left Offset");
   };
 
   // Helper to check if a value contains spreadsheet error #REF!
@@ -2036,6 +2098,25 @@ export default function Page() {
               ))}
             </div>
           </div>
+
+          {/* Rolodex Counter */}
+          {!loading && (
+            <div style={{ padding: "10px 18px 0 18px", display: "flex", justifyContent: "center" }}>
+              <RolodexCounter 
+                value={shows.length} 
+                digitHeight={counterTileSize}
+                digitWidth={Math.round(counterTileSize * 0.73)}
+                spacing={counterTileSpacing}
+                numberFontSize={counterNumberFontSize}
+                labelFontSize={counterLabelFontSize}
+                labelFontWeight={counterLabelFontWeight}
+                labelTop={counterLabelTop}
+                labelLeft={counterLabelLeft}
+                counterTop={counterTop}
+                counterLeft={counterLeft}
+              />
+            </div>
+          )}
 
           {/* Search */}
           <div style={{ padding: "10px 18px 0 18px" }}>
@@ -4160,6 +4241,152 @@ export default function Page() {
                         <option value="600">Semi-Bold (600)</option>
                         <option value="700">Bold (700)</option>
                       </select>
+                    </label>
+                  </div>
+                ) : null}
+
+                {/* Counter Configuration */}
+                <button
+                  onClick={() => setSettingsOpen({ ...settingsOpen, counter: !settingsOpen.counter })}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#8A8A8A",
+                    marginTop: 4,
+                  }}
+                >
+                  <span>COUNTER CONFIGURATION</span>
+                  <span>{settingsOpen.counter ? "−" : "+"}</span>
+                </button>
+                {settingsOpen.counter ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Tile Size
+                      <input
+                        type="range"
+                        min={30}
+                        max={60}
+                        step={2}
+                        value={counterTileSize}
+                        onChange={(e) => updateCounterTileSize(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterTileSize}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Tile Spacing
+                      <input
+                        type="range"
+                        min={0}
+                        max={10}
+                        step={1}
+                        value={counterTileSpacing}
+                        onChange={(e) => updateCounterTileSpacing(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterTileSpacing}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Number Font Size
+                      <input
+                        type="range"
+                        min={10}
+                        max={40}
+                        step={1}
+                        value={counterNumberFontSize}
+                        onChange={(e) => updateCounterNumberFontSize(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterNumberFontSize}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Label Font Size
+                      <input
+                        type="range"
+                        min={10}
+                        max={24}
+                        step={1}
+                        value={counterLabelFontSize}
+                        onChange={(e) => updateCounterLabelFontSize(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterLabelFontSize}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Label Font Weight
+                      <select
+                        value={counterLabelFontWeight}
+                        onChange={(e) => updateCounterLabelFontWeight(e.target.value)}
+                        style={{ flex: 1, fontSize: 11 }}
+                      >
+                        <option value="300">Light (300)</option>
+                        <option value="400">Normal (400)</option>
+                        <option value="500">Medium (500)</option>
+                        <option value="600">Semi-Bold (600)</option>
+                        <option value="700">Bold (700)</option>
+                        <option value="800">Extra-Bold (800)</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Label Top Offset
+                      <input
+                        type="range"
+                        min={-20}
+                        max={20}
+                        step={1}
+                        value={counterLabelTop}
+                        onChange={(e) => updateCounterLabelTop(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterLabelTop}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Label Left Offset
+                      <input
+                        type="range"
+                        min={-50}
+                        max={50}
+                        step={1}
+                        value={counterLabelLeft}
+                        onChange={(e) => updateCounterLabelLeft(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterLabelLeft}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Counter Top Offset
+                      <input
+                        type="range"
+                        min={-20}
+                        max={20}
+                        step={1}
+                        value={counterTop}
+                        onChange={(e) => updateCounterTop(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterTop}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Counter Left Offset
+                      <input
+                        type="range"
+                        min={-50}
+                        max={50}
+                        step={1}
+                        value={counterLeft}
+                        onChange={(e) => updateCounterLeft(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 28, textAlign: "right" }}>{counterLeft}</span>
                     </label>
                   </div>
                 ) : null}
