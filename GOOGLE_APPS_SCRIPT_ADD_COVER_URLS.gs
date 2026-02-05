@@ -8,12 +8,13 @@
  * 3. Delete any existing code
  * 4. Paste this entire script
  * 5. Save (name it "Add Cover URLs")
- * 6. Run the function you want:
- *    - addCoverUrlsToTV() - for "Shows" sheet
- *    - addCoverUrlsToBooks()
- *    - addCoverUrlsToMovies()
- *    - addCoverUrlsToAll() - adds to Shows, Books, Movies
+ * 6. Run addCoverUrlsToAll() once to populate existing items
  * 7. Grant permissions when prompted
+ * 
+ * Features:
+ * - Auto-populates GitHubCoverURL when you add/edit a Title
+ * - Works on Shows, Books, and Movies sheets
+ * - Menu option to manually refresh all URLs
  * 
  * Note: Games uses a separate script (GOOGLE_APPS_SCRIPT_GAMES_COVER_URLS.gs)
  * in the Games spreadsheet
@@ -132,4 +133,39 @@ function onOpen() {
       .addSeparator()
       .addItem('Add URLs to ALL Sheets', 'addCoverUrlsToAll')
       .addToUi();
+}
+
+// Automatically populate GitHubCoverURL when Title is added/edited
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  const sheetName = sheet.getName();
+  const range = e.range;
+  const row = range.getRow();
+  const col = range.getColumn();
+  
+  // Skip header row
+  if (row === 1) return;
+  
+  // Determine sheet category
+  let category;
+  if (sheetName === 'Shows') category = 'tv';
+  else if (sheetName === 'Books') category = 'books';
+  else if (sheetName === 'Movies') category = 'movies';
+  else return; // Not a tracked sheet
+  
+  // Get header row to find columns
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const titleColIndex = headers.indexOf('Title');
+  const urlColIndex = headers.indexOf('GitHubCoverURL');
+  
+  if (titleColIndex === -1 || urlColIndex === -1) return;
+  
+  // If Title column was edited, update GitHubCoverURL
+  if (col === titleColIndex + 1) {
+    const title = sheet.getRange(row, titleColIndex + 1).getValue();
+    if (title) {
+      const url = getGitHubCoverUrl(title, category);
+      sheet.getRange(row, urlColIndex + 1).setValue(url);
+    }
+  }
 }

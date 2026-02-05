@@ -7,10 +7,12 @@
  * 3. Delete any existing code
  * 4. Paste this entire script
  * 5. Save (name it "Add Game Cover URLs")
- * 6. Run addCoverUrlsToGames()
+ * 6. Run addCoverUrlsToGames() once to populate existing items
  * 7. Grant permissions when prompted
  * 
- * This will add a GitHubCoverURL column to your "Database" sheet
+ * Features:
+ * - Auto-populates GitHubCoverURL when you add/edit a Title in Database sheet
+ * - Menu option to manually refresh all URLs
  */
 
 // Sanitize title to match cover filename (must match app logic)
@@ -101,4 +103,35 @@ function onOpen() {
   ui.createMenu('📚 Cover URLs')
       .addItem('Add Cover URLs to Games', 'addCoverUrlsToGames')
       .addToUi();
+}
+
+// Automatically populate GitHubCoverURL when Title is added/edited
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  const sheetName = sheet.getName();
+  const range = e.range;
+  const row = range.getRow();
+  const col = range.getColumn();
+  
+  // Skip header row
+  if (row === 1) return;
+  
+  // Only process Database sheet
+  if (sheetName !== 'Database') return;
+  
+  // Get header row to find columns
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const titleColIndex = headers.indexOf('Title');
+  const urlColIndex = headers.indexOf('GitHubCoverURL');
+  
+  if (titleColIndex === -1 || urlColIndex === -1) return;
+  
+  // If Title column was edited, update GitHubCoverURL
+  if (col === titleColIndex + 1) {
+    const title = sheet.getRange(row, titleColIndex + 1).getValue();
+    if (title) {
+      const url = getGitHubCoverUrl(title);
+      sheet.getRange(row, urlColIndex + 1).setValue(url);
+    }
+  }
 }
