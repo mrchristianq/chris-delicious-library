@@ -1057,45 +1057,57 @@ export default function Page() {
       // Update settingsRows first
       setSettingsRows(newSettings);
       
+      // Create a Map for O(1) lookups instead of repeated .find() calls
+      const settingsMap = new Map(newSettings.map(r => [r["Key"], r["Value"]]));
+      
+      // Helper to get setting value with type conversion
+      const getNum = (key: string, defaultValue: number) => {
+        const val = settingsMap.get(key);
+        return val ? Number(val) : defaultValue;
+      };
+      const getStr = (key: string, defaultValue: string) => settingsMap.get(key) || defaultValue;
+      const getBool = (key: string, defaultValue: boolean) => settingsMap.get(key) === "true" ? true : settingsMap.get(key) === "false" ? false : defaultValue;
+      
       // Then reload all state variables with a small delay to ensure settingsRows is updated
       setTimeout(() => {
-        setPosterSizeTv(newSettings.find((r) => r["Key"] === "posterSizeTv")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "posterSizeTv")?.["Value"]) : 100);
-        setPosterSizeMovies(newSettings.find((r) => r["Key"] === "posterSizeMovies")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "posterSizeMovies")?.["Value"]) : 108);
-        setPosterSizeBooks(newSettings.find((r) => r["Key"] === "posterSizeBooks")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "posterSizeBooks")?.["Value"]) : 115);
-        setBookHeightMultiplier(newSettings.find((r) => r["Key"] === "bookHeightMultiplier")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "bookHeightMultiplier")?.["Value"]) : 1.5);
-        setTight(newSettings.find((r) => r["Key"] === "tight")?.["Value"] === "true" ? true : true);
+        setPosterSizeTv(getNum("posterSizeTv", 100));
+        setPosterSizeMovies(getNum("posterSizeMovies", 108));
+        setPosterSizeBooks(getNum("posterSizeBooks", 115));
+        setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
+        setTight(getBool("tight", true));
         
-        setCaseInsetTopPx(newSettings.find((r) => r["Key"] === "caseInsetTopPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "caseInsetTopPx")?.["Value"]) : 156);
-        setCaseInsetRightPx(newSettings.find((r) => r["Key"] === "caseInsetRightPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "caseInsetRightPx")?.["Value"]) : 5);
-        setCaseInsetBottomPx(newSettings.find((r) => r["Key"] === "caseInsetBottomPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "caseInsetBottomPx")?.["Value"]) : 5);
-        setCaseInsetLeftPx(newSettings.find((r) => r["Key"] === "caseInsetLeftPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "caseInsetLeftPx")?.["Value"]) : 5);
+        setCaseInsetTopPx(getNum("caseInsetTopPx", 156));
+        setCaseInsetRightPx(getNum("caseInsetRightPx", 121));
+        setCaseInsetBottomPx(getNum("caseInsetBottomPx", 136));
+        setCaseInsetLeftPx(getNum("caseInsetLeftPx", 74));
         
-        setBookInsetTopPx(newSettings.find((r) => r["Key"] === "bookInsetTopPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "bookInsetTopPx")?.["Value"]) : 156);
-        setBookInsetRightPx(newSettings.find((r) => r["Key"] === "bookInsetRightPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "bookInsetRightPx")?.["Value"]) : 5);
-        setBookInsetBottomPx(newSettings.find((r) => r["Key"] === "bookInsetBottomPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "bookInsetBottomPx")?.["Value"]) : 5);
-        setBookInsetLeftPx(newSettings.find((r) => r["Key"] === "bookInsetLeftPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "bookInsetLeftPx")?.["Value"]) : 5);
+        setBookInsetTopPx(getNum("bookInsetTopPx", 99));
+        setBookInsetRightPx(getNum("bookInsetRightPx", 75));
+        setBookInsetBottomPx(getNum("bookInsetBottomPx", 104));
+        setBookInsetLeftPx(getNum("bookInsetLeftPx", 62));
         
-        setMovieInsetTopPx(newSettings.find((r) => r["Key"] === "movieInsetTopPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "movieInsetTopPx")?.["Value"]) : 156);
-        setMovieInsetRightPx(newSettings.find((r) => r["Key"] === "movieInsetRightPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "movieInsetRightPx")?.["Value"]) : 5);
-        setMovieInsetBottomPx(newSettings.find((r) => r["Key"] === "movieInsetBottomPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "movieInsetBottomPx")?.["Value"]) : 5);
-        setMovieInsetLeftPx(newSettings.find((r) => r["Key"] === "movieInsetLeftPx")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "movieInsetLeftPx")?.["Value"]) : 5);
+        setMovieInsetTopPx(getNum("movieInsetTopPx", 156));
+        setMovieInsetRightPx(getNum("movieInsetRightPx", 100));
+        setMovieInsetBottomPx(getNum("movieInsetBottomPx", 136));
+        setMovieInsetLeftPx(getNum("movieInsetLeftPx", 120));
         
-        setPosterSizeGames(newSettings.find((r) => r["Key"] === "posterSizeGames")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "posterSizeGames")?.["Value"]) : 100);
+        setPosterSizeGames(getNum("posterSizeGames", 108));
         
-        setLogoSize(newSettings.find((r) => r["Key"] === "logoSize")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "logoSize")?.["Value"]) : 50);
-        setLogoTop(newSettings.find((r) => r["Key"] === "logoTop")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "logoTop")?.["Value"]) : 0);
-        setLogoLeft(newSettings.find((r) => r["Key"] === "logoLeft")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "logoLeft")?.["Value"]) : 0);
+        setLogoSize(getNum("logoSize", 230));
+        setLogoTop(getNum("logoTop", 12));
+        setLogoLeft(getNum("logoLeft", -28));
         
-        setSyncIconSize(newSettings.find((r) => r["Key"] === "syncIconSize")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "syncIconSize")?.["Value"]) : 20);
-        setSyncIconTop(newSettings.find((r) => r["Key"] === "syncIconTop")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "syncIconTop")?.["Value"]) : 0);
+        setSyncIconSize(getNum("syncIconSize", 12));
+        setSyncIconTop(getNum("syncIconTop", 8));
         
-        setIconSize(newSettings.find((r) => r["Key"] === "iconSize")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "iconSize")?.["Value"]) : 32);
-        setSidebarFontSize(newSettings.find((r) => r["Key"] === "sidebarFontSize")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "sidebarFontSize")?.["Value"]) : 12);
-        setSidebarFontWeight(newSettings.find((r) => r["Key"] === "sidebarFontWeight")?.["Value"] || "400");
-        setSidebarGap(newSettings.find((r) => r["Key"] === "sidebarGap")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "sidebarGap")?.["Value"]) : 10);
-        setSidebarHeaderFontSize(newSettings.find((r) => r["Key"] === "sidebarHeaderFontSize")?.["Value"] ? Number(newSettings.find((r) => r["Key"] === "sidebarHeaderFontSize")?.["Value"]) : 14);
-        setSidebarHeaderFontWeight(newSettings.find((r) => r["Key"] === "sidebarHeaderFontWeight")?.["Value"] || "600");
-        setShelfTheme(newSettings.find((r) => r["Key"] === "shelfTheme")?.["Value"] || "default");
+        setIconSize(getNum("iconSize", 16));
+        setSidebarFontSize(getNum("sidebarFontSize", 13));
+        setSidebarFontWeight(getStr("sidebarFontWeight", "400"));
+        setSidebarGap(getNum("sidebarGap", 10));
+        setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
+        setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
+        setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
+        setSidebarTheme(getStr("sidebarTheme", "standard"));
       }, 100);
       
       setSyncState("ok");
@@ -1485,6 +1497,34 @@ export default function Page() {
     // Return the first platform in the list
     return platforms[0];
   };
+  
+  // Helper to deduplicate games by title - keeps only primary platform version
+  const deduplicateGames = (games: Game[]): Game[] => {
+    const gamesByTitle = new Map<string, Game>();
+    
+    // Platform priority helper
+    const getPlatformPriority = (platform: string) => {
+      if (platform === "Steam") return 3;
+      if (platform === "Epic Games Store") return 2;
+      return 1;
+    };
+    
+    games.forEach(game => {
+      const existingGame = gamesByTitle.get(game.title);
+      if (!existingGame) {
+        gamesByTitle.set(game.title, game);
+      } else {
+        const existingPlatform = getPrimaryPlatform(existingGame.platform);
+        const currentPlatform = getPrimaryPlatform(game.platform);
+        
+        if (getPlatformPriority(currentPlatform) > getPlatformPriority(existingPlatform)) {
+          gamesByTitle.set(game.title, game);
+        }
+      }
+    });
+    
+    return Array.from(gamesByTitle.values());
+  };
 
   // Dynamically detect all unique platforms from games data
   // Parse comma-separated platform values to get individual platforms
@@ -1811,38 +1851,16 @@ export default function Page() {
       const qb = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
       const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q) && normalizeStatus(s.watchStatus) !== "wishlist") : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist");
       const qm = q ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && normalizeStatus(m.watchStatus) !== "wishlist") : allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist");
-      let qg = q ? allGames.filter((g) => g.title.toLowerCase().includes(q) && normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist") : allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist");
+      const qg = q ? allGames.filter((g) => g.title.toLowerCase().includes(q) && normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist") : allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist");
       
       // Deduplicate games by title - keep only primary platform version
-      const gamesByTitle = new Map<string, Game>();
-      qg.forEach(game => {
-        const existingGame = gamesByTitle.get(game.title);
-        if (!existingGame) {
-          gamesByTitle.set(game.title, game);
-        } else {
-          // Compare platforms and keep the one with higher priority
-          const existingPlatform = getPrimaryPlatform(existingGame.platform);
-          const currentPlatform = getPrimaryPlatform(game.platform);
-          
-          // Priority: Steam > Epic Games Store > first listed
-          const priority = (platform: string) => {
-            if (platform === "Steam") return 3;
-            if (platform === "Epic Games Store") return 2;
-            return 1;
-          };
-          
-          if (priority(currentPlatform) > priority(existingPlatform)) {
-            gamesByTitle.set(game.title, game);
-          }
-        }
-      });
-      qg = Array.from(gamesByTitle.values());
+      const deduplicatedGames = deduplicateGames(qg);
 
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
         ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -1912,36 +1930,18 @@ export default function Page() {
         : allMovies.filter((m) => safeStr(m.tag) === currentYear);
       
       // Games: Use Year Played column
-      let qg = q 
+      const qg = q 
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
         : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
       
       // Deduplicate games by title - keep only primary platform version
-      const gamesByTitle = new Map<string, Game>();
-      qg.forEach(game => {
-        const existingGame = gamesByTitle.get(game.title);
-        if (!existingGame) {
-          gamesByTitle.set(game.title, game);
-        } else {
-          const existingPlatform = getPrimaryPlatform(existingGame.platform);
-          const currentPlatform = getPrimaryPlatform(game.platform);
-          const priority = (platform: string) => {
-            if (platform === "Steam") return 3;
-            if (platform === "Epic Games Store") return 2;
-            return 1;
-          };
-          if (priority(currentPlatform) > priority(existingPlatform)) {
-            gamesByTitle.set(game.title, game);
-          }
-        }
-      });
-      qg = Array.from(gamesByTitle.values());
+      const deduplicatedGames = deduplicateGames(qg);
 
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
         ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -3509,7 +3509,6 @@ export default function Page() {
 
                 <button
                   onClick={() => {
-                    console.log("Settings button clicked, current state:", showSettings);
                     setShowSettings(!showSettings);
                   }}
                   className={`sideItem primary ${showSettings ? "active" : ""}`}
