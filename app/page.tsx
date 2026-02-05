@@ -1046,6 +1046,62 @@ export default function Page() {
     }
   };
 
+  const syncCovers = async () => {
+    // Check if running in development mode (API routes available)
+    const isDev = process.env.NODE_ENV === 'development';
+    
+    if (!isDev) {
+      alert('⚠️ Cover sync is only available in development mode.\n\nTo sync covers:\n1. Open terminal in VS Code\n2. Run: npm run sync-covers\n3. Commit and push the new covers\n\nOr enable GitHub Actions automatic daily sync.');
+      return;
+    }
+
+    setSyncState("saving");
+    setSyncMsg("Syncing covers...");
+
+    try {
+      const res = await fetch('/api/sync-covers', { 
+        method: 'POST',
+        cache: 'no-store'
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        const { downloaded, skipped, failed } = data.stats;
+        let message = "Sync complete!";
+        if (downloaded > 0) {
+          message = `Added ${downloaded} new cover${downloaded !== 1 ? 's' : ''}!`;
+        } else if (skipped > 0) {
+          message = "All covers up to date";
+        }
+        
+        setSyncState("ok");
+        setSyncMsg(message);
+        
+        // Show detailed stats in console
+        console.log('Cover sync results:', data.stats);
+        if (downloaded > 0) {
+          alert(`✅ Cover Sync Complete!\n\nDownloaded: ${downloaded}\nSkipped: ${skipped}\nFailed: ${failed}\n\nNew covers saved to /public/covers/\nCommit and push to deploy.`);
+        }
+        
+        setTimeout(() => {
+          setSyncMsg("Synced");
+        }, 3000);
+      } else {
+        throw new Error(data.message || 'Sync failed');
+      }
+    } catch (e: any) {
+      console.error("Failed to sync covers:", e);
+      setSyncState("error");
+      setSyncMsg("Sync failed");
+      alert(`❌ Cover sync failed:\n${e.message || 'Unknown error'}\n\nCheck console for details.`);
+      setTimeout(() => {
+        setSyncMsg("Synced");
+        setSyncState("ok");
+      }, 3000);
+    }
+  };
+
   // ============================================================================
   // HOW TO ADD NEW SETTINGS IN THE FUTURE:
   // ============================================================================
@@ -4489,6 +4545,35 @@ export default function Page() {
                   }}
                 >
                   📥 Load Settings from Sheet
+                </button>
+
+                {/* Sync Covers Button */}
+                <button
+                  onClick={syncCovers}
+                  style={{
+                    width: "100%",
+                    marginTop: 8,
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(92, 76, 60, 0.3)",
+                    background: "linear-gradient(180deg, rgba(115, 92, 76, 0.9) 0%, rgba(95, 76, 62, 0.9) 100%)",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
+                  }}
+                >
+                  🔄 Sync Covers from Sheets
                 </button>
               </div>
             ) : null}
