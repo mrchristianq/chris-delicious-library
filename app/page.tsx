@@ -89,7 +89,7 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 
@@ -312,6 +312,9 @@ export default function Page() {
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
+  
+  // Debounce timers for inset adjustments to prevent render lag
+  const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1247,53 +1250,59 @@ export default function Page() {
     setTight(value);
     saveSetting("tight", value, "Spacing", "Tight spacing between items");
   };
+  
+  // Debounced update helper for number inputs (prevents render lag on rapid changes)
+  const debouncedUpdate = useCallback((key: string, value: number, setter: (v: number) => void, category: string, description: string) => {
+    // Clear existing timer for this key
+    if (debounceTimers.current[key]) {
+      clearTimeout(debounceTimers.current[key]);
+    }
+    
+    // Save to localStorage immediately (fast)
+    saveSetting(key, value, category, description);
+    
+    // Debounce the state update (which triggers expensive re-renders)
+    debounceTimers.current[key] = setTimeout(() => {
+      setter(value);
+      delete debounceTimers.current[key];
+    }, 150); // 150ms delay feels instant but batches rapid changes
+  }, []);
+  
   const updateCaseInsetTopPx = (value: number) => {
-    setCaseInsetTopPx(value);
-    saveSetting("caseInsetTopPx", value, "TV Insets", "TV Case Top Inset (px)");
+    debouncedUpdate("caseInsetTopPx", value, setCaseInsetTopPx, "TV Insets", "TV Case Top Inset (px)");
   };
   const updateCaseInsetRightPx = (value: number) => {
-    setCaseInsetRightPx(value);
-    saveSetting("caseInsetRightPx", value, "TV Insets", "TV Case Right Inset (px)");
+    debouncedUpdate("caseInsetRightPx", value, setCaseInsetRightPx, "TV Insets", "TV Case Right Inset (px)");
   };
   const updateCaseInsetBottomPx = (value: number) => {
-    setCaseInsetBottomPx(value);
-    saveSetting("caseInsetBottomPx", value, "TV Insets", "TV Case Bottom Inset (px)");
+    debouncedUpdate("caseInsetBottomPx", value, setCaseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)");
   };
   const updateCaseInsetLeftPx = (value: number) => {
-    setCaseInsetLeftPx(value);
-    saveSetting("caseInsetLeftPx", value, "TV Insets", "TV Case Left Inset (px)");
+    debouncedUpdate("caseInsetLeftPx", value, setCaseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)");
   };
   const updateBookInsetTopPx = (value: number) => {
-    setBookInsetTopPx(value);
-    saveSetting("bookInsetTopPx", value, "Book Insets", "Book Top Inset (px)");
+    debouncedUpdate("bookInsetTopPx", value, setBookInsetTopPx, "Book Insets", "Book Top Inset (px)");
   };
   const updateBookInsetRightPx = (value: number) => {
-    setBookInsetRightPx(value);
-    saveSetting("bookInsetRightPx", value, "Book Insets", "Book Right Inset (px)");
+    debouncedUpdate("bookInsetRightPx", value, setBookInsetRightPx, "Book Insets", "Book Right Inset (px)");
   };
   const updateBookInsetBottomPx = (value: number) => {
-    setBookInsetBottomPx(value);
-    saveSetting("bookInsetBottomPx", value, "Book Insets", "Book Bottom Inset (px)");
+    debouncedUpdate("bookInsetBottomPx", value, setBookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)");
   };
   const updateBookInsetLeftPx = (value: number) => {
-    setBookInsetLeftPx(value);
-    saveSetting("bookInsetLeftPx", value, "Book Insets", "Book Left Inset (px)");
+    debouncedUpdate("bookInsetLeftPx", value, setBookInsetLeftPx, "Book Insets", "Book Left Inset (px)");
   };
   const updateMovieInsetTopPx = (value: number) => {
-    setMovieInsetTopPx(value);
-    saveSetting("movieInsetTopPx", value, "Movie Insets", "Movie Top Inset (px)");
+    debouncedUpdate("movieInsetTopPx", value, setMovieInsetTopPx, "Movie Insets", "Movie Top Inset (px)");
   };
   const updateMovieInsetRightPx = (value: number) => {
-    setMovieInsetRightPx(value);
-    saveSetting("movieInsetRightPx", value, "Movie Insets", "Movie Right Inset (px)");
+    debouncedUpdate("movieInsetRightPx", value, setMovieInsetRightPx, "Movie Insets", "Movie Right Inset (px)");
   };
   const updateMovieInsetBottomPx = (value: number) => {
-    setMovieInsetBottomPx(value);
-    saveSetting("movieInsetBottomPx", value, "Movie Insets", "Movie Bottom Inset (px)");
+    debouncedUpdate("movieInsetBottomPx", value, setMovieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)");
   };
   const updateMovieInsetLeftPx = (value: number) => {
-    setMovieInsetLeftPx(value);
-    saveSetting("movieInsetLeftPx", value, "Movie Insets", "Movie Left Inset (px)");
+    debouncedUpdate("movieInsetLeftPx", value, setMovieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)");
   };
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
@@ -1311,46 +1320,62 @@ export default function Page() {
   
   // Update platform-specific insets
   const updatePlatformInset = (platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
-    setPlatformInsets(prev => {
-      const currentPlatformInsets = prev[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
-      return {
-        ...prev,
-        [platform]: {
-          ...currentPlatformInsets,
-          [edge]: value,
-        }
-      };
-    });
-    
-    // Mark this platform as customized if it's not Default
-    if (platform !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platform));
-    }
-    
     const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
-    saveSetting(`${platform}Inset${edgeCapitalized}Px`, value, `${platform} Insets`, `${platform} ${edgeCapitalized} Inset (px)`);
+    const settingKey = `${platform}Inset${edgeCapitalized}Px`;
+    
+    debouncedUpdate(
+      settingKey,
+      value,
+      () => {
+        setPlatformInsets(prev => {
+          const currentPlatformInsets = prev[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
+          return {
+            ...prev,
+            [platform]: {
+              ...currentPlatformInsets,
+              [edge]: value,
+            }
+          };
+        });
+        
+        // Mark this platform as customized if it's not Default
+        if (platform !== "Default") {
+          setCustomizedPlatforms(prev => new Set(prev).add(platform));
+        }
+      },
+      `${platform} Insets`,
+      `${platform} ${edgeCapitalized} Inset (px)`
+    );
   };
   
   // Update platform-specific overlay settings
   const updatePlatformOverlay = (platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
-    setPlatformOverlaySettings(prev => {
-      const currentOverlaySettings = prev[platform] || { width: 100, height: 100, top: 0, left: 0 };
-      return {
-        ...prev,
-        [platform]: {
-          ...currentOverlaySettings,
-          [property]: value,
-        }
-      };
-    });
-    
-    // Mark this platform as customized if it's not Default
-    if (platform !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platform));
-    }
-    
     const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
-    saveSetting(`${platform}Overlay${propertyCapitalized}`, value, `${platform} Overlay`, `${platform} Overlay ${propertyCapitalized} (%)`);
+    const settingKey = `${platform}Overlay${propertyCapitalized}`;
+    
+    debouncedUpdate(
+      settingKey,
+      value,
+      () => {
+        setPlatformOverlaySettings(prev => {
+          const currentOverlaySettings = prev[platform] || { width: 100, height: 100, top: 0, left: 0 };
+          return {
+            ...prev,
+            [platform]: {
+              ...currentOverlaySettings,
+              [property]: value,
+            }
+          };
+        });
+        
+        // Mark this platform as customized if it's not Default
+        if (platform !== "Default") {
+          setCustomizedPlatforms(prev => new Set(prev).add(platform));
+        }
+      },
+      `${platform} Overlay`,
+      `${platform} Overlay ${propertyCapitalized} (%)`
+    );
   };
   
   // Update platform-specific cover scale
@@ -3834,42 +3859,98 @@ export default function Page() {
                       {settingsOpen.tvShowInsetsCollapsed ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Top
-                              <input
-                                type="number"
-                                value={caseInsetTopPx}
-                                onChange={(e) => updateCaseInsetTopPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Right
-                              <input
-                                type="number"
-                                value={caseInsetRightPx}
-                                onChange={(e) => updateCaseInsetRightPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Bottom
-                              <input
-                                type="number"
-                                value={caseInsetBottomPx}
-                                onChange={(e) => updateCaseInsetBottomPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Left
-                              <input
-                                type="number"
-                                value={caseInsetLeftPx}
-                                onChange={(e) => updateCaseInsetLeftPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateCaseInsetTopPx(caseInsetTopPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={caseInsetTopPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateCaseInsetTopPx(caseInsetTopPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateCaseInsetRightPx(caseInsetRightPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={caseInsetRightPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateCaseInsetRightPx(caseInsetRightPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateCaseInsetBottomPx(caseInsetBottomPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={caseInsetBottomPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateCaseInsetBottomPx(caseInsetBottomPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateCaseInsetLeftPx(caseInsetLeftPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={caseInsetLeftPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateCaseInsetLeftPx(caseInsetLeftPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
                           </div>
                           <button
                             onClick={() => saveInsetsToSheet('tv')}
@@ -3915,42 +3996,98 @@ export default function Page() {
                       {settingsOpen.bookInsetsCollapsed ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Top
-                              <input
-                                type="number"
-                                value={bookInsetTopPx}
-                                onChange={(e) => updateBookInsetTopPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Right
-                              <input
-                                type="number"
-                                value={bookInsetRightPx}
-                                onChange={(e) => updateBookInsetRightPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Bottom
-                              <input
-                                type="number"
-                                value={bookInsetBottomPx}
-                                onChange={(e) => updateBookInsetBottomPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Left
-                              <input
-                                type="number"
-                                value={bookInsetLeftPx}
-                                onChange={(e) => updateBookInsetLeftPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateBookInsetTopPx(bookInsetTopPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={bookInsetTopPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateBookInsetTopPx(bookInsetTopPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateBookInsetRightPx(bookInsetRightPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={bookInsetRightPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateBookInsetRightPx(bookInsetRightPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateBookInsetBottomPx(bookInsetBottomPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={bookInsetBottomPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateBookInsetBottomPx(bookInsetBottomPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateBookInsetLeftPx(bookInsetLeftPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={bookInsetLeftPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateBookInsetLeftPx(bookInsetLeftPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
                           </div>
                           <button
                             onClick={() => saveInsetsToSheet('book')}
@@ -3996,42 +4133,98 @@ export default function Page() {
                       {settingsOpen.movieInsetsCollapsed ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Top
-                              <input
-                                type="number"
-                                value={movieInsetTopPx}
-                                onChange={(e) => updateMovieInsetTopPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Right
-                              <input
-                                type="number"
-                                value={movieInsetRightPx}
-                                onChange={(e) => updateMovieInsetRightPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Bottom
-                              <input
-                                type="number"
-                                value={movieInsetBottomPx}
-                                onChange={(e) => updateMovieInsetBottomPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Left
-                              <input
-                                type="number"
-                                value={movieInsetLeftPx}
-                                onChange={(e) => updateMovieInsetLeftPx(Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateMovieInsetTopPx(movieInsetTopPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={movieInsetTopPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateMovieInsetTopPx(movieInsetTopPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateMovieInsetRightPx(movieInsetRightPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={movieInsetRightPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateMovieInsetRightPx(movieInsetRightPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateMovieInsetBottomPx(movieInsetBottomPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={movieInsetBottomPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateMovieInsetBottomPx(movieInsetBottomPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updateMovieInsetLeftPx(movieInsetLeftPx - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={movieInsetLeftPx}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updateMovieInsetLeftPx(movieInsetLeftPx + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
                           </div>
                           <button
                             onClick={() => saveInsetsToSheet('movie')}
@@ -4089,42 +4282,98 @@ export default function Page() {
                             </select>
                           </label>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Top
-                              <input
-                                type="number"
-                                value={platformInsets[selectedPlatformForInsets]?.top ?? 5}
-                                onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Right
-                              <input
-                                type="number"
-                                value={platformInsets[selectedPlatformForInsets]?.right ?? 5}
-                                onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'right', Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Bottom
-                              <input
-                                type="number"
-                                value={platformInsets[selectedPlatformForInsets]?.bottom ?? 5}
-                                onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'bottom', Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
-                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              Left
-                              <input
-                                type="number"
-                                value={platformInsets[selectedPlatformForInsets]?.left ?? 5}
-                                onChange={(e) => updatePlatformInset(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
-                                style={{ width: 50 }}
-                              />
-                            </label>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformForInsets]?.top ?? 5) - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={platformInsets[selectedPlatformForInsets]?.top ?? 5}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformForInsets]?.top ?? 5) + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformForInsets]?.right ?? 5) - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={platformInsets[selectedPlatformForInsets]?.right ?? 5}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformForInsets]?.right ?? 5) + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformForInsets]?.bottom ?? 5) - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={platformInsets[selectedPlatformForInsets]?.bottom ?? 5}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformForInsets]?.bottom ?? 5) + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformForInsets]?.left ?? 5) - 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  ←
+                                </button>
+                                <input
+                                  type="text"
+                                  value={platformInsets[selectedPlatformForInsets]?.left ?? 5}
+                                  readOnly
+                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
+                                />
+                                <button 
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformForInsets]?.left ?? 5) + 5)}
+                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
                           </div>
                           <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
                             Frame: {GAME_SRC_W}×{GAME_SRC_H}
@@ -4140,7 +4389,7 @@ export default function Page() {
                                   type="number"
                                   value={platformOverlaySettings[selectedPlatformForInsets]?.width ?? 100}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'width', Number(e.target.value) || 100)}
-                                  style={{ width: 50 }}
+                                  style={{ width: 60 }}
                                   min={50}
                                   max={150}
                                   step={0.1}
@@ -4153,7 +4402,7 @@ export default function Page() {
                                   type="number"
                                   value={platformOverlaySettings[selectedPlatformForInsets]?.height ?? 100}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'height', Number(e.target.value) || 100)}
-                                  style={{ width: 50 }}
+                                  style={{ width: 60 }}
                                   min={50}
                                   max={150}
                                   step={0.1}
@@ -4166,7 +4415,7 @@ export default function Page() {
                                   type="number"
                                   value={platformOverlaySettings[selectedPlatformForInsets]?.top ?? 0}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
-                                  style={{ width: 50 }}
+                                  style={{ width: 60 }}
                                   min={-50}
                                   max={50}
                                   step={0.1}
@@ -4179,7 +4428,7 @@ export default function Page() {
                                   type="number"
                                   value={platformOverlaySettings[selectedPlatformForInsets]?.left ?? 0}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
-                                  style={{ width: 50 }}
+                                  style={{ width: 60 }}
                                   min={-50}
                                   max={50}
                                   step={0.1}
