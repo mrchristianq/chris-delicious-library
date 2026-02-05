@@ -172,7 +172,7 @@ function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
 }
 
-// Helper function to generate GitHub Pages cover URL from title
+// Helper function to generate cover URL from title (served from /public/covers/)
 function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 'games'): string {
   // Sanitize title to match downloaded cover filenames (must match browser utility logic)
   const sanitized = title
@@ -182,15 +182,17 @@ function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 
     .replace(/-+/g, '-')            // Collapse multiple hyphens
     .substring(0, 50);
   
-  return `https://mrchristianq.github.io/chris-delicious-library/covers/${category}/${sanitized}.jpg`;
+  return `/covers/${category}/${sanitized}.jpg`;
 }
 
 function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Use CSV poster URL directly
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  // Try GitHub cover first, fallback to CSV poster URL
+  const githubUrl = getGitHubCoverUrl(title, 'tv');
+  const csvUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  const posterUrl = githubUrl || csvUrl;
   return {
     title,
     posterUrl,
@@ -207,8 +209,9 @@ function rowToBook(r: Row): Book | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Use CSV poster URL directly
-  const posterUrl =
+  // Try GitHub cover first, fallback to CSV poster URL
+  const githubUrl = getGitHubCoverUrl(title, 'books');
+  const csvUrl =
     safeStr(r["ImageURL"]) ||
     safeStr(r["Image URL"]) ||
     safeStr(r["Image"]) ||
@@ -218,6 +221,7 @@ function rowToBook(r: Row): Book | null {
     safeStr(r["Poster URL"]) ||
     safeStr(r["Poster"]) ||
     "";
+  const posterUrl = githubUrl || csvUrl;
   return {
     title,
     posterUrl,
@@ -237,8 +241,10 @@ function rowToMovie(r: Row): Movie | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Use CSV poster URL directly
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  // Try GitHub cover first, fallback to CSV poster URL
+  const githubUrl = getGitHubCoverUrl(title, 'movies');
+  const csvUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  const posterUrl = githubUrl || csvUrl;
   return {
     title,
     posterUrl,
@@ -255,8 +261,10 @@ function rowToGame(r: Row): Game | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Use CSV poster URL directly
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
+  // Try GitHub cover first, fallback to CSV poster URL
+  const githubUrl = getGitHubCoverUrl(title, 'games');
+  const csvUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
+  const posterUrl = githubUrl || csvUrl;
   return {
     title,
     posterUrl,
