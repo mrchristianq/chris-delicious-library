@@ -159,11 +159,26 @@ function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
 }
 
+// Helper function to generate GitHub Pages cover URL from title
+function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 'games'): string {
+  // Sanitize title to match downloaded cover filenames
+  const sanitized = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 50)
+    .replace(/-+$/, '');
+  
+  return `https://mrchristianq.github.io/chris-delicious-library/covers/${category}/${sanitized}.jpg`;
+}
+
 function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  // Try GitHub cover first, fallback to external URL
+  const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  const posterUrl = getGitHubCoverUrl(title, 'tv') || externalUrl;
   return {
     title,
     posterUrl,
@@ -180,7 +195,8 @@ function rowToBook(r: Row): Book | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  const posterUrl =
+  // Try GitHub cover first, fallback to external URL
+  const externalUrl =
     safeStr(r["ImageURL"]) ||
     safeStr(r["Image URL"]) ||
     safeStr(r["Image"]) ||
@@ -190,6 +206,7 @@ function rowToBook(r: Row): Book | null {
     safeStr(r["Poster URL"]) ||
     safeStr(r["Poster"]) ||
     "";
+  const posterUrl = getGitHubCoverUrl(title, 'books') || externalUrl;
   return {
     title,
     posterUrl,
@@ -209,7 +226,9 @@ function rowToMovie(r: Row): Movie | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  // Try GitHub cover first, fallback to external URL
+  const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
+  const posterUrl = getGitHubCoverUrl(title, 'movies') || externalUrl;
   return {
     title,
     posterUrl,
@@ -226,7 +245,9 @@ function rowToGame(r: Row): Game | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
+  // Try GitHub cover first, fallback to external URL
+  const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
+  const posterUrl = getGitHubCoverUrl(title, 'games') || externalUrl;
   return {
     title,
     posterUrl,
