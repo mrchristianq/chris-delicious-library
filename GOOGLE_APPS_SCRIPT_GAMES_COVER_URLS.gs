@@ -100,8 +100,8 @@ function addCoverUrlsToGames() {
 // Create custom menu
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('📚 Cover URLs')
-      .addItem('Add Cover URLs to Games', 'addCoverUrlsToGames')
+  ui.createMenu('GITHUB SYNC')
+      .addItem('Sync Covers', 'addCoverUrlsToGames')
       .addToUi();
 }
 

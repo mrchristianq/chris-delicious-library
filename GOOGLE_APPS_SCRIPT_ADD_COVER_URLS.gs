@@ -126,12 +126,12 @@ function addCoverUrlsToAll() {
 // Create custom menu
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('📚 Cover URLs')
-      .addItem('Add URLs to Shows (TV)', 'addCoverUrlsToTV')
-      .addItem('Add URLs to Books', 'addCoverUrlsToBooks')
-      .addItem('Add URLs to Movies', 'addCoverUrlsToMovies')
+  ui.createMenu('GITHUB SYNC')
+      .addItem('Sync Covers (All Sheets)', 'addCoverUrlsToAll')
       .addSeparator()
-      .addItem('Add URLs to ALL Sheets', 'addCoverUrlsToAll')
+      .addItem('Sync Shows (TV)', 'addCoverUrlsToTV')
+      .addItem('Sync Books', 'addCoverUrlsToBooks')
+      .addItem('Sync Movies', 'addCoverUrlsToMovies')
       .addToUi();
 }
 
