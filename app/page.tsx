@@ -309,6 +309,9 @@ export default function Page() {
   const gamesCsvUrl = (process.env as any)[GAMES_ENV_KEY] as string | undefined;
   const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
   const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
+  
+  // In-memory cache for settings to avoid repeated localStorage parsing
+  const settingsCacheRef = useRef<Record<string, string> | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -675,8 +678,13 @@ export default function Page() {
     
     // Fallback to localStorage
     try {
-      const settingsCache = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
-      if (settingsCache[key] !== undefined && settingsCache[key] !== "") {
+      // Use in-memory cache if available, otherwise load from localStorage
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      
+      const settingsCache = settingsCacheRef.current;
+      if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
         const value = settingsCache[key];
         const numValue = Number(value);
         // Try to parse as number if it looks like one and is not NaN
@@ -693,14 +701,22 @@ export default function Page() {
     return defaultValue;
   };
 
-  const saveSetting = async (key: string, value: any, category: string = "", description: string = "") => {
+  const saveSetting = (key: string, value: any, category: string = "", description: string = "") => {
     // Save to localStorage only - no auto-sync to Google Sheet
     // Use saveSettingToSheet() for manual Google Sheet syncs
     try {
-      const settingsCache = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
-      settingsCache[key] = String(value);
-      localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCache));
-      console.log(`✓ Saved to localStorage: ${key} = ${value}`);
+      // Initialize cache from localStorage if not already loaded
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      
+      // Update in-memory cache
+      if (settingsCacheRef.current) {
+        settingsCacheRef.current[key] = String(value);
+        
+        // Write to localStorage (this is the slow part, but only happens once per change)
+        localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+      }
     } catch (e) {
       console.warn("Failed to save to localStorage:", e);
     }
