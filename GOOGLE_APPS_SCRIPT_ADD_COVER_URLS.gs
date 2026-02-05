@@ -126,7 +126,7 @@ function addCoverUrlsToAll() {
 // Create custom menu
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('GITHUB SYNC')
+  ui.createMenu('GitHub Sync')
       .addItem('Sync Covers (All Sheets)', 'addCoverUrlsToAll')
       .addSeparator()
       .addItem('Sync Shows (TV)', 'addCoverUrlsToTV')
