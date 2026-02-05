@@ -20,6 +20,11 @@ type RolodexCounterProps = {
   labelLeft?: number;         // left offset for label
   counterTop?: number;        // top offset for counter
   counterLeft?: number;       // left offset for counter
+  labelColor?: string;        // color for the "Total Media:" label
+  commaColor?: string;        // color for comma separators
+  digitNumberColor?: string;  // color for the digit numbers
+  digitTileBackground?: string; // background gradient for digit tiles
+  digitTileBorder?: string;   // border color for digit tiles
 };
 
 export function RolodexCounter({
@@ -38,6 +43,11 @@ export function RolodexCounter({
   labelLeft = 0,
   counterTop = 0,
   counterLeft = 0,
+  labelColor = "#8a4c4c",
+  commaColor = "#8a4c4c",
+  digitNumberColor = "#8a4c4c",
+  digitTileBackground = "linear-gradient(180deg, #f5f0e8 0%, #ebe4d8 100%)",
+  digitTileBorder = "rgba(139,69,19,.15)",
 }: RolodexCounterProps) {
   const formatted = useMemo(() => {
     const v = Math.max(0, Math.floor(value));
@@ -139,7 +149,7 @@ export function RolodexCounter({
         style={{
           fontSize: labelFontSize,
           fontWeight: labelFontWeight,
-          color: "#8a4c4c",
+          color: labelColor,
           marginRight: 4,
           transform: `translate(${labelLeft}px, ${labelTop}px)`,
         }}
@@ -166,7 +176,7 @@ export function RolodexCounter({
             <div
               key={`sep-${i}`}
               style={{
-                color: "#8a4c4c",
+                color: commaColor,
                 fontWeight: 800,
                 fontSize: numberFontSize,
                 lineHeight: `${digitHeight}px`,
@@ -194,9 +204,9 @@ export function RolodexCounter({
               height: digitHeight,
               overflow: "hidden",
               borderRadius: 7,
-              background: "linear-gradient(180deg, #f5f0e8 0%, #ebe4d8 100%)",
+              background: digitTileBackground,
               boxShadow: "0 2px 4px rgba(0,0,0,.15), inset 0 1px 1px rgba(255,255,255,.8)",
-              border: "1px solid rgba(139,69,19,.15)",
+              border: `1px solid ${digitTileBorder}`,
               position: "relative",
             }}
           >
@@ -227,11 +237,11 @@ export function RolodexCounter({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#8a4c4c",
+                    color: digitNumberColor,
                     fontWeight: 900,
                     fontSize: numberFontSize,
                     letterSpacing: 0.5,
-                    textShadow: "0 1px 0 rgba(138,76,76,.3)",
+                    textShadow: `0 1px 0 ${digitNumberColor}4D`,
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >

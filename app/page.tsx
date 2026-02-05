@@ -1,6 +1,6 @@
 /* =====================================================================================
   Chris' Delicious Library
-  Version: 2.1.0
+  Version: 3.0.0
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -8,6 +8,19 @@
    - Posters only (no title labels)
    - Posters align to shelf lip
    - DVD case frame overlay (no left border) + glossy black edge
+   
+   v3.0.0 Changes:
+   - Added Sidebar Theme system with two themes: Standard and Winter Gray
+   - New "Sidebar Theme" section under Themes menu for easy switching
+   - Winter Gray theme features sage green/teal color scheme (#769795, #4e7470)
+   - Winter Gray uses gray sidebar background (sidebar_gray.png)
+   - Theme-specific colors for highlights, search bar, sort dropdowns, and rolodex
+   - Winter Gray has unified sage green count bubbles for all media types
+   - Winter Gray rolodex has dark teal digits and black label text
+   - Winter Gray rolodex tiles have gray gradient background
+   - All theme settings persist to Google Sheets
+   - Standard theme maintains original reddish-brown color scheme
+   - Fixed React warnings by changing sidebar background to backgroundImage
    
    v2.1.0 Changes:
    - Fixed AbortError in saveSettingToSheet when timeout fires (graceful handling)
@@ -411,6 +424,51 @@ export default function Page() {
 
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
+  
+  // Sidebar theme
+  const [sidebarTheme, setSidebarTheme] = useState<string>("standard");
+  
+  // Theme configurations
+  const sidebarThemes = {
+    standard: {
+      background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+      primaryColor: "#954949",
+      secondaryColor: "#8a4c4c",
+      textColor: "rgba(0,0,0,0.85)",
+      arrowColor: "rgba(0,0,0,0.4)",
+      rolodexColor: "#8a4c4c",
+      rolodexDigitColor: "#8a4c4c",
+      rolodexLabelColor: "#8a4c4c",
+      rolodexTileBg: "linear-gradient(180deg, #f5f0e8 0%, #ebe4d8 100%)",
+      rolodexTileBorder: "rgba(139,69,19,.15)",
+      countBubbleColor: "#6ba56a",
+      syncedTextColor: "#754738",
+      highlightBg: "rgba(138, 76, 76, 0.75)",
+      highlightBgEnd: "rgba(118, 60, 60, 0.8)",
+      highlightBorder: "rgba(138, 76, 76, 0.4)",
+      activeHighlight: "rgba(138, 76, 76, 0.15)",
+    },
+    winterGray: {
+      background: "url('/sidebar_gray.png'), linear-gradient(180deg, #e8ecf0 0%, #d8dde3 100%)",
+      primaryColor: "#5a7a8c",
+      secondaryColor: "#769795",
+      textColor: "rgba(0,0,0,0.85)",
+      arrowColor: "rgba(0,0,0,0.4)",
+      rolodexColor: "#5a7a8c",
+      rolodexDigitColor: "#4e7470",
+      rolodexLabelColor: "#000000",
+      rolodexTileBg: "linear-gradient(180deg, #d8e2e6 0%, #c5d3d8 100%)",
+      rolodexTileBorder: "rgba(78,116,112,.2)",
+      countBubbleColor: "#4e7470",
+      syncedTextColor: "#4e7470",
+      highlightBg: "rgba(118, 151, 149, 0.92)",
+      highlightBgEnd: "rgba(100, 130, 128, 0.95)",
+      highlightBorder: "rgba(118, 151, 149, 0.6)",
+      activeHighlight: "rgba(118, 151, 149, 0.28)",
+    }
+  };
+  
+  const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
 
   // Layout tuning
   const SHELF_HEIGHT = 190;
@@ -878,6 +936,7 @@ export default function Page() {
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
     
+    setSidebarTheme(getSetting("sidebarTheme", "standard"));
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
   }, [settingsRows]);
 
@@ -918,6 +977,7 @@ export default function Page() {
       { key: "sidebarGap", value: sidebarGap, category: "Sidebar", description: "Sidebar Icon Gap" },
       { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
       { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
+      { key: "sidebarTheme", value: sidebarTheme, category: "Themes", description: "Sidebar Theme" },
       { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Wood Type" },
       { key: "showInsetGuide", value: showInsetGuide, category: "Cover Sizes", description: "Show inset frame guide" },
     ];
@@ -1210,6 +1270,11 @@ export default function Page() {
   const updateShelfTheme = (value: string) => {
     setShelfTheme(value);
     saveSetting("shelfTheme", value, "Themes", "Shelf Wood Type");
+  };
+  
+  const updateSidebarTheme = (value: string) => {
+    setSidebarTheme(value);
+    saveSetting("sidebarTheme", value, "Themes", "Sidebar Theme");
   };
   
   // Update platform-specific insets
@@ -2052,7 +2117,7 @@ export default function Page() {
             borderRadius: "0 0 0 0",
             overflowY: "auto",
             overflowX: "hidden",
-            background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+            backgroundImage: currentTheme.background,
             backgroundSize: "auto, 100% 100%",
             backgroundPosition: "0 0, 0 0",
             border: "1px solid rgba(0,0,0,0.12)",
@@ -2126,6 +2191,11 @@ export default function Page() {
                 labelLeft={counterLabelLeft}
                 counterTop={counterTop}
                 counterLeft={counterLeft}
+                labelColor={currentTheme.rolodexLabelColor}
+                commaColor={currentTheme.rolodexColor}
+                digitNumberColor={currentTheme.rolodexDigitColor}
+                digitTileBackground={currentTheme.rolodexTileBg}
+                digitTileBorder={currentTheme.rolodexTileBorder}
               />
             </div>
           )}
@@ -2137,8 +2207,8 @@ export default function Page() {
                 display: "flex",
                 alignItems: "center",
                 borderRadius: 16,
-                border: "1px solid rgba(138, 76, 76, 0.4)",
-                background: "linear-gradient(180deg, rgba(138, 76, 76, 0.75) 0%, rgba(118, 60, 60, 0.8) 100%)",
+                border: `1px solid ${currentTheme.highlightBorder}`,
+                background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
                 boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
                 paddingLeft: "10px",
               }}
@@ -2170,7 +2240,7 @@ export default function Page() {
                 fontSize: sidebarHeaderFontSize,
                 fontWeight: sidebarHeaderFontWeight,
                 letterSpacing: "0.04em",
-                color: "#954949",
+                color: currentTheme.primaryColor,
                 marginBottom: 6,
                 fontFamily: "Nunito, sans-serif",
               }}
@@ -2187,8 +2257,8 @@ export default function Page() {
                     width: "100%",
                     padding: "8px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(138, 76, 76, 0.4)",
-                    background: "linear-gradient(180deg, rgba(138, 76, 76, 0.75) 0%, rgba(118, 60, 60, 0.8) 100%)",
+                    border: `1px solid ${currentTheme.highlightBorder}`,
+                    background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
                     color: "rgba(255, 255, 255, 0.95)",
                     fontSize: 13,
@@ -2241,8 +2311,8 @@ export default function Page() {
                     width: "100%",
                     padding: "8px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(138, 76, 76, 0.4)",
-                    background: "linear-gradient(180deg, rgba(138, 76, 76, 0.75) 0%, rgba(118, 60, 60, 0.8) 100%)",
+                    border: `1px solid ${currentTheme.highlightBorder}`,
+                    background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
                     color: "rgba(255, 255, 255, 0.95)",
                     fontSize: 13,
@@ -2276,7 +2346,7 @@ export default function Page() {
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
-                  color: "#954949",
+                  color: currentTheme.primaryColor,
                   marginBottom: 6,
                   fontFamily: "Nunito, sans-serif",
                   display: "flex",
@@ -2369,7 +2439,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: "#6ba56a",
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#6ba56a",
                         color: "#fff",
                       }}
                     >
@@ -2740,7 +2810,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: "#5b9bd5",
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#5b9bd5",
                         color: "#fff",
                       }}
                     >
@@ -2929,7 +2999,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: "#d97642",
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#d97642",
                         color: "#fff",
                       }}
                     >
@@ -3178,7 +3248,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: "#333",
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
                         color: "#fff",
                       }}
                     >
@@ -3198,7 +3268,7 @@ export default function Page() {
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
-                  color: "#954949",
+                  color: currentTheme.primaryColor,
                   marginBottom: 6,
                   fontFamily: "Nunito, sans-serif",
                   display: "flex",
@@ -3301,7 +3371,7 @@ export default function Page() {
                         fontSize: 14,
                         fontFamily: "Nunito, sans-serif",
                         color: "#4A4A4A",
-                        background: nav === "year-previous" ? "rgba(138, 76, 76, 0.15)" : "transparent",
+                        background: nav === "year-previous" ? currentTheme.activeHighlight : "transparent",
                         border: "none",
                         cursor: "pointer",
                         borderRadius: 0,
@@ -3350,7 +3420,7 @@ export default function Page() {
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
-                  color: "#954949",
+                  color: currentTheme.primaryColor,
                   marginBottom: 6,
                   fontFamily: "Nunito, sans-serif",
                   display: "flex",
@@ -3476,7 +3546,45 @@ export default function Page() {
 
             {showThemes ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>SHELF WOOD TYPE</div>
+                {/* Sidebar Theme Section */}
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>SIDEBAR THEME</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    onClick={() => updateSidebarTheme("standard")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: sidebarTheme === "standard" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: sidebarTheme === "standard" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: sidebarTheme === "standard" ? 600 : 400,
+                    }}
+                  >
+                    Standard
+                  </button>
+                  <button
+                    onClick={() => updateSidebarTheme("winterGray")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: sidebarTheme === "winterGray" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: sidebarTheme === "winterGray" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: sidebarTheme === "winterGray" ? 600 : 400,
+                    }}
+                  >
+                    Winter Gray
+                  </button>
+                </div>
+                
+                {/* Shelf Wood Type Section */}
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A", marginTop: 8 }}>SHELF WOOD TYPE</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <button
                     onClick={() => updateShelfTheme("/shelves-light-single2.png")}
@@ -3484,9 +3592,9 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelves-light-single2.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelves-light-single2.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelves-light-single2.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelves-light-single2.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 12,
                       fontWeight: shelfTheme === "/shelves-light-single2.png" ? 600 : 400,
@@ -3500,9 +3608,9 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-dark-walnut.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-dark-walnut.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-dark-walnut.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-dark-walnut.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 12,
                       fontWeight: shelfTheme === "/shelf-dark-walnut.png" ? 600 : 400,
@@ -3516,9 +3624,9 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-weathered-oak.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-weathered-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-weathered-oak.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-weathered-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 12,
                       fontWeight: shelfTheme === "/shelf-weathered-oak.png" ? 600 : 400,
@@ -3532,9 +3640,9 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-honey-oak.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-honey-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-honey-oak.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-honey-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 12,
                       fontWeight: shelfTheme === "/shelf-honey-oak.png" ? 600 : 400,
@@ -3548,9 +3656,9 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-teak.png" ? "2px solid #954949" : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-teak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-teak.png" ? "rgba(149, 73, 73, 0.1)" : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-teak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 12,
                       fontWeight: shelfTheme === "/shelf-teak.png" ? 600 : 400,
@@ -4620,7 +4728,7 @@ export default function Page() {
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ color: "#754738", fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
+                      <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                         {syncState === "saving"
                           ? "Syncing"
                           : syncState === "ok"
@@ -5071,15 +5179,15 @@ export default function Page() {
           background: rgba(0,0,0,0.02);
         }
         .sideItem.active {
-          background: rgba(138, 76, 76, 0.15);
+          background: ${currentTheme.activeHighlight};
           box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-          border-color: rgba(138, 76, 76, 0.25);
+          border-color: ${currentTheme.highlightBorder};
           font-weight: 600;
-          color: #8a4c4c;
+          color: ${currentTheme.secondaryColor};
         }
         .sideItem.primary { background: transparent; }
         .sideItem.primary:hover { background: rgba(0,0,0,0.02); }
-        .sideItem.primary.active { background: rgba(138, 76, 76, 0.12); color: #8a4c4c; }
+        .sideItem.primary.active { background: ${currentTheme.activeHighlight}; color: ${currentTheme.secondaryColor}; }
         .sideSubItem {
           width: 100%;
           padding: 5px 8px;
@@ -5097,8 +5205,8 @@ export default function Page() {
           background: rgba(0, 0, 0, 0.05);
         }
         .sideSubItem.active {
-          background: rgba(138, 76, 76, 0.18);
-          border-color: rgba(0, 0, 0, 0.08);
+          background: ${currentTheme.activeHighlight};
+          border-color: ${currentTheme.highlightBorder};
           font-weight: 700;
         }
         .case {
