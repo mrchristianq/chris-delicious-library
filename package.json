@@ -6,7 +6,9 @@
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "download-covers": "node scripts/download-covers.js",
+    "download-from-manifest": "node scripts/download-from-manifest.js"
   },
   "dependencies": {
     "next": "16.1.4",

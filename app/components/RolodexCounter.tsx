@@ -144,7 +144,7 @@ export function RolodexCounter({
           transform: `translate(${labelLeft}px, ${labelTop}px)`,
         }}
       >
-        Total:
+        Total Media:
       </div>
       
       {/* Counter digits container */}

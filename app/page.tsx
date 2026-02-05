@@ -290,6 +290,7 @@ export default function Page() {
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
   const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
+  const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
   const [selectedPreviousYear, setSelectedPreviousYear] = useState<number>(2025);
 
   // Settings submenus
@@ -2031,72 +2032,6 @@ export default function Page() {
                 filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45))",
               }}
             />
-            {/* Stats below */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                columnGap: 12,
-                rowGap: 6,
-                padding: "8px 0 0 0",
-                borderRadius: 0,
-                background: "transparent",
-                border: "none",
-                backdropFilter: "none",
-                WebkitBackdropFilter: "none",
-                width: "100%",
-              }}
-            >
-              {[
-                { label: "Movies", value: stats.movies },
-                { label: "TV Shows", value: stats.tv },
-                { label: "Books", value: stats.books },
-                { label: "Games", value: stats.games },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color:
-                        item.label === "Movies"
-                          ? "#77829c"
-                          : item.label === "TV Shows"
-                          ? "#ac7542"
-                          : item.label === "Books"
-                          ? "#64663c"
-                          : "#1A1A1A",
-                      fontFamily: "Arial, Helvetica, sans-serif",
-                      whiteSpace: "nowrap",
-                      lineHeight: 1.15,
-                      textAlign: "center",
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 600,
-                      color: "#8a4c4c",
-                      textAlign: "center",
-                      fontVariantNumeric: "tabular-nums",
-                      lineHeight: 1.15,
-                    }}
-                  >
-                    {item.value}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Rolodex Counter */}
@@ -2125,13 +2060,13 @@ export default function Page() {
                 display: "flex",
                 alignItems: "center",
                 borderRadius: 16,
-                border: "1px solid rgba(92, 60, 56, 0.2)",
-                background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
+                border: "1px solid rgba(138, 76, 76, 0.4)",
+                background: "linear-gradient(180deg, rgba(138, 76, 76, 0.75) 0%, rgba(118, 60, 60, 0.8) 100%)",
+                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
                 paddingLeft: "10px",
               }}
             >
-              <img src="/icon-search.png" alt="" width={iconSize * 0.6} height={iconSize * 0.6} style={{ display: "block", background: "transparent", marginRight: "6px" }} />
+              <img src="/icon-search.png" alt="" width={iconSize * 0.6} height={iconSize * 0.6} style={{ display: "block", background: "transparent", marginRight: "6px", filter: "brightness(0) invert(1) opacity(0.7)" }} />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -2141,11 +2076,12 @@ export default function Page() {
                   padding: "9px 10px",
                   border: "none",
                   background: "transparent",
-                  color: "#1b1b1b",
+                  color: "rgba(255, 255, 255, 0.95)",
                   fontSize: 13,
                   fontWeight: 500,
                   outline: "none",
                 }}
+                className="search-input"
               />
             </div>
           </div>
@@ -2174,10 +2110,10 @@ export default function Page() {
                     width: "100%",
                     padding: "8px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(92, 60, 56, 0.2)",
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
-                    color: "#1b1b1b",
+                    border: "1px solid rgba(138, 76, 76, 0.4)",
+                    background: "linear-gradient(180deg, rgba(138, 76, 76, 0.75) 0%, rgba(118, 60, 60, 0.8) 100%)",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
+                    color: "rgba(255, 255, 255, 0.95)",
                     fontSize: 13,
                     fontWeight: 500,
                     outline: "none",
@@ -2228,10 +2164,10 @@ export default function Page() {
                     width: "100%",
                     padding: "8px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(92, 60, 56, 0.2)",
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
-                    color: "#1b1b1b",
+                    border: "1px solid rgba(138, 76, 76, 0.4)",
+                    background: "linear-gradient(180deg, rgba(138, 76, 76, 0.75) 0%, rgba(118, 60, 60, 0.8) 100%)",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
+                    color: "rgba(255, 255, 255, 0.95)",
                     fontSize: 13,
                     fontWeight: 500,
                     outline: "none",
@@ -2345,7 +2281,25 @@ export default function Page() {
                     </span>
                     Books
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 40,
+                        height: 22,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: "#6ba56a",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.books}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
                 </button>
 
                 {openSection === "books" ? (
@@ -2674,7 +2628,8 @@ export default function Page() {
                     textAlign: "left",
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
+                    justifyContent: "space-between",
+                    gap: 8,
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
@@ -2697,7 +2652,25 @@ export default function Page() {
                     </span>
                     Movies
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 40,
+                        height: 22,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: "#5b9bd5",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.movies}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
                 </button>
 
                 {openSection === "movies" ? (
@@ -2845,7 +2818,7 @@ export default function Page() {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 10,
+                    gap: 8,
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
@@ -2868,7 +2841,25 @@ export default function Page() {
                     </span>
                     TV Shows
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 40,
+                        height: 22,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: "#d97642",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.tv}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
                 </button>
 
                 {openSection === "tv" ? (
@@ -3075,7 +3066,8 @@ export default function Page() {
                     textAlign: "left",
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
+                    justifyContent: "space-between",
+                    gap: 8,
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
@@ -3097,6 +3089,25 @@ export default function Page() {
                       <img src="/icon-games.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Games
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 40,
+                        height: 22,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.games}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -3123,9 +3134,45 @@ export default function Page() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {/* Year submenu */}
+                {/* This Year - Primary clickable */}
                 <button
-                  onClick={() => setYearMenuOpen(!yearMenuOpen)}
+                  onClick={() => setNav("year-this")}
+                  className={`sideItem ${nav === "year-this" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "year-this" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "year-this" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    This Year
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+
+                {/* Other submenu */}
+                <button
+                  onClick={() => setOtherMenuOpen(!otherMenuOpen)}
                   className="sideItem"
                   style={{
                     width: "100%",
@@ -3137,14 +3184,14 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: yearMenuOpen ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: otherMenuOpen ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
                         width: 20,
                         height: 20,
                         borderRadius: 4,
-                        background: yearMenuOpen ? "rgba(0,0,0,0.05)" : "transparent",
+                        background: otherMenuOpen ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -3154,17 +3201,17 @@ export default function Page() {
                     >
                       <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
-                    Year
+                    Other
                   </span>
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>
-                    {yearMenuOpen ? "−" : "+"}
+                    {otherMenuOpen ? "−" : "+"}
                   </span>
                 </button>
 
-                {yearMenuOpen && (
+                {otherMenuOpen && (
                   <div style={{ paddingLeft: 30, display: "flex", flexDirection: "column", gap: 0 }}>
                     <button
-                      onClick={() => setNav("year-this")}
+                      onClick={() => setNav("year-previous")}
                       style={{
                         width: "100%",
                         textAlign: "left",
@@ -3177,57 +3224,31 @@ export default function Page() {
                         fontSize: 14,
                         fontFamily: "Nunito, sans-serif",
                         color: "#4A4A4A",
-                        background: nav === "year-this" ? "rgba(138, 76, 76, 0.15)" : "transparent",
+                        background: nav === "year-previous" ? "rgba(138, 76, 76, 0.15)" : "transparent",
                         border: "none",
                         cursor: "pointer",
                         borderRadius: 0,
                       }}
                     >
-                      <span style={{ fontWeight: "600", fontFamily: "Nunito, sans-serif" }}>{new Date().getFullYear()}</span>
+                      <span style={{ fontWeight: "600", fontFamily: "Nunito, sans-serif" }}>Previous Year</span>
                       <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                     </button>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                      <button
-                        onClick={() => setNav("year-previous")}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          borderBottom: "1px solid rgba(0,0,0,0.06)",
-                          padding: "8px 0",
-                          fontSize: 14,
-                          fontFamily: "Nunito, sans-serif",
-                          color: "#4A4A4A",
-                          background: nav === "year-previous" ? "rgba(138, 76, 76, 0.15)" : "transparent",
-                          border: "none",
-                          cursor: "pointer",
-                          borderRadius: 0,
-                        }}
-                      >
-                        <span style={{ fontWeight: "600", fontFamily: "Nunito, sans-serif" }}>Previous Year</span>
-                        <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
-                      </button>
-
-                      {nav === "year-previous" && (
-                        <div style={{ paddingLeft: 16, paddingTop: 4, paddingBottom: 8 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif", color: "rgba(0, 0, 0, 0.7)" }}>
-                            Select Year:
-                            <input
-                              type="number"
-                              min="1900"
-                              max="2025"
-                              value={selectedPreviousYear}
-                              onChange={(e) => setSelectedPreviousYear(Number(e.target.value) || 2025)}
-                              style={{ width: 80, fontSize: 14 }}
-                            />
-                          </label>
-                        </div>
-                      )}
-                    </div>
+                    {nav === "year-previous" && (
+                      <div style={{ paddingLeft: 16, paddingTop: 4, paddingBottom: 8 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif", color: "rgba(0, 0, 0, 0.7)" }}>
+                          Select Year:
+                          <input
+                            type="number"
+                            min="1900"
+                            max="2025"
+                            value={selectedPreviousYear}
+                            onChange={(e) => setSelectedPreviousYear(Number(e.target.value) || 2025)}
+                            style={{ width: 80, fontSize: 14 }}
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
