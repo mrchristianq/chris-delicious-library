@@ -3,6 +3,23 @@ const path = require('path');
 const https = require('https');
 const Papa = require('papaparse');
 
+// Load .env.local if it exists
+const envPath = path.join(__dirname, '../.env.local');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^([^=]+)=(.*)$/);
+    if (match && !line.startsWith('#')) {
+      let value = match[2].trim();
+      // Remove surrounding quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      process.env[match[1].trim()] = value;
+    }
+  });
+}
+
 // CSV URLs from environment or hardcoded
 const CSV_URLS = {
   tv: process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL || 'YOUR_TV_CSV_URL',
