@@ -2435,8 +2435,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 40,
-                        height: 22,
+                        width: 48,
+                        height: 24,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -2806,8 +2806,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 40,
-                        height: 22,
+                        width: 48,
+                        height: 24,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -2995,8 +2995,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 40,
-                        height: 22,
+                        width: 48,
+                        height: 24,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -3244,8 +3244,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 40,
-                        height: 22,
+                        width: 48,
+                        height: 24,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
