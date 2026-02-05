@@ -1,5 +1,6 @@
 /**
  * Google Apps Script to Add GitHub Cover URLs to Your Spreadsheet
+ * (For Books/Movies/Shows only)
  * 
  * Instructions:
  * 1. Open your Google Spreadsheet (Books/Movies/Shows)
@@ -14,10 +15,8 @@
  *    - addCoverUrlsToAll() - adds to Shows, Books, Movies
  * 7. Grant permissions when prompted
  * 
- * For Games (separate spreadsheet with "Database" sheet):
- * - Open the Games spreadsheet
- * - Repeat steps 2-5
- * - Run addCoverUrlsToGames()
+ * Note: Games uses a separate script (GOOGLE_APPS_SCRIPT_GAMES_COVER_URLS.gs)
+ * in the Games spreadsheet
  */
 
 // Sanitize title to match cover filename (must match app logic)
@@ -109,11 +108,7 @@ function addCoverUrlsToMovies() {
   addCoverUrlsToSheet('Movies', 'movies', 'Title');
 }
 
-function addCoverUrlsToGames() {
-  addCoverUrlsToSheet('Database', 'games', 'Title');
-}
-
-// Add to all sheets at once (Books, Movies, TV - Games is separate)
+// Add to all sheets at once
 function addCoverUrlsToAll() {
   Logger.log('Adding cover URLs to all sheets...');
   
@@ -121,7 +116,7 @@ function addCoverUrlsToAll() {
   addCoverUrlsToSheet('Books', 'books', 'Title');
   addCoverUrlsToSheet('Movies', 'movies', 'Title');
   
-  SpreadsheetApp.getUi().alert('Success! Added cover URLs to Shows, Books, and Movies.\n\nNote: Games is on a separate spreadsheet - run addCoverUrlsToGames() there.');
+  SpreadsheetApp.getUi().alert('Success! Added cover URLs to Shows, Books, and Movies!');
 }
 
 // Create custom menu
@@ -131,8 +126,7 @@ function onOpen() {
       .addItem('Add URLs to Shows (TV)', 'addCoverUrlsToTV')
       .addItem('Add URLs to Books', 'addCoverUrlsToBooks')
       .addItem('Add URLs to Movies', 'addCoverUrlsToMovies')
-      .addItem('Add URLs to Games', 'addCoverUrlsToGames')
       .addSeparator()
-      .addItem('Add URLs to ALL (Books/Movies/Shows)', 'addCoverUrlsToAll')
+      .addItem('Add URLs to ALL Sheets', 'addCoverUrlsToAll')
       .addToUi();
 }
