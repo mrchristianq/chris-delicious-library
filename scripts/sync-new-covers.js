@@ -31,14 +31,14 @@ const CSV_URLS = {
 const GITHUB_BASE_URL = 'https://mrchristianq.github.io/chris-delicious-library/covers';
 const manifestPath = path.join(__dirname, '../public/covers-manifest.json');
 
-// Sanitize title to match cover filename
+// Sanitize title to match cover filename (must match browser utility and app logic)
 function sanitizeTitle(title) {
   return title
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .substring(0, 50)
-    .replace(/-+$/, '');
+    .replace(/[^a-z0-9\s-]/g, '')  // Remove special chars (keep spaces and hyphens)
+    .replace(/\s+/g, '-')           // Replace spaces with hyphens
+    .replace(/-+/g, '-')            // Collapse multiple hyphens
+    .substring(0, 50);
 }
 
 // Fetch CSV data

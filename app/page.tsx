@@ -161,13 +161,13 @@ function safeStr(v: unknown) {
 
 // Helper function to generate GitHub Pages cover URL from title
 function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 'games'): string {
-  // Sanitize title to match downloaded cover filenames
+  // Sanitize title to match downloaded cover filenames (must match browser utility logic)
   const sanitized = title
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .substring(0, 50)
-    .replace(/-+$/, '');
+    .replace(/[^a-z0-9\s-]/g, '')  // Remove special chars (keep spaces and hyphens)
+    .replace(/\s+/g, '-')           // Replace spaces with hyphens
+    .replace(/-+/g, '-')            // Collapse multiple hyphens
+    .substring(0, 50);
   
   return `https://mrchristianq.github.io/chris-delicious-library/covers/${category}/${sanitized}.jpg`;
 }
