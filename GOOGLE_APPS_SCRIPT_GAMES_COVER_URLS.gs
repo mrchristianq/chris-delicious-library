@@ -16,7 +16,10 @@
 // Sanitize title to match cover filename (must match app logic)
 function sanitizeTitle(title) {
   if (!title) return '';
-  return title
+  // Convert to string in case it's a number or other type
+  const titleStr = String(title).trim();
+  if (!titleStr) return '';
+  return titleStr
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')  // Remove special chars (keep spaces and hyphens)
     .replace(/\s+/g, '-')           // Replace spaces with hyphens
