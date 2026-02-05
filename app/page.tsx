@@ -189,9 +189,8 @@ function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to external URL
-  const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  const posterUrl = getGitHubCoverUrl(title, 'tv') || externalUrl;
+  // Use CSV poster URL directly
+  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
   return {
     title,
     posterUrl,
@@ -208,8 +207,8 @@ function rowToBook(r: Row): Book | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to external URL
-  const externalUrl =
+  // Use CSV poster URL directly
+  const posterUrl =
     safeStr(r["ImageURL"]) ||
     safeStr(r["Image URL"]) ||
     safeStr(r["Image"]) ||
@@ -219,7 +218,6 @@ function rowToBook(r: Row): Book | null {
     safeStr(r["Poster URL"]) ||
     safeStr(r["Poster"]) ||
     "";
-  const posterUrl = getGitHubCoverUrl(title, 'books') || externalUrl;
   return {
     title,
     posterUrl,
@@ -239,9 +237,8 @@ function rowToMovie(r: Row): Movie | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to external URL
-  const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  const posterUrl = getGitHubCoverUrl(title, 'movies') || externalUrl;
+  // Use CSV poster URL directly
+  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
   return {
     title,
     posterUrl,
@@ -258,9 +255,8 @@ function rowToGame(r: Row): Game | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to external URL
-  const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
-  const posterUrl = getGitHubCoverUrl(title, 'games') || externalUrl;
+  // Use CSV poster URL directly
+  const posterUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
   return {
     title,
     posterUrl,
