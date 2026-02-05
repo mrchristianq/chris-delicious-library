@@ -5,10 +5,10 @@ const Papa = require('papaparse');
 
 // CSV URLs from environment or hardcoded
 const CSV_URLS = {
-  tv: process.env.NEXT_PUBLIC_TV_CSV_URL || 'YOUR_TV_CSV_URL',
-  books: process.env.NEXT_PUBLIC_BOOKS_CSV_URL || 'YOUR_BOOKS_CSV_URL', 
-  movies: process.env.NEXT_PUBLIC_MOVIES_CSV_URL || 'YOUR_MOVIES_CSV_URL',
-  games: process.env.NEXT_PUBLIC_GAMES_CSV_URL || 'YOUR_GAMES_CSV_URL'
+  tv: process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL || 'YOUR_TV_CSV_URL',
+  books: process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL || 'YOUR_BOOKS_CSV_URL', 
+  movies: process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL || 'YOUR_MOVIES_CSV_URL',
+  games: process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL || 'YOUR_GAMES_CSV_URL'
 };
 
 const GITHUB_BASE_URL = 'https://mrchristianq.github.io/chris-delicious-library/covers';

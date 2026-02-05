@@ -30,10 +30,10 @@ jobs:
       
       - name: Sync new covers from Google Sheets
         env:
-          NEXT_PUBLIC_TV_CSV_URL: ${{ secrets.NEXT_PUBLIC_TV_CSV_URL }}
-          NEXT_PUBLIC_BOOKS_CSV_URL: ${{ secrets.NEXT_PUBLIC_BOOKS_CSV_URL }}
-          NEXT_PUBLIC_MOVIES_CSV_URL: ${{ secrets.NEXT_PUBLIC_MOVIES_CSV_URL }}
-          NEXT_PUBLIC_GAMES_CSV_URL: ${{ secrets.NEXT_PUBLIC_GAMES_CSV_URL }}
+          NEXT_PUBLIC_TV_SHEET_CSV_URL: ${{ secrets.NEXT_PUBLIC_TV_SHEET_CSV_URL }}
+          NEXT_PUBLIC_BOOKS_SHEET_CSV_URL: ${{ secrets.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL }}
+          NEXT_PUBLIC_MOVIES_SHEET_CSV_URL: ${{ secrets.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL }}
+          NEXT_PUBLIC_GAMES_SHEET_CSV_URL: ${{ secrets.NEXT_PUBLIC_GAMES_SHEET_CSV_URL }}
         run: npm run sync-covers
       
       - name: Check for new covers
