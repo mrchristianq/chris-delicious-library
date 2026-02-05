@@ -14,7 +14,7 @@
  *    - addCoverUrlsToAll() - adds to Shows, Books, Movies
  * 7. Grant permissions when prompted
  * 
- * For Games (separate spreadsheet):
+ * For Games (separate spreadsheet with "Database" sheet):
  * - Open the Games spreadsheet
  * - Repeat steps 2-5
  * - Run addCoverUrlsToGames()
@@ -110,7 +110,7 @@ function addCoverUrlsToMovies() {
 }
 
 function addCoverUrlsToGames() {
-  addCoverUrlsToSheet('Games', 'games', 'Title');
+  addCoverUrlsToSheet('Database', 'games', 'Title');
 }
 
 // Add to all sheets at once (Books, Movies, TV - Games is separate)
