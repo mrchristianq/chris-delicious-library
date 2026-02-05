@@ -2,18 +2,22 @@
  * Google Apps Script to Add GitHub Cover URLs to Your Spreadsheet
  * 
  * Instructions:
- * 1. Open your Google Spreadsheet
+ * 1. Open your Google Spreadsheet (Books/Movies/Shows)
  * 2. Go to Extensions > Apps Script
  * 3. Delete any existing code
  * 4. Paste this entire script
  * 5. Save (name it "Add Cover URLs")
  * 6. Run the function you want:
- *    - addCoverUrlsToTV()
+ *    - addCoverUrlsToTV() - for "Shows" sheet
  *    - addCoverUrlsToBooks()
  *    - addCoverUrlsToMovies()
- *    - addCoverUrlsToGames()
- *    - addCoverUrlsToAll() (adds to all sheets)
+ *    - addCoverUrlsToAll() - adds to Shows, Books, Movies
  * 7. Grant permissions when prompted
+ * 
+ * For Games (separate spreadsheet):
+ * - Open the Games spreadsheet
+ * - Repeat steps 2-5
+ * - Run addCoverUrlsToGames()
  */
 
 // Sanitize title to match cover filename (must match app logic)
@@ -94,7 +98,7 @@ function addCoverUrlsToSheet(sheetName, category, titleColumn) {
 
 // Individual sheet functions
 function addCoverUrlsToTV() {
-  addCoverUrlsToSheet('TV Shows', 'tv', 'Title');
+  addCoverUrlsToSheet('Shows', 'tv', 'Title');
 }
 
 function addCoverUrlsToBooks() {
@@ -109,27 +113,26 @@ function addCoverUrlsToGames() {
   addCoverUrlsToSheet('Games', 'games', 'Title');
 }
 
-// Add to all sheets at once
+// Add to all sheets at once (Books, Movies, TV - Games is separate)
 function addCoverUrlsToAll() {
   Logger.log('Adding cover URLs to all sheets...');
   
-  addCoverUrlsToSheet('TV Shows', 'tv', 'Title');
+  addCoverUrlsToSheet('Shows', 'tv', 'Title');
   addCoverUrlsToSheet('Books', 'books', 'Title');
   addCoverUrlsToSheet('Movies', 'movies', 'Title');
-  addCoverUrlsToSheet('Games', 'games', 'Title');
   
-  SpreadsheetApp.getUi().alert('Success! Added cover URLs to all sheets.');
+  SpreadsheetApp.getUi().alert('Success! Added cover URLs to Shows, Books, and Movies.\n\nNote: Games is on a separate spreadsheet - run addCoverUrlsToGames() there.');
 }
 
 // Create custom menu
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('📚 Cover URLs')
-      .addItem('Add URLs to TV Shows', 'addCoverUrlsToTV')
+      .addItem('Add URLs to Shows (TV)', 'addCoverUrlsToTV')
       .addItem('Add URLs to Books', 'addCoverUrlsToBooks')
       .addItem('Add URLs to Movies', 'addCoverUrlsToMovies')
       .addItem('Add URLs to Games', 'addCoverUrlsToGames')
       .addSeparator()
-      .addItem('Add URLs to ALL Sheets', 'addCoverUrlsToAll')
+      .addItem('Add URLs to ALL (Books/Movies/Shows)', 'addCoverUrlsToAll')
       .addToUi();
 }
