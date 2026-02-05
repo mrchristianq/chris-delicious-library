@@ -176,9 +176,9 @@ function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Prefer external URL if available, use GitHub as fallback
+  // Try GitHub cover first, fallback to external URL
   const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  const posterUrl = externalUrl || getGitHubCoverUrl(title, 'tv');
+  const posterUrl = getGitHubCoverUrl(title, 'tv') || externalUrl;
   return {
     title,
     posterUrl,
@@ -195,7 +195,7 @@ function rowToBook(r: Row): Book | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Prefer external URL if available, use GitHub as fallback
+  // Try GitHub cover first, fallback to external URL
   const externalUrl =
     safeStr(r["ImageURL"]) ||
     safeStr(r["Image URL"]) ||
@@ -206,7 +206,7 @@ function rowToBook(r: Row): Book | null {
     safeStr(r["Poster URL"]) ||
     safeStr(r["Poster"]) ||
     "";
-  const posterUrl = externalUrl || getGitHubCoverUrl(title, 'books');
+  const posterUrl = getGitHubCoverUrl(title, 'books') || externalUrl;
   return {
     title,
     posterUrl,
@@ -226,9 +226,9 @@ function rowToMovie(r: Row): Movie | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Prefer external URL if available, use GitHub as fallback
+  // Try GitHub cover first, fallback to external URL
   const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  const posterUrl = externalUrl || getGitHubCoverUrl(title, 'movies');
+  const posterUrl = getGitHubCoverUrl(title, 'movies') || externalUrl;
   return {
     title,
     posterUrl,
@@ -245,9 +245,9 @@ function rowToGame(r: Row): Game | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Prefer external URL if available, use GitHub as fallback
+  // Try GitHub cover first, fallback to external URL
   const externalUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
-  const posterUrl = externalUrl || getGitHubCoverUrl(title, 'games');
+  const posterUrl = getGitHubCoverUrl(title, 'games') || externalUrl;
   return {
     title,
     posterUrl,
