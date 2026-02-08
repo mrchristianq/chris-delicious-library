@@ -92,12 +92,19 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
+import { MediaModal } from "./components/MediaModal";
 
 type Row = Record<string, string>;
+type CoverCandidate = { label: string; url: string };
+type MediaType = "book" | "movie" | "tv" | "game";
 
 type Show = {
   title: string;
   posterUrl: string;
+  metadataCoverUrl?: string;
+  posterUrlFallback?: string;
+  coverSource?: string;
+  coverCandidates?: CoverCandidate[];
   tmdbId?: string;
   firstAirDate?: string;
   lastAirDate?: string;
@@ -109,7 +116,16 @@ type Show = {
 type Book = {
   title: string;
   posterUrl: string;
+  metadataCoverUrl?: string;
+  coverSource?: string;
+  coverCandidates?: CoverCandidate[];
+  posterUrlFallback?: string;
+  cover?: string;
+  subtitle?: string;
+  author?: string;
   isbn?: string;
+  isbn10?: string;
+  isbn13?: string;
   releaseDate?: string;
   completedDate?: string;
   status?: string;
@@ -118,11 +134,26 @@ type Book = {
   categories?: string;
   ownership?: string;
   tag?: string;
+  tags?: string;
+  description?: string;
+  imageUrl?: string;
+  customImageUrl?: string;
+  externalAverageRating?: string;
+  userRating?: string;
+  myRating?: string;
+  pages?: string;
+  audiobookDuration?: string;
+  githubCoverUrl?: string;
+  coverSyncStatus?: string;
 };
 
 type Movie = {
   title: string;
   posterUrl: string;
+  metadataCoverUrl?: string;
+  coverSource?: string;
+  coverCandidates?: CoverCandidate[];
+  csvUrl?: string;
   tmdbId?: string;
   releaseDate?: string;
   watchStatus?: string;
@@ -134,6 +165,10 @@ type Movie = {
 type Game = {
   title: string;
   posterUrl: string;
+  metadataCoverUrl?: string;
+  posterUrlFallback?: string;
+  coverSource?: string;
+  coverCandidates?: CoverCandidate[];
   platform?: string;
   releaseDate?: string;
   playStatus?: string;
@@ -185,17 +220,70 @@ function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 
   return `/covers/${category}/${sanitized}.jpg`;
 }
 
+function chooseCover(candidates: CoverCandidate[]) {
+  const normalized: CoverCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of candidates) {
+    const url = safeStr(candidate.url);
+    if (!url) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    normalized.push({ label: candidate.label, url });
+  }
+
+  const chosen = normalized[0];
+  return {
+    posterUrl: chosen?.url ?? "",
+    coverSource: chosen?.label ?? "Unknown",
+    coverCandidates: normalized,
+  };
+}
+
+function normalizeTitleKey(title: string): string {
+  return safeStr(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getMediaType(item: any): MediaType {
+  if (item?.__type === "book") return "book";
+  if (item?.__type === "movie") return "movie";
+  if (item?.__type === "tv") return "tv";
+  if (item?.__type === "game") return "game";
+  if (item?.platform || item?.yearPlayed || item?.gameStatus) return "game";
+  if (item?.isbn || item?.series) return "book";
+  if (item?.firstAirDate || item?.lastAirDate || item?.showStatus) return "tv";
+  return "movie";
+}
+
+function getMediaItemKey(item: any): string {
+  const type = getMediaType(item);
+  return `${type}:${normalizeTitleKey(item?.title || "")}`;
+}
+
 function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to CSV poster URL
   const githubUrl = getGitHubCoverUrl(title, 'tv');
-  const csvUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  const posterUrl = githubUrl || csvUrl;
+  const csvPosterUrl = safeStr(r["PosterURL"]);
+  const csvPoster = safeStr(r["Poster"]);
+  const metadataCoverUrl = csvPosterUrl || csvPoster;
+  const { posterUrl, coverSource, coverCandidates } = chooseCover([
+    { label: "PosterURL", url: csvPosterUrl },
+    { label: "Poster", url: csvPoster },
+    { label: "Generated GitHub Cover", url: githubUrl },
+  ]);
+
   return {
     title,
     posterUrl,
+    metadataCoverUrl: metadataCoverUrl || undefined,
+    posterUrlFallback: githubUrl,
+    coverSource,
+    coverCandidates,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
     firstAirDate: safeStr(r["FirstAirDate"]) || undefined,
     lastAirDate: safeStr(r["LastAirDate"]) || undefined,
@@ -210,22 +298,45 @@ function rowToBook(r: Row): Book | null {
   if (!title) return null;
 
   // Try GitHub cover first, fallback to CSV poster URL
-  const githubUrl = getGitHubCoverUrl(title, 'books');
-  const csvUrl =
-    safeStr(r["ImageURL"]) ||
-    safeStr(r["Image URL"]) ||
-    safeStr(r["Image"]) ||
-    safeStr(r["CoverURL"]) ||
-    safeStr(r["Cover URL"]) ||
-    safeStr(r["PosterURL"]) ||
-    safeStr(r["Poster URL"]) ||
-    safeStr(r["Poster"]) ||
-    "";
-  const posterUrl = githubUrl || csvUrl;
+  const generatedGitHubUrl = getGitHubCoverUrl(title, 'books');
+  const githubCoverUrl = safeStr(r["GitHubCoverURL"]) || undefined;
+  const coverSyncStatus = safeStr(r["CoverSyncStatus"]);
+  const customImageUrl =
+    safeStr(r["CustomImageURL"]) ||
+    safeStr(r["CustomImageUrl"]) ||
+    safeStr(r["Custom Image URL"]) ||
+    safeStr(r["\"CustomImageURL"]) ||
+    safeStr(r["CustomImageURL\n"]);
+  const cover = safeStr(r["Cover"]);
+  const coverUrl = safeStr(r["Cover URL"]) || safeStr(r["CoverURL"]);
+  const imageUrl = safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]);
+  const posterUrlCol = safeStr(r["PosterURL"]) || safeStr(r["Poster URL"]) || safeStr(r["Poster"]);
+  const metadataCoverUrl = customImageUrl || imageUrl || cover || coverUrl || posterUrlCol;
+  const csvUrl = metadataCoverUrl;
+  const orderedCandidates: CoverCandidate[] = [
+    { label: "CustomImageURL", url: customImageUrl },
+    { label: "ImageURL", url: imageUrl },
+    { label: "Cover", url: cover },
+    { label: "Cover URL", url: coverUrl },
+    { label: "PosterURL", url: posterUrlCol },
+    { label: "GitHubCoverURL", url: githubCoverUrl || "" },
+    { label: "Generated GitHub Cover", url: generatedGitHubUrl },
+  ];
+  const { posterUrl, coverSource, coverCandidates } = chooseCover(orderedCandidates);
+
   return {
     title,
     posterUrl,
-    isbn: safeStr(r["ISBN"]) || undefined,
+    metadataCoverUrl: metadataCoverUrl || undefined,
+    coverSource,
+    coverCandidates,
+    posterUrlFallback: csvUrl || customImageUrl || githubCoverUrl || generatedGitHubUrl || undefined,
+    cover: safeStr(r["Cover"]) || safeStr(r["CoverURL"]) || undefined,
+    subtitle: safeStr(r["Subtitle"]) || undefined,
+    author: safeStr(r["Author"]) || undefined,
+    isbn: safeStr(r["ISBN"]) || safeStr(r["isbn"]) || undefined,
+    isbn10: safeStr(r["isbn10"]) || safeStr(r["ISBN10"]) || undefined,
+    isbn13: safeStr(r["isbn13"]) || safeStr(r["ISBN13"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || safeStr(r["Published"]) || undefined,
     completedDate: safeStr(r["CompletedDate"]) || undefined,
     status: safeStr(r["Status"]) || undefined,
@@ -234,6 +345,17 @@ function rowToBook(r: Row): Book | null {
     categories: safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || undefined,
+    tags: safeStr(r["tags"]) || safeStr(r["Tags"]) || undefined,
+    description: safeStr(r["description"]) || safeStr(r["Description"]) || undefined,
+    imageUrl: safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]) || undefined,
+    customImageUrl: customImageUrl || undefined,
+    externalAverageRating: safeStr(r["externalAverageRating"]) || safeStr(r["ExternalAverageRating"]) || undefined,
+    userRating: safeStr(r["userRating"]) || safeStr(r["UserRating"]) || undefined,
+    myRating: safeStr(r["My Rating"]) || safeStr(r["MyRating"]) || undefined,
+    pages: safeStr(r["pages"]) || safeStr(r["Pages"]) || undefined,
+    audiobookDuration: safeStr(r["audiobookDuration"]) || safeStr(r["AudiobookDuration"]) || undefined,
+    githubCoverUrl: githubCoverUrl || generatedGitHubUrl || undefined,
+    coverSyncStatus: coverSyncStatus || undefined,
   };
 }
 
@@ -241,13 +363,23 @@ function rowToMovie(r: Row): Movie | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to CSV poster URL
   const githubUrl = getGitHubCoverUrl(title, 'movies');
-  const csvUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || "";
-  const posterUrl = githubUrl || csvUrl;
+  const csvPosterUrl = safeStr(r["PosterURL"]);
+  const csvPoster = safeStr(r["Poster"]);
+  const metadataCoverUrl = csvPosterUrl || csvPoster;
+  const csvUrl = metadataCoverUrl;
+  const { posterUrl, coverSource, coverCandidates } = chooseCover([
+    { label: "PosterURL", url: csvPosterUrl },
+    { label: "Poster", url: csvPoster },
+    { label: "Generated GitHub Cover", url: githubUrl },
+  ]);
   return {
     title,
     posterUrl,
+    metadataCoverUrl: metadataCoverUrl || undefined,
+    coverSource,
+    coverCandidates,
+    csvUrl,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
@@ -261,13 +393,24 @@ function rowToGame(r: Row): Game | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
 
-  // Try GitHub cover first, fallback to CSV poster URL
   const githubUrl = getGitHubCoverUrl(title, 'games');
-  const csvUrl = safeStr(r["PosterURL"]) || safeStr(r["Poster"]) || safeStr(r["CoverURL"]) || "";
-  const posterUrl = githubUrl || csvUrl;
+  const csvPosterUrl = safeStr(r["PosterURL"]);
+  const csvPoster = safeStr(r["Poster"]);
+  const csvCoverUrl = safeStr(r["CoverURL"]);
+  const metadataCoverUrl = csvCoverUrl || csvPosterUrl || csvPoster;
+  const { posterUrl, coverSource, coverCandidates } = chooseCover([
+    { label: "CoverURL", url: csvCoverUrl },
+    { label: "PosterURL", url: csvPosterUrl },
+    { label: "Poster", url: csvPoster },
+    { label: "Generated GitHub Cover", url: githubUrl },
+  ]);
   return {
     title,
     posterUrl,
+    metadataCoverUrl: metadataCoverUrl || undefined,
+    posterUrlFallback: githubUrl,
+    coverSource,
+    coverCandidates,
     platform: safeStr(r["Platform"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
     playStatus: safeStr(r["PlayStatus"]) || undefined,
@@ -536,7 +679,46 @@ export default function Page() {
   
   const [showInsetGuide, setShowInsetGuide] = useState(false);
 
+
+  // Modal state for cover popup
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalItem, setModalItem] = useState<any>(null);
+  const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+
   const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
+
+  const buildItemWithCoverSelection = (item: any, overrides: Record<string, string>) => {
+    const itemKey = getMediaItemKey(item);
+    const overrideUrl = safeStr(overrides[itemKey]);
+    const metadataUrl = safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
+    const fallbackUrl = safeStr(item?.posterUrlFallback);
+
+    const coverCandidates: CoverCandidate[] = [];
+    if (overrideUrl) coverCandidates.push({ label: "Override Cover", url: overrideUrl });
+    if (metadataUrl) coverCandidates.push({ label: "Metadata Cover", url: metadataUrl });
+    if (fallbackUrl && fallbackUrl !== metadataUrl) {
+      coverCandidates.push({ label: "Generated Backup", url: fallbackUrl });
+    }
+
+    return {
+      ...item,
+      itemKey,
+      posterUrl: overrideUrl || metadataUrl || fallbackUrl || "",
+      metadataCoverUrl: metadataUrl || undefined,
+      posterUrlFallback: metadataUrl || fallbackUrl || undefined,
+      coverOverrideUrl: overrideUrl || undefined,
+      coverSource: overrideUrl ? "Override Cover" : "Metadata Cover",
+      coverCandidates,
+    };
+  };
+
+  const getDisplayCoverUrl = (item: any) => {
+    const itemKey = getMediaItemKey(item);
+    const overrideUrl = safeStr(coverOverrides[itemKey]);
+    return overrideUrl || safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
+  };
 
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight || 0);
@@ -544,6 +726,94 @@ export default function Page() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cdlCoverOverrides");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setCoverOverrides(parsed as Record<string, string>);
+      }
+    } catch (e) {
+      console.warn("Failed to load cover overrides from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!settingsRows.length) return;
+    const fromSheet: Record<string, string> = {};
+    settingsRows.forEach((r) => {
+      const key = safeStr(r["Key"]);
+      if (!key.startsWith("coverOverride:")) return;
+      const mediaKey = key.slice("coverOverride:".length);
+      const value = safeStr(r["Value"]);
+      if (mediaKey && value) {
+        fromSheet[mediaKey] = value;
+      }
+    });
+    if (!Object.keys(fromSheet).length) return;
+    setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+  }, [settingsRows]);
+
+  useEffect(() => {
+    if (!modalItem) return;
+    setModalItem((prev: any) => (prev ? buildItemWithCoverSelection(prev, coverOverrides) : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverOverrides]);
+
+  const handleReplaceCover = async (item: any, file: File) => {
+    const itemKey = getMediaItemKey(item);
+    const mediaType = getMediaType(item);
+
+    setUploadingCoverForKey(itemKey);
+    setCoverUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("itemKey", itemKey);
+      formData.append("mediaType", mediaType);
+      formData.append("title", safeStr(item?.title));
+
+      const res = await fetch("/api/upload-cover", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.url) {
+        throw new Error(payload?.error || `Upload failed (${res.status})`);
+      }
+
+      const uploadedUrl = String(payload.url);
+      setCoverOverrides((prev) => {
+        const next = { ...prev, [itemKey]: uploadedUrl };
+        try {
+          localStorage.setItem("cdlCoverOverrides", JSON.stringify(next));
+        } catch (e) {
+          console.warn("Failed to persist cover overrides locally:", e);
+        }
+        return next;
+      });
+
+      if (settingsWriteUrl) {
+        saveSettingToSheet(
+          `coverOverride:${itemKey}`,
+          uploadedUrl,
+          "Cover Overrides",
+          `${mediaType} cover override for ${safeStr(item?.title)}`
+        );
+      }
+
+      setModalItem((prev: any) => (prev ? buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl }) : prev));
+    } catch (e: any) {
+      const msg = e?.message || "Failed to upload cover";
+      setCoverUploadError(msg);
+      console.error("Cover upload failed:", e);
+    } finally {
+      setUploadingCoverForKey(null);
+    }
+  };
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
@@ -4982,6 +5252,8 @@ export default function Page() {
                       const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
                       const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
                       const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
+                      const selectedCoverUrl = getDisplayCoverUrl(show);
+                      const metadataCoverUrl = safeStr(show.metadataCoverUrl) || safeStr(show.posterUrlFallback) || safeStr(show.posterUrl);
 
                       return (
                         <div
@@ -4994,6 +5266,10 @@ export default function Page() {
                             bottom: LIP_FROM_BOTTOM,
                             width: caseWidth,
                             height: caseHeight,
+                          }}
+                          onClick={() => {
+                            setModalItem(buildItemWithCoverSelection(show, coverOverrides));
+                            setModalOpen(true);
                           }}
                           onMouseMove={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -5053,11 +5329,11 @@ export default function Page() {
                               />
                             ) : null}
 
-                            {show.posterUrl ? (
+                            {selectedCoverUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 className="case-poster"
-                                src={show.posterUrl}
+                                src={selectedCoverUrl}
                                 alt={show.title}
                                 loading="lazy"
                                 style={{
@@ -5066,6 +5342,12 @@ export default function Page() {
                                   objectFit: "cover",
                                   display: "block",
                                   transform: isGame ? `scale(${coverScale / 100})` : "none",
+                                }}
+                                onError={e => {
+                                  // Fallback to metadata cover if override fails
+                                  if (metadataCoverUrl && e.currentTarget.src !== metadataCoverUrl) {
+                                    e.currentTarget.src = metadataCoverUrl;
+                                  }
                                 }}
                               />
                             ) : (
@@ -5164,6 +5446,19 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      {/* MediaModal for cover/info popup - overlays app */}
+      <MediaModal
+        item={modalItem}
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setCoverUploadError(null);
+        }}
+        onReplaceCover={handleReplaceCover}
+        isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
+        replaceCoverError={coverUploadError}
+      />
 
       {/* Mobile layout: sidebar collapses above */}
       <style>{`
