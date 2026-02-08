@@ -33,18 +33,6 @@ function splitTags(value: string): string[] {
     .filter(Boolean);
 }
 
-function compactCoverRef(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    const tail = decodeURIComponent(segments[segments.length - 1] || parsed.hostname);
-    return tail || parsed.hostname;
-  } catch {
-    const pieces = url.split("/").filter(Boolean);
-    return decodeURIComponent(pieces[pieces.length - 1] || url);
-  }
-}
-
 function renderRating(value: string) {
   const n = Number.parseFloat(value);
   if (Number.isNaN(n)) return value || DASH;
@@ -193,19 +181,29 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
   const resolvedPosterUrl = candidateUrls[posterIndex] || posterUrl;
   const resolvedCoverSource = coverCandidates.find((c: any) => c.url === resolvedPosterUrl)?.label || coverSource;
+  const coverLocation = (() => {
+    const label = resolvedCoverSource.toLowerCase();
+    if (label.includes("override")) return "Override";
+    if (label.includes("metadata")) return "Metadata";
+    if (label.includes("github")) return "GitHub";
+    if (label.includes("generated")) return "Generated";
+    return resolvedCoverSource;
+  })();
 
   if (!open || !item) return null;
 
-  const chips = [
-    ...splitTags(firstNonEmpty(sourceItem, ["platform"])),
-    ...splitTags(firstNonEmpty(sourceItem, ["genres"])),
-    ...splitTags(firstNonEmpty(sourceItem, ["categories"])),
-    ...splitTags(firstNonEmpty(sourceItem, ["tags", "tag"])),
-    firstNonEmpty(sourceItem, ["gameStatus", "movieStatus", "showStatus", "status"]),
-    firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]),
-  ].filter(Boolean);
-
-  const uniqueChips = Array.from(new Set(chips));
+  const statusValue =
+    firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
+    firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
+    DASH;
+  const categoryChips = Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["categories"]))));
+  const tagChips = Array.from(
+    new Set([
+      ...splitTags(firstNonEmpty(sourceItem, ["platform"])),
+      ...splitTags(firstNonEmpty(sourceItem, ["genres"])),
+      ...splitTags(firstNonEmpty(sourceItem, ["tags", "tag"])),
+    ])
+  );
   const infoRows = buildInfoRows(sourceItem, itemType);
 
   return (
@@ -227,63 +225,67 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                     setPosterIndex((idx) => (idx < candidateUrls.length - 1 ? idx + 1 : idx));
                   }}
                 />
-                {onReplaceCover ? (
-                  <>
-                    <button
-                      type="button"
-                      className="replaceCoverButton"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isReplacingCover}
-                    >
-                      {isReplacingCover ? "Uploading..." : "Replace Cover"}
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: "none" }}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file && item) {
-                          onReplaceCover(item, file);
-                        }
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </>
-                ) : null}
               </div>
             ) : (
               <div className="posterFallback">No Cover</div>
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && item && onReplaceCover) {
+                  onReplaceCover(item, file);
+                }
+                e.currentTarget.value = "";
+              }}
+            />
+            {onReplaceCover ? (
+              <button
+                type="button"
+                className="replaceCoverButton"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isReplacingCover}
+              >
+                {isReplacingCover ? "Uploading..." : "Replace Cover"}
+              </button>
+            ) : null}
             {replaceCoverError ? <div className="replaceCoverError">{replaceCoverError}</div> : null}
             <h2 className="title">{title}</h2>
             <div className="coverSourcePanel">
               <div className="coverSourceHeading">Active Cover</div>
-              <div className="activeSource">{resolvedCoverSource}</div>
-              {coverCandidates.length > 0 ? (
-                <div className="coverSourcesList">
-                  {coverCandidates.map((candidate: any, idx: number) => {
-                    const isActive = candidate.url === resolvedPosterUrl;
-                    return (
-                      <div key={`${candidate.url}-${idx}`} className={`sourceItem ${isActive ? "active" : ""}`}>
-                        <div className="sourceName">{candidate.label}</div>
-                        <div className="sourceUrl" title={candidate.url}>
-                          {compactCoverRef(candidate.url)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
+              <div className="activeSource">{`ACTIVE COVER: ${coverLocation} (${resolvedPosterUrl || DASH})`}</div>
             </div>
-            {uniqueChips.length > 0 ? (
-              <div className="chipWrap">
-                {uniqueChips.map((chip) => (
-                  <span key={chip} className="chip">
-                    {chip}
-                  </span>
-                ))}
+            <div className="chipSection">
+              <div className="chipSectionLabel">Status</div>
+              <div className="statusValue">{statusValue}</div>
+            </div>
+            <div className="chipSection">
+              <div className="chipSectionLabel">Categories</div>
+              {categoryChips.length > 0 ? (
+                <div className="chipWrap">
+                  {categoryChips.map((chip) => (
+                    <span key={chip} className="chip">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="statusValue">{DASH}</div>
+              )}
+            </div>
+            {tagChips.length > 0 ? (
+              <div className="chipSection">
+                <div className="chipSectionLabel">Tags</div>
+                <div className="chipWrap">
+                  {tagChips.map((chip) => (
+                    <span key={chip} className="chip">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
               </div>
             ) : null}
           </aside>
@@ -385,14 +387,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .posterWrap {
-          position: relative;
           width: 100%;
         }
 
         .replaceCoverButton {
-          position: absolute;
-          right: 10px;
-          bottom: 10px;
           border: 1px solid rgba(95, 122, 177, 0.6);
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
@@ -401,6 +399,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           font-size: 12px;
           font-weight: 700;
           cursor: pointer;
+          margin-top: 10px;
         }
 
         .replaceCoverButton:disabled {
@@ -436,7 +435,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: flex;
           flex-wrap: wrap;
           gap: 10px;
-          margin-top: 10px;
+          margin-top: 6px;
         }
 
         .chip {
@@ -448,6 +447,26 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           font-weight: 700;
           line-height: 1;
           padding: 10px 16px;
+        }
+
+        .chipSection {
+          width: 100%;
+          margin-top: 10px;
+        }
+
+        .chipSectionLabel {
+          color: rgba(178, 193, 224, 0.9);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .statusValue {
+          color: #f0f4ff;
+          font-size: 14px;
+          font-weight: 700;
+          margin-top: 6px;
         }
 
         .coverSourcePanel {
@@ -470,43 +489,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .activeSource {
           color: #f0f4ff;
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 700;
-          margin-bottom: 8px;
-        }
-
-        .coverSourcesList {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          max-height: 160px;
-          overflow: auto;
-          padding-right: 2px;
-        }
-
-        .sourceItem {
-          border-radius: 10px;
-          border: 1px solid rgba(73, 102, 154, 0.28);
-          background: rgba(11, 20, 38, 0.8);
-          padding: 8px;
-        }
-
-        .sourceItem.active {
-          border-color: rgba(57, 194, 179, 0.85);
-          background: rgba(19, 52, 60, 0.52);
-          box-shadow: inset 0 0 0 1px rgba(57, 194, 179, 0.24);
-        }
-
-        .sourceName {
-          color: #dbe5fb;
-          font-size: 12px;
-          font-weight: 700;
-          margin-bottom: 3px;
-        }
-
-        .sourceUrl {
-          color: #9fb0d7;
-          font-size: 11px;
+          margin-top: 6px;
           line-height: 1.35;
           word-break: break-all;
         }
@@ -635,10 +620,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
           .coverSourcePanel {
             padding: 8px;
-          }
-
-          .coverSourcesList {
-            max-height: 140px;
           }
 
           .heroImage,
