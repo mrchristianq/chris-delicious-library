@@ -48,10 +48,18 @@ function fetchCSV(url) {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
+        // Remove extra carriage returns and whitespace
+        data = data.replace(/\r/g, '\n').replace(/\n+/g, '\n').trim();
+        // Google Sheets sometimes adds extra spaces or breaks
         Papa.parse(data, {
           header: true,
           skipEmptyLines: true,
-          complete: (results) => resolve(results.data),
+          dynamicTyping: true,
+          complete: (results) => {
+            // Filter out rows with no title
+            const filtered = results.data.filter(row => row.Title && String(row.Title).trim() !== '');
+            resolve(filtered);
+          },
           error: (error) => reject(error)
         });
       });
@@ -107,6 +115,16 @@ async function syncNewCovers() {
     try {
       const rows = await fetchCSV(csvUrl);
       console.log(`   Found ${rows.length} items in spreadsheet`);
+      if (category === 'movies') {
+        console.log('   Movie titles parsed:');
+        rows.forEach((row, idx) => {
+          if (row.Title) {
+            console.log(`     [${idx+1}] ${row.Title}`);
+          } else {
+            console.log(`     [${idx+1}] <No Title>`);
+          }
+        });
+      }
 
       for (const row of rows) {
         const title = (row.Title || '').trim();
