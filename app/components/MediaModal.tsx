@@ -63,6 +63,13 @@ function splitTags(value: string): string[] {
     .filter(Boolean);
 }
 
+function splitCommaList(value: string): string[] {
+  return value
+    .split(/[,|]/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function buildBookEditValues(item: Record<string, any>): Record<string, string> {
   return {
     title: firstNonEmpty(item, ["title"]),
@@ -192,6 +199,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [isSavingBook, setIsSavingBook] = React.useState(false);
   const [bookSaveError, setBookSaveError] = React.useState<string | null>(null);
   const [bookEditValues, setBookEditValues] = React.useState<Record<string, string>>({});
+  const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
@@ -245,6 +253,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setBookEditValues(buildBookEditValues(item));
   }, [open, item]);
 
+  const autoSizeDescriptionTextarea = React.useCallback((el?: HTMLTextAreaElement | null) => {
+    const target = el ?? descriptionTextareaRef.current;
+    if (!target) return;
+    target.style.height = "auto";
+    target.style.height = `${target.scrollHeight}px`;
+  }, []);
+
+  React.useEffect(() => {
+    if (!isEditingBook) return;
+    autoSizeDescriptionTextarea();
+  }, [isEditingBook, bookEditValues.description, autoSizeDescriptionTextarea]);
+
   const resolvedPosterUrl = candidateUrls[posterIndex] || posterUrl;
   const resolvedCoverSource = coverCandidates.find((c: any) => c.url === resolvedPosterUrl)?.label || coverSource;
   const coverLocation = (() => {
@@ -259,7 +279,13 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
     firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
     DASH;
-  const categoryChips = Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))));
+  const categoryChips = Array.from(
+    new Set(
+      itemType === "book"
+        ? splitCommaList(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))
+        : splitTags(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))
+    )
+  );
   const tagChips =
     itemType === "book"
       ? Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"]))))
@@ -444,7 +470,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             ) : null}
           </aside>
 
-          <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}`}>
+          <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}${isEditingBook ? " bookEditRightPane" : ""}`}>
             {itemType !== "book" ? (
               heroUrl ? (
                 <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" />
@@ -462,15 +488,21 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
             {itemType === "book" && isEditingBook ? (
               <div className="editGrid">
-                {BOOK_EDIT_FIELDS.map((field) => (
-                  <label key={field.key} className="editField">
+                {[...BOOK_EDIT_FIELDS]
+                  .sort((a, b) => (a.key === "description" ? -1 : b.key === "description" ? 1 : 0))
+                  .map((field) => (
+                  <label key={field.key} className={`editField${field.key === "description" ? " editFieldFullWidth" : ""}`}>
                     <span className="editLabel">{field.label}</span>
                     {field.multiline ? (
                       <textarea
+                        ref={field.key === "description" ? descriptionTextareaRef : undefined}
                         value={bookEditValues[field.key] || ""}
-                        onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
-                        className="editTextarea"
-                        rows={4}
+                        onChange={(e) => {
+                          handleBookFieldChange(field.key, e.target.value);
+                          if (field.key === "description") autoSizeDescriptionTextarea(e.currentTarget);
+                        }}
+                        className={`editTextarea${field.key === "description" ? " editDescriptionTextarea" : ""}`}
+                        rows={field.key === "description" ? 8 : 4}
                       />
                     ) : field.key === "status" ? (
                       <select
@@ -821,6 +853,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           padding: 10px 12px;
         }
 
+        .editFieldFullWidth {
+          grid-column: 1 / -1;
+        }
+
         .editLabel {
           color: rgba(178, 193, 224, 0.9);
           font-size: 12px;
@@ -854,6 +890,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           min-height: 96px;
         }
 
+        .editDescriptionTextarea {
+          min-height: 220px;
+          line-height: 1.45;
+        }
+
         .bookSaveError {
           grid-column: 1 / -1;
           color: #ffb6b6;
@@ -870,6 +911,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .bookRightPane {
           padding-top: 12px;
+        }
+
+        .bookEditRightPane {
+          padding-top: 4px;
         }
 
         .bookDescriptionCard {

@@ -269,6 +269,63 @@ function getMediaItemKey(item: any): string {
   return `${type}:${normalizeTitleKey(item?.title || "")}`;
 }
 
+const BOOK_GENRE_CANONICAL = [
+  "Mystery",
+  "Thriller / Suspense",
+  "Horror",
+  "Science Fiction",
+  "Fantasy",
+  "Romance",
+  "Historical Fiction",
+  "Literary / Contemporary Fiction",
+  "Humor / Comedy",
+  "Adventure / Action",
+  "Young Adult (YA)",
+  "Children's",
+  "Biography / Memoir",
+  "History",
+  "Self-Help",
+  "Science / Popular Science",
+  "Business",
+  "True Crime",
+  "Strategy Guide",
+] as const;
+
+function mapBookGenre(input: string): (typeof BOOK_GENRE_CANONICAL)[number] | null {
+  const g = safeStr(input).toLowerCase();
+  if (!g) return null;
+
+  if (g.includes("strategy guide") || g.includes("guidebook") || g.includes("game guide") || g.includes("walkthrough")) return "Strategy Guide";
+  if (g.includes("true crime")) return "True Crime";
+  if (g.includes("mystery") || g.includes("detective") || g.includes("whodunit")) return "Mystery";
+  if (g.includes("thriller") || g.includes("suspense")) return "Thriller / Suspense";
+  if (g.includes("horror") || g.includes("gothic")) return "Horror";
+  if (g.includes("science fiction") || g.includes("sci-fi") || g.includes("scifi") || g.includes("dystopian") || g.includes("cyberpunk") || g.includes("space opera")) return "Science Fiction";
+  if (g.includes("fantasy")) return "Fantasy";
+  if (g.includes("romance")) return "Romance";
+  if (g.includes("historical fiction")) return "Historical Fiction";
+  if (g.includes("literary fiction") || g.includes("contemporary fiction") || g === "literary" || g === "contemporary") return "Literary / Contemporary Fiction";
+  if (g.includes("humor") || g.includes("humour") || g.includes("comedy") || g.includes("satire") || g.includes("comic")) return "Humor / Comedy";
+  if (g.includes("adventure") || g.includes("action")) return "Adventure / Action";
+  if (g.includes("young adult") || g === "ya" || g.includes("(ya)") || g.includes("teen")) return "Young Adult (YA)";
+  if (g.includes("children") || g.includes("kids") || g.includes("middle grade")) return "Children's";
+  if (g.includes("biography") || g.includes("memoir") || g.includes("autobiography")) return "Biography / Memoir";
+  if (g.includes("history")) return "History";
+  if (g.includes("self-help") || g.includes("self help") || g.includes("personal development")) return "Self-Help";
+  if (g.includes("popular science") || (g.includes("science") && !g.includes("fiction"))) return "Science / Popular Science";
+  if (g.includes("business") || g.includes("leadership") || g.includes("entrepreneur") || g.includes("management") || g.includes("finance")) return "Business";
+  return null;
+}
+
+function normalizeBookGenres(raw: string): string[] {
+  const tokens = safeStr(raw)
+    .split(/[,\|;]+/g)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const mapped = tokens.map(mapBookGenre).filter(Boolean) as string[];
+  return Array.from(new Set(mapped));
+}
+
 function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
@@ -330,7 +387,10 @@ function rowToBook(r: Row): Book | null {
     { label: "Generated GitHub Cover", url: generatedGitHubUrl },
   ];
   const { posterUrl, coverSource, coverCandidates } = chooseCover(orderedCandidates);
-
+  const rawBookGenre =
+    safeStr(r["genre"]) || safeStr(r["Genre"]) || safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]);
+  const normalizedGenres = normalizeBookGenres(rawBookGenre);
+  const normalizedGenreValue = normalizedGenres.join(", ");
   return {
     title,
     posterUrl,
@@ -349,9 +409,8 @@ function rowToBook(r: Row): Book | null {
     status: safeStr(r["Status"]) || undefined,
     types: safeStr(r["Types"]) || safeStr(r["Type"]) || undefined,
     series: safeStr(r["Series"]) || undefined,
-    categories:
-      safeStr(r["genre"]) || safeStr(r["Genre"]) || safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]) || undefined,
-    genre: safeStr(r["genre"]) || safeStr(r["Genre"]) || undefined,
+    categories: normalizedGenreValue || undefined,
+    genre: normalizedGenreValue || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || undefined,
     tags: safeStr(r["tags"]) || safeStr(r["Tags"]) || undefined,
@@ -593,7 +652,7 @@ export default function Page() {
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   
   // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>("standard");
+  const [sidebarTheme, setSidebarTheme] = useState<string>("winterGray");
   
   // Theme configurations
   const sidebarThemes = {
@@ -1341,7 +1400,7 @@ export default function Page() {
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
     
-    setSidebarTheme(getSetting("sidebarTheme", "standard"));
+    setSidebarTheme(getSetting("sidebarTheme", "winterGray"));
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
   }, [settingsRows]);
 
@@ -1508,7 +1567,7 @@ export default function Page() {
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
-        setSidebarTheme(getStr("sidebarTheme", "standard"));
+        setSidebarTheme(getStr("sidebarTheme", "winterGray"));
       }, 100);
       
       setSyncState("ok");
