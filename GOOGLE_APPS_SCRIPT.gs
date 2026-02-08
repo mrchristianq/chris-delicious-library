@@ -11,6 +11,9 @@ function doPost(e) {
     if (action === "updateBook") {
       return updateBookRow_(payload);
     }
+    if (action === "updateShow") {
+      return updateShowRow_(payload);
+    }
 
     // Default mode: settings key/value write
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -130,6 +133,63 @@ function updateBookRow_(payload) {
   }
 
   if (rowNum === -1) return createCORSResponse("Error: matching book row not found");
+
+  for (var colName in updates) {
+    if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
+    if (!headerIndex[colName]) continue;
+    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(updates[colName] || "").trim());
+  }
+
+  return createCORSResponse("Success");
+}
+
+function updateShowRow_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Shows");
+  if (!sheet) return createCORSResponse("Shows sheet not found");
+
+  const match = payload.match || {};
+  const updates = payload.updates || {};
+
+  const matchTmdbId = String(match.tmdbId || "").trim();
+  const matchTitle = String(match.title || "").trim();
+
+  if (!matchTmdbId && !matchTitle) {
+    return createCORSResponse("Error: missing show match keys");
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Shows sheet has no data rows");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+  const headerIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    headerIndex[headers[i]] = i + 1;
+  }
+
+  var rowNum = -1;
+  if (headerIndex["TMDB_ID"] && matchTmdbId) {
+    const values = sheet.getRange(2, headerIndex["TMDB_ID"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchTmdbId) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle) {
+    const values = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim().toLowerCase() === matchTitle.toLowerCase()) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1) return createCORSResponse("Error: matching show row not found");
 
   for (var colName in updates) {
     if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;

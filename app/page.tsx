@@ -549,6 +549,9 @@ export default function Page() {
   const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
   const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
   const booksWriteUrl = (process.env as any)["NEXT_PUBLIC_BOOKS_WRITE_URL"] as string | undefined;
+  const showsWriteUrl =
+    ((process.env as any)["NEXT_PUBLIC_SHOWS_WRITE_URL"] as string | undefined) ||
+    ((process.env as any)["NEXT_PUBLIC_TV_WRITE_URL"] as string | undefined);
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
@@ -1010,6 +1013,96 @@ export default function Page() {
     });
 
     // Re-sync to pick up the canonical sheet values once published CSV refreshes.
+    setRefreshNonce((n) => n + 1);
+  };
+
+  const handleSaveShowEdits = async (item: any, updates: Record<string, string>) => {
+    if (!showsWriteUrl) {
+      throw new Error(
+        "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
+      );
+    }
+
+    const matchTmdbId = safeStr(updates.tmdbId) || safeStr(item?.tmdbId);
+    const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+
+    if (!matchTmdbId && !matchTitle) {
+      throw new Error("Unable to identify this show row to update.");
+    }
+
+    const payload = {
+      action: "updateShow",
+      match: {
+        tmdbId: matchTmdbId,
+        title: matchTitle,
+      },
+      updates: {
+        Title: safeStr(updates.title),
+        Year: safeStr(updates.year),
+        TMDB_ID: safeStr(updates.tmdbId),
+        FirstAirDate: safeStr(updates.firstAirDate),
+        LastAirDate: safeStr(updates.lastAirDate),
+        NumberOfSeasons: safeStr(updates.numberOfSeasons),
+        NumberOfEpisodes: safeStr(updates.numberOfEpisodes),
+        WatchStatus: safeStr(updates.watchStatus),
+        Watched: safeStr(updates.watched),
+        CaughtUp: safeStr(updates.caughtUp),
+        Status: safeStr(updates.showStatus),
+        Networks: safeStr(updates.networks),
+        StreamingUS: safeStr(updates.streamingUS),
+        Genres: safeStr(updates.genres),
+        TMDB_Rating: safeStr(updates.tmdbRating),
+        MyRating: safeStr(updates.myRating),
+        BackdropURL: safeStr(updates.backdropUrl),
+        Overview: safeStr(updates.overview),
+        Ownership: safeStr(updates.ownership),
+        Tags: safeStr(updates.tags),
+        Tag: safeStr(updates.tags),
+        PosterURL: safeStr(updates.posterUrl),
+      },
+    };
+
+    try {
+      await fetch(showsWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to save show edits");
+    }
+
+    setModalItem((prev: any) => {
+      if (!prev) return prev;
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        year: safeStr(updates.year),
+        tmdbId: safeStr(updates.tmdbId),
+        firstAirDate: safeStr(updates.firstAirDate),
+        lastAirDate: safeStr(updates.lastAirDate),
+        numberOfSeasons: safeStr(updates.numberOfSeasons),
+        numberOfEpisodes: safeStr(updates.numberOfEpisodes),
+        watchStatus: safeStr(updates.watchStatus),
+        watched: safeStr(updates.watched),
+        caughtUp: safeStr(updates.caughtUp),
+        showStatus: safeStr(updates.showStatus),
+        networks: safeStr(updates.networks),
+        streamingUS: safeStr(updates.streamingUS),
+        genres: safeStr(updates.genres),
+        tmdbRating: safeStr(updates.tmdbRating),
+        myRating: safeStr(updates.myRating),
+        backdropUrl: safeStr(updates.backdropUrl),
+        overview: safeStr(updates.overview),
+        ownership: safeStr(updates.ownership),
+        tag: safeStr(updates.tags),
+        tags: safeStr(updates.tags),
+        posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
     setRefreshNonce((n) => n + 1);
   };
 
@@ -6012,6 +6105,7 @@ export default function Page() {
         }}
         onReplaceCover={handleReplaceCover}
         onSaveBookEdits={handleSaveBookEdits}
+        onSaveShowEdits={handleSaveShowEdits}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
         replaceCoverError={coverUploadError}
       />

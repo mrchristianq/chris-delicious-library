@@ -6,6 +6,7 @@ interface MediaModalProps {
   onClose: () => void;
   onReplaceCover?: (item: Record<string, any>, file: File) => Promise<void> | void;
   onSaveBookEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
+  onSaveShowEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
   isReplacingCover?: boolean;
   replaceCoverError?: string | null;
 }
@@ -17,6 +18,12 @@ type InfoRow = {
 };
 
 type BookEditField = {
+  key: string;
+  label: string;
+  multiline?: boolean;
+};
+
+type ShowEditField = {
   key: string;
   label: string;
   multiline?: boolean;
@@ -44,6 +51,28 @@ const BOOK_EDIT_FIELDS: BookEditField[] = [
 ];
 
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
+const SHOW_EDIT_FIELDS: ShowEditField[] = [
+  { key: "watchStatus", label: "Watch Status" },
+  { key: "showStatus", label: "Show Status" },
+  { key: "year", label: "Year" },
+  { key: "tmdbId", label: "TMDB ID" },
+  { key: "firstAirDate", label: "First Air Date" },
+  { key: "lastAirDate", label: "Last Air Date" },
+  { key: "numberOfSeasons", label: "Number Of Seasons" },
+  { key: "numberOfEpisodes", label: "Number Of Episodes" },
+  { key: "watched", label: "Watched" },
+  { key: "caughtUp", label: "Caught Up" },
+  { key: "networks", label: "Networks" },
+  { key: "streamingUS", label: "Streaming US" },
+  { key: "genres", label: "Genres" },
+  { key: "tmdbRating", label: "TMDB Rating" },
+  { key: "myRating", label: "My Rating" },
+  { key: "ownership", label: "Ownership" },
+  { key: "tags", label: "Tags" },
+  { key: "backdropUrl", label: "Backdrop URL" },
+  { key: "posterUrl", label: "Poster URL" },
+  { key: "overview", label: "Overview", multiline: true },
+];
 
 const DASH = "—";
 
@@ -93,6 +122,32 @@ function buildBookEditValues(item: Record<string, any>): Record<string, string> 
     openLibraryWorkKey: firstNonEmpty(item, ["openLibraryWorkKey", "OpenLibraryWorkKey"]),
     googleBooksVolumeId: firstNonEmpty(item, ["googleBooksVolumeId", "GoogleBooksVolumeId"]),
     description: firstNonEmpty(item, ["description", "Description"]),
+  };
+}
+
+function buildShowEditValues(item: Record<string, any>): Record<string, string> {
+  return {
+    title: firstNonEmpty(item, ["title", "Title"]),
+    year: firstNonEmpty(item, ["year", "Year"]),
+    tmdbId: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]),
+    firstAirDate: firstNonEmpty(item, ["firstAirDate", "FirstAirDate"]),
+    lastAirDate: firstNonEmpty(item, ["lastAirDate", "LastAirDate"]),
+    numberOfSeasons: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]),
+    numberOfEpisodes: firstNonEmpty(item, ["numberOfEpisodes", "NumberOfEpisodes"]),
+    watchStatus: firstNonEmpty(item, ["watchStatus", "WatchStatus"]),
+    watched: firstNonEmpty(item, ["watched", "Watched"]),
+    caughtUp: firstNonEmpty(item, ["caughtUp", "CaughtUp"]),
+    showStatus: firstNonEmpty(item, ["showStatus", "Status"]),
+    networks: firstNonEmpty(item, ["networks", "Networks"]),
+    streamingUS: firstNonEmpty(item, ["streamingUS", "StreamingUS"]),
+    genres: firstNonEmpty(item, ["genres", "Genres"]),
+    tmdbRating: firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]),
+    myRating: firstNonEmpty(item, ["myRating", "MyRating"]),
+    backdropUrl: firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
+    overview: firstNonEmpty(item, ["overview", "Overview"]),
+    ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
+    tags: firstNonEmpty(item, ["tag", "tags", "Tag", "Tags"]),
+    posterUrl: firstNonEmpty(item, ["posterUrl", "PosterURL", "poster", "Poster"]),
   };
 }
 
@@ -196,6 +251,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   onClose,
   onReplaceCover,
   onSaveBookEdits,
+  onSaveShowEdits,
   isReplacingCover = false,
   replaceCoverError,
 }) => {
@@ -204,6 +260,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [isSavingBook, setIsSavingBook] = React.useState(false);
   const [bookSaveError, setBookSaveError] = React.useState<string | null>(null);
   const [bookEditValues, setBookEditValues] = React.useState<Record<string, string>>({});
+  const [isEditingShow, setIsEditingShow] = React.useState(false);
+  const [isSavingShow, setIsSavingShow] = React.useState(false);
+  const [showSaveError, setShowSaveError] = React.useState<string | null>(null);
+  const [showEditValues, setShowEditValues] = React.useState<Record<string, string>>({});
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -256,6 +316,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setIsSavingBook(false);
     setBookSaveError(null);
     setBookEditValues(buildBookEditValues(item));
+    setIsEditingShow(false);
+    setIsSavingShow(false);
+    setShowSaveError(null);
+    setShowEditValues(buildShowEditValues(item));
   }, [open, item]);
 
   const autoSizeDescriptionTextarea = React.useCallback((el?: HTMLTextAreaElement | null) => {
@@ -266,9 +330,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   }, []);
 
   React.useEffect(() => {
-    if (!isEditingBook) return;
+    if (!isEditingBook && !isEditingShow) return;
     autoSizeDescriptionTextarea();
-  }, [isEditingBook, bookEditValues.description, autoSizeDescriptionTextarea]);
+  }, [isEditingBook, isEditingShow, bookEditValues.description, showEditValues.overview, autoSizeDescriptionTextarea]);
 
   const resolvedPosterUrl = candidateUrls[posterIndex] || posterUrl;
   const resolvedCoverSource = coverCandidates.find((c: any) => c.url === resolvedPosterUrl)?.label || coverSource;
@@ -304,9 +368,14 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           ])
         );
   const infoRows = buildInfoRows(sourceItem, itemType);
-  const editableTitle = isEditingBook ? bookEditValues.title || title : title;
+  const editableTitle =
+    itemType === "book" && isEditingBook
+      ? bookEditValues.title || title
+      : itemType === "tv" && isEditingShow
+        ? showEditValues.title || title
+        : title;
   const editableSubtitle = isEditingBook ? bookEditValues.subtitle || "" : subtitle;
-  const tvYearSubtitle = itemType === "tv" ? firstNonEmpty(sourceItem, ["year", "Year"]) : "";
+  const tvYearSubtitle = itemType === "tv" ? (isEditingShow ? showEditValues.year || "" : firstNonEmpty(sourceItem, ["year", "Year"])) : "";
   const bookTagSuggestions = Array.from(
     new Set([
       ...splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"])),
@@ -316,6 +385,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
   const handleBookFieldChange = (key: string, value: string) => {
     setBookEditValues((prev) => ({ ...prev, [key]: value }));
+  };
+  const handleShowFieldChange = (key: string, value: string) => {
+    setShowEditValues((prev) => ({ ...prev, [key]: value }));
   };
 
   const normalizeCommaTags = (value: string) =>
@@ -336,6 +408,19 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       setBookSaveError(e?.message || "Failed to save book changes");
     } finally {
       setIsSavingBook(false);
+    }
+  };
+  const handleSaveShow = async () => {
+    if (!item || !onSaveShowEdits) return;
+    setShowSaveError(null);
+    setIsSavingShow(true);
+    try {
+      await onSaveShowEdits(item, showEditValues);
+      setIsEditingShow(false);
+    } catch (e: any) {
+      setShowSaveError(e?.message || "Failed to save show changes");
+    } finally {
+      setIsSavingShow(false);
     }
   };
 
@@ -360,6 +445,27 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               {isEditingBook ? (
                 <button type="button" className="saveButton topActionButton" onClick={handleSaveBook} disabled={isSavingBook}>
                   {isSavingBook ? "Saving..." : "Save"}
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {itemType === "tv" && onSaveShowEdits ? (
+            <>
+              <button
+                type="button"
+                className="editButton topActionButton"
+                onClick={() => {
+                  setShowSaveError(null);
+                  setIsEditingShow((prev) => !prev);
+                  if (isEditingShow) setShowEditValues(buildShowEditValues(sourceItem));
+                }}
+                disabled={isSavingShow}
+              >
+                {isEditingShow ? "Cancel" : "Edit"}
+              </button>
+              {isEditingShow ? (
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveShow} disabled={isSavingShow}>
+                  {isSavingShow ? "Saving..." : "Save"}
                 </button>
               ) : null}
             </>
@@ -398,22 +504,36 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 e.currentTarget.value = "";
               }}
             />
-            {itemType === "book" && isEditingBook ? (
+            {(itemType === "book" && isEditingBook) || (itemType === "tv" && isEditingShow) ? (
               <>
                 <input
                   type="text"
-                  value={bookEditValues.title || ""}
-                  onChange={(e) => handleBookFieldChange("title", e.target.value)}
+                  value={itemType === "book" ? bookEditValues.title || "" : showEditValues.title || ""}
+                  onChange={(e) =>
+                    itemType === "book"
+                      ? handleBookFieldChange("title", e.target.value)
+                      : handleShowFieldChange("title", e.target.value)
+                  }
                   className="titleInput"
                   placeholder="Title"
                 />
-                <input
-                  type="text"
-                  value={bookEditValues.subtitle || ""}
-                  onChange={(e) => handleBookFieldChange("subtitle", e.target.value)}
-                  className="subtitleInput"
-                  placeholder="Subtitle"
-                />
+                {itemType === "book" ? (
+                  <input
+                    type="text"
+                    value={bookEditValues.subtitle || ""}
+                    onChange={(e) => handleBookFieldChange("subtitle", e.target.value)}
+                    className="subtitleInput"
+                    placeholder="Subtitle"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={showEditValues.year || ""}
+                    onChange={(e) => handleShowFieldChange("year", e.target.value)}
+                    className="subtitleInput"
+                    placeholder="Year"
+                  />
+                )}
               </>
             ) : (
               <>
@@ -479,7 +599,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             ) : null}
           </aside>
 
-          <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}${isEditingBook ? " bookEditRightPane" : ""}`}>
+          <section
+            className={`rightPane${itemType === "book" ? " bookRightPane" : ""}${isEditingBook || isEditingShow ? " bookEditRightPane" : ""}`}
+          >
             {itemType !== "book" ? (
               heroUrl ? (
                 <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" />
@@ -488,7 +610,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               )
             ) : null}
 
-            {description && itemType !== "book" ? (
+            {description && itemType !== "book" && !(itemType === "tv" && isEditingShow) ? (
               <div className="descriptionCard">
                 <div className="label">Description</div>
                 <div className="description">{description}</div>
@@ -565,6 +687,36 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   </label>
                 ))}
                 {bookSaveError ? <div className="bookSaveError">{bookSaveError}</div> : null}
+              </div>
+            ) : itemType === "tv" && isEditingShow ? (
+              <div className="editGrid">
+                {[...SHOW_EDIT_FIELDS]
+                  .sort((a, b) => (a.key === "overview" ? -1 : b.key === "overview" ? 1 : 0))
+                  .map((field) => (
+                    <label key={field.key} className={`editField${field.key === "overview" ? " editFieldFullWidth" : ""}`}>
+                      <span className="editLabel">{field.label}</span>
+                      {field.multiline ? (
+                        <textarea
+                          ref={field.key === "overview" ? descriptionTextareaRef : undefined}
+                          value={showEditValues[field.key] || ""}
+                          onChange={(e) => {
+                            handleShowFieldChange(field.key, e.target.value);
+                            if (field.key === "overview") autoSizeDescriptionTextarea(e.currentTarget);
+                          }}
+                          className={`editTextarea${field.key === "overview" ? " editDescriptionTextarea" : ""}`}
+                          rows={field.key === "overview" ? 8 : 4}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={showEditValues[field.key] || ""}
+                          onChange={(e) => handleShowFieldChange(field.key, e.target.value)}
+                          className="editInput"
+                        />
+                      )}
+                    </label>
+                  ))}
+                {showSaveError ? <div className="bookSaveError">{showSaveError}</div> : null}
               </div>
             ) : (
               <div className="infoGrid">
