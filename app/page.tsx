@@ -105,11 +105,24 @@ type Show = {
   posterUrlFallback?: string;
   coverSource?: string;
   coverCandidates?: CoverCandidate[];
+  year?: string;
   tmdbId?: string;
   firstAirDate?: string;
   lastAirDate?: string;
+  numberOfSeasons?: string;
+  numberOfEpisodes?: string;
   watchStatus?: string;
+  watched?: string;
+  caughtUp?: string;
   showStatus?: string;
+  networks?: string;
+  streamingUS?: string;
+  genres?: string;
+  tmdbRating?: string;
+  myRating?: string;
+  backdropUrl?: string;
+  overview?: string;
+  ownership?: string;
   tag?: string;
 };
 
@@ -132,9 +145,12 @@ type Book = {
   types?: string;
   series?: string;
   categories?: string;
+  genre?: string;
   ownership?: string;
   tag?: string;
   tags?: string;
+  openLibraryWorkKey?: string;
+  googleBooksVolumeId?: string;
   description?: string;
   imageUrl?: string;
   customImageUrl?: string;
@@ -154,11 +170,23 @@ type Movie = {
   coverSource?: string;
   coverCandidates?: CoverCandidate[];
   csvUrl?: string;
+  year?: string;
+  poster?: string;
+  myRating?: string;
+  tmdbRating?: string;
   tmdbId?: string;
+  watched?: string;
+  watchDate?: string;
+  tags?: string;
   releaseDate?: string;
+  runtime?: string;
   watchStatus?: string;
+  status?: string;
   movieStatus?: string;
+  ownership?: string;
   tag?: string;
+  overview?: string;
+  backdropUrl?: string;
   genres?: string;
 };
 
@@ -169,11 +197,37 @@ type Game = {
   posterUrlFallback?: string;
   coverSource?: string;
   coverCandidates?: CoverCandidate[];
+  cover?: string;
   platform?: string;
+  status?: string;
+  name?: string;
   releaseDate?: string;
+  releaseDateAlt?: string;
+  platforms?: string;
+  coverUrl?: string;
+  rating?: string;
+  igdbRating?: string;
+  myRating?: string;
   playStatus?: string;
   gameStatus?: string;
+  ownership?: string;
+  format?: string;
+  backlog?: string;
+  completed?: string;
+  dateCompleted?: string;
   yearPlayed?: string;
+  dateAdded?: string;
+  description?: string;
+  genres?: string;
+  hoursPlayed?: string;
+  coverCachedAt?: string;
+  developer?: string;
+  screensotsUrl?: string;
+  wishlistOrder?: string;
+  queuedOrder?: string;
+  igdbId?: string;
+  igdbIdOverride?: string;
+  localCoverUrl?: string;
   tag?: string;
 };
 
@@ -263,6 +317,63 @@ function getMediaItemKey(item: any): string {
   return `${type}:${normalizeTitleKey(item?.title || "")}`;
 }
 
+const BOOK_GENRE_CANONICAL = [
+  "Mystery",
+  "Thriller / Suspense",
+  "Horror",
+  "Science Fiction",
+  "Fantasy",
+  "Romance",
+  "Historical Fiction",
+  "Literary / Contemporary Fiction",
+  "Humor / Comedy",
+  "Adventure / Action",
+  "Young Adult (YA)",
+  "Children's",
+  "Biography / Memoir",
+  "History",
+  "Self-Help",
+  "Science / Popular Science",
+  "Business",
+  "True Crime",
+  "Strategy Guide",
+] as const;
+
+function mapBookGenre(input: string): (typeof BOOK_GENRE_CANONICAL)[number] | null {
+  const g = safeStr(input).toLowerCase();
+  if (!g) return null;
+
+  if (g.includes("strategy guide") || g.includes("guidebook") || g.includes("game guide") || g.includes("walkthrough")) return "Strategy Guide";
+  if (g.includes("true crime")) return "True Crime";
+  if (g.includes("mystery") || g.includes("detective") || g.includes("whodunit")) return "Mystery";
+  if (g.includes("thriller") || g.includes("suspense")) return "Thriller / Suspense";
+  if (g.includes("horror") || g.includes("gothic")) return "Horror";
+  if (g.includes("science fiction") || g.includes("sci-fi") || g.includes("scifi") || g.includes("dystopian") || g.includes("cyberpunk") || g.includes("space opera")) return "Science Fiction";
+  if (g.includes("fantasy")) return "Fantasy";
+  if (g.includes("romance")) return "Romance";
+  if (g.includes("historical fiction")) return "Historical Fiction";
+  if (g.includes("literary fiction") || g.includes("contemporary fiction") || g === "literary" || g === "contemporary") return "Literary / Contemporary Fiction";
+  if (g.includes("humor") || g.includes("humour") || g.includes("comedy") || g.includes("satire") || g.includes("comic")) return "Humor / Comedy";
+  if (g.includes("adventure") || g.includes("action")) return "Adventure / Action";
+  if (g.includes("young adult") || g === "ya" || g.includes("(ya)") || g.includes("teen")) return "Young Adult (YA)";
+  if (g.includes("children") || g.includes("kids") || g.includes("middle grade")) return "Children's";
+  if (g.includes("biography") || g.includes("memoir") || g.includes("autobiography")) return "Biography / Memoir";
+  if (g.includes("history")) return "History";
+  if (g.includes("self-help") || g.includes("self help") || g.includes("personal development")) return "Self-Help";
+  if (g.includes("popular science") || (g.includes("science") && !g.includes("fiction"))) return "Science / Popular Science";
+  if (g.includes("business") || g.includes("leadership") || g.includes("entrepreneur") || g.includes("management") || g.includes("finance")) return "Business";
+  return null;
+}
+
+function normalizeBookGenres(raw: string): string[] {
+  const tokens = safeStr(raw)
+    .split(/[,\|;]+/g)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const mapped = tokens.map(mapBookGenre).filter(Boolean) as string[];
+  return Array.from(new Set(mapped));
+}
+
 function rowToShow(r: Row): Show | null {
   const title = safeStr(r["Title"]);
   if (!title) return null;
@@ -284,12 +395,25 @@ function rowToShow(r: Row): Show | null {
     posterUrlFallback: githubUrl,
     coverSource,
     coverCandidates,
+    year: safeStr(r["Year"]) || undefined,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
     firstAirDate: safeStr(r["FirstAirDate"]) || undefined,
     lastAirDate: safeStr(r["LastAirDate"]) || undefined,
+    numberOfSeasons: safeStr(r["NumberOfSeasons"]) || undefined,
+    numberOfEpisodes: safeStr(r["NumberOfEpisodes"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
+    watched: safeStr(r["Watched"]) || undefined,
+    caughtUp: safeStr(r["CaughtUp"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
-    tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
+    networks: safeStr(r["Networks"]) || undefined,
+    streamingUS: safeStr(r["StreamingUS"]) || undefined,
+    genres: safeStr(r["Genres"]) || undefined,
+    tmdbRating: safeStr(r["TMDB_Rating"]) || undefined,
+    myRating: safeStr(r["MyRating"]) || undefined,
+    backdropUrl: safeStr(r["BackdropURL"]) || undefined,
+    overview: safeStr(r["Overview"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
+    tag: safeStr(r["Tags"]) || safeStr(r["Tag"]) || undefined,
   };
 }
 
@@ -323,7 +447,10 @@ function rowToBook(r: Row): Book | null {
     { label: "Generated GitHub Cover", url: generatedGitHubUrl },
   ];
   const { posterUrl, coverSource, coverCandidates } = chooseCover(orderedCandidates);
-
+  const rawBookGenre =
+    safeStr(r["genre"]) || safeStr(r["Genre"]) || safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]);
+  const normalizedGenres = normalizeBookGenres(rawBookGenre);
+  const normalizedGenreValue = normalizedGenres.join(", ");
   return {
     title,
     posterUrl,
@@ -342,10 +469,13 @@ function rowToBook(r: Row): Book | null {
     status: safeStr(r["Status"]) || undefined,
     types: safeStr(r["Types"]) || safeStr(r["Type"]) || undefined,
     series: safeStr(r["Series"]) || undefined,
-    categories: safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]) || undefined,
+    categories: normalizedGenreValue || undefined,
+    genre: normalizedGenreValue || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || undefined,
     tags: safeStr(r["tags"]) || safeStr(r["Tags"]) || undefined,
+    openLibraryWorkKey: safeStr(r["OpenLibraryWorkKey"]) || undefined,
+    googleBooksVolumeId: safeStr(r["GoogleBooksVolumeId"]) || undefined,
     description: safeStr(r["description"]) || safeStr(r["Description"]) || undefined,
     imageUrl: safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]) || undefined,
     customImageUrl: customImageUrl || undefined,
@@ -380,11 +510,23 @@ function rowToMovie(r: Row): Movie | null {
     coverSource,
     coverCandidates,
     csvUrl,
+    year: safeStr(r["Year"]) || undefined,
+    poster: safeStr(r["Poster"]) || undefined,
+    myRating: safeStr(r["MyRating"]) || safeStr(r["My Rating"]) || undefined,
+    tmdbRating: safeStr(r["TMDB_Rating"]) || undefined,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
+    watched: safeStr(r["Watched"]) || undefined,
+    watchDate: safeStr(r["WatchDate"]) || undefined,
+    tags: safeStr(r["Tags"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
+    runtime: safeStr(r["Runtime"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
+    status: safeStr(r["Status"]) || undefined,
     movieStatus: safeStr(r["Status"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
+    overview: safeStr(r["Overview"]) || undefined,
+    backdropUrl: safeStr(r["BackdropURL"]) || undefined,
     genres: safeStr(r["Genres"]) || safeStr(r["Genre"]) || undefined,
   };
 }
@@ -411,11 +553,37 @@ function rowToGame(r: Row): Game | null {
     posterUrlFallback: githubUrl,
     coverSource,
     coverCandidates,
+    cover: safeStr(r["Cover"]) || undefined,
     platform: safeStr(r["Platform"]) || undefined,
+    status: safeStr(r["Status"]) || undefined,
+    name: safeStr(r["Name"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
+    releaseDateAlt: safeStr(r["Release Date"]) || undefined,
+    platforms: safeStr(r["Platforms"]) || undefined,
+    coverUrl: safeStr(r["CoverURL"]) || undefined,
+    rating: safeStr(r["Rating"]) || undefined,
+    igdbRating: safeStr(r["IGDB Rating"]) || undefined,
+    myRating: safeStr(r["My Rating"]) || undefined,
     playStatus: safeStr(r["PlayStatus"]) || undefined,
     gameStatus: safeStr(r["Status"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
+    format: safeStr(r["Format"]) || undefined,
+    backlog: safeStr(r["Backlog"]) || undefined,
+    completed: safeStr(r["Completed"]) || undefined,
+    dateCompleted: safeStr(r["Date Completed"]) || undefined,
     yearPlayed: safeStr(r["Year Played"]) || safeStr(r["YearPlayed"]) || safeStr(r["Year played"]) || safeStr(r["Yearplayed"]) || undefined,
+    dateAdded: safeStr(r["Date Added"]) || undefined,
+    description: safeStr(r["Description"]) || undefined,
+    genres: safeStr(r["Genres"]) || undefined,
+    hoursPlayed: safeStr(r["Hours Played"]) || undefined,
+    coverCachedAt: safeStr(r["CoverCachedAt"]) || undefined,
+    developer: safeStr(r["Developer"]) || undefined,
+    screensotsUrl: safeStr(r["ScreensotsURL"]) || undefined,
+    wishlistOrder: safeStr(r["WishlistOrder"]) || undefined,
+    queuedOrder: safeStr(r["QueuedOrder"]) || undefined,
+    igdbId: safeStr(r["IGDB_ID"]) || undefined,
+    igdbIdOverride: safeStr(r["IGDB_ID_Override"]) || undefined,
+    localCoverUrl: safeStr(r["LocalCoverURL"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
   };
 }
@@ -443,7 +611,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
@@ -452,6 +620,12 @@ export default function Page() {
   const gamesCsvUrl = (process.env as any)[GAMES_ENV_KEY] as string | undefined;
   const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
   const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
+  const booksWriteUrl = (process.env as any)["NEXT_PUBLIC_BOOKS_WRITE_URL"] as string | undefined;
+  const showsWriteUrl =
+    ((process.env as any)["NEXT_PUBLIC_SHOWS_WRITE_URL"] as string | undefined) ||
+    ((process.env as any)["NEXT_PUBLIC_TV_WRITE_URL"] as string | undefined);
+  const moviesWriteUrl = (process.env as any)["NEXT_PUBLIC_MOVIES_WRITE_URL"] as string | undefined;
+  const gamesWriteUrl = (process.env as any)["NEXT_PUBLIC_GAMES_WRITE_URL"] as string | undefined;
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
@@ -579,7 +753,7 @@ export default function Page() {
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   
   // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>("standard");
+  const [sidebarTheme, setSidebarTheme] = useState<string>("winterGray");
   
   // Theme configurations
   const sidebarThemes = {
@@ -687,6 +861,8 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
+  const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
 
@@ -719,8 +895,16 @@ export default function Page() {
 
   const getDisplayCoverUrl = (item: any) => {
     const itemKey = getMediaItemKey(item);
+    const failed = new Set(failedCoverUrls[itemKey] || []);
     const overrideUrl = safeStr(coverOverrides[itemKey]);
-    return overrideUrl || safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
+    const candidates = [
+      overrideUrl,
+      safeStr(item?.metadataCoverUrl),
+      safeStr(item?.posterUrl),
+      safeStr(item?.posterUrlFallback),
+    ].filter(Boolean);
+    const uniqueCandidates = Array.from(new Set(candidates));
+    return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
   useEffect(() => {
@@ -816,6 +1000,364 @@ export default function Page() {
     } finally {
       setUploadingCoverForKey(null);
     }
+  };
+
+  const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
+    if (!booksWriteUrl) {
+      throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
+    }
+
+    const matchGoogleBooksVolumeId = safeStr(updates.googleBooksVolumeId) || safeStr(item?.googleBooksVolumeId);
+    const matchOpenLibraryWorkKey = safeStr(updates.openLibraryWorkKey) || safeStr(item?.openLibraryWorkKey);
+    const matchTitle = safeStr(item?.title);
+
+    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+      throw new Error("Unable to identify this book row to update.");
+    }
+
+    const payload = {
+      action: "updateBook",
+      match: {
+        googleBooksVolumeId: matchGoogleBooksVolumeId,
+        openLibraryWorkKey: matchOpenLibraryWorkKey,
+        title: matchTitle,
+      },
+      updates: {
+        Title: safeStr(updates.title),
+        Subtitle: safeStr(updates.subtitle),
+        Series: safeStr(updates.series),
+        Author: safeStr(updates.author),
+        Ownership: safeStr(updates.ownership),
+        Type: safeStr(updates.type),
+        Status: safeStr(updates.status),
+        CompletedDate: safeStr(updates.completedDate),
+        isbn: safeStr(updates.isbn),
+        ReleaseDate: safeStr(updates.releaseDate),
+        description: safeStr(updates.description),
+        ImageURL: safeStr(updates.imageUrl),
+        userRating: safeStr(updates.userRating),
+        "My Rating": safeStr(updates.myRating),
+        pages: safeStr(updates.pages),
+        audiobookDuration: safeStr(updates.audiobookDuration),
+        genre: safeStr(updates.genre),
+        tags: safeStr(updates.tags),
+        OpenLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
+        GoogleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+      },
+    };
+
+    try {
+      await fetch(booksWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to save book edits");
+    }
+
+    setModalItem((prev: any) => {
+      if (!prev) return prev;
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        subtitle: safeStr(updates.subtitle),
+        series: safeStr(updates.series),
+        author: safeStr(updates.author),
+        ownership: safeStr(updates.ownership),
+        types: safeStr(updates.type),
+        status: safeStr(updates.status),
+        completedDate: safeStr(updates.completedDate),
+        isbn: safeStr(updates.isbn),
+        releaseDate: safeStr(updates.releaseDate),
+        description: safeStr(updates.description),
+        imageUrl: safeStr(updates.imageUrl),
+        userRating: safeStr(updates.userRating),
+        myRating: safeStr(updates.myRating),
+        pages: safeStr(updates.pages),
+        audiobookDuration: safeStr(updates.audiobookDuration),
+        categories: safeStr(updates.genre),
+        genre: safeStr(updates.genre),
+        tags: safeStr(updates.tags),
+        openLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
+        googleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
+    // Re-sync to pick up the canonical sheet values once published CSV refreshes.
+    setRefreshNonce((n) => n + 1);
+  };
+
+  const handleSaveShowEdits = async (item: any, updates: Record<string, string>) => {
+    if (!showsWriteUrl) {
+      throw new Error(
+        "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
+      );
+    }
+
+    const matchTmdbId = safeStr(updates.tmdbId) || safeStr(item?.tmdbId);
+    const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+
+    if (!matchTmdbId && !matchTitle) {
+      throw new Error("Unable to identify this show row to update.");
+    }
+
+    const payload = {
+      action: "updateShow",
+      match: {
+        tmdbId: matchTmdbId,
+        title: matchTitle,
+      },
+      updates: {
+        Title: safeStr(updates.title),
+        Year: safeStr(updates.year),
+        TMDB_ID: safeStr(updates.tmdbId),
+        FirstAirDate: safeStr(updates.firstAirDate),
+        LastAirDate: safeStr(updates.lastAirDate),
+        NumberOfSeasons: safeStr(updates.numberOfSeasons),
+        NumberOfEpisodes: safeStr(updates.numberOfEpisodes),
+        WatchStatus: safeStr(updates.watchStatus),
+        Status: safeStr(updates.showStatus),
+        Networks: safeStr(updates.networks),
+        StreamingUS: safeStr(updates.streamingUS),
+        Genres: safeStr(updates.genres),
+        TMDB_Rating: safeStr(updates.tmdbRating),
+        MyRating: safeStr(updates.myRating),
+        BackdropURL: safeStr(updates.backdropUrl),
+        Overview: safeStr(updates.overview),
+        Ownership: safeStr(updates.ownership),
+        Tags: safeStr(updates.tags),
+        Tag: safeStr(updates.tags),
+        PosterURL: safeStr(updates.posterUrl),
+      },
+    };
+
+    try {
+      await fetch(showsWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to save show edits");
+    }
+
+    setModalItem((prev: any) => {
+      if (!prev) return prev;
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        year: safeStr(updates.year),
+        tmdbId: safeStr(updates.tmdbId),
+        firstAirDate: safeStr(updates.firstAirDate),
+        lastAirDate: safeStr(updates.lastAirDate),
+        numberOfSeasons: safeStr(updates.numberOfSeasons),
+        numberOfEpisodes: safeStr(updates.numberOfEpisodes),
+        watchStatus: safeStr(updates.watchStatus),
+        showStatus: safeStr(updates.showStatus),
+        networks: safeStr(updates.networks),
+        streamingUS: safeStr(updates.streamingUS),
+        genres: safeStr(updates.genres),
+        tmdbRating: safeStr(updates.tmdbRating),
+        myRating: safeStr(updates.myRating),
+        backdropUrl: safeStr(updates.backdropUrl),
+        overview: safeStr(updates.overview),
+        ownership: safeStr(updates.ownership),
+        tag: safeStr(updates.tags),
+        tags: safeStr(updates.tags),
+        posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
+    setRefreshNonce((n) => n + 1);
+  };
+
+  const handleSaveMovieEdits = async (item: any, updates: Record<string, string>) => {
+    if (!moviesWriteUrl) {
+      throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
+    }
+
+    const matchTmdbId = safeStr(updates.tmdbId) || safeStr(item?.tmdbId);
+    const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+
+    if (!matchTmdbId && !matchTitle) {
+      throw new Error("Unable to identify this movie row to update.");
+    }
+
+    const payload = {
+      action: "updateMovie",
+      match: {
+        tmdbId: matchTmdbId,
+        title: matchTitle,
+      },
+      updates: {
+        Title: safeStr(updates.title),
+        Year: safeStr(updates.year),
+        Poster: safeStr(updates.poster),
+        MyRating: safeStr(updates.myRating),
+        TMDB_Rating: safeStr(updates.tmdbRating),
+        TMDB_ID: safeStr(updates.tmdbId),
+        Watched: safeStr(updates.watched),
+        WatchDate: safeStr(updates.watchDate),
+        Tags: safeStr(updates.tags),
+        ReleaseDate: safeStr(updates.releaseDate),
+        Runtime: safeStr(updates.runtime),
+        Status: safeStr(updates.status),
+        Genres: safeStr(updates.genres),
+        Overview: safeStr(updates.overview),
+        PosterURL: safeStr(updates.posterUrl),
+        BackdropURL: safeStr(updates.backdropUrl),
+      },
+    };
+
+    try {
+      await fetch(moviesWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to save movie edits");
+    }
+
+    setModalItem((prev: any) => {
+      if (!prev) return prev;
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        year: safeStr(updates.year),
+        poster: safeStr(updates.poster),
+        myRating: safeStr(updates.myRating),
+        tmdbRating: safeStr(updates.tmdbRating),
+        tmdbId: safeStr(updates.tmdbId),
+        watched: safeStr(updates.watched),
+        watchDate: safeStr(updates.watchDate),
+        tags: safeStr(updates.tags),
+        tag: safeStr(updates.tags),
+        releaseDate: safeStr(updates.releaseDate),
+        runtime: safeStr(updates.runtime),
+        status: safeStr(updates.status),
+        movieStatus: safeStr(updates.status),
+        genres: safeStr(updates.genres),
+        overview: safeStr(updates.overview),
+        posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
+        backdropUrl: safeStr(updates.backdropUrl),
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
+    setRefreshNonce((n) => n + 1);
+  };
+
+  const handleSaveGameEdits = async (item: any, updates: Record<string, string>) => {
+    if (!gamesWriteUrl) {
+      throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
+    }
+
+    const matchIgdbId = safeStr(updates.igdbId) || safeStr(item?.igdbId);
+    const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+
+    if (!matchIgdbId && !matchTitle) {
+      throw new Error("Unable to identify this game row to update.");
+    }
+
+    const payload = {
+      action: "updateGame",
+      match: {
+        igdbId: matchIgdbId,
+        title: matchTitle,
+      },
+      updates: {
+        Title: safeStr(updates.title),
+        Cover: safeStr(updates.cover),
+        Platform: safeStr(updates.platform),
+        Status: safeStr(updates.status),
+        Name: safeStr(updates.name),
+        ReleaseDate: safeStr(updates.releaseDate),
+        "Release Date": safeStr(updates.releaseDateAlt),
+        Platforms: safeStr(updates.platforms),
+        CoverURL: safeStr(updates.coverUrl),
+        Rating: safeStr(updates.rating),
+        "IGDB Rating": safeStr(updates.igdbRating),
+        "My Rating": safeStr(updates.myRating),
+        Ownership: safeStr(updates.ownership),
+        Format: safeStr(updates.format),
+        Backlog: safeStr(updates.backlog),
+        Completed: safeStr(updates.completed),
+        "Date Completed": safeStr(updates.dateCompleted),
+        "Year Played": safeStr(updates.yearPlayed),
+        "Date Added": safeStr(updates.dateAdded),
+        Description: safeStr(updates.description),
+        Genres: safeStr(updates.genres),
+        "Hours Played": safeStr(updates.hoursPlayed),
+        CoverCachedAt: safeStr(updates.coverCachedAt),
+        Developer: safeStr(updates.developer),
+        ScreensotsURL: safeStr(updates.screensotsUrl),
+        WishlistOrder: safeStr(updates.wishlistOrder),
+        QueuedOrder: safeStr(updates.queuedOrder),
+        IGDB_ID: safeStr(updates.igdbId),
+        IGDB_ID_Override: safeStr(updates.igdbIdOverride),
+        LocalCoverURL: safeStr(updates.localCoverUrl),
+      },
+    };
+
+    try {
+      await fetch(gamesWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to save game edits");
+    }
+
+    setModalItem((prev: any) => {
+      if (!prev) return prev;
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        cover: safeStr(updates.cover),
+        platform: safeStr(updates.platform),
+        status: safeStr(updates.status),
+        name: safeStr(updates.name),
+        releaseDate: safeStr(updates.releaseDate),
+        releaseDateAlt: safeStr(updates.releaseDateAlt),
+        platforms: safeStr(updates.platforms),
+        coverUrl: safeStr(updates.coverUrl),
+        rating: safeStr(updates.rating),
+        igdbRating: safeStr(updates.igdbRating),
+        myRating: safeStr(updates.myRating),
+        ownership: safeStr(updates.ownership),
+        format: safeStr(updates.format),
+        backlog: safeStr(updates.backlog),
+        completed: safeStr(updates.completed),
+        dateCompleted: safeStr(updates.dateCompleted),
+        yearPlayed: safeStr(updates.yearPlayed),
+        dateAdded: safeStr(updates.dateAdded),
+        description: safeStr(updates.description),
+        genres: safeStr(updates.genres),
+        hoursPlayed: safeStr(updates.hoursPlayed),
+        coverCachedAt: safeStr(updates.coverCachedAt),
+        developer: safeStr(updates.developer),
+        screensotsUrl: safeStr(updates.screensotsUrl),
+        wishlistOrder: safeStr(updates.wishlistOrder),
+        queuedOrder: safeStr(updates.queuedOrder),
+        igdbId: safeStr(updates.igdbId),
+        igdbIdOverride: safeStr(updates.igdbIdOverride),
+        localCoverUrl: safeStr(updates.localCoverUrl),
+        gameStatus: safeStr(updates.status),
+        playStatus: safeStr(updates.status),
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
+    setRefreshNonce((n) => n + 1);
   };
 
   useEffect(() => {
@@ -1229,7 +1771,7 @@ export default function Page() {
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
     
-    setSidebarTheme(getSetting("sidebarTheme", "standard"));
+    setSidebarTheme(getSetting("sidebarTheme", "winterGray"));
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
   }, [settingsRows]);
 
@@ -1396,7 +1938,7 @@ export default function Page() {
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
-        setSidebarTheme(getStr("sidebarTheme", "standard"));
+        setSidebarTheme(getStr("sidebarTheme", "winterGray"));
       }, 100);
       
       setSyncState("ok");
@@ -1789,6 +2331,52 @@ export default function Page() {
     }) as Game[];
   }, [gameRows]);
 
+  const gamePlatformOptions = useMemo(() => {
+    const options = new Set<string>();
+    allGames.forEach((game) => {
+      const value = safeStr(game.platform);
+      if (!value) return;
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => options.add(part));
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allGames]);
+
+  const gameOwnershipOptions = useMemo(() => {
+    const options = new Set<string>();
+    allGames.forEach((game) => {
+      const value = safeStr(game.ownership);
+      if (value) options.add(value);
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allGames]);
+
+  const gameFormatOptions = useMemo(() => {
+    const options = new Set<string>();
+    allGames.forEach((game) => {
+      const value = safeStr(game.format);
+      if (!value) return;
+      value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => options.add(part));
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allGames]);
+
+  const gameStatusOptions = useMemo(() => {
+    const options = new Set<string>();
+    allGames.forEach((game) => {
+      const value = safeStr(game.status);
+      if (value) options.add(value);
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allGames]);
+
   // Helper to parse comma-separated platforms and determine primary platform
   // Priority: Steam > Epic Games Store > First platform in list
   const getPrimaryPlatform = (platformString: string | undefined): string => {
@@ -1865,6 +2453,15 @@ export default function Page() {
       .toLowerCase()
       .replace("cancelled", "canceled");
 
+  const hasWishlistOwnership = (value?: string) => normalizeStatus(value) === "wishlist";
+
+  const isMovieWatched = (movie: Movie) => {
+    const status = normalizeStatus(movie.movieStatus);
+    if (status) return status === "watched";
+    const watched = normalizeStatus(movie.watchStatus);
+    return watched === "watched" || watched === "true" || watched === "yes" || watched === "1";
+  };
+
   const watchStatuses = useMemo(
     () => [
       "Currently Watching",
@@ -1881,7 +2478,7 @@ export default function Page() {
   const showStatuses = useMemo(() => ["Ended", "Returning Series", "Canceled"], []);
 
   const readingStatuses = useMemo(
-    () => ["Reading", "Completed", "Backlog", "Abandoned", "Read Next", "Paused"],
+    () => ["Reading", "Completed", "Backlog", "Abandoned", "Paused"],
     []
   );
 
@@ -2078,6 +2675,30 @@ export default function Page() {
 
   // Generic sorting function
   const applySorting = <T extends any>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
+    const ratingNumber = (raw: unknown): number => {
+      const n = Number.parseFloat(safeStr(raw));
+      return Number.isNaN(n) ? NaN : n;
+    };
+
+    const getMyRating = (item: any): number =>
+      ratingNumber(
+        item?.myRating ??
+          item?.["MyRating"] ??
+          item?.["My Rating"] ??
+          item?.userRating ??
+          item?.personalRating
+      );
+
+    const getExternalRating = (item: any): number =>
+      ratingNumber(
+        item?.tmdbRating ??
+          item?.["TMDB_Rating"] ??
+          item?.externalAverageRating ??
+          item?.externalRating ??
+          item?.igdbRating ??
+          item?.rating
+      );
+
     return [...items].sort((a, b) => {
       let aVal: any;
       let bVal: any;
@@ -2088,6 +2709,12 @@ export default function Page() {
         bVal = safeStr((b as any).title).toLowerCase();
         const result = aVal.localeCompare(bVal);
         return order === "Asc" ? result : -result;
+      } else if (field === "MyRatingSort") {
+        aVal = getMyRating(a);
+        bVal = getMyRating(b);
+      } else if (field === "ExternalRatingSort") {
+        aVal = getExternalRating(a);
+        bVal = getExternalRating(b);
       } else if (field === "ReleaseDate") {
         // For TV shows, use firstAirDate; for others use releaseDate
         aVal = (a as any).firstAirDate ? Date.parse((a as any).firstAirDate) : 
@@ -2172,6 +2799,30 @@ export default function Page() {
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
         ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
         ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
+    }
+
+    // Wishlist: mixed cross-library list using category-specific rules
+    if (nav === "wishlist") {
+      const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
+      const qs = allShows.filter((s) => hasWishlistOwnership(s.ownership) || normalizeStatus(s.watchStatus) === "watch next");
+      const qm = allMovies.filter((m) => hasWishlistOwnership(m.ownership) || !isMovieWatched(m));
+      const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
+      const deduplicatedGames = deduplicateGames(qg);
+
+      const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
+      const queryFilteredShows = q ? qs.filter((s) => s.title.toLowerCase().includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.title.toLowerCase().includes(q)) : qm;
+      const queryFilteredGames = q ? deduplicatedGames.filter((g) => g.title.toLowerCase().includes(q)) : deduplicatedGames;
+
+      const combined = [
+        ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredShows.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
+        ...queryFilteredMovies.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...queryFilteredGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -2344,11 +2995,17 @@ export default function Page() {
   }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, nav, query, sortField, sortOrder]);
 
   const stats = useMemo(() => {
+    const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
+    const wishlistShows = allShows.filter((s) => hasWishlistOwnership(s.ownership) || normalizeStatus(s.watchStatus) === "watch next").length;
+    const wishlistMovies = allMovies.filter((m) => hasWishlistOwnership(m.ownership) || !isMovieWatched(m)).length;
+    const wishlistGames = deduplicateGames(allGames.filter((g) => hasWishlistOwnership(g.ownership))).length;
+
     return {
       movies: allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist").length,
       tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist").length,
       books: allBooks.length,
       games: allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist").length,
+      wishlist: wishlistBooks + wishlistShows + wishlistMovies + wishlistGames,
     };
   }, [allShows, allBooks, allMovies, allGames]);
 
@@ -2362,8 +3019,8 @@ export default function Page() {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
     const out: any[][] = [];
     
-    // For home page with mixed item types, calculate shelf distribution based on actual item sizes
-    if (nav === "home") {
+    // For mixed-item views, calculate shelf distribution based on actual item sizes
+    if (nav === "home" || nav === "wishlist") {
       let currentShelf: any[] = [];
       let currentWidth = 0;
       
@@ -2587,12 +3244,16 @@ export default function Page() {
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
                       <option value="CompletedDate">Completed Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
                   {nav === "movies" && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
                   {nav === "tv" && (
@@ -2600,15 +3261,19 @@ export default function Page() {
                       <option value="Title">Title</option>
                       <option value="LastAirDate">Last Air Date</option>
                       <option value="FirstAirDate">First Air Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
                   {nav === "games" && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "wishlist" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
@@ -3568,6 +4233,62 @@ export default function Page() {
                       }}
                     >
                       {stats.games}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setNav("wishlist");
+                    setOpenSection((s) => (s === "wishlist" ? null : "wishlist"));
+                  }}
+                  className={`sideItem ${nav === "wishlist" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-wishlist.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Wishlist
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 48,
+                        height: 24,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.wishlist}
                     </span>
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
@@ -5502,7 +6223,6 @@ export default function Page() {
                       const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
                       const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
                       const selectedCoverUrl = getDisplayCoverUrl(show);
-                      const metadataCoverUrl = safeStr(show.metadataCoverUrl) || safeStr(show.posterUrlFallback) || safeStr(show.posterUrl);
 
                       return (
                         <div
@@ -5593,10 +6313,27 @@ export default function Page() {
                                   transform: isGame ? `scale(${coverScale / 100})` : "none",
                                 }}
                                 onError={e => {
-                                  // Fallback to metadata cover if override fails
-                                  if (metadataCoverUrl && e.currentTarget.src !== metadataCoverUrl) {
-                                    e.currentTarget.src = metadataCoverUrl;
-                                  }
+                                  const itemKey = getMediaItemKey(show);
+                                  const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                  if (!failedUrl) return;
+                                  const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                  const nextAttempts = currentAttempts + 1;
+                                  setFailedCoverAttempts((prev) => {
+                                    const itemAttempts = prev[itemKey] || {};
+                                    return {
+                                      ...prev,
+                                      [itemKey]: {
+                                        ...itemAttempts,
+                                        [failedUrl]: nextAttempts,
+                                      },
+                                    };
+                                  });
+                                  if (nextAttempts < 2) return;
+                                  setFailedCoverUrls((prev) => {
+                                    const existing = prev[itemKey] || [];
+                                    if (existing.includes(failedUrl)) return prev;
+                                    return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                  });
                                 }}
                               />
                             ) : (
@@ -5705,6 +6442,14 @@ export default function Page() {
           setCoverUploadError(null);
         }}
         onReplaceCover={handleReplaceCover}
+        onSaveBookEdits={handleSaveBookEdits}
+        onSaveShowEdits={handleSaveShowEdits}
+        onSaveMovieEdits={handleSaveMovieEdits}
+        onSaveGameEdits={handleSaveGameEdits}
+        gamePlatformOptions={gamePlatformOptions}
+        gameOwnershipOptions={gameOwnershipOptions}
+        gameFormatOptions={gameFormatOptions}
+        gameStatusOptions={gameStatusOptions}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
         replaceCoverError={coverUploadError}
       />
