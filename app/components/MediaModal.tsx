@@ -13,6 +13,7 @@ interface MediaModalProps {
 type InfoRow = {
   label: string;
   value: React.ReactNode;
+  fullWidth?: boolean;
 };
 
 type BookEditField = {
@@ -168,10 +169,14 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
     return [
       { label: "First Air Date", value: firstNonEmpty(item, ["firstAirDate"]) || DASH },
       { label: "Last Air Date", value: firstNonEmpty(item, ["lastAirDate"]) || DASH },
-      { label: "Watch Status", value: firstNonEmpty(item, ["watchStatus"]) || DASH },
-      { label: "Show Status", value: firstNonEmpty(item, ["showStatus"]) || DASH },
-      { label: "Genres", value: firstNonEmpty(item, ["genres"]) || DASH },
-      { label: "Tag", value: firstNonEmpty(item, ["tag"]) || DASH },
+      { label: "TMDB Rating", value: renderRating(firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]) || "") },
+      { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]) || "") },
+      { label: "Seasons", value: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]) || DASH },
+      { label: "Episodes", value: firstNonEmpty(item, ["numberOfEpisodes", "NumberOfEpisodes"]) || DASH },
+      { label: "Show Status", value: firstNonEmpty(item, ["showStatus", "Status"]) || DASH },
+      { label: "Networks", value: firstNonEmpty(item, ["networks", "Networks"]) || DASH },
+      { label: "Streaming US", value: firstNonEmpty(item, ["streamingUS", "StreamingUS"]) || DASH },
+      { label: "TMDB ID", value: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]) || DASH },
     ];
   }
 
@@ -276,14 +281,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   if (!open || !item) return null;
 
   const statusValue =
-    firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
-    firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
-    DASH;
+    itemType === "tv"
+      ? firstNonEmpty(sourceItem, ["watchStatus", "WatchStatus", "watched", "Watched"]) || DASH
+      : firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
+        firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
+        DASH;
   const categoryChips = Array.from(
     new Set(
       itemType === "book"
         ? splitCommaList(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))
-        : splitTags(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))
+        : itemType === "tv" || itemType === "movie"
+          ? splitTags(firstNonEmpty(sourceItem, ["genres", "Genres", "genre", "Genre"]))
+          : splitTags(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))
     )
   );
   const tagChips =
@@ -291,14 +300,13 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       ? Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"]))))
       : Array.from(
           new Set([
-            ...splitTags(firstNonEmpty(sourceItem, ["platform"])),
-            ...splitTags(firstNonEmpty(sourceItem, ["genres", "genre", "Genre"])),
             ...splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"])),
           ])
         );
   const infoRows = buildInfoRows(sourceItem, itemType);
   const editableTitle = isEditingBook ? bookEditValues.title || title : title;
   const editableSubtitle = isEditingBook ? bookEditValues.subtitle || "" : subtitle;
+  const tvYearSubtitle = itemType === "tv" ? firstNonEmpty(sourceItem, ["year", "Year"]) : "";
   const bookTagSuggestions = Array.from(
     new Set([
       ...splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"])),
@@ -411,6 +419,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               <>
                 <h2 className="title">{editableTitle}</h2>
                 {itemType === "book" && editableSubtitle ? <div className="subtitle">{editableSubtitle}</div> : null}
+                {itemType === "tv" && tvYearSubtitle ? <div className="subtitle">{tvYearSubtitle}</div> : null}
               </>
             )}
             <div className="coverActionsPanel">
@@ -439,11 +448,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               {replaceCoverError ? <div className="replaceCoverError">{replaceCoverError}</div> : null}
             </div>
             <div className="chipSection">
-              <div className="chipSectionLabel">Status</div>
+              <div className="chipSectionLabel">{itemType === "tv" ? "Watch Status" : "Status"}</div>
               <div className="statusValue">{statusValue}</div>
             </div>
             <div className="chipSection">
-              <div className="chipSectionLabel">{itemType === "book" ? "Genre" : "Categories"}</div>
+              <div className="chipSectionLabel">{itemType === "book" || itemType === "tv" || itemType === "movie" ? "Genres" : "Categories"}</div>
               {categoryChips.length > 0 ? (
                 <div className="chipWrap">
                   {categoryChips.map((chip) => (
@@ -477,6 +486,13 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               ) : (
                 <div className="heroFallback" />
               )
+            ) : null}
+
+            {description && itemType !== "book" ? (
+              <div className="descriptionCard">
+                <div className="label">Description</div>
+                <div className="description">{description}</div>
+              </div>
             ) : null}
 
             {itemType === "book" && description && !isEditingBook ? (
@@ -553,7 +569,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             ) : (
               <div className="infoGrid">
                 {infoRows.map((row) => (
-                  <div key={row.label} className="infoCard">
+                  <div key={row.label} className={`infoCard${row.fullWidth ? " infoCardFullWidth" : ""}`}>
                     <div className="label">{row.label}</div>
                     <div className="value">{row.value || DASH}</div>
                   </div>
@@ -561,12 +577,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               </div>
             )}
 
-            {description && itemType !== "book" ? (
-              <div className="descriptionCard">
-                <div className="label">Description</div>
-                <div className="description">{description}</div>
-              </div>
-            ) : null}
           </section>
         </div>
       </div>
@@ -953,6 +963,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border: 1px solid rgba(73, 102, 154, 0.35);
           background: rgba(15, 24, 44, 0.72);
           padding: 14px 16px;
+        }
+
+        .infoCardFullWidth {
+          grid-column: 1 / -1;
         }
 
         .label {

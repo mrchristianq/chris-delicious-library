@@ -105,11 +105,23 @@ type Show = {
   posterUrlFallback?: string;
   coverSource?: string;
   coverCandidates?: CoverCandidate[];
+  year?: string;
   tmdbId?: string;
   firstAirDate?: string;
   lastAirDate?: string;
+  numberOfSeasons?: string;
+  numberOfEpisodes?: string;
   watchStatus?: string;
+  watched?: string;
+  caughtUp?: string;
   showStatus?: string;
+  networks?: string;
+  streamingUS?: string;
+  genres?: string;
+  tmdbRating?: string;
+  myRating?: string;
+  backdropUrl?: string;
+  overview?: string;
   ownership?: string;
   tag?: string;
 };
@@ -347,13 +359,25 @@ function rowToShow(r: Row): Show | null {
     posterUrlFallback: githubUrl,
     coverSource,
     coverCandidates,
+    year: safeStr(r["Year"]) || undefined,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
     firstAirDate: safeStr(r["FirstAirDate"]) || undefined,
     lastAirDate: safeStr(r["LastAirDate"]) || undefined,
+    numberOfSeasons: safeStr(r["NumberOfSeasons"]) || undefined,
+    numberOfEpisodes: safeStr(r["NumberOfEpisodes"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
+    watched: safeStr(r["Watched"]) || undefined,
+    caughtUp: safeStr(r["CaughtUp"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
+    networks: safeStr(r["Networks"]) || undefined,
+    streamingUS: safeStr(r["StreamingUS"]) || undefined,
+    genres: safeStr(r["Genres"]) || undefined,
+    tmdbRating: safeStr(r["TMDB_Rating"]) || undefined,
+    myRating: safeStr(r["MyRating"]) || undefined,
+    backdropUrl: safeStr(r["BackdropURL"]) || undefined,
+    overview: safeStr(r["Overview"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
-    tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
+    tag: safeStr(r["Tags"]) || safeStr(r["Tag"]) || undefined,
   };
 }
 
