@@ -3,16 +3,23 @@
 
 function doPost(e) {
   try {
-    // Get the spreadsheet and Settings sheet
+    // Parse incoming JSON
+    const payload = JSON.parse(e.postData.contents);
+    const action = (payload.action || "").trim();
+
+    // Book row update mode
+    if (action === "updateBook") {
+      return updateBookRow_(payload);
+    }
+
+    // Default mode: settings key/value write
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName("Settings");
     
     if (!sheet) {
       return createCORSResponse("Settings sheet not found");
     }
-    
-    // Parse incoming JSON
-    const payload = JSON.parse(e.postData.contents);
+
     const key = (payload.key || "").trim(); // Trim whitespace from key
     const value = String(payload.value || "").trim(); // Trim whitespace from value
     const category = (payload.category || "").trim();
@@ -63,6 +70,74 @@ function doPost(e) {
   } catch (error) {
     return createCORSResponse("Error: " + error.toString());
   }
+}
+
+function updateBookRow_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Books");
+  if (!sheet) return createCORSResponse("Books sheet not found");
+
+  const match = payload.match || {};
+  const updates = payload.updates || {};
+
+  const matchGoogleBooksVolumeId = String(match.googleBooksVolumeId || "").trim();
+  const matchOpenLibraryWorkKey = String(match.openLibraryWorkKey || "").trim();
+  const matchTitle = String(match.title || "").trim();
+
+  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+    return createCORSResponse("Error: missing book match keys");
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Books sheet has no data rows");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+  const headerIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    headerIndex[headers[i]] = i + 1;
+  }
+
+  var rowNum = -1;
+  if (headerIndex["GoogleBooksVolumeId"] && matchGoogleBooksVolumeId) {
+    const values = sheet.getRange(2, headerIndex["GoogleBooksVolumeId"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchGoogleBooksVolumeId) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["OpenLibraryWorkKey"] && matchOpenLibraryWorkKey) {
+    const values = sheet.getRange(2, headerIndex["OpenLibraryWorkKey"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchOpenLibraryWorkKey) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle) {
+    const values = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim().toLowerCase() === matchTitle.toLowerCase()) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1) return createCORSResponse("Error: matching book row not found");
+
+  for (var colName in updates) {
+    if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
+    if (!headerIndex[colName]) continue;
+    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(updates[colName] || "").trim());
+  }
+
+  return createCORSResponse("Success");
 }
 
 // Add CORS headers to the response

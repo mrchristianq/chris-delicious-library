@@ -5,6 +5,7 @@ interface MediaModalProps {
   open: boolean;
   onClose: () => void;
   onReplaceCover?: (item: Record<string, any>, file: File) => Promise<void> | void;
+  onSaveBookEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
   isReplacingCover?: boolean;
   replaceCoverError?: string | null;
 }
@@ -13,6 +14,35 @@ type InfoRow = {
   label: string;
   value: React.ReactNode;
 };
+
+type BookEditField = {
+  key: string;
+  label: string;
+  multiline?: boolean;
+};
+
+const BOOK_EDIT_FIELDS: BookEditField[] = [
+  { key: "series", label: "Series" },
+  { key: "author", label: "Author" },
+  { key: "ownership", label: "Ownership" },
+  { key: "type", label: "Type" },
+  { key: "status", label: "Status" },
+  { key: "completedDate", label: "Completed Date" },
+  { key: "isbn", label: "ISBN" },
+  { key: "releaseDate", label: "Release Date" },
+  { key: "imageUrl", label: "Image URL" },
+  { key: "userRating", label: "User Rating" },
+  { key: "myRating", label: "My Rating" },
+  { key: "pages", label: "Pages" },
+  { key: "audiobookDuration", label: "Audiobook Duration" },
+  { key: "genre", label: "Genre" },
+  { key: "tags", label: "Tags" },
+  { key: "openLibraryWorkKey", label: "OpenLibrary Work Key" },
+  { key: "googleBooksVolumeId", label: "Google Books Volume ID" },
+  { key: "description", label: "Description", multiline: true },
+];
+
+const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
 
 const DASH = "—";
 
@@ -33,17 +63,53 @@ function splitTags(value: string): string[] {
     .filter(Boolean);
 }
 
+function buildBookEditValues(item: Record<string, any>): Record<string, string> {
+  return {
+    title: firstNonEmpty(item, ["title"]),
+    subtitle: firstNonEmpty(item, ["subtitle", "Subtitle"]),
+    series: firstNonEmpty(item, ["series"]),
+    author: firstNonEmpty(item, ["author", "Author"]),
+    ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
+    type: firstNonEmpty(item, ["types", "type", "Type"]),
+    status: firstNonEmpty(item, ["status", "Status"]),
+    completedDate: firstNonEmpty(item, ["completedDate", "CompletedDate"]),
+    isbn: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]),
+    releaseDate: firstNonEmpty(item, ["releaseDate", "ReleaseDate"]),
+    imageUrl: firstNonEmpty(item, ["imageUrl", "ImageURL", "Image URL"]),
+    userRating: firstNonEmpty(item, ["userRating", "UserRating"]),
+    myRating: firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]),
+    pages: firstNonEmpty(item, ["pages", "Pages"]),
+    audiobookDuration: firstNonEmpty(item, ["audiobookDuration", "AudiobookDuration"]),
+    genre: firstNonEmpty(item, ["genre", "Genre", "categories", "Categories"]),
+    tags: firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
+    openLibraryWorkKey: firstNonEmpty(item, ["openLibraryWorkKey", "OpenLibraryWorkKey"]),
+    googleBooksVolumeId: firstNonEmpty(item, ["googleBooksVolumeId", "GoogleBooksVolumeId"]),
+    description: firstNonEmpty(item, ["description", "Description"]),
+  };
+}
+
 function renderRating(value: string) {
   const n = Number.parseFloat(value);
   if (Number.isNaN(n)) return value || DASH;
 
   const normalized = n > 5 ? n / 2 : n;
-  const stars = Math.max(0, Math.min(5, Math.round(normalized)));
-  const starText = "★".repeat(stars) + "☆".repeat(5 - stars);
+  const clamped = Math.max(0, Math.min(5, normalized));
 
   return (
     <span className="ratingValue">
-      <span className="stars">{starText}</span>
+      <span className="stars">
+        {Array.from({ length: 5 }, (_, i) => {
+          const fill = Math.max(0, Math.min(1, clamped - i));
+          return (
+            <span key={i} className="star">
+              <span className="starBase">★</span>
+              <span className="starFill" style={{ width: `${fill * 100}%` }}>
+                ★
+              </span>
+            </span>
+          );
+        })}
+      </span>
       <span className="score">{n.toFixed(1)}</span>
     </span>
   );
@@ -71,7 +137,6 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
 
   if (itemType === "book") {
     return [
-      { label: "Subtitle", value: firstNonEmpty(item, ["subtitle", "Subtitle"]) || DASH },
       { label: "Series", value: firstNonEmpty(item, ["series"]) || DASH },
       { label: "Author", value: firstNonEmpty(item, ["author", "Author"]) || DASH },
       { label: "Ownership", value: firstNonEmpty(item, ["ownership"]) || DASH },
@@ -79,13 +144,7 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
       { label: "Status", value: firstNonEmpty(item, ["status"]) || DASH },
       { label: "Completed Date", value: firstNonEmpty(item, ["completedDate"]) || DASH },
       { label: "Release Date", value: firstNonEmpty(item, ["releaseDate"]) || DASH },
-      { label: "ISBN", value: firstNonEmpty(item, ["isbn"]) || DASH },
-      { label: "ISBN-10", value: firstNonEmpty(item, ["isbn10", "ISBN10"]) || DASH },
-      { label: "ISBN-13", value: firstNonEmpty(item, ["isbn13", "ISBN13"]) || DASH },
-      {
-        label: "External Avg Rating",
-        value: renderRating(firstNonEmpty(item, ["externalAverageRating", "ExternalAverageRating"]) || ""),
-      },
+      { label: "ISBN", value: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]) || DASH },
       { label: "User Rating", value: renderRating(firstNonEmpty(item, ["userRating", "UserRating"]) || "") },
       { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]) || "") },
       { label: "Pages", value: firstNonEmpty(item, ["pages", "Pages"]) || DASH },
@@ -93,15 +152,8 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
         label: "Audiobook Duration",
         value: firstNonEmpty(item, ["audiobookDuration", "AudiobookDuration"]) || DASH,
       },
-      { label: "Cover", value: firstNonEmpty(item, ["cover", "Cover"]) || firstNonEmpty(item, ["posterUrl"]) || DASH },
-      { label: "Image URL", value: firstNonEmpty(item, ["imageUrl", "ImageURL", "Image URL"]) || DASH },
-      {
-        label: "Custom Image URL",
-        value: firstNonEmpty(item, ["customImageUrl", "CustomImageURL", "Custom Image URL"]) || DASH,
-      },
-      { label: "GitHub Cover URL", value: firstNonEmpty(item, ["githubCoverUrl", "GitHubCoverURL"]) || DASH },
-      { label: "Cover Sync Status", value: firstNonEmpty(item, ["coverSyncStatus", "CoverSyncStatus"]) || DASH },
-      { label: "Tags", value: firstNonEmpty(item, ["tags", "tag", "Tags", "Tag"]) || DASH },
+      { label: "OpenLibrary Work Key", value: firstNonEmpty(item, ["openLibraryWorkKey", "OpenLibraryWorkKey"]) || DASH },
+      { label: "Google Books Volume ID", value: firstNonEmpty(item, ["googleBooksVolumeId", "GoogleBooksVolumeId"]) || DASH },
     ];
   }
 
@@ -131,10 +183,15 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   open,
   onClose,
   onReplaceCover,
+  onSaveBookEdits,
   isReplacingCover = false,
   replaceCoverError,
 }) => {
   const [posterIndex, setPosterIndex] = React.useState(0);
+  const [isEditingBook, setIsEditingBook] = React.useState(false);
+  const [isSavingBook, setIsSavingBook] = React.useState(false);
+  const [bookSaveError, setBookSaveError] = React.useState<string | null>(null);
+  const [bookEditValues, setBookEditValues] = React.useState<Record<string, string>>({});
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
@@ -164,6 +221,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           : "movie";
 
   const title = firstNonEmpty(sourceItem, ["title"]) || "Untitled";
+  const subtitle = firstNonEmpty(sourceItem, ["subtitle", "Subtitle"]);
   const posterUrl = firstNonEmpty(sourceItem, ["posterUrl", "coverUrl"]);
   const coverSource = firstNonEmpty(sourceItem, ["coverSource"]) || "Unknown";
   const coverCandidates = Array.isArray(sourceItem.coverCandidates)
@@ -179,15 +237,20 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setPosterIndex(preferredIdx >= 0 ? preferredIdx : 0);
   }, [open, item, posterUrl, candidateUrls.join("|")]);
 
+  React.useEffect(() => {
+    if (!open || !item) return;
+    setIsEditingBook(false);
+    setIsSavingBook(false);
+    setBookSaveError(null);
+    setBookEditValues(buildBookEditValues(item));
+  }, [open, item]);
+
   const resolvedPosterUrl = candidateUrls[posterIndex] || posterUrl;
   const resolvedCoverSource = coverCandidates.find((c: any) => c.url === resolvedPosterUrl)?.label || coverSource;
   const coverLocation = (() => {
     const label = resolvedCoverSource.toLowerCase();
-    if (label.includes("override")) return "Override";
-    if (label.includes("metadata")) return "Metadata";
-    if (label.includes("github")) return "GitHub";
-    if (label.includes("generated")) return "Generated";
-    return resolvedCoverSource;
+    if (label.includes("override") || label.includes("custom")) return "Custom Cover";
+    return "Metadata Cover";
   })();
 
   if (!open || !item) return null;
@@ -196,22 +259,81 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
     firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
     DASH;
-  const categoryChips = Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["categories"]))));
-  const tagChips = Array.from(
+  const categoryChips = Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["categories", "genre", "Genre"]))));
+  const tagChips =
+    itemType === "book"
+      ? Array.from(new Set(splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"]))))
+      : Array.from(
+          new Set([
+            ...splitTags(firstNonEmpty(sourceItem, ["platform"])),
+            ...splitTags(firstNonEmpty(sourceItem, ["genres", "genre", "Genre"])),
+            ...splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"])),
+          ])
+        );
+  const infoRows = buildInfoRows(sourceItem, itemType);
+  const editableTitle = isEditingBook ? bookEditValues.title || title : title;
+  const editableSubtitle = isEditingBook ? bookEditValues.subtitle || "" : subtitle;
+  const bookTagSuggestions = Array.from(
     new Set([
-      ...splitTags(firstNonEmpty(sourceItem, ["platform"])),
-      ...splitTags(firstNonEmpty(sourceItem, ["genres"])),
-      ...splitTags(firstNonEmpty(sourceItem, ["tags", "tag"])),
+      ...splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"])),
+      ...splitTags(bookEditValues.tags || ""),
     ])
   );
-  const infoRows = buildInfoRows(sourceItem, itemType);
+
+  const handleBookFieldChange = (key: string, value: string) => {
+    setBookEditValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const normalizeCommaTags = (value: string) =>
+    value
+      .split(/[,\|\/]+/g)
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .join(", ");
+
+  const handleSaveBook = async () => {
+    if (!item || !onSaveBookEdits) return;
+    setBookSaveError(null);
+    setIsSavingBook(true);
+    try {
+      await onSaveBookEdits(item, bookEditValues);
+      setIsEditingBook(false);
+    } catch (e: any) {
+      setBookSaveError(e?.message || "Failed to save book changes");
+    } finally {
+      setIsSavingBook(false);
+    }
+  };
 
   return (
     <div className="mediaModalOverlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="mediaModalCard">
-        <button type="button" className="closeButton" aria-label="Close details" onClick={onClose}>
-          ×
-        </button>
+        <div className="topRightActions">
+          {itemType === "book" && onSaveBookEdits ? (
+            <>
+              <button
+                type="button"
+                className="editButton topActionButton"
+                onClick={() => {
+                  setBookSaveError(null);
+                  setIsEditingBook((prev) => !prev);
+                  if (isEditingBook) setBookEditValues(buildBookEditValues(sourceItem));
+                }}
+                disabled={isSavingBook}
+              >
+                {isEditingBook ? "Cancel" : "Edit"}
+              </button>
+              {isEditingBook ? (
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveBook} disabled={isSavingBook}>
+                  {isSavingBook ? "Saving..." : "Save"}
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          <button type="button" className="closeButton" aria-label="Close details" onClick={onClose}>
+            ×
+          </button>
+        </div>
 
         <div className="contentLayout">
           <aside className="leftPane">
@@ -242,28 +364,60 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 e.currentTarget.value = "";
               }}
             />
-            {onReplaceCover ? (
-              <button
-                type="button"
-                className="replaceCoverButton"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isReplacingCover}
-              >
-                {isReplacingCover ? "Uploading..." : "Replace Cover"}
-              </button>
-            ) : null}
-            {replaceCoverError ? <div className="replaceCoverError">{replaceCoverError}</div> : null}
-            <h2 className="title">{title}</h2>
-            <div className="coverSourcePanel">
-              <div className="coverSourceHeading">Active Cover</div>
-              <div className="activeSource">{`ACTIVE COVER: ${coverLocation} (${resolvedPosterUrl || DASH})`}</div>
+            {itemType === "book" && isEditingBook ? (
+              <>
+                <input
+                  type="text"
+                  value={bookEditValues.title || ""}
+                  onChange={(e) => handleBookFieldChange("title", e.target.value)}
+                  className="titleInput"
+                  placeholder="Title"
+                />
+                <input
+                  type="text"
+                  value={bookEditValues.subtitle || ""}
+                  onChange={(e) => handleBookFieldChange("subtitle", e.target.value)}
+                  className="subtitleInput"
+                  placeholder="Subtitle"
+                />
+              </>
+            ) : (
+              <>
+                <h2 className="title">{editableTitle}</h2>
+                {itemType === "book" && editableSubtitle ? <div className="subtitle">{editableSubtitle}</div> : null}
+              </>
+            )}
+            <div className="coverActionsPanel">
+              <div className="coverSourceRow">
+                <div className="coverSourceHeading">ACTIVE COVER</div>
+                <div className="activeSource">
+                  {resolvedPosterUrl ? (
+                    <a href={resolvedPosterUrl} target="_blank" rel="noreferrer">
+                      {coverLocation}
+                    </a>
+                  ) : (
+                    DASH
+                  )}
+                </div>
+              </div>
+              {onReplaceCover ? (
+                <button
+                  type="button"
+                  className="replaceCoverButton"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isReplacingCover}
+                >
+                  {isReplacingCover ? "Uploading..." : "Replace Cover"}
+                </button>
+              ) : null}
+              {replaceCoverError ? <div className="replaceCoverError">{replaceCoverError}</div> : null}
             </div>
             <div className="chipSection">
               <div className="chipSectionLabel">Status</div>
               <div className="statusValue">{statusValue}</div>
             </div>
             <div className="chipSection">
-              <div className="chipSectionLabel">Categories</div>
+              <div className="chipSectionLabel">{itemType === "book" ? "Genre" : "Categories"}</div>
               {categoryChips.length > 0 ? (
                 <div className="chipWrap">
                   {categoryChips.map((chip) => (
@@ -290,7 +444,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             ) : null}
           </aside>
 
-          <section className="rightPane">
+          <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}`}>
             {itemType !== "book" ? (
               heroUrl ? (
                 <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" />
@@ -299,16 +453,83 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               )
             ) : null}
 
-            <div className="infoGrid">
-              {infoRows.map((row) => (
-                <div key={row.label} className="infoCard">
-                  <div className="label">{row.label}</div>
-                  <div className="value">{row.value || DASH}</div>
-                </div>
-              ))}
-            </div>
+            {itemType === "book" && description && !isEditingBook ? (
+              <div className="descriptionCard bookDescriptionCard">
+                <div className="label">Description</div>
+                <div className="description">{description}</div>
+              </div>
+            ) : null}
 
-            {description ? (
+            {itemType === "book" && isEditingBook ? (
+              <div className="editGrid">
+                {BOOK_EDIT_FIELDS.map((field) => (
+                  <label key={field.key} className="editField">
+                    <span className="editLabel">{field.label}</span>
+                    {field.multiline ? (
+                      <textarea
+                        value={bookEditValues[field.key] || ""}
+                        onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
+                        className="editTextarea"
+                        rows={4}
+                      />
+                    ) : field.key === "status" ? (
+                      <select
+                        value={bookEditValues[field.key] || ""}
+                        onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
+                        className="editSelect"
+                      >
+                        <option value="">Select status</option>
+                        {BOOK_STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                        {bookEditValues[field.key] && !BOOK_STATUS_OPTIONS.includes(bookEditValues[field.key]) ? (
+                          <option value={bookEditValues[field.key]}>{bookEditValues[field.key]}</option>
+                        ) : null}
+                      </select>
+                    ) : field.key === "tags" ? (
+                      <>
+                        <input
+                          type="text"
+                          value={bookEditValues[field.key] || ""}
+                          onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
+                          onBlur={(e) => handleBookFieldChange(field.key, normalizeCommaTags(e.target.value))}
+                          className="editInput"
+                          list="book-tag-suggestions"
+                          placeholder="tag one, tag two, tag three"
+                        />
+                        <datalist id="book-tag-suggestions">
+                          {bookTagSuggestions.map((tag) => (
+                            <option key={tag} value={tag} />
+                          ))}
+                        </datalist>
+                        <span className="editHelp">Use commas to separate tags</span>
+                      </>
+                    ) : (
+                      <input
+                        type="text"
+                        value={bookEditValues[field.key] || ""}
+                        onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
+                        className="editInput"
+                      />
+                    )}
+                  </label>
+                ))}
+                {bookSaveError ? <div className="bookSaveError">{bookSaveError}</div> : null}
+              </div>
+            ) : (
+              <div className="infoGrid">
+                {infoRows.map((row) => (
+                  <div key={row.label} className="infoCard">
+                    <div className="label">{row.label}</div>
+                    <div className="value">{row.value || DASH}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {description && itemType !== "book" ? (
               <div className="descriptionCard">
                 <div className="label">Description</div>
                 <div className="description">{description}</div>
@@ -343,18 +564,24 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .closeButton {
+          width: 34px;
+          height: 34px;
+          border: 1px solid rgba(86, 110, 160, 0.5);
+          border-radius: 10px;
+          background: rgba(10, 22, 49, 0.9);
+          color: #d6deef;
+          font-size: 22px;
+          line-height: 1;
+          cursor: pointer;
+        }
+
+        .topRightActions {
           position: absolute;
           top: 10px;
           right: 10px;
-          width: 44px;
-          height: 44px;
-          border: 1px solid rgba(86, 110, 160, 0.5);
-          border-radius: 12px;
-          background: rgba(10, 22, 49, 0.9);
-          color: #d6deef;
-          font-size: 30px;
-          line-height: 1;
-          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
           z-index: 2;
         }
 
@@ -399,7 +626,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           font-size: 12px;
           font-weight: 700;
           cursor: pointer;
-          margin-top: 10px;
+          width: 100%;
+          margin-top: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
 
         .replaceCoverButton:disabled {
@@ -429,6 +659,55 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           line-height: 1.05;
           letter-spacing: 0.01em;
           font-weight: 800;
+        }
+
+        .subtitle {
+          margin: -4px 0 10px;
+          color: #d7e1f8;
+          font-size: 20px;
+          line-height: 1.2;
+          font-weight: 600;
+        }
+
+        .titleInput,
+        .subtitleInput {
+          width: 100%;
+          border: 1px solid rgba(95, 122, 177, 0.45);
+          border-radius: 10px;
+          background: rgba(8, 14, 30, 0.8);
+          color: #eff5ff;
+          outline: none;
+        }
+
+        .titleInput {
+          margin: 14px 0 8px;
+          font-size: 28px;
+          line-height: 1.1;
+          font-weight: 800;
+          padding: 8px 10px;
+        }
+
+        .subtitleInput {
+          margin: 0 0 10px;
+          font-size: 18px;
+          line-height: 1.2;
+          font-weight: 600;
+          padding: 8px 10px;
+        }
+
+        .coverActionsPanel {
+          width: 100%;
+          margin: 2px 0 2px;
+          border: 1px solid rgba(73, 102, 154, 0.35);
+          border-radius: 14px;
+          background: rgba(15, 24, 44, 0.62);
+          padding: 10px;
+        }
+
+        .coverSourceRow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
 
         .chipWrap {
@@ -464,18 +743,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .statusValue {
           color: #f0f4ff;
-          font-size: 14px;
-          font-weight: 700;
+          font-size: 20px;
+          font-weight: 600;
           margin-top: 6px;
-        }
-
-        .coverSourcePanel {
-          width: 100%;
-          margin: 2px 0 2px;
-          border: 1px solid rgba(73, 102, 154, 0.35);
-          border-radius: 14px;
-          background: rgba(15, 24, 44, 0.62);
-          padding: 10px;
         }
 
         .coverSourceHeading {
@@ -484,16 +754,111 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           font-weight: 700;
           letter-spacing: 0.06em;
           text-transform: uppercase;
-          margin-bottom: 2px;
+          margin-bottom: 0;
         }
 
         .activeSource {
           color: #f0f4ff;
           font-size: 13px;
           font-weight: 700;
-          margin-top: 6px;
+          margin-top: 0;
           line-height: 1.35;
-          word-break: break-all;
+        }
+
+        .activeSource a {
+          color: #f0f4ff;
+          text-decoration: none;
+        }
+
+        .activeSource a:hover {
+          text-decoration: underline;
+        }
+
+        .bookEditToolbar {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .editButton,
+        .saveButton {
+          border: 1px solid rgba(95, 122, 177, 0.6);
+          border-radius: 10px;
+          background: rgba(9, 19, 40, 0.92);
+          color: #d6e2ff;
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          cursor: pointer;
+        }
+
+        .topActionButton {
+          padding: 6px 9px;
+          font-size: 11px;
+        }
+
+        .editButton:disabled,
+        .saveButton:disabled {
+          opacity: 0.7;
+          cursor: default;
+        }
+
+        .editGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .editField {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          border-radius: 14px;
+          border: 1px solid rgba(73, 102, 154, 0.35);
+          background: rgba(15, 24, 44, 0.72);
+          padding: 10px 12px;
+        }
+
+        .editLabel {
+          color: rgba(178, 193, 224, 0.9);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .editHelp {
+          color: rgba(178, 193, 224, 0.75);
+          font-size: 11px;
+          line-height: 1.2;
+        }
+
+        .editInput,
+        .editSelect,
+        .editTextarea {
+          width: 100%;
+          border: 1px solid rgba(95, 122, 177, 0.45);
+          border-radius: 8px;
+          background: rgba(8, 14, 30, 0.8);
+          color: #eff5ff;
+          padding: 8px 10px;
+          font-size: 14px;
+          line-height: 1.3;
+          outline: none;
+        }
+
+        .editTextarea {
+          resize: vertical;
+          min-height: 96px;
+        }
+
+        .bookSaveError {
+          grid-column: 1 / -1;
+          color: #ffb6b6;
+          font-size: 13px;
+          line-height: 1.35;
         }
 
         .rightPane {
@@ -501,6 +866,14 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: flex;
           flex-direction: column;
           gap: 14px;
+        }
+
+        .bookRightPane {
+          padding-top: 12px;
+        }
+
+        .bookDescriptionCard {
+          margin-top: 8px;
         }
 
         .heroImage,
@@ -563,8 +936,28 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         :global(.stars) {
+          display: inline-flex;
+          gap: 2px;
+        }
+
+        :global(.star) {
+          position: relative;
+          display: inline-block;
+          width: 1em;
+          height: 1em;
+          line-height: 1;
+        }
+
+        :global(.starBase) {
+          color: rgba(42, 181, 186, 0.32);
+        }
+
+        :global(.starFill) {
+          position: absolute;
+          inset: 0 auto 0 0;
+          overflow: hidden;
+          white-space: nowrap;
           color: #2ab5ba;
-          letter-spacing: 0.08em;
         }
 
         :global(.score) {
@@ -602,15 +995,32 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           }
 
           .closeButton {
+            width: 30px;
+            height: 30px;
+            font-size: 20px;
+          }
+
+          .topRightActions {
             top: 8px;
             right: 8px;
-            width: 38px;
-            height: 38px;
-            font-size: 25px;
+            gap: 4px;
+          }
+
+          .topActionButton {
+            padding: 5px 8px;
+            font-size: 10px;
           }
 
           .title {
             font-size: 26px;
+          }
+
+          .subtitle {
+            font-size: 18px;
+          }
+
+          .statusValue {
+            font-size: 18px;
           }
 
           .chip {
@@ -618,7 +1028,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             padding: 8px 12px;
           }
 
-          .coverSourcePanel {
+          .coverActionsPanel {
             padding: 8px;
           }
 
@@ -629,6 +1039,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           }
 
           .infoGrid {
+            grid-template-columns: 1fr;
+          }
+
+          .editGrid {
             grid-template-columns: 1fr;
           }
 

@@ -110,6 +110,7 @@ type Show = {
   lastAirDate?: string;
   watchStatus?: string;
   showStatus?: string;
+  ownership?: string;
   tag?: string;
 };
 
@@ -132,9 +133,12 @@ type Book = {
   types?: string;
   series?: string;
   categories?: string;
+  genre?: string;
   ownership?: string;
   tag?: string;
   tags?: string;
+  openLibraryWorkKey?: string;
+  googleBooksVolumeId?: string;
   description?: string;
   imageUrl?: string;
   customImageUrl?: string;
@@ -158,6 +162,7 @@ type Movie = {
   releaseDate?: string;
   watchStatus?: string;
   movieStatus?: string;
+  ownership?: string;
   tag?: string;
   genres?: string;
 };
@@ -173,6 +178,7 @@ type Game = {
   releaseDate?: string;
   playStatus?: string;
   gameStatus?: string;
+  ownership?: string;
   yearPlayed?: string;
   tag?: string;
 };
@@ -289,6 +295,7 @@ function rowToShow(r: Row): Show | null {
     lastAirDate: safeStr(r["LastAirDate"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
   };
 }
@@ -342,10 +349,14 @@ function rowToBook(r: Row): Book | null {
     status: safeStr(r["Status"]) || undefined,
     types: safeStr(r["Types"]) || safeStr(r["Type"]) || undefined,
     series: safeStr(r["Series"]) || undefined,
-    categories: safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]) || undefined,
+    categories:
+      safeStr(r["genre"]) || safeStr(r["Genre"]) || safeStr(r["categories"]) || safeStr(r["Categories"]) || safeStr(r["Category"]) || undefined,
+    genre: safeStr(r["genre"]) || safeStr(r["Genre"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || undefined,
     tags: safeStr(r["tags"]) || safeStr(r["Tags"]) || undefined,
+    openLibraryWorkKey: safeStr(r["OpenLibraryWorkKey"]) || undefined,
+    googleBooksVolumeId: safeStr(r["GoogleBooksVolumeId"]) || undefined,
     description: safeStr(r["description"]) || safeStr(r["Description"]) || undefined,
     imageUrl: safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]) || undefined,
     customImageUrl: customImageUrl || undefined,
@@ -384,6 +395,7 @@ function rowToMovie(r: Row): Movie | null {
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     movieStatus: safeStr(r["Status"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
     genres: safeStr(r["Genres"]) || safeStr(r["Genre"]) || undefined,
   };
@@ -415,6 +427,7 @@ function rowToGame(r: Row): Game | null {
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
     playStatus: safeStr(r["PlayStatus"]) || undefined,
     gameStatus: safeStr(r["Status"]) || undefined,
+    ownership: safeStr(r["Ownership"]) || undefined,
     yearPlayed: safeStr(r["Year Played"]) || safeStr(r["YearPlayed"]) || safeStr(r["Year played"]) || safeStr(r["Yearplayed"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
   };
@@ -443,7 +456,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
@@ -452,6 +465,7 @@ export default function Page() {
   const gamesCsvUrl = (process.env as any)[GAMES_ENV_KEY] as string | undefined;
   const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
   const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
+  const booksWriteUrl = (process.env as any)["NEXT_PUBLIC_BOOKS_WRITE_URL"] as string | undefined;
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
@@ -687,6 +701,8 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
+  const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
 
@@ -719,8 +735,16 @@ export default function Page() {
 
   const getDisplayCoverUrl = (item: any) => {
     const itemKey = getMediaItemKey(item);
+    const failed = new Set(failedCoverUrls[itemKey] || []);
     const overrideUrl = safeStr(coverOverrides[itemKey]);
-    return overrideUrl || safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
+    const candidates = [
+      overrideUrl,
+      safeStr(item?.metadataCoverUrl),
+      safeStr(item?.posterUrl),
+      safeStr(item?.posterUrlFallback),
+    ].filter(Boolean);
+    const uniqueCandidates = Array.from(new Set(candidates));
+    return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
   useEffect(() => {
@@ -816,6 +840,94 @@ export default function Page() {
     } finally {
       setUploadingCoverForKey(null);
     }
+  };
+
+  const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
+    if (!booksWriteUrl) {
+      throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
+    }
+
+    const matchGoogleBooksVolumeId = safeStr(updates.googleBooksVolumeId) || safeStr(item?.googleBooksVolumeId);
+    const matchOpenLibraryWorkKey = safeStr(updates.openLibraryWorkKey) || safeStr(item?.openLibraryWorkKey);
+    const matchTitle = safeStr(item?.title);
+
+    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+      throw new Error("Unable to identify this book row to update.");
+    }
+
+    const payload = {
+      action: "updateBook",
+      match: {
+        googleBooksVolumeId: matchGoogleBooksVolumeId,
+        openLibraryWorkKey: matchOpenLibraryWorkKey,
+        title: matchTitle,
+      },
+      updates: {
+        Title: safeStr(updates.title),
+        Subtitle: safeStr(updates.subtitle),
+        Series: safeStr(updates.series),
+        Author: safeStr(updates.author),
+        Ownership: safeStr(updates.ownership),
+        Type: safeStr(updates.type),
+        Status: safeStr(updates.status),
+        CompletedDate: safeStr(updates.completedDate),
+        isbn: safeStr(updates.isbn),
+        ReleaseDate: safeStr(updates.releaseDate),
+        description: safeStr(updates.description),
+        ImageURL: safeStr(updates.imageUrl),
+        userRating: safeStr(updates.userRating),
+        "My Rating": safeStr(updates.myRating),
+        pages: safeStr(updates.pages),
+        audiobookDuration: safeStr(updates.audiobookDuration),
+        genre: safeStr(updates.genre),
+        tags: safeStr(updates.tags),
+        OpenLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
+        GoogleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+      },
+    };
+
+    try {
+      await fetch(booksWriteUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to save book edits");
+    }
+
+    setModalItem((prev: any) => {
+      if (!prev) return prev;
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        subtitle: safeStr(updates.subtitle),
+        series: safeStr(updates.series),
+        author: safeStr(updates.author),
+        ownership: safeStr(updates.ownership),
+        types: safeStr(updates.type),
+        status: safeStr(updates.status),
+        completedDate: safeStr(updates.completedDate),
+        isbn: safeStr(updates.isbn),
+        releaseDate: safeStr(updates.releaseDate),
+        description: safeStr(updates.description),
+        imageUrl: safeStr(updates.imageUrl),
+        userRating: safeStr(updates.userRating),
+        myRating: safeStr(updates.myRating),
+        pages: safeStr(updates.pages),
+        audiobookDuration: safeStr(updates.audiobookDuration),
+        categories: safeStr(updates.genre),
+        genre: safeStr(updates.genre),
+        tags: safeStr(updates.tags),
+        openLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
+        googleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
+    // Re-sync to pick up the canonical sheet values once published CSV refreshes.
+    setRefreshNonce((n) => n + 1);
   };
 
   useEffect(() => {
@@ -1865,6 +1977,15 @@ export default function Page() {
       .toLowerCase()
       .replace("cancelled", "canceled");
 
+  const hasWishlistOwnership = (value?: string) => normalizeStatus(value) === "wishlist";
+
+  const isMovieWatched = (movie: Movie) => {
+    const status = normalizeStatus(movie.movieStatus);
+    if (status) return status === "watched";
+    const watched = normalizeStatus(movie.watchStatus);
+    return watched === "watched" || watched === "true" || watched === "yes" || watched === "1";
+  };
+
   const watchStatuses = useMemo(
     () => [
       "Currently Watching",
@@ -1881,7 +2002,7 @@ export default function Page() {
   const showStatuses = useMemo(() => ["Ended", "Returning Series", "Canceled"], []);
 
   const readingStatuses = useMemo(
-    () => ["Reading", "Completed", "Backlog", "Abandoned", "Read Next", "Paused"],
+    () => ["Reading", "Completed", "Backlog", "Abandoned", "Paused"],
     []
   );
 
@@ -2178,6 +2299,30 @@ export default function Page() {
       return sorted as any[];
     }
 
+    // Wishlist: mixed cross-library list using category-specific rules
+    if (nav === "wishlist") {
+      const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
+      const qs = allShows.filter((s) => hasWishlistOwnership(s.ownership) || normalizeStatus(s.watchStatus) === "watch next");
+      const qm = allMovies.filter((m) => hasWishlistOwnership(m.ownership) || !isMovieWatched(m));
+      const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
+      const deduplicatedGames = deduplicateGames(qg);
+
+      const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
+      const queryFilteredShows = q ? qs.filter((s) => s.title.toLowerCase().includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.title.toLowerCase().includes(q)) : qm;
+      const queryFilteredGames = q ? deduplicatedGames.filter((g) => g.title.toLowerCase().includes(q)) : deduplicatedGames;
+
+      const combined = [
+        ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredShows.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
+        ...queryFilteredMovies.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...queryFilteredGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
+    }
+
     // Movies path
     if (nav === "movies") {
       let filtered = allMovies;
@@ -2344,11 +2489,17 @@ export default function Page() {
   }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, nav, query, sortField, sortOrder]);
 
   const stats = useMemo(() => {
+    const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
+    const wishlistShows = allShows.filter((s) => hasWishlistOwnership(s.ownership) || normalizeStatus(s.watchStatus) === "watch next").length;
+    const wishlistMovies = allMovies.filter((m) => hasWishlistOwnership(m.ownership) || !isMovieWatched(m)).length;
+    const wishlistGames = deduplicateGames(allGames.filter((g) => hasWishlistOwnership(g.ownership))).length;
+
     return {
       movies: allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist").length,
       tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist").length,
       books: allBooks.length,
       games: allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist").length,
+      wishlist: wishlistBooks + wishlistShows + wishlistMovies + wishlistGames,
     };
   }, [allShows, allBooks, allMovies, allGames]);
 
@@ -2362,8 +2513,8 @@ export default function Page() {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
     const out: any[][] = [];
     
-    // For home page with mixed item types, calculate shelf distribution based on actual item sizes
-    if (nav === "home") {
+    // For mixed-item views, calculate shelf distribution based on actual item sizes
+    if (nav === "home" || nav === "wishlist") {
       let currentShelf: any[] = [];
       let currentWidth = 0;
       
@@ -2608,7 +2759,7 @@ export default function Page() {
                       <option value="ReleaseDate">Release Date</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "wishlist" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
@@ -3568,6 +3719,62 @@ export default function Page() {
                       }}
                     >
                       {stats.games}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setNav("wishlist");
+                    setOpenSection((s) => (s === "wishlist" ? null : "wishlist"));
+                  }}
+                  className={`sideItem ${nav === "wishlist" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-wishlist.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Wishlist
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 48,
+                        height: 24,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.wishlist}
                     </span>
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
@@ -5502,7 +5709,6 @@ export default function Page() {
                       const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
                       const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
                       const selectedCoverUrl = getDisplayCoverUrl(show);
-                      const metadataCoverUrl = safeStr(show.metadataCoverUrl) || safeStr(show.posterUrlFallback) || safeStr(show.posterUrl);
 
                       return (
                         <div
@@ -5593,10 +5799,27 @@ export default function Page() {
                                   transform: isGame ? `scale(${coverScale / 100})` : "none",
                                 }}
                                 onError={e => {
-                                  // Fallback to metadata cover if override fails
-                                  if (metadataCoverUrl && e.currentTarget.src !== metadataCoverUrl) {
-                                    e.currentTarget.src = metadataCoverUrl;
-                                  }
+                                  const itemKey = getMediaItemKey(show);
+                                  const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                  if (!failedUrl) return;
+                                  const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                  const nextAttempts = currentAttempts + 1;
+                                  setFailedCoverAttempts((prev) => {
+                                    const itemAttempts = prev[itemKey] || {};
+                                    return {
+                                      ...prev,
+                                      [itemKey]: {
+                                        ...itemAttempts,
+                                        [failedUrl]: nextAttempts,
+                                      },
+                                    };
+                                  });
+                                  if (nextAttempts < 2) return;
+                                  setFailedCoverUrls((prev) => {
+                                    const existing = prev[itemKey] || [];
+                                    if (existing.includes(failedUrl)) return prev;
+                                    return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                  });
                                 }}
                               />
                             ) : (
@@ -5705,6 +5928,7 @@ export default function Page() {
           setCoverUploadError(null);
         }}
         onReplaceCover={handleReplaceCover}
+        onSaveBookEdits={handleSaveBookEdits}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
         replaceCoverError={coverUploadError}
       />
