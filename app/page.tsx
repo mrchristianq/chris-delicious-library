@@ -240,7 +240,7 @@ const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
 const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
-const DEFAULT_SHELF_IMAGE = "/shelves-light-single2.png";
+const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -611,7 +611,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
@@ -704,6 +704,12 @@ export default function Page() {
   const [formatFilter, setFormatFilter] = useState<string | null>(null);
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [gamePlatformFilter, setGamePlatformFilter] = useState<string | null>(null);
+  const [gameStatusFilter, setGameStatusFilter] = useState<string | null>(null);
+  const [gameOwnershipFilter, setGameOwnershipFilter] = useState<string | null>(null);
+  const [gameFormatFilter, setGameFormatFilter] = useState<string | null>(null);
+  const [gameYearPlayedFilter, setGameYearPlayedFilter] = useState<string | null>(null);
+  const [gameGenreFilter, setGameGenreFilter] = useState<string | null>(null);
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
@@ -716,6 +722,12 @@ export default function Page() {
   const [formatOpen, setFormatOpen] = useState<boolean>(false);
   const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
   const [genreOpen, setGenreOpen] = useState<boolean>(false);
+  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(false);
+  const [gameStatusOpen, setGameStatusOpen] = useState<boolean>(false);
+  const [gameOwnershipOpen, setGameOwnershipOpen] = useState<boolean>(false);
+  const [gameFormatOpen, setGameFormatOpen] = useState<boolean>(false);
+  const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
+  const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
 
@@ -1953,62 +1965,6 @@ export default function Page() {
     }
   };
 
-  const syncCovers = async () => {
-    // Check if running in development mode (API routes available)
-    const isDev = process.env.NODE_ENV === 'development';
-    
-    if (!isDev) {
-      alert('⚠️ Cover sync is only available in development mode.\n\nTo sync covers:\n1. Open terminal in VS Code\n2. Run: npm run sync-covers\n3. Commit and push the new covers\n\nOr enable GitHub Actions automatic daily sync.');
-      return;
-    }
-
-    setSyncState("saving");
-    setSyncMsg("Syncing covers...");
-
-    try {
-      const res = await fetch('/api/sync-covers', { 
-        method: 'POST',
-        cache: 'no-store'
-      });
-      
-      const data = await res.json();
-      
-      if (data.success) {
-        const { downloaded, skipped, failed } = data.stats;
-        let message = "Sync complete!";
-        if (downloaded > 0) {
-          message = `Added ${downloaded} new cover${downloaded !== 1 ? 's' : ''}!`;
-        } else if (skipped > 0) {
-          message = "All covers up to date";
-        }
-        
-        setSyncState("ok");
-        setSyncMsg(message);
-        
-        // Show detailed stats in console
-        console.log('Cover sync results:', data.stats);
-        if (downloaded > 0) {
-          alert(`✅ Cover Sync Complete!\n\nDownloaded: ${downloaded}\nSkipped: ${skipped}\nFailed: ${failed}\n\nNew covers saved to /public/covers/\nCommit and push to deploy.`);
-        }
-        
-        setTimeout(() => {
-          setSyncMsg("Synced");
-        }, 3000);
-      } else {
-        throw new Error(data.message || 'Sync failed');
-      }
-    } catch (e: any) {
-      console.error("Failed to sync covers:", e);
-      setSyncState("error");
-      setSyncMsg("Sync failed");
-      alert(`❌ Cover sync failed:\n${e.message || 'Unknown error'}\n\nCheck console for details.`);
-      setTimeout(() => {
-        setSyncMsg("Synced");
-        setSyncState("ok");
-      }, 3000);
-    }
-  };
-
   // ============================================================================
   // HOW TO ADD NEW SETTINGS IN THE FUTURE:
   // ============================================================================
@@ -2377,6 +2333,135 @@ export default function Page() {
     return Array.from(options).sort((a, b) => a.localeCompare(b));
   }, [allGames]);
 
+  const gameStatuses = useMemo(() => {
+    const values = new Set<string>();
+    allGames.forEach((game) => {
+      const value = safeStr(game.status || game.playStatus || game.gameStatus);
+      if (value) values.add(value);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [allGames]);
+
+  const gameYearPlayedOptions = useMemo(() => {
+    const values = new Set<string>();
+    allGames.forEach((game) => {
+      const value = safeStr(game.yearPlayed);
+      if (value) values.add(value);
+    });
+    return Array.from(values).sort((a, b) => {
+      const aNum = Number.parseInt(a, 10);
+      const bNum = Number.parseInt(b, 10);
+      const aIsNum = Number.isFinite(aNum);
+      const bIsNum = Number.isFinite(bNum);
+      if (aIsNum && bIsNum) return bNum - aNum;
+      return a.localeCompare(b);
+    });
+  }, [allGames]);
+
+  const gameGenres = useMemo(() => {
+    const values = new Set<string>();
+    allGames.forEach((game) => {
+      const raw = safeStr(game.genres);
+      if (!raw) return;
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => values.add(part));
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [allGames]);
+
+  const gamePlatformCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gamePlatformOptions) counts[option] = 0;
+    allGames.forEach((game) => {
+      const raw = safeStr(game.platform);
+      if (!raw) return;
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => {
+          if (counts[part] === undefined) counts[part] = 0;
+          counts[part] += 1;
+        });
+    });
+    return counts;
+  }, [allGames, gamePlatformOptions]);
+
+  const gameStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gameStatuses) counts[option] = 0;
+    allGames.forEach((game) => {
+      const value = safeStr(game.status || game.playStatus || game.gameStatus);
+      if (!value) return;
+      if (counts[value] === undefined) counts[value] = 0;
+      counts[value] += 1;
+    });
+    return counts;
+  }, [allGames, gameStatuses]);
+
+  const gameOwnershipCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gameOwnershipOptions) counts[option] = 0;
+    allGames.forEach((game) => {
+      const value = safeStr(game.ownership);
+      if (!value) return;
+      if (counts[value] === undefined) counts[value] = 0;
+      counts[value] += 1;
+    });
+    return counts;
+  }, [allGames, gameOwnershipOptions]);
+
+  const gameFormatCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gameFormatOptions) counts[option] = 0;
+    allGames.forEach((game) => {
+      const raw = safeStr(game.format);
+      if (!raw) return;
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => {
+          if (counts[part] === undefined) counts[part] = 0;
+          counts[part] += 1;
+        });
+    });
+    return counts;
+  }, [allGames, gameFormatOptions]);
+
+  const gameYearPlayedCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gameYearPlayedOptions) counts[option] = 0;
+    allGames.forEach((game) => {
+      const value = safeStr(game.yearPlayed);
+      if (!value) return;
+      if (counts[value] === undefined) counts[value] = 0;
+      counts[value] += 1;
+    });
+    return counts;
+  }, [allGames, gameYearPlayedOptions]);
+
+  const gameGenreCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gameGenres) counts[option] = 0;
+    allGames.forEach((game) => {
+      const raw = safeStr(game.genres);
+      if (!raw) return;
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => {
+          if (counts[part] === undefined) counts[part] = 0;
+          counts[part] += 1;
+        });
+    });
+    return counts;
+  }, [allGames, gameGenres]);
+
   // Helper to parse comma-separated platforms and determine primary platform
   // Priority: Steam > Epic Games Store > First platform in list
   const getPrimaryPlatform = (platformString: string | undefined): string => {
@@ -2454,12 +2539,13 @@ export default function Page() {
       .replace("cancelled", "canceled");
 
   const hasWishlistOwnership = (value?: string) => normalizeStatus(value) === "wishlist";
+  const hasOwnedOwnership = (value?: string) => normalizeStatus(value) === "owned";
 
   const isMovieWatched = (movie: Movie) => {
-    const status = normalizeStatus(movie.movieStatus);
-    if (status) return status === "watched";
-    const watched = normalizeStatus(movie.watchStatus);
-    return watched === "watched" || watched === "true" || watched === "yes" || watched === "1";
+    const status = normalizeStatus(movie.movieStatus || movie.status);
+    const watched = normalizeStatus(movie.watchStatus || movie.watched);
+    const watchedValues = new Set(["watched", "completed", "true", "yes", "1"]);
+    return watchedValues.has(watched) || watchedValues.has(status);
   };
 
   const watchStatuses = useMemo(
@@ -2750,7 +2836,9 @@ export default function Page() {
   const shows = useMemo(() => {
     const q = safeStr(query).toLowerCase();
     if (nav === "books") {
-      let filtered = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
+      const hasBookFilters = Boolean(readingStatusFilter || formatFilter || seriesFilter || genreFilter || wishlistFilter);
+      const bookBase = hasBookFilters ? allBooks : allBooks.filter((b) => hasOwnedOwnership(b.ownership));
+      let filtered = q ? bookBase.filter((b) => b.title.toLowerCase().includes(q)) : bookBase;
       // Apply reading status filter if set
       if (readingStatusFilter) {
         filtered = filtered.filter((b) => normalizeStatus(b.status) === normalizeStatus(readingStatusFilter));
@@ -2786,10 +2874,12 @@ export default function Page() {
     // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
     // Filter out Wishlist items - only show owned items
     if (nav === "home") {
-      const qb = q ? allBooks.filter((b) => b.title.toLowerCase().includes(q)) : allBooks;
+      const qbBase = allBooks.filter((b) => hasOwnedOwnership(b.ownership));
+      const qgBase = allGames.filter((g) => hasOwnedOwnership(g.ownership));
+      const qb = q ? qbBase.filter((b) => b.title.toLowerCase().includes(q)) : qbBase;
       const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q) && normalizeStatus(s.watchStatus) !== "wishlist") : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist");
       const qm = q ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && normalizeStatus(m.watchStatus) !== "wishlist") : allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist");
-      const qg = q ? allGames.filter((g) => g.title.toLowerCase().includes(q) && normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist") : allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist");
+      const qg = q ? qgBase.filter((g) => g.title.toLowerCase().includes(q)) : qgBase;
       
       // Deduplicate games by title - keep only primary platform version
       const deduplicatedGames = deduplicateGames(qg);
@@ -2805,25 +2895,39 @@ export default function Page() {
       return sorted as any[];
     }
 
-    // Wishlist: mixed cross-library list using category-specific rules
+    // Wishlist: books and games only
     if (nav === "wishlist") {
       const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
-      const qs = allShows.filter((s) => hasWishlistOwnership(s.ownership) || normalizeStatus(s.watchStatus) === "watch next");
-      const qm = allMovies.filter((m) => hasWishlistOwnership(m.ownership) || !isMovieWatched(m));
       const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
       const deduplicatedGames = deduplicateGames(qg);
 
       const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
-      const queryFilteredShows = q ? qs.filter((s) => s.title.toLowerCase().includes(q)) : qs;
-      const queryFilteredMovies = q ? qm.filter((m) => m.title.toLowerCase().includes(q)) : qm;
       const queryFilteredGames = q ? deduplicatedGames.filter((g) => g.title.toLowerCase().includes(q)) : deduplicatedGames;
 
       const combined = [
         ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>;
+
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
+    }
+
+    // Watchlist: movies not watched + TV not completed/abandoned
+    if (nav === "watchlist") {
+      const qs = allShows.filter((s) => {
+        const status = normalizeStatus(s.watchStatus);
+        return status !== "completed" && status !== "abandoned";
+      });
+      const qm = allMovies.filter((m) => !isMovieWatched(m));
+
+      const queryFilteredShows = q ? qs.filter((s) => s.title.toLowerCase().includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.title.toLowerCase().includes(q)) : qm;
+
+      const combined = [
         ...queryFilteredShows.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
         ...queryFilteredMovies.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...queryFilteredGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
-      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+      ] as Array<(Show & { __type: "tv" }) | (Movie & { __type: "movie" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
       return sorted as any[];
@@ -2835,14 +2939,10 @@ export default function Page() {
       
       // Apply watch status filter if set
       if (movieWatchFilter) {
-        filtered = filtered.filter((m) => {
-          const watched = m.watchStatus && 
-            (m.watchStatus.toLowerCase() === "true" || 
-             m.watchStatus.toLowerCase() === "yes" || 
-             m.watchStatus === "1" ||
-             m.watchStatus.toLowerCase() === "watched");
-          return movieWatchFilter === "Watched" ? watched : !watched;
-        });
+        filtered = filtered.filter((m) => (movieWatchFilter === "Watched" ? isMovieWatched(m) : !isMovieWatched(m)));
+      } else {
+        // Default Movies view: watched-only. Unwatched items live in Watchlist unless specifically filtered.
+        filtered = filtered.filter((m) => isMovieWatched(m));
       }
       
       // Apply genre filter if set
@@ -2861,7 +2961,54 @@ export default function Page() {
 
     // Games path
     if (nav === "games") {
-      const filteredByQuery = q ? allGames.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : allGames;
+      const hasGameFilters = Boolean(
+        gamePlatformFilter || gameStatusFilter || gameOwnershipFilter || gameFormatFilter || gameYearPlayedFilter || gameGenreFilter
+      );
+      let filtered = hasGameFilters ? allGames : allGames.filter((g) => hasOwnedOwnership(g.ownership));
+
+      if (gamePlatformFilter) {
+        filtered = filtered.filter((g) => {
+          const values = safeStr(g.platform)
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean);
+          return values.includes(gamePlatformFilter);
+        });
+      }
+
+      if (gameStatusFilter) {
+        filtered = filtered.filter((g) => safeStr(g.status || g.playStatus || g.gameStatus) === gameStatusFilter);
+      }
+
+      if (gameOwnershipFilter) {
+        filtered = filtered.filter((g) => safeStr(g.ownership) === gameOwnershipFilter);
+      }
+
+      if (gameFormatFilter) {
+        filtered = filtered.filter((g) => {
+          const values = safeStr(g.format)
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean);
+          return values.includes(gameFormatFilter);
+        });
+      }
+
+      if (gameYearPlayedFilter) {
+        filtered = filtered.filter((g) => safeStr(g.yearPlayed) === gameYearPlayedFilter);
+      }
+
+      if (gameGenreFilter) {
+        filtered = filtered.filter((g) => {
+          const values = safeStr(g.genres)
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean);
+          return values.includes(gameGenreFilter);
+        });
+      }
+
+      const filteredByQuery = q ? filtered.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : filtered;
       const sorted = applySorting(filteredByQuery, sortField, sortOrder);
       return sorted.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })) as any[];
     }
@@ -2973,9 +3120,11 @@ export default function Page() {
     }
 
     // TV default path
+    const hasTvFilters = Boolean(watchFilter || showFilter || tagFilter);
+    const tvBase = hasTvFilters ? allShows : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "backlog");
     const filteredByWatch = watchFilter
-      ? allShows.filter((s) => normalizeStatus(s.watchStatus) === normalizeStatus(watchFilter))
-      : allShows;
+      ? tvBase.filter((s) => normalizeStatus(s.watchStatus) === normalizeStatus(watchFilter))
+      : tvBase;
     const filteredByShow = showFilter
       ? filteredByWatch.filter((s) => normalizeStatus(s.showStatus) === normalizeStatus(showFilter))
       : filteredByWatch;
@@ -2992,20 +3141,24 @@ export default function Page() {
 
     const sorted = applySorting(filteredByQuery, sortField, sortOrder);
     return sorted as any[];
-  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, nav, query, sortField, sortOrder]);
+  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, gamePlatformFilter, gameStatusFilter, gameOwnershipFilter, gameFormatFilter, gameYearPlayedFilter, gameGenreFilter, nav, query, sortField, sortOrder]);
 
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
-    const wishlistShows = allShows.filter((s) => hasWishlistOwnership(s.ownership) || normalizeStatus(s.watchStatus) === "watch next").length;
-    const wishlistMovies = allMovies.filter((m) => hasWishlistOwnership(m.ownership) || !isMovieWatched(m)).length;
     const wishlistGames = deduplicateGames(allGames.filter((g) => hasWishlistOwnership(g.ownership))).length;
+    const watchlistShows = allShows.filter((s) => {
+      const status = normalizeStatus(s.watchStatus);
+      return status !== "completed" && status !== "abandoned";
+    }).length;
+    const watchlistMovies = allMovies.filter((m) => !isMovieWatched(m)).length;
 
     return {
-      movies: allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist").length,
-      tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist").length,
-      books: allBooks.length,
-      games: allGames.filter((g) => normalizeStatus(g.playStatus || g.gameStatus) !== "wishlist").length,
-      wishlist: wishlistBooks + wishlistShows + wishlistMovies + wishlistGames,
+      movies: allMovies.filter((m) => isMovieWatched(m)).length,
+      tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "backlog").length,
+      books: allBooks.filter((b) => hasOwnedOwnership(b.ownership)).length,
+      games: allGames.filter((g) => hasOwnedOwnership(g.ownership)).length,
+      wishlist: wishlistBooks + wishlistGames,
+      watchlist: watchlistShows + watchlistMovies,
     };
   }, [allShows, allBooks, allMovies, allGames]);
 
@@ -3020,7 +3173,7 @@ export default function Page() {
     const out: any[][] = [];
     
     // For mixed-item views, calculate shelf distribution based on actual item sizes
-    if (nav === "home" || nav === "wishlist") {
+    if (nav === "home" || nav === "wishlist" || nav === "watchlist") {
       let currentShelf: any[] = [];
       let currentWidth = 0;
       
@@ -3273,7 +3426,7 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "wishlist" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
@@ -4184,6 +4337,12 @@ export default function Page() {
 
                 <button
                   onClick={() => {
+                    setGamePlatformFilter(null);
+                    setGameStatusFilter(null);
+                    setGameOwnershipFilter(null);
+                    setGameFormatFilter(null);
+                    setGameYearPlayedFilter(null);
+                    setGameGenreFilter(null);
                     setNav("games");
                     setOpenSection((s) => (s === "games" ? null : "games"));
                   }}
@@ -4238,6 +4397,376 @@ export default function Page() {
                   </span>
                 </button>
 
+                {openSection === "games" ? (
+                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <button
+                      onClick={() => setGamePlatformOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
+                    </button>
+                    {gamePlatformOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {gamePlatformOptions.map((option) => {
+                          const active = gamePlatformFilter === option;
+                          return (
+                            <button
+                              key={`game-platform-${option}`}
+                              onClick={() => setGamePlatformFilter(active ? null : option)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {gamePlatformCounts[option] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setGameStatusOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
+                    </button>
+                    {gameStatusOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {gameStatuses.map((option) => {
+                          const active = gameStatusFilter === option;
+                          return (
+                            <button
+                              key={`game-status-${option}`}
+                              onClick={() => setGameStatusFilter(active ? null : option)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {gameStatusCounts[option] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setGameOwnershipOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                    </button>
+                    {gameOwnershipOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {gameOwnershipOptions.map((option) => {
+                          const active = gameOwnershipFilter === option;
+                          return (
+                            <button
+                              key={`game-ownership-${option}`}
+                              onClick={() => setGameOwnershipFilter(active ? null : option)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {gameOwnershipCounts[option] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setGameFormatOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
+                    </button>
+                    {gameFormatOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {gameFormatOptions.map((option) => {
+                          const active = gameFormatFilter === option;
+                          return (
+                            <button
+                              key={`game-format-${option}`}
+                              onClick={() => setGameFormatFilter(active ? null : option)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {gameFormatCounts[option] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setGameYearPlayedOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                    </button>
+                    {gameYearPlayedOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {gameYearPlayedOptions.map((option) => {
+                          const active = gameYearPlayedFilter === option;
+                          return (
+                            <button
+                              key={`game-year-played-${option}`}
+                              onClick={() => setGameYearPlayedFilter(active ? null : option)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {gameYearPlayedCounts[option] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <button
+                      onClick={() => setGameGenresOpen((v) => !v)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
+                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
+                    </button>
+                    {gameGenresOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {gameGenres.map((option) => {
+                          const active = gameGenreFilter === option;
+                          return (
+                            <button
+                              key={`game-genre-${option}`}
+                              onClick={() => setGameGenreFilter(active ? null : option)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span
+                                style={{
+                                  minWidth: 24,
+                                  height: 20,
+                                  padding: "0 8px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  textAlign: "center",
+                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
+                                  color: "#333",
+                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {gameGenreCounts[option] ?? 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <button
                   onClick={() => {
                     setNav("wishlist");
@@ -4289,6 +4818,62 @@ export default function Page() {
                       }}
                     >
                       {stats.wishlist}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setNav("watchlist");
+                    setOpenSection((s) => (s === "watchlist" ? null : "watchlist"));
+                  }}
+                  className={`sideItem ${nav === "watchlist" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        background: nav === "watchlist" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-watchlist.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Watchlist
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 48,
+                        height: 24,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "watchlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.watchlist}
                     </span>
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
@@ -4382,7 +4967,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src="/icon-other.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Other
                   </span>
@@ -5914,34 +6499,6 @@ export default function Page() {
                   📥 Load Settings from Sheet
                 </button>
 
-                {/* Sync Covers Button */}
-                <button
-                  onClick={syncCovers}
-                  style={{
-                    width: "100%",
-                    marginTop: 8,
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(92, 76, 60, 0.3)",
-                    background: "linear-gradient(180deg, rgba(115, 92, 76, 0.9) 0%, rgba(95, 76, 62, 0.9) 100%)",
-                    color: "#fff",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.3)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
-                  }}
-                >
-                  🔄 Sync Covers from Sheets
-                </button>
               </div>
             ) : null}
             </div>

@@ -124,7 +124,6 @@ const MOVIE_EDIT_FIELDS: MovieEditField[] = [
 const GAME_EDIT_FIELDS: GameEditField[] = [
   { key: "platform", label: "Platform" },
   { key: "status", label: "Status" },
-  { key: "name", label: "Name" },
   { key: "releaseDateAlt", label: "Release Date" },
   { key: "platforms", label: "Platforms" },
   { key: "coverUrl", label: "CoverURL" },

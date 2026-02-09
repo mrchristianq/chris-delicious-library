@@ -31,6 +31,14 @@ const CSV_URLS = {
 const GITHUB_BASE_URL = 'https://mrchristianq.github.io/chris-delicious-library/covers';
 const manifestPath = path.join(__dirname, '../public/covers-manifest.json');
 
+// IGDB often stores tiny thumbnails in CoverURL. Upgrade to a larger cover token.
+function upscaleGameCoverUrl(url) {
+  if (!url) return url;
+  return url
+    .replace(/\/t_(thumb|cover_small|cover_big)\//g, '/t_cover_big_2x/')
+    .replace(/\/t_720p\//g, '/t_cover_big_2x/');
+}
+
 // Sanitize title to match cover filename (must match browser utility and app logic)
 function sanitizeTitle(title) {
   return title
@@ -44,26 +52,53 @@ function sanitizeTitle(title) {
 // Fetch CSV data
 function fetchCSV(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => {
-        // Remove extra carriage returns and whitespace
-        data = data.replace(/\r/g, '\n').replace(/\n+/g, '\n').trim();
-        // Google Sheets sometimes adds extra spaces or breaks
-        Papa.parse(data, {
-          header: true,
-          skipEmptyLines: true,
-          dynamicTyping: true,
-          complete: (results) => {
-            // Filter out rows with no title
-            const filtered = results.data.filter(row => row.Title && String(row.Title).trim() !== '');
-            resolve(filtered);
-          },
-          error: (error) => reject(error)
+    const fetchWithRedirects = (targetUrl, redirectsLeft = 5) => {
+      https.get(targetUrl, (res) => {
+        if (
+          redirectsLeft > 0 &&
+          [301, 302, 303, 307, 308].includes(res.statusCode) &&
+          res.headers.location
+        ) {
+          const nextUrl = new URL(res.headers.location, targetUrl).toString();
+          fetchWithRedirects(nextUrl, redirectsLeft - 1);
+          return;
+        }
+
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => {
+          // Remove extra carriage returns and whitespace
+          data = data.replace(/\r/g, '\n').replace(/\n+/g, '\n').trim();
+          // Google Sheets sometimes adds extra spaces or breaks
+          Papa.parse(data, {
+            header: true,
+            skipEmptyLines: true,
+            dynamicTyping: true,
+            complete: (results) => {
+              // Normalize header keys (trim + strip BOM) so Title lookup is reliable.
+              const normalizedRows = (results.data || []).map((row) => {
+                const normalized = {};
+                Object.entries(row || {}).forEach(([key, value]) => {
+                  const cleanKey = String(key || '').replace(/^\uFEFF/, '').trim();
+                  normalized[cleanKey] = value;
+                });
+                return normalized;
+              });
+
+              // Filter out rows with no title.
+              const filtered = normalizedRows.filter((row) => {
+                const title = row.Title || row.title;
+                return title && String(title).trim() !== '';
+              });
+              resolve(filtered);
+            },
+            error: (error) => reject(error)
+          });
         });
-      });
-    }).on('error', reject);
+      }).on('error', reject);
+    };
+
+    fetchWithRedirects(url);
   });
 }
 
@@ -99,9 +134,10 @@ async function syncNewCovers() {
 
   // Create a Set of existing covers for quick lookup
   const existingCovers = new Set(manifest.map(item => item.filename));
+  const manifestByFilename = new Map(manifest.map((item, idx) => [item.filename, { ...item, index: idx }]));
   
   const newCovers = [];
-  const stats = { downloaded: 0, skipped: 0, failed: 0 };
+  const stats = { downloaded: 0, refreshed: 0, skipped: 0, failed: 0 };
 
   // Process each category
   for (const [category, csvUrl] of Object.entries(CSV_URLS)) {
@@ -127,17 +163,18 @@ async function syncNewCovers() {
       }
 
       for (const row of rows) {
-        const title = (row.Title || '').trim();
+        const title = String(row.Title || '').trim();
         if (!title) continue;
 
         // Get external poster URL based on category
         let posterUrl = '';
         if (category === 'tv' || category === 'movies') {
-          posterUrl = (row.PosterURL || '').trim();
+          posterUrl = String(row.PosterURL || '').trim();
         } else if (category === 'books') {
-          posterUrl = (row.ImageURL || row.CoverURL || row.PosterURL || '').trim();
+          posterUrl = String(row.ImageURL || row.CoverURL || row.PosterURL || '').trim();
         } else if (category === 'games') {
-          posterUrl = (row.CoverURL || row.PosterURL || '').trim();
+          posterUrl = String(row.CoverURL || row.PosterURL || '').trim();
+          posterUrl = upscaleGameCoverUrl(posterUrl);
         }
 
         if (!posterUrl || posterUrl.includes('#REF!') || posterUrl === 'N/A') {
@@ -148,8 +185,15 @@ async function syncNewCovers() {
         const filename = `${category}/${sanitized}.jpg`;
         const filepath = path.join(__dirname, '../public/covers', filename);
 
-        // Skip if already exists
-        if (existingCovers.has(filename)) {
+        const existingManifestEntry = manifestByFilename.get(filename);
+        const shouldRefreshExistingGameCover =
+          category === 'games' &&
+          Boolean(existingManifestEntry) &&
+          existingManifestEntry.url &&
+          existingManifestEntry.url !== posterUrl;
+
+        // Skip if already exists unless this is a games entry with an upscaled URL change.
+        if (existingCovers.has(filename) && !shouldRefreshExistingGameCover) {
           stats.skipped++;
           continue;
         }
@@ -163,16 +207,24 @@ async function syncNewCovers() {
         // Download the cover
         try {
           await downloadImage(posterUrl, filepath);
-          console.log(`   ✅ Downloaded: ${sanitized}.jpg`);
-          
-          // Add to manifest
-          newCovers.push({
-            title,
-            filename,
-            url: posterUrl
-          });
-          
-          stats.downloaded++;
+          if (shouldRefreshExistingGameCover && existingManifestEntry) {
+            manifest[existingManifestEntry.index] = {
+              title,
+              filename,
+              url: posterUrl,
+            };
+            console.log(`   🔄 Refreshed: ${sanitized}.jpg`);
+            stats.refreshed++;
+          } else {
+            console.log(`   ✅ Downloaded: ${sanitized}.jpg`);
+            // Add to manifest
+            newCovers.push({
+              title,
+              filename,
+              url: posterUrl
+            });
+            stats.downloaded++;
+          }
         } catch (err) {
           console.log(`   ❌ Failed: ${title} - ${err.message}`);
           stats.failed++;
@@ -186,19 +238,22 @@ async function syncNewCovers() {
     }
   }
 
-  // Update manifest if we have new covers
-  if (newCovers.length > 0) {
+  // Update manifest if we have new or refreshed covers
+  if (newCovers.length > 0 || stats.refreshed > 0) {
     const updatedManifest = [...manifest, ...newCovers];
     fs.writeFileSync(manifestPath, JSON.stringify(updatedManifest, null, 2));
-    console.log(`\n📝 Updated manifest with ${newCovers.length} new covers`);
+    console.log(`\n📝 Updated manifest with ${newCovers.length} new covers and ${stats.refreshed} refreshed covers`);
 
     // Generate update CSVs
-    generateUpdateCSVs(newCovers);
+    if (newCovers.length > 0) {
+      generateUpdateCSVs(newCovers);
+    }
   }
 
   // Print summary
   console.log(`\n✨ Sync complete!`);
   console.log(`   Downloaded: ${stats.downloaded}`);
+  console.log(`   Refreshed: ${stats.refreshed}`);
   console.log(`   Skipped (already exists): ${stats.skipped}`);
   console.log(`   Failed: ${stats.failed}`);
   
