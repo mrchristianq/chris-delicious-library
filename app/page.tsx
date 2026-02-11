@@ -241,6 +241,7 @@ const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
+const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_header_dark_walnut.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -614,18 +615,18 @@ function useElementWidth<T extends HTMLElement>() {
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
-  const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
-  const booksCsvUrl = (process.env as any)[BOOKS_ENV_KEY] as string | undefined;
-  const moviesCsvUrl = (process.env as any)[MOVIES_ENV_KEY] as string | undefined;
-  const gamesCsvUrl = (process.env as any)[GAMES_ENV_KEY] as string | undefined;
-  const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
-  const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
-  const booksWriteUrl = (process.env as any)["NEXT_PUBLIC_BOOKS_WRITE_URL"] as string | undefined;
+  const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
+  const booksCsvUrl = process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL;
+  const moviesCsvUrl = process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
+  const gamesCsvUrl = process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
+  const settingsCsvUrl = process.env.NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL;
+  const settingsWriteUrl = process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL;
+  const booksWriteUrl = process.env.NEXT_PUBLIC_BOOKS_WRITE_URL;
   const showsWriteUrl =
-    ((process.env as any)["NEXT_PUBLIC_SHOWS_WRITE_URL"] as string | undefined) ||
-    ((process.env as any)["NEXT_PUBLIC_TV_WRITE_URL"] as string | undefined);
-  const moviesWriteUrl = (process.env as any)["NEXT_PUBLIC_MOVIES_WRITE_URL"] as string | undefined;
-  const gamesWriteUrl = (process.env as any)["NEXT_PUBLIC_GAMES_WRITE_URL"] as string | undefined;
+    process.env.NEXT_PUBLIC_SHOWS_WRITE_URL ||
+    process.env.NEXT_PUBLIC_TV_WRITE_URL;
+  const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
+  const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
@@ -649,6 +650,7 @@ export default function Page() {
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
   const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
@@ -927,6 +929,15 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    if (!settingsPopupOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSettingsPopupOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsPopupOpen]);
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem("cdlCoverOverrides");
       if (!raw) return;
@@ -1014,6 +1025,23 @@ export default function Page() {
     }
   };
 
+  const postSheetWrite = async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+    const res = await fetch("/api/sheets-write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, payload }),
+    });
+
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !data?.ok) {
+      const errorMessage =
+        (typeof data?.error === "string" && data.error) ||
+        (typeof data?.result === "string" && data.result) ||
+        fallbackMessage;
+      throw new Error(errorMessage);
+    }
+  };
+
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
     if (!booksWriteUrl) {
       throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
@@ -1021,9 +1049,10 @@ export default function Page() {
 
     const matchGoogleBooksVolumeId = safeStr(updates.googleBooksVolumeId) || safeStr(item?.googleBooksVolumeId);
     const matchOpenLibraryWorkKey = safeStr(updates.openLibraryWorkKey) || safeStr(item?.openLibraryWorkKey);
+    const matchIsbn = safeStr(updates.isbn) || safeStr(item?.isbn);
     const matchTitle = safeStr(item?.title);
 
-    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
       throw new Error("Unable to identify this book row to update.");
     }
 
@@ -1032,6 +1061,7 @@ export default function Page() {
       match: {
         googleBooksVolumeId: matchGoogleBooksVolumeId,
         openLibraryWorkKey: matchOpenLibraryWorkKey,
+        isbn: matchIsbn,
         title: matchTitle,
       },
       updates: {
@@ -1059,12 +1089,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(booksWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(booksWriteUrl, payload, "Failed to save book edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save book edits");
     }
@@ -1147,12 +1172,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(showsWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(showsWriteUrl, payload, "Failed to save show edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save show edits");
     }
@@ -1227,12 +1247,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(moviesWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(moviesWriteUrl, payload, "Failed to save movie edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save movie edits");
     }
@@ -1319,12 +1334,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(gamesWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(gamesWriteUrl, payload, "Failed to save game edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save game edits");
     }
@@ -3164,12 +3174,12 @@ export default function Page() {
 
   const postersPerShelf = useMemo(() => {
     const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
+    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
   const shelves = useMemo(() => {
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
+    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     const out: any[][] = [];
     
     // For mixed-item views, calculate shelf distribution based on actual item sizes
@@ -3236,6 +3246,7 @@ export default function Page() {
           style={{
             position: "sticky",
             top: 0,
+            zIndex: settingsPopupOpen ? 6000 : 1200,
             alignSelf: "start",
             height: "100vh",
             minHeight: "100vh",
@@ -5126,7 +5137,9 @@ export default function Page() {
 
                 <button
                   onClick={() => {
-                    setShowSettings(!showSettings);
+                    const nextOpen = !showSettings;
+                    setShowSettings(nextOpen);
+                    if (!nextOpen) setSettingsPopupOpen(false);
                   }}
                   className={`sideItem primary ${showSettings ? "active" : ""}`}
                   style={{
@@ -5290,8 +5303,60 @@ export default function Page() {
               </div>
             ) : null}
 
-            {showSettings ? (
-              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+            {showSettings || settingsPopupOpen ? (
+              <div
+                style={
+                  settingsPopupOpen
+                    ? {
+                        position: "fixed",
+                        top: 84,
+                        right: 20,
+                        width: "min(560px, calc(100vw - 40px))",
+                        maxHeight: "calc(100vh - 110px)",
+                        overflowY: "auto",
+                        zIndex: 5000,
+                        padding: 14,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                        background: "rgba(248, 244, 236, 0.98)",
+                        border: "1px solid rgba(58, 37, 24, 0.38)",
+                        borderRadius: 14,
+                        boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+                        backdropFilter: "blur(2px)",
+                      }
+                    : { padding: 12, display: "flex", flexDirection: "column", gap: 6 }
+                }
+              >
+                {settingsPopupOpen ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                      paddingBottom: 8,
+                      borderBottom: "1px solid rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
+                    <button
+                      onClick={() => setSettingsPopupOpen(false)}
+                      style={{
+                        border: "1px solid rgba(0,0,0,0.2)",
+                        background: "rgba(255,255,255,0.85)",
+                        color: "#5c3c38",
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : null}
                 {/* Cover Size */}
                 <button
                   onClick={() => setSettingsOpen({ ...settingsOpen, coverSize: !settingsOpen.coverSize })}
@@ -6606,31 +6671,6 @@ export default function Page() {
 
         {/* RIGHT CONTENT */}
         <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative" }}>
-          {/* Item Counter - Top Right */}
-          <div
-            style={{
-              position: "fixed",
-              top: 8,
-              right: 12,
-              fontSize: 14,
-              fontWeight: 700,
-              color: "#5c3c38",
-              fontFamily: "Nunito, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
-              textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-              opacity: 0.75,
-              letterSpacing: "-0.01em",
-              pointerEvents: "none",
-              zIndex: 1000,
-              background: "rgba(244, 241, 234, 0.5)",
-              padding: "2px 6px",
-              borderRadius: 6,
-              border: "1px solid rgba(92, 60, 56, 0.15)",
-              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.08)",
-            }}
-          >
-            {shows.length}
-          </div>
-
           {error ? (
             <div
               style={{
@@ -6663,10 +6703,100 @@ export default function Page() {
             </div>
           ) : null}
 
+          {settingsPopupOpen ? (
+            <button
+              aria-label="Close settings popup"
+              onClick={() => setSettingsPopupOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 4000,
+                border: "none",
+                margin: 0,
+                padding: 0,
+                background: "rgba(0, 0, 0, 0.28)",
+                cursor: "pointer",
+              }}
+            />
+          ) : null}
+
           {/* Stage measures width so shelves always align */}
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {shelfTheme === DEFAULT_SHELF_IMAGE ? (
+                <div
+                  style={{
+                    position: "relative",
+                    height: 69,
+                    overflow: "hidden",
+                    backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center",
+                    backgroundSize: "100% 100%",
+                    borderRadius: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "flex-end",
+                      paddingRight: 20,
+                      gap: 10,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 26,
+                        fontWeight: 900,
+                        color: "rgba(250, 242, 230, 0.88)",
+                        letterSpacing: "0.01em",
+                        lineHeight: 1,
+                        transform: "translateY(-4px)",
+                        textShadow: "0 2px 4px rgba(0, 0, 0, 0.5)",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 12,
+                        padding: "8px 16px",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                      }}
+                    >
+                      {`${shows.length} items`}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setShowSettings(true);
+                        setSettingsPopupOpen((prev) => !prev);
+                      }}
+                      title="Open settings"
+                      aria-label="Open settings"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: 42,
+                        minWidth: 42,
+                        padding: "8px 10px",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 12,
+                        color: "rgba(250, 242, 230, 0.92)",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        cursor: "pointer",
+                        transform: "translateY(-4px)",
+                      }}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {shelves.map((shelfShows, shelfIndex) => (
                 <div
                   key={`shelf-${shelfIndex}`}

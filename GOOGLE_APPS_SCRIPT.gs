@@ -91,9 +91,10 @@ function updateBookRow_(payload) {
 
   const matchGoogleBooksVolumeId = String(match.googleBooksVolumeId || "").trim();
   const matchOpenLibraryWorkKey = String(match.openLibraryWorkKey || "").trim();
+  const matchIsbn = String(match.isbn || "").trim();
   const matchTitle = String(match.title || "").trim();
 
-  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
     return createCORSResponse("Error: missing book match keys");
   }
 
@@ -122,6 +123,16 @@ function updateBookRow_(payload) {
     const values = sheet.getRange(2, headerIndex["OpenLibraryWorkKey"], lastRow - 1, 1).getValues();
     for (var r = 0; r < values.length; r++) {
       if (String(values[r][0] || "").trim() === matchOpenLibraryWorkKey) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["isbn"] && matchIsbn) {
+    const values = sheet.getRange(2, headerIndex["isbn"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchIsbn) {
         rowNum = r + 2;
         break;
       }

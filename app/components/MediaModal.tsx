@@ -437,19 +437,25 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [isEditingBook, setIsEditingBook] = React.useState(false);
   const [isSavingBook, setIsSavingBook] = React.useState(false);
   const [bookSaveError, setBookSaveError] = React.useState<string | null>(null);
+  const [bookSaveSuccess, setBookSaveSuccess] = React.useState<string | null>(null);
   const [bookEditValues, setBookEditValues] = React.useState<Record<string, string>>({});
   const [isEditingShow, setIsEditingShow] = React.useState(false);
   const [isSavingShow, setIsSavingShow] = React.useState(false);
   const [showSaveError, setShowSaveError] = React.useState<string | null>(null);
+  const [showSaveSuccess, setShowSaveSuccess] = React.useState<string | null>(null);
   const [showEditValues, setShowEditValues] = React.useState<Record<string, string>>({});
   const [isEditingMovie, setIsEditingMovie] = React.useState(false);
   const [isSavingMovie, setIsSavingMovie] = React.useState(false);
   const [movieSaveError, setMovieSaveError] = React.useState<string | null>(null);
+  const [movieSaveSuccess, setMovieSaveSuccess] = React.useState<string | null>(null);
   const [movieEditValues, setMovieEditValues] = React.useState<Record<string, string>>({});
   const [isEditingGame, setIsEditingGame] = React.useState(false);
   const [isSavingGame, setIsSavingGame] = React.useState(false);
   const [gameSaveError, setGameSaveError] = React.useState<string | null>(null);
+  const [gameSaveSuccess, setGameSaveSuccess] = React.useState<string | null>(null);
   const [gameEditValues, setGameEditValues] = React.useState<Record<string, string>>({});
+  const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
+  const coverDragDepthRef = React.useRef(0);
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -520,18 +526,22 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setIsEditingBook(false);
     setIsSavingBook(false);
     setBookSaveError(null);
+    setBookSaveSuccess(null);
     setBookEditValues(buildBookEditValues(item));
     setIsEditingShow(false);
     setIsSavingShow(false);
     setShowSaveError(null);
+    setShowSaveSuccess(null);
     setShowEditValues(buildShowEditValues(item));
     setIsEditingMovie(false);
     setIsSavingMovie(false);
     setMovieSaveError(null);
+    setMovieSaveSuccess(null);
     setMovieEditValues(buildMovieEditValues(item));
     setIsEditingGame(false);
     setIsSavingGame(false);
     setGameSaveError(null);
+    setGameSaveSuccess(null);
     setGameEditValues(buildGameEditValues(item));
   }, [open, item]);
 
@@ -636,12 +646,29 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       .filter(Boolean)
       .join(", ");
 
+  const uploadReplacementCover = async (file: File | null | undefined) => {
+    if (!file || !item || !onReplaceCover || isReplacingCover) return;
+    await Promise.resolve(onReplaceCover(item, file));
+  };
+
+  const handleCoverDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    coverDragDepthRef.current = 0;
+    setIsCoverDropActive(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    await uploadReplacementCover(file);
+  };
+
   const handleSaveBook = async () => {
     if (!item || !onSaveBookEdits) return;
     setBookSaveError(null);
+    setBookSaveSuccess(null);
     setIsSavingBook(true);
     try {
       await onSaveBookEdits(item, bookEditValues);
+      setBookSaveSuccess("Saved to Google Sheet.");
       setIsEditingBook(false);
     } catch (e: any) {
       setBookSaveError(e?.message || "Failed to save book changes");
@@ -652,9 +679,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const handleSaveShow = async () => {
     if (!item || !onSaveShowEdits) return;
     setShowSaveError(null);
+    setShowSaveSuccess(null);
     setIsSavingShow(true);
     try {
       await onSaveShowEdits(item, showEditValues);
+      setShowSaveSuccess("Saved to Google Sheet.");
       setIsEditingShow(false);
     } catch (e: any) {
       setShowSaveError(e?.message || "Failed to save show changes");
@@ -665,9 +694,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const handleSaveMovie = async () => {
     if (!item || !onSaveMovieEdits) return;
     setMovieSaveError(null);
+    setMovieSaveSuccess(null);
     setIsSavingMovie(true);
     try {
       await onSaveMovieEdits(item, movieEditValues);
+      setMovieSaveSuccess("Saved to Google Sheet.");
       setIsEditingMovie(false);
     } catch (e: any) {
       setMovieSaveError(e?.message || "Failed to save movie changes");
@@ -678,9 +709,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const handleSaveGame = async () => {
     if (!item || !onSaveGameEdits) return;
     setGameSaveError(null);
+    setGameSaveSuccess(null);
     setIsSavingGame(true);
     try {
       await onSaveGameEdits(item, gameEditValues);
+      setGameSaveSuccess("Saved to Google Sheet.");
       setIsEditingGame(false);
     } catch (e: any) {
       setGameSaveError(e?.message || "Failed to save game changes");
@@ -688,6 +721,23 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       setIsSavingGame(false);
     }
   };
+
+  const activeSaveError =
+    itemType === "book"
+      ? bookSaveError
+      : itemType === "tv"
+        ? showSaveError
+        : itemType === "movie"
+          ? movieSaveError
+          : gameSaveError;
+  const activeSaveSuccess =
+    itemType === "book"
+      ? bookSaveSuccess
+      : itemType === "tv"
+        ? showSaveSuccess
+        : itemType === "movie"
+          ? movieSaveSuccess
+          : gameSaveSuccess;
 
   return (
     <div className="mediaModalOverlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -700,6 +750,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setBookSaveError(null);
+                  setBookSaveSuccess(null);
                   setIsEditingBook((prev) => !prev);
                   if (isEditingBook) setBookEditValues(buildBookEditValues(sourceItem));
                 }}
@@ -721,6 +772,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setShowSaveError(null);
+                  setShowSaveSuccess(null);
                   setIsEditingShow((prev) => !prev);
                   if (isEditingShow) setShowEditValues(buildShowEditValues(sourceItem));
                 }}
@@ -742,6 +794,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setMovieSaveError(null);
+                  setMovieSaveSuccess(null);
                   setIsEditingMovie((prev) => !prev);
                   if (isEditingMovie) setMovieEditValues(buildMovieEditValues(sourceItem));
                 }}
@@ -763,6 +816,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setGameSaveError(null);
+                  setGameSaveSuccess(null);
                   setIsEditingGame((prev) => !prev);
                   if (isEditingGame) setGameEditValues(buildGameEditValues(sourceItem));
                 }}
@@ -781,11 +835,36 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             ×
           </button>
         </div>
+        {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
+        {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
 
         <div className="contentLayout">
           <aside className="leftPane">
             {posterUrl ? (
-              <div className="posterWrap">
+              <div
+                className={`posterWrap${onReplaceCover ? " posterWrapDroppable" : ""}${isCoverDropActive ? " posterWrapDropActive" : ""}`}
+                onDragEnter={(e) => {
+                  if (!onReplaceCover || isReplacingCover) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  coverDragDepthRef.current += 1;
+                  setIsCoverDropActive(true);
+                }}
+                onDragOver={(e) => {
+                  if (!onReplaceCover || isReplacingCover) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "copy";
+                }}
+                onDragLeave={(e) => {
+                  if (!onReplaceCover || isReplacingCover) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  coverDragDepthRef.current = Math.max(0, coverDragDepthRef.current - 1);
+                  if (coverDragDepthRef.current === 0) setIsCoverDropActive(false);
+                }}
+                onDrop={handleCoverDrop}
+              >
                 <img
                   src={resolvedPosterUrl}
                   alt={title}
@@ -794,6 +873,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                     setPosterIndex((idx) => (idx < candidateUrls.length - 1 ? idx + 1 : idx));
                   }}
                 />
+                {onReplaceCover ? (
+                  <div className={`posterDropOverlay${isCoverDropActive ? " visible" : ""}`}>
+                    {isReplacingCover ? "Uploading..." : "Drop image to replace cover"}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="posterFallback">No Cover</div>
@@ -805,9 +889,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               style={{ display: "none" }}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file && item && onReplaceCover) {
-                  onReplaceCover(item, file);
-                }
+                uploadReplacementCover(file);
                 e.currentTarget.value = "";
               }}
             />
@@ -1053,7 +1135,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                     )}
                   </label>
                 ))}
-                {bookSaveError ? <div className="bookSaveError">{bookSaveError}</div> : null}
               </div>
             ) : itemType === "tv" && isEditingShow ? (
               <div className="editGrid">
@@ -1131,7 +1212,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       )}
                     </label>
                   ))}
-                {showSaveError ? <div className="bookSaveError">{showSaveError}</div> : null}
               </div>
             ) : itemType === "movie" && isEditingMovie ? (
               <div className="editGrid">
@@ -1161,7 +1241,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       )}
                     </label>
                   ))}
-                {movieSaveError ? <div className="bookSaveError">{movieSaveError}</div> : null}
               </div>
             ) : itemType === "game" && isEditingGame ? (
               <div className="editGrid">
@@ -1267,7 +1346,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       )}
                     </label>
                   ))}
-                {gameSaveError ? <div className="bookSaveError">{gameSaveError}</div> : null}
               </div>
             ) : (
               <div className="infoGrid">
@@ -1360,6 +1438,39 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .posterWrap {
           width: 100%;
+          position: relative;
+        }
+
+        .posterWrapDroppable {
+          cursor: copy;
+        }
+
+        .posterWrapDropActive .poster {
+          border-color: rgba(157, 205, 255, 0.95);
+          box-shadow: 0 0 0 2px rgba(157, 205, 255, 0.35), 0 18px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .posterDropOverlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          text-align: center;
+          border-radius: 16px;
+          background: rgba(6, 16, 35, 0.82);
+          color: #dff0ff;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 120ms ease;
+        }
+
+        .posterDropOverlay.visible {
+          opacity: 1;
         }
 
         .replaceCoverButton {
@@ -1633,8 +1744,16 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .bookSaveError {
+          margin: 6px 0 2px;
           grid-column: 1 / -1;
           color: #ffb6b6;
+          font-size: 13px;
+          line-height: 1.35;
+        }
+
+        .bookSaveSuccess {
+          margin: 6px 0 2px;
+          color: #b9f5d0;
           font-size: 13px;
           line-height: 1.35;
         }
