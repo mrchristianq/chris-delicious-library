@@ -1,6 +1,6 @@
 /* =====================================================================================
   Chris' Delicious Library
-  Version: 4.0.0
+  Version: 4.1.2
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -9,14 +9,21 @@
    - Posters align to shelf lip
    - DVD case frame overlay (no left border) + glossy black edge
    
+   v4.1.2 Changes:
+   - Added keyboard arrow key nudging for the quick inset editor
+
+   v4.1.1 Changes:
+   - Rebuilt Cover Insets into one fast quick editor
+   - Added target dropdown for TV, Movies, Books, and Game platforms
+   - Added mode-based nudge controls with live transparent preview
+
+   v4.1.0 Changes:
+   - Removed Inset Studio to reset this feature from scratch
+   - Added visible in-app version badge in sidebar
+   - Added clickable recent version notes panel
+
    v4.0.0 Changes:
-   - Added full Inset Studio modal workflow for cover inset editing
-   - Inset Studio now supports TV Shows, Movies, Books, and Games
-   - Games support platform-specific overlay transform + cover scale/offset controls
-   - Added random sample cover preview cycling in Inset Studio
-   - Added visual save feedback in Inset Studio (Saving / Saved / Failed)
-   - Improved cover clipping alignment so game cover art cannot bleed outside overlay aperture
-   - Added direct "Cover Inset Studio" button at top of Settings modal
+   - Added platform-specific game overlay and inset controls
    - Reduced Media popup density (smaller typography/padding) so more fields fit onscreen
 
    v3.0.0 Changes:
@@ -103,11 +110,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
-import { InsetStudioModal } from "./components/InsetStudioModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
 type MediaType = "book" | "movie" | "tv" | "game";
+type QuickInsetMode = "insetPosition" | "overlayPosition" | "overlayScale" | "coverPosition" | "coverScale";
 
 type Show = {
   title: string;
@@ -244,6 +251,50 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
+const APP_VERSION = "4.1.2";
+const VERSION_HISTORY = [
+  {
+    version: "4.1.2",
+    date: "2026-02-11",
+    notes: [
+      "Added keyboard arrow key support for quick inset nudging.",
+    ],
+  },
+  {
+    version: "4.1.1",
+    date: "2026-02-11",
+    notes: [
+      "Rebuilt Cover Insets into a single quick editor.",
+      "Target dropdown now includes TV, Movies, Books, and game platforms.",
+      "Added faster directional nudge controls with a live transparent preview.",
+    ],
+  },
+  {
+    version: "4.1.0",
+    date: "2026-02-11",
+    notes: [
+      "Removed Inset Studio to rebuild it from scratch.",
+      "Added clickable version badge on the page.",
+      "Added recent version notes panel.",
+    ],
+  },
+  {
+    version: "4.0.0",
+    date: "2026-02-11",
+    notes: [
+      "Platform-specific game frame/inset controls.",
+      "General settings and layout tuning.",
+    ],
+  },
+  {
+    version: "3.0.0",
+    date: "2026-02-09",
+    notes: [
+      "Introduced sidebar theming system.",
+      "Added theme persistence settings.",
+    ],
+  },
+] as const;
 const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
@@ -995,8 +1046,11 @@ export default function Page() {
   
   // UI: Selected platform for editing insets
   const [selectedPlatformForInsets, setSelectedPlatformForInsets] = useState<string>("Default");
-  const [insetStudioOpen, setInsetStudioOpen] = useState<boolean>(false);
-  const [insetStudioMediaType, setInsetStudioMediaType] = useState<"tv" | "movie" | "book" | "game">("game");
+  const [quickInsetTarget, setQuickInsetTarget] = useState<string>("tv");
+  const [quickInsetMode, setQuickInsetMode] = useState<QuickInsetMode>("insetPosition");
+  const [quickInsetStep, setQuickInsetStep] = useState<number>(5);
+  const quickOverlayDragRef = useRef<{ x: number; y: number; top: number; left: number } | null>(null);
+  const [showVersionNotes, setShowVersionNotes] = useState(false);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   
@@ -2750,57 +2804,6 @@ export default function Page() {
     });
   }, [allGames]);
 
-  const insetStudioSampleCoversByType = useMemo(() => {
-    const gamePlatform = selectedPlatformForInsets;
-    const tv = Array.from(
-      new Set(
-        allShows
-          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
-          .filter(Boolean)
-      )
-    );
-    const movie = Array.from(
-      new Set(
-        allMovies
-          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl))
-          .filter(Boolean)
-      )
-    );
-    const book = Array.from(
-      new Set(
-        allBooks
-          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
-          .filter(Boolean)
-      )
-    );
-    const game = Array.from(
-      new Set(
-        allGames
-          .filter((gameItem) => {
-            if (gamePlatform === "Default") return true;
-            const values = safeStr(gameItem.platform)
-              .split(",")
-              .map((part) => part.trim())
-              .filter(Boolean);
-            const targetNorm = normalizePlatformToken(gamePlatform);
-            return values.some((value) => normalizePlatformToken(value) === targetNorm);
-          })
-          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
-          .filter(Boolean)
-      )
-    );
-    return { tv, movie, book, game };
-  }, [allBooks, allGames, allMovies, allShows, selectedPlatformForInsets]);
-
-  const insetStudioSampleCovers = insetStudioSampleCoversByType[insetStudioMediaType];
-
-  const saveInsetStudioSettings = async () => {
-    const ok = await saveInsetsToSheet(insetStudioMediaType);
-    if (!ok) {
-      throw new Error("Failed to save inset settings");
-    }
-  };
-
   const getGameInsetDebugReadout = useCallback(
     (platformKey: string) => {
       const resolved = platformKey || "Default";
@@ -2812,18 +2815,6 @@ export default function Page() {
     },
     [platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]
   );
-
-  const insetStudioSaveLabel =
-    insetStudioMediaType === "game"
-      ? `Save ${selectedPlatformForInsets} Game Insets`
-      : insetStudioMediaType === "tv"
-        ? "Save TV Show Insets"
-        : insetStudioMediaType === "movie"
-          ? "Save Movie Insets"
-          : "Save Book Insets";
-
-  const insetStudioDebugReadout =
-    insetStudioMediaType === "game" ? getGameInsetDebugReadout(selectedPlatformForInsets) : undefined;
 
   const platformAliasMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -2866,9 +2857,240 @@ export default function Page() {
     [resolvePlatformAlias, selectedPlatformForInsets]
   );
 
+  const quickTargetType: "tv" | "movie" | "book" | "game" = useMemo(() => {
+    return quickInsetTarget.startsWith("game:") ? "game" : (quickInsetTarget as "tv" | "movie" | "book");
+  }, [quickInsetTarget]);
+
+  const quickTargetPlatform = useMemo(() => {
+    if (!quickInsetTarget.startsWith("game:")) return "Default";
+    return quickInsetTarget.slice("game:".length) || "Default";
+  }, [quickInsetTarget]);
+
+  const quickTargetPlatformKey = useMemo(() => {
+    if (quickTargetType !== "game") return "Default";
+    return resolvePlatformAlias(quickTargetPlatform);
+  }, [quickTargetPlatform, quickTargetType, resolvePlatformAlias]);
+
+  const quickInsetTargetOptions = useMemo(
+    () => [
+      { value: "tv", label: "TV Shows" },
+      { value: "movie", label: "Movies" },
+      { value: "book", label: "Books" },
+      ...detectedPlatforms.map((platform) => ({
+        value: `game:${platform}`,
+        label: `Games: ${platform}`,
+      })),
+    ],
+    [detectedPlatforms]
+  );
+
+  const quickInsetSnapshot = useMemo(() => {
+    const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
+    const movieInset = { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx };
+    const bookInset = { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx };
+    const gameInset = platformInsets[quickTargetPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+    const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+    const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
+    const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || 100;
+    return {
+      inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
+      overlay: gameOverlay,
+      coverOffset: gameCoverOffset,
+      coverScale: gameCoverScale,
+      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : GAME_SRC_W,
+      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : GAME_SRC_H,
+    };
+  }, [
+    BOOK_SRC_H,
+    BOOK_SRC_W,
+    CASE_SRC_H,
+    CASE_SRC_W,
+    GAME_SRC_H,
+    GAME_SRC_W,
+    MOVIE_SRC_H,
+    MOVIE_SRC_W,
+    bookInsetBottomPx,
+    bookInsetLeftPx,
+    bookInsetRightPx,
+    bookInsetTopPx,
+    caseInsetBottomPx,
+    caseInsetLeftPx,
+    caseInsetRightPx,
+    caseInsetTopPx,
+    movieInsetBottomPx,
+    movieInsetLeftPx,
+    movieInsetRightPx,
+    movieInsetTopPx,
+    platformCoverOffset,
+    platformCoverScale,
+    platformInsets,
+    platformOverlaySettings,
+    quickTargetPlatformKey,
+    quickTargetType,
+  ]);
+
+  useEffect(() => {
+    if (quickTargetType !== "game" && quickInsetMode !== "insetPosition") {
+      setQuickInsetMode("insetPosition");
+    }
+    if (quickTargetType === "game") {
+      setSelectedPlatformForInsets(quickTargetPlatform);
+    }
+  }, [quickInsetMode, quickTargetPlatform, quickTargetType]);
+
+  const applyQuickInsetNudge = useCallback(
+    (direction: "up" | "down" | "left" | "right") => {
+      const step = quickInsetStep;
+      const inset = quickInsetSnapshot.inset;
+      const overlay = quickInsetSnapshot.overlay;
+      const cover = quickInsetSnapshot.coverOffset;
+      const isUp = direction === "up";
+      const isDown = direction === "down";
+      const isLeft = direction === "left";
+      const isRight = direction === "right";
+
+      if (quickInsetMode === "insetPosition") {
+        if (quickTargetType === "tv") {
+          if (isUp) { updateCaseInsetTopPx(inset.top - step); updateCaseInsetBottomPx(inset.bottom + step); }
+          if (isDown) { updateCaseInsetTopPx(inset.top + step); updateCaseInsetBottomPx(inset.bottom - step); }
+          if (isLeft) { updateCaseInsetLeftPx(inset.left - step); updateCaseInsetRightPx(inset.right + step); }
+          if (isRight) { updateCaseInsetLeftPx(inset.left + step); updateCaseInsetRightPx(inset.right - step); }
+          return;
+        }
+        if (quickTargetType === "movie") {
+          if (isUp) { updateMovieInsetTopPx(inset.top - step); updateMovieInsetBottomPx(inset.bottom + step); }
+          if (isDown) { updateMovieInsetTopPx(inset.top + step); updateMovieInsetBottomPx(inset.bottom - step); }
+          if (isLeft) { updateMovieInsetLeftPx(inset.left - step); updateMovieInsetRightPx(inset.right + step); }
+          if (isRight) { updateMovieInsetLeftPx(inset.left + step); updateMovieInsetRightPx(inset.right - step); }
+          return;
+        }
+        if (quickTargetType === "book") {
+          if (isUp) { updateBookInsetTopPx(inset.top - step); updateBookInsetBottomPx(inset.bottom + step); }
+          if (isDown) { updateBookInsetTopPx(inset.top + step); updateBookInsetBottomPx(inset.bottom - step); }
+          if (isLeft) { updateBookInsetLeftPx(inset.left - step); updateBookInsetRightPx(inset.right + step); }
+          if (isRight) { updateBookInsetLeftPx(inset.left + step); updateBookInsetRightPx(inset.right - step); }
+          return;
+        }
+        if (isUp) { updatePlatformInset(quickTargetPlatform, "top", inset.top - step); updatePlatformInset(quickTargetPlatform, "bottom", inset.bottom + step); }
+        if (isDown) { updatePlatformInset(quickTargetPlatform, "top", inset.top + step); updatePlatformInset(quickTargetPlatform, "bottom", inset.bottom - step); }
+        if (isLeft) { updatePlatformInset(quickTargetPlatform, "left", inset.left - step); updatePlatformInset(quickTargetPlatform, "right", inset.right + step); }
+        if (isRight) { updatePlatformInset(quickTargetPlatform, "left", inset.left + step); updatePlatformInset(quickTargetPlatform, "right", inset.right - step); }
+        return;
+      }
+
+      if (quickTargetType !== "game") return;
+
+      if (quickInsetMode === "overlayPosition") {
+        if (isUp) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
+        if (isDown) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
+        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
+        if (isRight) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
+        return;
+      }
+
+      if (quickInsetMode === "overlayScale") {
+        if (isUp) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
+        if (isDown) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
+        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
+        if (isRight) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
+        return;
+      }
+
+      if (quickInsetMode === "coverPosition") {
+        if (isUp) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
+        if (isDown) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
+        if (isLeft) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
+        if (isRight) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
+        return;
+      }
+
+      const nextScale = quickInsetSnapshot.coverScale + (isLeft || isDown ? -step : step);
+      updatePlatformCoverScale(quickTargetPlatform, nextScale);
+    },
+    [
+      quickInsetMode,
+      quickInsetSnapshot,
+      quickInsetStep,
+      quickTargetPlatform,
+      quickTargetType,
+      updateBookInsetBottomPx,
+      updateBookInsetLeftPx,
+      updateBookInsetRightPx,
+      updateBookInsetTopPx,
+      updateCaseInsetBottomPx,
+      updateCaseInsetLeftPx,
+      updateCaseInsetRightPx,
+      updateCaseInsetTopPx,
+      updateMovieInsetBottomPx,
+      updateMovieInsetLeftPx,
+      updateMovieInsetRightPx,
+      updateMovieInsetTopPx,
+      updatePlatformCoverOffset,
+      updatePlatformCoverScale,
+      updatePlatformInset,
+      updatePlatformOverlay,
+    ]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!settingsPopupOpen || !settingsOpen.framePosition) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active) {
+        const tag = active.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) {
+          return;
+        }
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        applyQuickInsetNudge("up");
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        applyQuickInsetNudge("down");
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        applyQuickInsetNudge("left");
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        applyQuickInsetNudge("right");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [applyQuickInsetNudge, settingsOpen.framePosition, settingsPopupOpen]);
+
+  const quickInsetPreview = useMemo(() => {
+    const inset = quickInsetSnapshot.inset;
+    const top = (inset.top / quickInsetSnapshot.sourceHeight) * 100;
+    const right = (inset.right / quickInsetSnapshot.sourceWidth) * 100;
+    const bottom = (inset.bottom / quickInsetSnapshot.sourceHeight) * 100;
+    const left = (inset.left / quickInsetSnapshot.sourceWidth) * 100;
+    return {
+      top,
+      left,
+      width: Math.max(5, 100 - left - right),
+      height: Math.max(5, 100 - top - bottom),
+    };
+  }, [quickInsetSnapshot]);
+
+  const quickInsetSaveType: "tv" | "movie" | "book" | "game" = quickTargetType;
+  const quickInsetSaveLabel =
+    quickTargetType === "tv"
+      ? "Save TV Insets"
+      : quickTargetType === "movie"
+        ? "Save Movie Insets"
+        : quickTargetType === "book"
+          ? "Save Book Insets"
+          : `Save ${quickTargetPlatform} Inset`;
+
   // For rendering: use the first platform listed in the row as primary.
-  // This keeps shelf rendering deterministic and aligned with what Inset Studio
-  // is tuning when a platform (e.g. PlayStation 5) is selected.
+  // This keeps shelf rendering deterministic when a platform
+  // (e.g. PlayStation 5) is selected.
   const getRenderPlatform = useCallback(
     (platformString: string | undefined): string => {
       if (!platformString) return "Default";
@@ -5670,26 +5892,6 @@ export default function Page() {
                     </button>
                   </div>
                 ) : null}
-                <button
-                  onClick={() => setInsetStudioOpen(true)}
-                  style={{
-                    width: "100%",
-                    marginBottom: 8,
-                    padding: "10px 12px",
-                    border: "1px solid rgba(13, 99, 199, 0.55)",
-                    background: "linear-gradient(180deg, #1b74de 0%, #0f5fbe 100%)",
-                    color: "#fff",
-                    borderRadius: 10,
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 800,
-                    letterSpacing: "0.02em",
-                    textAlign: "center",
-                    boxShadow: "0 6px 14px rgba(11, 59, 118, 0.28)",
-                  }}
-                >
-                  Cover Inset Studio
-                </button>
                 {/* Cover Size */}
                 <button
                   onClick={() => setSettingsOpen({ ...settingsOpen, coverSize: !settingsOpen.coverSize })}
@@ -5808,680 +6010,157 @@ export default function Page() {
 
                 {settingsOpen.framePosition ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    {/* TV Show Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, tvShowInsetsCollapsed: !settingsOpen.tvShowInsetsCollapsed })}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10, fontWeight: 700, color: "#7f7f7f" }}>
+                        TARGET
+                        <select
+                          value={quickInsetTarget}
+                          onChange={(e) => setQuickInsetTarget(e.target.value)}
+                          style={{ padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
+                        >
+                          {quickInsetTargetOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10, fontWeight: 700, color: "#7f7f7f" }}>
+                        MODE
+                        <select
+                          value={quickInsetMode}
+                          onChange={(e) => setQuickInsetMode(e.target.value as QuickInsetMode)}
+                          style={{ padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
+                        >
+                          {(quickTargetType === "game"
+                            ? [
+                                { value: "insetPosition", label: "Inset Position" },
+                                { value: "overlayPosition", label: "Overlay Position" },
+                                { value: "overlayScale", label: "Overlay Scale" },
+                                { value: "coverPosition", label: "Cover Position" },
+                                { value: "coverScale", label: "Cover Scale" },
+                              ]
+                            : [{ value: "insetPosition", label: "Inset Position" }]
+                          ).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Step
+                      <input
+                        type="range"
+                        min={1}
+                        max={12}
+                        step={1}
+                        value={quickInsetStep}
+                        onChange={(e) => setQuickInsetStep(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 22, textAlign: "right" }}>{quickInsetStep}</span>
+                    </label>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 10, alignItems: "center" }}>
+                      <div
+                        onMouseDown={(e) => {
+                          if (quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          quickOverlayDragRef.current = {
+                            x: e.clientX,
+                            y: e.clientY,
+                            top: quickInsetSnapshot.overlay.top,
+                            left: quickInsetSnapshot.overlay.left,
+                          };
+                        }}
+                        onMouseMove={(e) => {
+                          const drag = quickOverlayDragRef.current;
+                          if (!drag || quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const dxPct = ((e.clientX - drag.x) / rect.width) * 100;
+                          const dyPct = ((e.clientY - drag.y) / rect.height) * 100;
+                          updatePlatformOverlay(quickTargetPlatform, "left", Number((drag.left + dxPct).toFixed(2)));
+                          updatePlatformOverlay(quickTargetPlatform, "top", Number((drag.top + dyPct).toFixed(2)));
+                        }}
+                        onMouseUp={() => {
+                          quickOverlayDragRef.current = null;
+                        }}
+                        onMouseLeave={() => {
+                          quickOverlayDragRef.current = null;
+                        }}
                         style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
+                          position: "relative",
+                          width: 170,
+                          height: 255,
+                          borderRadius: 10,
+                          border: "1px solid rgba(0,0,0,0.2)",
+                          background: "linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.03) 100%)",
+                          overflow: "hidden",
+                          cursor: quickTargetType === "game" && quickInsetMode === "overlayPosition" ? "move" : "default",
                         }}
                       >
-                        <span>TV SHOWS</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.tvShowInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.tvShowInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetTopPx(caseInsetTopPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetTopPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetTopPx(caseInsetTopPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetRightPx(caseInsetRightPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetRightPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetRightPx(caseInsetRightPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetBottomPx(caseInsetBottomPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetBottomPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetBottomPx(caseInsetBottomPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetLeftPx(caseInsetLeftPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetLeftPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetLeftPx(caseInsetLeftPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('tv')}
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: `${quickInsetPreview.top}%`,
+                            left: `${quickInsetPreview.left}%`,
+                            width: `${quickInsetPreview.width}%`,
+                            height: `${quickInsetPreview.height}%`,
+                            border: "2px dashed rgba(31, 117, 221, 0.9)",
+                            background: "rgba(31, 117, 221, 0.12)",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                        {quickTargetType === "game" ? (
+                          <div
                             style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
+                              position: "absolute",
+                              top: `${50 + quickInsetSnapshot.overlay.top}%`,
+                              left: `${50 + quickInsetSnapshot.overlay.left}%`,
+                              width: `${quickInsetSnapshot.overlay.width}%`,
+                              height: `${quickInsetSnapshot.overlay.height}%`,
+                              transform: "translate(-50%, -50%)",
+                              border: "2px solid rgba(255, 189, 76, 0.95)",
+                              background: "rgba(255, 189, 76, 0.14)",
+                              boxSizing: "border-box",
                             }}
-                          >
-                            Save TV Insets
-                          </button>
-                        </div>
+                          />
+                        ) : null}
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "46px 46px 46px", gridTemplateRows: "46px 46px 46px", gap: 6, justifyContent: "center" }}>
+                        <span />
+                        <button onClick={() => applyQuickInsetNudge("up")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↑</button>
+                        <span />
+                        <button onClick={() => applyQuickInsetNudge("left")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>←</button>
+                        <div style={{ display: "grid", placeItems: "center", fontSize: 10, color: "#777", fontWeight: 700 }}>NUDGE</div>
+                        <button onClick={() => applyQuickInsetNudge("right")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>→</button>
+                        <span />
+                        <button onClick={() => applyQuickInsetNudge("down")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↓</button>
+                        <span />
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: 10, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
+                      Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
+                      {quickTargetType === "game" ? (
+                        <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover S/X/Y: {quickInsetSnapshot.coverScale.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
                       ) : null}
                     </div>
 
-                    {/* Book Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, bookInsetsCollapsed: !settingsOpen.bookInsetsCollapsed })}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
-                        }}
-                      >
-                        <span>BOOKS</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.bookInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.bookInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetTopPx(bookInsetTopPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetTopPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetTopPx(bookInsetTopPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetRightPx(bookInsetRightPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetRightPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetRightPx(bookInsetRightPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetBottomPx(bookInsetBottomPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetBottomPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetBottomPx(bookInsetBottomPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetLeftPx(bookInsetLeftPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetLeftPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetLeftPx(bookInsetLeftPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('book')}
-                            style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Save Book Insets
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {/* Movie Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, movieInsetsCollapsed: !settingsOpen.movieInsetsCollapsed })}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
-                        }}
-                      >
-                        <span>MOVIES</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.movieInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.movieInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetTopPx(movieInsetTopPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetTopPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetTopPx(movieInsetTopPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetRightPx(movieInsetRightPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetRightPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetRightPx(movieInsetRightPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetBottomPx(movieInsetBottomPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetBottomPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetBottomPx(movieInsetBottomPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetLeftPx(movieInsetLeftPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetLeftPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetLeftPx(movieInsetLeftPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('movie')}
-                            style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Save Movie Insets
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {/* Game Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, gameInsetsCollapsed: !settingsOpen.gameInsetsCollapsed })}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
-                        }}
-                      >
-                        <span>GAMES</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.gameInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.gameInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 4, marginTop: 4 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.85 }}>
-                            Platform
-                            <select
-                              value={selectedPlatformForInsets}
-                              onChange={(e) => setSelectedPlatformForInsets(e.target.value)}
-                              style={{ flex: 1, padding: "4px 8px", fontSize: 11 }}
-                            >
-                              {detectedPlatforms.map(platform => (
-                                <option key={platform} value={platform}>{platform}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <button
-                            onClick={() => {
-                              setInsetStudioMediaType("game");
-                              setInsetStudioOpen(true);
-                            }}
-                            style={{
-                              padding: "8px 10px",
-                              fontSize: 12,
-                              background: "#1b6ed1",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              fontWeight: 700,
-                            }}
-                          >
-                            Open Inset Studio
-                          </button>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformKey]?.top ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformKey]?.top ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformKey]?.top ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformKey]?.right ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformKey]?.right ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformKey]?.right ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformKey]?.bottom ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformKey]?.bottom ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformKey]?.bottom ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformKey]?.left ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformKey]?.left ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformKey]?.left ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-                            Frame: {GAME_SRC_W}×{GAME_SRC_H}
-                          </div>
-                          
-                          {/* Overlay Size & Position Controls */}
-                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.1)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 4 }}>OVERLAY ADJUSTMENTS</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Width
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformKey]?.width ?? 100}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'width', Number(e.target.value) || 100)}
-                                  style={{ width: 60 }}
-                                  min={50}
-                                  max={150}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Height
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformKey]?.height ?? 100}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'height', Number(e.target.value) || 100)}
-                                  style={{ width: 60 }}
-                                  min={50}
-                                  max={150}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Top
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformKey]?.top ?? 0}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
-                                  style={{ width: 60 }}
-                                  min={-50}
-                                  max={50}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Left
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformKey]?.left ?? 0}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
-                                  style={{ width: 60 }}
-                                  min={-50}
-                                  max={50}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                            </div>
-                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
-                              Adjust overlay frame size and position
-                            </div>
-                          </div>
-                          
-                          {/* Cover Scale Control */}
-                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.1)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 4 }}>COVER IMAGE SCALE</div>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
-                              Scale
-                              <input
-                                type="number"
-                                value={platformCoverScale[selectedPlatformKey] ?? 100}
-                                onChange={(e) => updatePlatformCoverScale(selectedPlatformForInsets, Number(e.target.value) || 100)}
-                                style={{ width: 60 }}
-                                min={50}
-                                max={200}
-                                step={1}
-                              />
-                              <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                            </label>
-                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
-                              Scale the cover art to prevent cutoff (100% = original size)
-                            </div>
-                          </div>
-                          
-                          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 8, padding: "6px 8px", background: "rgba(0,0,0,0.05)", borderRadius: 4 }}>
-                            <div style={{ fontWeight: 600, marginBottom: 2 }}>Frame File:</div>
-                            <code style={{ fontSize: 10, background: "rgba(0,0,0,0.08)", padding: "2px 6px", borderRadius: 3, fontFamily: "monospace" }}>
-                              {getPlatformFrameFilename(selectedPlatformKey)}
-                            </code>
-                            <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
-                              Place in /public folder
-                              {selectedPlatformKey === "Default" ? " (falls back to game-frame.png)" : ""}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('game')}
-                            style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Save {selectedPlatformForInsets} Inset
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
+                    <button
+                      onClick={() => saveInsetsToSheet(quickInsetSaveType)}
+                      style={{
+                        padding: "7px 10px",
+                        fontSize: 11,
+                        background: "#0066cc",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {quickInsetSaveLabel}
+                    </button>
                   </div>
                 ) : null}
 
@@ -6958,8 +6637,8 @@ export default function Page() {
                   }}
                 />
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, position: "relative" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
                       <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                         {syncState === "saving"
                           ? "Syncing"
@@ -6972,6 +6651,23 @@ export default function Page() {
                       <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
+                      <button
+                        onClick={() => setShowVersionNotes((prev) => !prev)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "rgba(0,0,0,0.6)",
+                          fontSize: 10,
+                          fontWeight: 500,
+                          whiteSpace: "nowrap",
+                          padding: 0,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                        }}
+                        title="Show recent version notes"
+                      >
+                        · v{APP_VERSION}
+                      </button>
                     </div>
                     {syncState === "error" && syncMsg ? (
                       <div
@@ -6986,6 +6682,38 @@ export default function Page() {
                         }}
                       >
                         {syncMsg}
+                      </div>
+                    ) : null}
+                    {showVersionNotes ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "100%",
+                          right: 0,
+                          width: "min(280px, calc(100vw - 70px))",
+                          zIndex: 30,
+                          marginTop: 6,
+                          borderRadius: 10,
+                          border: "1px solid rgba(0,0,0,0.14)",
+                          background: "rgba(249, 245, 236, 0.97)",
+                          boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
+                          padding: 10,
+                          textAlign: "left",
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
+                        {VERSION_HISTORY.slice(0, 3).map((entry) => (
+                          <div key={entry.version} style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
+                              v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
+                            </div>
+                            <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 10, lineHeight: 1.35, color: "#4b3c31" }}>
+                              {entry.notes.map((note) => (
+                                <li key={note}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                   </div>
@@ -7914,183 +7642,6 @@ export default function Page() {
           </div>
         </main>
       </div>
-
-      {/* MediaModal for cover/info popup - overlays app */}
-      <InsetStudioModal
-        open={insetStudioOpen}
-        onClose={() => setInsetStudioOpen(false)}
-        onSaveToSheet={saveInsetStudioSettings}
-        saveLabel={insetStudioSaveLabel}
-        mediaType={insetStudioMediaType}
-        onMediaTypeChange={setInsetStudioMediaType}
-        previewShelfImage={shelfTheme}
-        platform={selectedPlatformForInsets}
-        platforms={detectedPlatforms}
-        onPlatformChange={setSelectedPlatformForInsets}
-        frameSrc={
-          insetStudioMediaType === "book"
-            ? BOOK_FRAME_IMAGE
-            : insetStudioMediaType === "movie"
-              ? MOVIE_FRAME_IMAGE
-              : insetStudioMediaType === "tv"
-                ? CASE_FRAME_IMAGE
-                : getPlatformFrameFilename(selectedPlatformKey)
-        }
-        sourceWidth={insetStudioMediaType === "book" ? BOOK_SRC_W : insetStudioMediaType === "movie" ? MOVIE_SRC_W : insetStudioMediaType === "tv" ? CASE_SRC_W : GAME_SRC_W}
-        sourceHeight={insetStudioMediaType === "book" ? BOOK_SRC_H : insetStudioMediaType === "movie" ? MOVIE_SRC_H : insetStudioMediaType === "tv" ? CASE_SRC_H : GAME_SRC_H}
-        insets={
-          insetStudioMediaType === "book"
-            ? { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx }
-            : insetStudioMediaType === "movie"
-              ? { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx }
-              : insetStudioMediaType === "tv"
-              ? { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx }
-                : platformInsets[selectedPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 }
-        }
-        overlay={
-          insetStudioMediaType === "game"
-            ? platformOverlaySettings[selectedPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 }
-            : { width: 100, height: 100, top: 0, left: 0 }
-        }
-        coverScale={insetStudioMediaType === "game" ? (platformCoverScale[selectedPlatformKey] || platformCoverScale["Default"] || 100) : 100}
-        coverOffset={insetStudioMediaType === "game" ? (platformCoverOffset[selectedPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 }) : { x: 0, y: 0 }}
-        sampleCovers={insetStudioSampleCovers}
-        overlayEditable={insetStudioMediaType === "game"}
-        coverTransformEditable={insetStudioMediaType === "game"}
-        debugReadout={insetStudioDebugReadout}
-        shelfWidth={Math.max(320, Math.round(stageWidth))}
-        shelfHeight={SHELF_HEIGHT}
-        shelfSidePadding={SHELF_SIDE_PADDING}
-        shelfLipFromBottom={LIP_FROM_BOTTOM}
-        caseWidth={
-          insetStudioMediaType === "book"
-            ? posterSizeBooks
-            : insetStudioMediaType === "movie"
-              ? posterSizeMovies
-              : insetStudioMediaType === "game"
-                ? posterSizeGames
-                : posterSizeTv
-        }
-        caseHeight={
-          insetStudioMediaType === "book"
-            ? Math.round(posterSizeBooks * bookHeightMultiplier)
-            : insetStudioMediaType === "movie"
-              ? Math.round(posterSizeMovies * 1.5)
-              : insetStudioMediaType === "game"
-                ? Math.round(posterSizeGames * 1.5)
-                : Math.round(posterSizeTv * 1.5)
-        }
-        onInsetChange={(edge, value) => {
-          if (insetStudioMediaType === "book") {
-            if (edge === "top") {
-              setBookInsetTopPx(value);
-              saveSetting("bookInsetTopPx", value, "Book Insets", "Book Top Inset (px)");
-            }
-            if (edge === "right") {
-              setBookInsetRightPx(value);
-              saveSetting("bookInsetRightPx", value, "Book Insets", "Book Right Inset (px)");
-            }
-            if (edge === "bottom") {
-              setBookInsetBottomPx(value);
-              saveSetting("bookInsetBottomPx", value, "Book Insets", "Book Bottom Inset (px)");
-            }
-            if (edge === "left") {
-              setBookInsetLeftPx(value);
-              saveSetting("bookInsetLeftPx", value, "Book Insets", "Book Left Inset (px)");
-            }
-            return;
-          }
-          if (insetStudioMediaType === "movie") {
-            if (edge === "top") {
-              setMovieInsetTopPx(value);
-              saveSetting("movieInsetTopPx", value, "Movie Insets", "Movie Top Inset (px)");
-            }
-            if (edge === "right") {
-              setMovieInsetRightPx(value);
-              saveSetting("movieInsetRightPx", value, "Movie Insets", "Movie Right Inset (px)");
-            }
-            if (edge === "bottom") {
-              setMovieInsetBottomPx(value);
-              saveSetting("movieInsetBottomPx", value, "Movie Insets", "Movie Bottom Inset (px)");
-            }
-            if (edge === "left") {
-              setMovieInsetLeftPx(value);
-              saveSetting("movieInsetLeftPx", value, "Movie Insets", "Movie Left Inset (px)");
-            }
-            return;
-          }
-          if (insetStudioMediaType === "tv") {
-            if (edge === "top") {
-              setCaseInsetTopPx(value);
-              saveSetting("caseInsetTopPx", value, "TV Insets", "TV Case Top Inset (px)");
-            }
-            if (edge === "right") {
-              setCaseInsetRightPx(value);
-              saveSetting("caseInsetRightPx", value, "TV Insets", "TV Case Right Inset (px)");
-            }
-            if (edge === "bottom") {
-              setCaseInsetBottomPx(value);
-              saveSetting("caseInsetBottomPx", value, "TV Insets", "TV Case Bottom Inset (px)");
-            }
-            if (edge === "left") {
-              setCaseInsetLeftPx(value);
-              saveSetting("caseInsetLeftPx", value, "TV Insets", "TV Case Left Inset (px)");
-            }
-            return;
-          }
-          setPlatformInsets(prev => {
-            const current = prev[selectedPlatformKey] || prev["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-            return {
-              ...prev,
-              [selectedPlatformKey]: {
-                ...current,
-                [edge]: value,
-              },
-            };
-          });
-          if (selectedPlatformKey !== "Default") {
-            setCustomizedPlatforms(prev => new Set(prev).add(selectedPlatformKey));
-          }
-          const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
-          saveSetting(
-            `${selectedPlatformKey}Inset${edgeCapitalized}Px`,
-            value,
-            `${selectedPlatformKey} Insets`,
-            `${selectedPlatformKey} ${edgeCapitalized} Inset (px)`
-          );
-        }}
-        onOverlayChange={(key, value) => {
-          if (insetStudioMediaType !== "game") return;
-          setPlatformOverlaySettings(prev => {
-            const current = prev[selectedPlatformKey] || prev["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-            return {
-              ...prev,
-              [selectedPlatformKey]: {
-                ...current,
-                [key]: value,
-              },
-            };
-          });
-          if (selectedPlatformKey !== "Default") {
-            setCustomizedPlatforms(prev => new Set(prev).add(selectedPlatformKey));
-          }
-          const keyCapitalized = key.charAt(0).toUpperCase() + key.slice(1);
-          saveSetting(
-            `${selectedPlatformKey}Overlay${keyCapitalized}`,
-            value,
-            `${selectedPlatformKey} Overlay`,
-            `${selectedPlatformKey} Overlay ${keyCapitalized} (%)`
-          );
-        }}
-        onCoverScaleChange={(value) => {
-          if (insetStudioMediaType !== "game") return;
-          updatePlatformCoverScale(selectedPlatformForInsets, value);
-        }}
-        onCoverOffsetChange={(axis, value) => {
-          if (insetStudioMediaType !== "game") return;
-          updatePlatformCoverOffset(selectedPlatformForInsets, axis, value);
-        }}
-      />
 
       {/* MediaModal for cover/info popup - overlays app */}
       <MediaModal
