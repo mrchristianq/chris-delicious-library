@@ -265,9 +265,42 @@ function getPlatformFrameFilename(platform?: string): string {
   if (!platform || platform === "Default") {
     return GAME_FRAME_IMAGE;
   }
-  // Convert platform name to lowercase and replace spaces with hyphens
-  const normalizedName = platform.toLowerCase().replace(/\s+/g, '-');
-  return `/${normalizedName}-frame.png`;
+  const normalizedToken = safeStr(platform)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  const canonicalToken =
+    normalizedToken === "ps5"
+      ? "playstation5"
+      : normalizedToken === "ps4"
+        ? "playstation4"
+        : normalizedToken === "ps3"
+          ? "playstation3"
+          : normalizedToken === "ps2"
+            ? "playstation2"
+            : normalizedToken === "xboxseriesxs"
+              ? "xboxseriesx"
+              : normalizedToken === "xboxseriesx|s"
+                ? "xboxseriesx"
+                : normalizedToken;
+
+  const explicitSlugMap: Record<string, string> = {
+    playstation5: "playstation-5",
+    playstation4: "playstation-4",
+    playstation3: "playstation-3",
+    playstation2: "playstation-2",
+    xboxseriesx: "xbox-series-x",
+    xboxone: "xbox-one",
+    xbox360: "xbox-360",
+    epicgamesstore: "epic-games-store",
+    windows11: "windows-11",
+    steam: "steam",
+    dreamcast: "dreamcast",
+  };
+  const mappedSlug = explicitSlugMap[canonicalToken];
+  if (mappedSlug) return `/${mappedSlug}-frame.png`;
+  // Unknown platforms should fall back immediately to the default frame
+  // to avoid repeated 404 requests on every rerender.
+  return GAME_FRAME_IMAGE;
 }
 
 function safeStr(v: unknown) {
@@ -312,6 +345,37 @@ function normalizeTitleKey(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function normalizePlatformToken(platform: string): string {
+  return safeStr(platform)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+const PLATFORM_TOKEN_ALIASES: Record<string, string> = {
+  ps5: "playstation5",
+  ps4: "playstation4",
+  ps3: "playstation3",
+  ps2: "playstation2",
+  xboxseriesxs: "xboxseriesx",
+  "xboxseriesx|s": "xboxseriesx",
+};
+
+const PLATFORM_CANONICAL_LABELS: Record<string, string> = {
+  playstation5: "PlayStation 5",
+  playstation4: "PlayStation 4",
+  playstation3: "PlayStation 3",
+  playstation2: "PlayStation 2",
+  xboxseriesx: "Xbox Series X",
+};
+
+function canonicalizePlatformLabel(platform: string): string {
+  const raw = safeStr(platform);
+  if (!raw || raw === "Default") return "Default";
+  const normalizedRaw = normalizePlatformToken(raw);
+  const normalized = PLATFORM_TOKEN_ALIASES[normalizedRaw] || normalizedRaw;
+  return PLATFORM_CANONICAL_LABELS[normalized] || raw;
 }
 
 function getMediaType(item: any): MediaType {
@@ -1735,11 +1799,11 @@ export default function Page() {
         ];
       } else if (insetType === 'game') {
         // Save only the currently selected platform's insets, overlay settings, and cover scale
-        const platform = selectedPlatformForInsets;
-        const insets = platformInsets[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
-        const overlaySettings = platformOverlaySettings[platform] || { width: 100, height: 100, top: 0, left: 0 };
-        const coverScale = platformCoverScale[platform] || 100;
-        const coverOffset = platformCoverOffset[platform] || { x: 0, y: 0 };
+        const platform = selectedPlatformKey;
+        const insets = platformInsets[platform] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+        const overlaySettings = platformOverlaySettings[platform] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+        const coverScale = platformCoverScale[platform] || platformCoverScale["Default"] || 100;
+        const coverOffset = platformCoverOffset[platform] || platformCoverOffset["Default"] || { x: 0, y: 0 };
         
         savePromises = [
           saveSettingToSheet(`${platform}InsetTopPx`, insets.top, `${platform} Insets`, `${platform} Top Inset (px)`),
@@ -1840,48 +1904,48 @@ export default function Page() {
       const key = safeStr(row["Key"]);
       const match = key.match(/^(.+)InsetTopPx$/);
       if (match && match[1] !== "Default") {
-        const platform = match[1];
-        if (!loadedPlatformInsets[platform]) {
-          loadedPlatformInsets[platform] = {
-            top: getSetting(`${platform}InsetTopPx`, 5),
-            right: getSetting(`${platform}InsetRightPx`, 5),
-            bottom: getSetting(`${platform}InsetBottomPx`, 5),
-            left: getSetting(`${platform}InsetLeftPx`, 5),
-          };
-          // Mark this platform as customized since it was saved in settings
-          loadedCustomizedPlatforms.add(platform);
-        }
+        const rawPlatform = match[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        loadedPlatformInsets[platform] = {
+          top: getSetting(`${rawPlatform}InsetTopPx`, getSetting(`${platform}InsetTopPx`, 5)),
+          right: getSetting(`${rawPlatform}InsetRightPx`, getSetting(`${platform}InsetRightPx`, 5)),
+          bottom: getSetting(`${rawPlatform}InsetBottomPx`, getSetting(`${platform}InsetBottomPx`, 5)),
+          left: getSetting(`${rawPlatform}InsetLeftPx`, getSetting(`${platform}InsetLeftPx`, 5)),
+        };
+        // Mark this platform as customized since it was saved in settings
+        loadedCustomizedPlatforms.add(platform);
       }
       
       // Also check for overlay settings
       const overlayMatch = key.match(/^(.+)OverlayWidth$/);
       if (overlayMatch && overlayMatch[1] !== "Default") {
-        const platform = overlayMatch[1];
-        if (!loadedPlatformOverlaySettings[platform]) {
-          loadedPlatformOverlaySettings[platform] = {
-            width: getSetting(`${platform}OverlayWidth`, 100),
-            height: getSetting(`${platform}OverlayHeight`, 100),
-            top: getSetting(`${platform}OverlayTop`, 0),
-            left: getSetting(`${platform}OverlayLeft`, 0),
-          };
-          loadedCustomizedPlatforms.add(platform);
-        }
+        const rawPlatform = overlayMatch[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        loadedPlatformOverlaySettings[platform] = {
+          width: getSetting(`${rawPlatform}OverlayWidth`, getSetting(`${platform}OverlayWidth`, 100)),
+          height: getSetting(`${rawPlatform}OverlayHeight`, getSetting(`${platform}OverlayHeight`, 100)),
+          top: getSetting(`${rawPlatform}OverlayTop`, getSetting(`${platform}OverlayTop`, 0)),
+          left: getSetting(`${rawPlatform}OverlayLeft`, getSetting(`${platform}OverlayLeft`, 0)),
+        };
+        loadedCustomizedPlatforms.add(platform);
       }
       
       // Also check for cover scale settings
       const coverScaleMatch = key.match(/^(.+)CoverScale$/);
       if (coverScaleMatch && coverScaleMatch[1] !== "Default") {
-        const platform = coverScaleMatch[1];
-        loadedPlatformCoverScale[platform] = getSetting(`${platform}CoverScale`, 100);
+        const rawPlatform = coverScaleMatch[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        loadedPlatformCoverScale[platform] = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
         loadedCustomizedPlatforms.add(platform);
       }
       
       const coverOffsetMatch = key.match(/^(.+)CoverOffsetX$/);
       if (coverOffsetMatch && coverOffsetMatch[1] !== "Default") {
-        const platform = coverOffsetMatch[1];
+        const rawPlatform = coverOffsetMatch[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformCoverOffset[platform] = {
-          x: getSetting(`${platform}CoverOffsetX`, 0),
-          y: getSetting(`${platform}CoverOffsetY`, 0),
+          x: getSetting(`${rawPlatform}CoverOffsetX`, getSetting(`${platform}CoverOffsetX`, 0)),
+          y: getSetting(`${rawPlatform}CoverOffsetY`, getSetting(`${platform}CoverOffsetY`, 0)),
         };
         loadedCustomizedPlatforms.add(platform);
       }
@@ -2223,18 +2287,19 @@ export default function Page() {
   
   // Update platform-specific insets
   const updatePlatformInset = (platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
     const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
-    const settingKey = `${platform}Inset${edgeCapitalized}Px`;
+    const settingKey = `${platformKey}Inset${edgeCapitalized}Px`;
     
     debouncedUpdate(
       settingKey,
       value,
       () => {
         setPlatformInsets(prev => {
-          const currentPlatformInsets = prev[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
+          const currentPlatformInsets = prev[platformKey] || { top: 5, right: 5, bottom: 5, left: 5 };
           return {
             ...prev,
-            [platform]: {
+            [platformKey]: {
               ...currentPlatformInsets,
               [edge]: value,
             }
@@ -2242,29 +2307,30 @@ export default function Page() {
         });
         
         // Mark this platform as customized if it's not Default
-        if (platform !== "Default") {
-          setCustomizedPlatforms(prev => new Set(prev).add(platform));
+        if (platformKey !== "Default") {
+          setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
         }
       },
-      `${platform} Insets`,
-      `${platform} ${edgeCapitalized} Inset (px)`
+      `${platformKey} Insets`,
+      `${platformKey} ${edgeCapitalized} Inset (px)`
     );
   };
   
   // Update platform-specific overlay settings
   const updatePlatformOverlay = (platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
     const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
-    const settingKey = `${platform}Overlay${propertyCapitalized}`;
+    const settingKey = `${platformKey}Overlay${propertyCapitalized}`;
     
     debouncedUpdate(
       settingKey,
       value,
       () => {
         setPlatformOverlaySettings(prev => {
-          const currentOverlaySettings = prev[platform] || { width: 100, height: 100, top: 0, left: 0 };
+          const currentOverlaySettings = prev[platformKey] || { width: 100, height: 100, top: 0, left: 0 };
           return {
             ...prev,
-            [platform]: {
+            [platformKey]: {
               ...currentOverlaySettings,
               [property]: value,
             }
@@ -2272,46 +2338,48 @@ export default function Page() {
         });
         
         // Mark this platform as customized if it's not Default
-        if (platform !== "Default") {
-          setCustomizedPlatforms(prev => new Set(prev).add(platform));
+        if (platformKey !== "Default") {
+          setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
         }
       },
-      `${platform} Overlay`,
-      `${platform} Overlay ${propertyCapitalized} (%)`
+      `${platformKey} Overlay`,
+      `${platformKey} Overlay ${propertyCapitalized} (%)`
     );
   };
   
   // Update platform-specific cover scale
   const updatePlatformCoverScale = (platform: string, value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
     setPlatformCoverScale(prev => ({
       ...prev,
-      [platform]: value,
+      [platformKey]: value,
     }));
     
     // Mark this platform as customized if it's not Default
-    if (platform !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    if (platformKey !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
     }
     
-    saveSetting(`${platform}CoverScale`, value, `${platform} Cover`, `${platform} Cover Scale (%)`);
+    saveSetting(`${platformKey}CoverScale`, value, `${platformKey} Cover`, `${platformKey} Cover Scale (%)`);
   };
   
   // Update platform-specific cover offset (crop position inside inset)
   const updatePlatformCoverOffset = (platform: string, axis: 'x' | 'y', value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
     const axisLabel = axis.toUpperCase();
     setPlatformCoverOffset(prev => ({
       ...prev,
-      [platform]: {
-        ...(prev[platform] || { x: 0, y: 0 }),
+      [platformKey]: {
+        ...(prev[platformKey] || { x: 0, y: 0 }),
         [axis]: value,
       },
     }));
     
-    if (platform !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    if (platformKey !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
     }
     
-    saveSetting(`${platform}CoverOffset${axisLabel}`, value, `${platform} Cover`, `${platform} Cover Offset ${axisLabel} (%)`);
+    saveSetting(`${platformKey}CoverOffset${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Offset ${axisLabel} (%)`);
   };
   
   const updateLogoSize = (value: number) => {
@@ -2634,7 +2702,7 @@ export default function Page() {
     // Return the first platform in the list
     return platforms[0];
   };
-  
+
   // Helper to deduplicate games by title - keeps only primary platform version
   const deduplicateGames = (games: Game[]): Game[] => {
     const gamesByTitle = new Map<string, Game>();
@@ -2671,7 +2739,7 @@ export default function Page() {
       if (game.platform) {
         // Split comma-separated platforms and add each individually
         const individualPlatforms = game.platform.split(',').map(p => p.trim()).filter(Boolean);
-        individualPlatforms.forEach(p => platforms.add(p));
+        individualPlatforms.forEach(p => platforms.add(canonicalizePlatformLabel(p)));
       }
     });
     return Array.from(platforms).sort((a, b) => {
@@ -2714,7 +2782,8 @@ export default function Page() {
               .split(",")
               .map((part) => part.trim())
               .filter(Boolean);
-            return values.includes(gamePlatform);
+            const targetNorm = normalizePlatformToken(gamePlatform);
+            return values.some((value) => normalizePlatformToken(value) === targetNorm);
           })
           .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
           .filter(Boolean)
@@ -2732,6 +2801,18 @@ export default function Page() {
     }
   };
 
+  const getGameInsetDebugReadout = useCallback(
+    (platformKey: string) => {
+      const resolved = platformKey || "Default";
+      const insets = platformInsets[resolved] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+      const overlay = platformOverlaySettings[resolved] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+      const scale = platformCoverScale[resolved] || platformCoverScale["Default"] || 100;
+      const offset = platformCoverOffset[resolved] || platformCoverOffset["Default"] || { x: 0, y: 0 };
+      return `P:${resolved} | I:${insets.top}/${insets.right}/${insets.bottom}/${insets.left} | O:${overlay.width}/${overlay.height}/${overlay.top}/${overlay.left} | C:${scale}/${offset.x}/${offset.y}`;
+    },
+    [platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]
+  );
+
   const insetStudioSaveLabel =
     insetStudioMediaType === "game"
       ? `Save ${selectedPlatformForInsets} Game Insets`
@@ -2740,6 +2821,67 @@ export default function Page() {
         : insetStudioMediaType === "movie"
           ? "Save Movie Insets"
           : "Save Book Insets";
+
+  const insetStudioDebugReadout =
+    insetStudioMediaType === "game" ? getGameInsetDebugReadout(selectedPlatformForInsets) : undefined;
+
+  const platformAliasMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const knownPlatforms = new Set<string>([
+      ...Object.keys(platformInsets),
+      ...Object.keys(platformOverlaySettings),
+      ...Object.keys(platformCoverScale),
+      ...Object.keys(platformCoverOffset),
+      ...Array.from(customizedPlatforms),
+      ...allGames.flatMap((g) =>
+        safeStr(g.platform)
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
+      ),
+    ]);
+
+    Array.from(knownPlatforms).forEach((platform) => {
+      if (!platform || platform === "Default") return;
+      const normalized = normalizePlatformToken(platform);
+      if (!normalized) return;
+      if (!map.has(normalized)) map.set(normalized, platform);
+    });
+
+    return map;
+  }, [allGames, customizedPlatforms, platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]);
+
+  const resolvePlatformAlias = useCallback(
+    (platform: string) => {
+      const rawNormalized = normalizePlatformToken(platform);
+      if (!rawNormalized) return "Default";
+      const normalized = PLATFORM_TOKEN_ALIASES[rawNormalized] || rawNormalized;
+      return PLATFORM_CANONICAL_LABELS[normalized] || platformAliasMap.get(normalized) || platform;
+    },
+    [platformAliasMap]
+  );
+
+  const selectedPlatformKey = useMemo(
+    () => resolvePlatformAlias(selectedPlatformForInsets),
+    [resolvePlatformAlias, selectedPlatformForInsets]
+  );
+
+  // For rendering: use the first platform listed in the row as primary.
+  // This keeps shelf rendering deterministic and aligned with what Inset Studio
+  // is tuning when a platform (e.g. PlayStation 5) is selected.
+  const getRenderPlatform = useCallback(
+    (platformString: string | undefined): string => {
+      if (!platformString) return "Default";
+      const platforms = platformString
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => resolvePlatformAlias(p));
+      if (platforms.length === 0) return "Default";
+      return platforms[0];
+    },
+    [resolvePlatformAlias]
+  );
 
   // Note: We do NOT auto-initialize platformInsets for detected platforms
   // Only platforms explicitly customized (or loaded from settings) get entries
@@ -6136,19 +6278,19 @@ export default function Page() {
                               <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
                               <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformForInsets]?.top ?? 5) - 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformKey]?.top ?? 5) - 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   ←
                                 </button>
                                 <input
                                   type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.top ?? 5}
+                                  value={platformInsets[selectedPlatformKey]?.top ?? 5}
                                   readOnly
                                   style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
                                 />
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformForInsets]?.top ?? 5) + 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformKey]?.top ?? 5) + 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   →
@@ -6159,19 +6301,19 @@ export default function Page() {
                               <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
                               <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformForInsets]?.right ?? 5) - 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformKey]?.right ?? 5) - 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   ←
                                 </button>
                                 <input
                                   type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.right ?? 5}
+                                  value={platformInsets[selectedPlatformKey]?.right ?? 5}
                                   readOnly
                                   style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
                                 />
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformForInsets]?.right ?? 5) + 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformKey]?.right ?? 5) + 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   →
@@ -6182,19 +6324,19 @@ export default function Page() {
                               <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
                               <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformForInsets]?.bottom ?? 5) - 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformKey]?.bottom ?? 5) - 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   ←
                                 </button>
                                 <input
                                   type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.bottom ?? 5}
+                                  value={platformInsets[selectedPlatformKey]?.bottom ?? 5}
                                   readOnly
                                   style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
                                 />
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformForInsets]?.bottom ?? 5) + 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformKey]?.bottom ?? 5) + 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   →
@@ -6205,19 +6347,19 @@ export default function Page() {
                               <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
                               <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformForInsets]?.left ?? 5) - 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformKey]?.left ?? 5) - 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   ←
                                 </button>
                                 <input
                                   type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.left ?? 5}
+                                  value={platformInsets[selectedPlatformKey]?.left ?? 5}
                                   readOnly
                                   style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
                                 />
                                 <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformForInsets]?.left ?? 5) + 5)}
+                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformKey]?.left ?? 5) + 5)}
                                   style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
                                 >
                                   →
@@ -6237,7 +6379,7 @@ export default function Page() {
                                 Width
                                 <input
                                   type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.width ?? 100}
+                                  value={platformOverlaySettings[selectedPlatformKey]?.width ?? 100}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'width', Number(e.target.value) || 100)}
                                   style={{ width: 60 }}
                                   min={50}
@@ -6250,7 +6392,7 @@ export default function Page() {
                                 Height
                                 <input
                                   type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.height ?? 100}
+                                  value={platformOverlaySettings[selectedPlatformKey]?.height ?? 100}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'height', Number(e.target.value) || 100)}
                                   style={{ width: 60 }}
                                   min={50}
@@ -6263,7 +6405,7 @@ export default function Page() {
                                 Top
                                 <input
                                   type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.top ?? 0}
+                                  value={platformOverlaySettings[selectedPlatformKey]?.top ?? 0}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
                                   style={{ width: 60 }}
                                   min={-50}
@@ -6276,7 +6418,7 @@ export default function Page() {
                                 Left
                                 <input
                                   type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.left ?? 0}
+                                  value={platformOverlaySettings[selectedPlatformKey]?.left ?? 0}
                                   onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
                                   style={{ width: 60 }}
                                   min={-50}
@@ -6298,7 +6440,7 @@ export default function Page() {
                               Scale
                               <input
                                 type="number"
-                                value={platformCoverScale[selectedPlatformForInsets] ?? 100}
+                                value={platformCoverScale[selectedPlatformKey] ?? 100}
                                 onChange={(e) => updatePlatformCoverScale(selectedPlatformForInsets, Number(e.target.value) || 100)}
                                 style={{ width: 60 }}
                                 min={50}
@@ -6315,11 +6457,11 @@ export default function Page() {
                           <div style={{ fontSize: 11, opacity: 0.75, marginTop: 8, padding: "6px 8px", background: "rgba(0,0,0,0.05)", borderRadius: 4 }}>
                             <div style={{ fontWeight: 600, marginBottom: 2 }}>Frame File:</div>
                             <code style={{ fontSize: 10, background: "rgba(0,0,0,0.08)", padding: "2px 6px", borderRadius: 3, fontFamily: "monospace" }}>
-                              {getPlatformFrameFilename(selectedPlatformForInsets)}
+                              {getPlatformFrameFilename(selectedPlatformKey)}
                             </code>
                             <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
                               Place in /public folder
-                              {selectedPlatformForInsets === "Default" ? " (falls back to game-frame.png)" : ""}
+                              {selectedPlatformKey === "Default" ? " (falls back to game-frame.png)" : ""}
                             </div>
                           </div>
                           <button
@@ -7336,7 +7478,7 @@ export default function Page() {
                       const isGame = show.__type === "game";
                       const gamePlatformRaw = isGame && 'platform' in show ? show.platform : undefined;
                       // Determine primary platform based on priority (Steam > Epic > Default)
-                      const gamePlatform = isGame ? getPrimaryPlatform(gamePlatformRaw) : undefined;
+                      const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const isSteam = gamePlatform === "Steam";
                       const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
                       // Calculate x as cumulative sum of all previous items + gaps
@@ -7368,16 +7510,8 @@ export default function Page() {
                       } else if (isGame) {
                         const platformKey = gamePlatform || "Default";
                         const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-                        
-                        // Use platform-specific insets ONLY if this platform exists AND is different from Default
                         const platformInset = platformInsets[platformKey];
-                        const isPlatformCustomized = platformInset && 
-                          (platformInset.top !== defaultInsets.top ||
-                           platformInset.right !== defaultInsets.right ||
-                           platformInset.bottom !== defaultInsets.bottom ||
-                           platformInset.left !== defaultInsets.left);
-                        
-                        const insets = isPlatformCustomized && platformKey !== "Default" ? platformInset : defaultInsets;
+                        const insets = platformKey !== "Default" && platformInset ? platformInset : defaultInsets;
                         
                         insetTopVal = insets.top;
                         insetRightVal = insets.right;
@@ -7740,6 +7874,32 @@ export default function Page() {
                               opacity: 0.25,
                             }}
                           />
+
+                          {showInsetGuide && isGame ? (
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: 4,
+                                right: 4,
+                                bottom: 4,
+                                zIndex: 20,
+                                background: "rgba(8, 12, 18, 0.78)",
+                                color: "#d8e7ff",
+                                border: "1px solid rgba(150, 176, 220, 0.45)",
+                                borderRadius: 4,
+                                padding: "2px 4px",
+                                fontSize: 8,
+                                lineHeight: 1.2,
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              {getGameInsetDebugReadout(gamePlatform || "Default")}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -7774,7 +7934,7 @@ export default function Page() {
               ? MOVIE_FRAME_IMAGE
               : insetStudioMediaType === "tv"
                 ? CASE_FRAME_IMAGE
-                : getPlatformFrameFilename(selectedPlatformForInsets)
+                : getPlatformFrameFilename(selectedPlatformKey)
         }
         sourceWidth={insetStudioMediaType === "book" ? BOOK_SRC_W : insetStudioMediaType === "movie" ? MOVIE_SRC_W : insetStudioMediaType === "tv" ? CASE_SRC_W : GAME_SRC_W}
         sourceHeight={insetStudioMediaType === "book" ? BOOK_SRC_H : insetStudioMediaType === "movie" ? MOVIE_SRC_H : insetStudioMediaType === "tv" ? CASE_SRC_H : GAME_SRC_H}
@@ -7784,46 +7944,143 @@ export default function Page() {
             : insetStudioMediaType === "movie"
               ? { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx }
               : insetStudioMediaType === "tv"
-                ? { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx }
-                : platformInsets[selectedPlatformForInsets] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 }
+              ? { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx }
+                : platformInsets[selectedPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 }
         }
         overlay={
           insetStudioMediaType === "game"
-            ? platformOverlaySettings[selectedPlatformForInsets] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 }
+            ? platformOverlaySettings[selectedPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 }
             : { width: 100, height: 100, top: 0, left: 0 }
         }
-        coverScale={insetStudioMediaType === "game" ? (platformCoverScale[selectedPlatformForInsets] || platformCoverScale["Default"] || 100) : 100}
-        coverOffset={insetStudioMediaType === "game" ? (platformCoverOffset[selectedPlatformForInsets] || platformCoverOffset["Default"] || { x: 0, y: 0 }) : { x: 0, y: 0 }}
+        coverScale={insetStudioMediaType === "game" ? (platformCoverScale[selectedPlatformKey] || platformCoverScale["Default"] || 100) : 100}
+        coverOffset={insetStudioMediaType === "game" ? (platformCoverOffset[selectedPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 }) : { x: 0, y: 0 }}
         sampleCovers={insetStudioSampleCovers}
         overlayEditable={insetStudioMediaType === "game"}
         coverTransformEditable={insetStudioMediaType === "game"}
+        debugReadout={insetStudioDebugReadout}
+        shelfWidth={Math.max(320, Math.round(stageWidth))}
+        shelfHeight={SHELF_HEIGHT}
+        shelfSidePadding={SHELF_SIDE_PADDING}
+        shelfLipFromBottom={LIP_FROM_BOTTOM}
+        caseWidth={
+          insetStudioMediaType === "book"
+            ? posterSizeBooks
+            : insetStudioMediaType === "movie"
+              ? posterSizeMovies
+              : insetStudioMediaType === "game"
+                ? posterSizeGames
+                : posterSizeTv
+        }
+        caseHeight={
+          insetStudioMediaType === "book"
+            ? Math.round(posterSizeBooks * bookHeightMultiplier)
+            : insetStudioMediaType === "movie"
+              ? Math.round(posterSizeMovies * 1.5)
+              : insetStudioMediaType === "game"
+                ? Math.round(posterSizeGames * 1.5)
+                : Math.round(posterSizeTv * 1.5)
+        }
         onInsetChange={(edge, value) => {
           if (insetStudioMediaType === "book") {
-            if (edge === "top") updateBookInsetTopPx(value);
-            if (edge === "right") updateBookInsetRightPx(value);
-            if (edge === "bottom") updateBookInsetBottomPx(value);
-            if (edge === "left") updateBookInsetLeftPx(value);
+            if (edge === "top") {
+              setBookInsetTopPx(value);
+              saveSetting("bookInsetTopPx", value, "Book Insets", "Book Top Inset (px)");
+            }
+            if (edge === "right") {
+              setBookInsetRightPx(value);
+              saveSetting("bookInsetRightPx", value, "Book Insets", "Book Right Inset (px)");
+            }
+            if (edge === "bottom") {
+              setBookInsetBottomPx(value);
+              saveSetting("bookInsetBottomPx", value, "Book Insets", "Book Bottom Inset (px)");
+            }
+            if (edge === "left") {
+              setBookInsetLeftPx(value);
+              saveSetting("bookInsetLeftPx", value, "Book Insets", "Book Left Inset (px)");
+            }
             return;
           }
           if (insetStudioMediaType === "movie") {
-            if (edge === "top") updateMovieInsetTopPx(value);
-            if (edge === "right") updateMovieInsetRightPx(value);
-            if (edge === "bottom") updateMovieInsetBottomPx(value);
-            if (edge === "left") updateMovieInsetLeftPx(value);
+            if (edge === "top") {
+              setMovieInsetTopPx(value);
+              saveSetting("movieInsetTopPx", value, "Movie Insets", "Movie Top Inset (px)");
+            }
+            if (edge === "right") {
+              setMovieInsetRightPx(value);
+              saveSetting("movieInsetRightPx", value, "Movie Insets", "Movie Right Inset (px)");
+            }
+            if (edge === "bottom") {
+              setMovieInsetBottomPx(value);
+              saveSetting("movieInsetBottomPx", value, "Movie Insets", "Movie Bottom Inset (px)");
+            }
+            if (edge === "left") {
+              setMovieInsetLeftPx(value);
+              saveSetting("movieInsetLeftPx", value, "Movie Insets", "Movie Left Inset (px)");
+            }
             return;
           }
           if (insetStudioMediaType === "tv") {
-            if (edge === "top") updateCaseInsetTopPx(value);
-            if (edge === "right") updateCaseInsetRightPx(value);
-            if (edge === "bottom") updateCaseInsetBottomPx(value);
-            if (edge === "left") updateCaseInsetLeftPx(value);
+            if (edge === "top") {
+              setCaseInsetTopPx(value);
+              saveSetting("caseInsetTopPx", value, "TV Insets", "TV Case Top Inset (px)");
+            }
+            if (edge === "right") {
+              setCaseInsetRightPx(value);
+              saveSetting("caseInsetRightPx", value, "TV Insets", "TV Case Right Inset (px)");
+            }
+            if (edge === "bottom") {
+              setCaseInsetBottomPx(value);
+              saveSetting("caseInsetBottomPx", value, "TV Insets", "TV Case Bottom Inset (px)");
+            }
+            if (edge === "left") {
+              setCaseInsetLeftPx(value);
+              saveSetting("caseInsetLeftPx", value, "TV Insets", "TV Case Left Inset (px)");
+            }
             return;
           }
-          updatePlatformInset(selectedPlatformForInsets, edge, value);
+          setPlatformInsets(prev => {
+            const current = prev[selectedPlatformKey] || prev["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+            return {
+              ...prev,
+              [selectedPlatformKey]: {
+                ...current,
+                [edge]: value,
+              },
+            };
+          });
+          if (selectedPlatformKey !== "Default") {
+            setCustomizedPlatforms(prev => new Set(prev).add(selectedPlatformKey));
+          }
+          const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
+          saveSetting(
+            `${selectedPlatformKey}Inset${edgeCapitalized}Px`,
+            value,
+            `${selectedPlatformKey} Insets`,
+            `${selectedPlatformKey} ${edgeCapitalized} Inset (px)`
+          );
         }}
         onOverlayChange={(key, value) => {
           if (insetStudioMediaType !== "game") return;
-          updatePlatformOverlay(selectedPlatformForInsets, key, value);
+          setPlatformOverlaySettings(prev => {
+            const current = prev[selectedPlatformKey] || prev["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+            return {
+              ...prev,
+              [selectedPlatformKey]: {
+                ...current,
+                [key]: value,
+              },
+            };
+          });
+          if (selectedPlatformKey !== "Default") {
+            setCustomizedPlatforms(prev => new Set(prev).add(selectedPlatformKey));
+          }
+          const keyCapitalized = key.charAt(0).toUpperCase() + key.slice(1);
+          saveSetting(
+            `${selectedPlatformKey}Overlay${keyCapitalized}`,
+            value,
+            `${selectedPlatformKey} Overlay`,
+            `${selectedPlatformKey} Overlay ${keyCapitalized} (%)`
+          );
         }}
         onCoverScaleChange={(value) => {
           if (insetStudioMediaType !== "game") return;

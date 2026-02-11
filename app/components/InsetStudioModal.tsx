@@ -32,9 +32,17 @@ type Props = {
   onOverlayChange: (key: keyof Overlay, value: number) => void;
   onCoverScaleChange: (value: number) => void;
   onCoverOffsetChange: (axis: keyof CoverOffset, value: number) => void;
+  debugReadout?: string;
+  shelfWidth: number;
+  shelfHeight: number;
+  shelfSidePadding: number;
+  shelfLipFromBottom: number;
+  caseWidth: number;
+  caseHeight: number;
 };
 
 type DragMode = "overlay" | "cover" | null;
+const PREVIEW_ZOOM = 2;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -72,6 +80,13 @@ export function InsetStudioModal({
   onOverlayChange,
   onCoverScaleChange,
   onCoverOffsetChange,
+  debugReadout,
+  shelfWidth,
+  shelfHeight,
+  shelfSidePadding,
+  shelfLipFromBottom,
+  caseWidth,
+  caseHeight,
 }: Props) {
   const [selectedCoverIndex, setSelectedCoverIndex] = useState(0);
   const [dragMode, setDragMode] = useState<DragMode>(null);
@@ -101,21 +116,44 @@ export function InsetStudioModal({
 
   const currentCoverUrl = sampleCovers[selectedCoverIndex] || "";
 
-  const previewHeight = 680;
-  const previewWidth = Math.round((sourceWidth / sourceHeight) * previewHeight);
+  const insetEdges = useMemo(() => {
+    // Mirror bookshelf math exactly: rounded edge insets from source px.
+    const top = Math.round((insets.top / sourceHeight) * caseHeight);
+    const right = Math.round((insets.right / sourceWidth) * caseWidth);
+    const bottom = Math.round((insets.bottom / sourceHeight) * caseHeight);
+    const left = Math.round((insets.left / sourceWidth) * caseWidth);
+    return { top, right, bottom, left };
+  }, [insets, caseHeight, caseWidth, sourceHeight, sourceWidth]);
 
-  const insetRect = useMemo(() => {
-    const top = (insets.top / sourceHeight) * previewHeight;
-    const right = (insets.right / sourceWidth) * previewWidth;
-    const bottom = (insets.bottom / sourceHeight) * previewHeight;
-    const left = (insets.left / sourceWidth) * previewWidth;
+  const insetDragSize = useMemo(() => {
+    const width = Math.max(10, caseWidth - insetEdges.left - insetEdges.right);
+    const height = Math.max(10, caseHeight - insetEdges.top - insetEdges.bottom);
+    return { width, height };
+  }, [caseWidth, caseHeight, insetEdges]);
+
+  const viewportGeometry = useMemo(() => {
+    const caseLeft = shelfSidePadding;
+    const caseTop = shelfHeight - shelfLipFromBottom - caseHeight;
+    const caseCenterX = caseLeft + caseWidth / 2;
+    const caseCenterY = caseTop + caseHeight / 2;
+
+    const worldWidth = Math.min(shelfWidth, Math.max(caseWidth * 1.35, caseWidth + 120));
+    const worldHeight = Math.min(shelfHeight, Math.max(caseHeight * 1.35, caseHeight + 120));
+    const viewportWidth = worldWidth * PREVIEW_ZOOM;
+    const viewportHeight = worldHeight * PREVIEW_ZOOM;
+
+    const minPanX = viewportWidth - shelfWidth * PREVIEW_ZOOM;
+    const minPanY = viewportHeight - shelfHeight * PREVIEW_ZOOM;
+    const targetPanX = viewportWidth / 2 - caseCenterX * PREVIEW_ZOOM;
+    const targetPanY = viewportHeight / 2 - caseCenterY * PREVIEW_ZOOM;
+
     return {
-      top,
-      left,
-      width: Math.max(10, previewWidth - left - right),
-      height: Math.max(10, previewHeight - top - bottom),
+      viewportWidth,
+      viewportHeight,
+      panX: clamp(targetPanX, minPanX, 0),
+      panY: clamp(targetPanY, minPanY, 0),
     };
-  }, [insets, previewHeight, previewWidth, sourceHeight, sourceWidth]);
+  }, [shelfSidePadding, shelfHeight, shelfLipFromBottom, caseHeight, caseWidth, shelfWidth]);
 
   const handleNextRandom = () => {
     if (!sampleCovers.length) return;
@@ -158,16 +196,16 @@ export function InsetStudioModal({
     const dy = event.clientY - dragStart.y;
 
     if (dragMode === "overlay" && dragStartOverlay) {
-      const dxPct = (dx / previewWidth) * 100;
-      const dyPct = (dy / previewHeight) * 100;
+      const dxPct = (dx / (caseWidth * PREVIEW_ZOOM)) * 100;
+      const dyPct = (dy / (caseHeight * PREVIEW_ZOOM)) * 100;
       onOverlayChange("left", Number((dragStartOverlay.left + dxPct).toFixed(2)));
       onOverlayChange("top", Number((dragStartOverlay.top + dyPct).toFixed(2)));
       return;
     }
 
     if (dragMode === "cover" && dragStartCover) {
-      const dxPct = (dx / insetRect.width) * 100;
-      const dyPct = (dy / insetRect.height) * 100;
+      const dxPct = (dx / (insetDragSize.width * PREVIEW_ZOOM)) * 100;
+      const dyPct = (dy / (insetDragSize.height * PREVIEW_ZOOM)) * 100;
       onCoverOffsetChange("x", Number((dragStartCover.x + dxPct).toFixed(2)));
       onCoverOffsetChange("y", Number((dragStartCover.y + dyPct).toFixed(2)));
     }
@@ -280,97 +318,163 @@ export function InsetStudioModal({
           </div>
 
           <div style={{ fontSize: 12, color: "#6f5a48" }}>
-            Bookshelf background is shown for alignment. Cover is clipped to inset bounds and cannot bleed past overlay aperture.
+            View is auto-cropped to the case area and zoomed 200% for easier tuning. Cover stays clipped to inset bounds and aligned exactly with the frame.
           </div>
 
           <div
             style={{
               flex: 1,
-              display: "grid",
-              placeItems: "center",
+              position: "relative",
               borderRadius: 12,
               border: "1px solid rgba(0,0,0,0.12)",
-              backgroundImage: `url(${previewShelfImage})`,
-              backgroundRepeat: "no-repeat",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
+              overflow: "hidden",
+              background: "rgba(0,0,0,0.04)",
+              padding: 16,
+              display: "grid",
+              placeItems: "center",
             }}
           >
             <div
               style={{
                 position: "relative",
-                width: previewWidth,
-                height: previewHeight,
-                boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
-                cursor: dragMode ? "grabbing" : "default",
+                width: viewportGeometry.viewportWidth,
+                height: viewportGeometry.viewportHeight,
+                overflow: "hidden",
+                borderRadius: 10,
+                boxShadow: "0 8px 18px rgba(0,0,0,0.14)",
               }}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  top: `${50 + overlay.top}%`,
-                  left: `${50 + overlay.left}%`,
-                  width: "100%",
-                  height: "100%",
-                  transform: `translate(-50%, -50%) scale(${overlay.width / 100}, ${overlay.height / 100})`,
-                }}
-              >
                 <div
-                  onMouseDown={handleMouseDownCover}
                   style={{
                     position: "absolute",
-                    top: insetRect.top,
-                    left: insetRect.left,
-                    width: insetRect.width,
-                    height: insetRect.height,
-                    overflow: "hidden",
-                    background: "rgba(255,255,255,0.08)",
-                    outline: "2px dashed rgba(255, 230, 120, 0.75)",
-                    outlineOffset: -2,
-                    cursor: coverTransformEditable ? "grab" : "default",
+                    width: shelfWidth,
+                    height: shelfHeight,
+                    left: viewportGeometry.panX,
+                    top: viewportGeometry.panY,
+                    transformOrigin: "top left",
+                    transform: `scale(${PREVIEW_ZOOM})`,
+                    backgroundImage: `url(${previewShelfImage})`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center",
+                    backgroundSize: "100% 100%",
+                    boxShadow: "0 12px 26px rgba(0,0,0,0.18), inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)",
+                    cursor: dragMode ? "grabbing" : "default",
                   }}
                 >
-                  {currentCoverUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={currentCoverUrl}
-                      alt="Preview cover"
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: shelfSidePadding,
+                      right: shelfSidePadding,
+                    top: 0,
+                    bottom: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      bottom: shelfLipFromBottom,
+                      width: caseWidth,
+                      height: caseHeight,
+                      boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    <div
                       style={{
+                        position: "absolute",
+                        top: `${50 + overlay.top}%`,
+                        left: `${50 + overlay.left}%`,
                         width: "100%",
                         height: "100%",
-                        objectFit: "cover",
-                        transform: `translate(${coverOffset.x}%, ${coverOffset.y}%) scale(${coverScale / 100})`,
-                        transformOrigin: "center",
-                        pointerEvents: "none",
-                        userSelect: "none",
+                        transform: `translate(-50%, -50%) scale(${overlay.width / 100}, ${overlay.height / 100})`,
                       }}
-                      draggable={false}
-                    />
-                  ) : (
-                    <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontSize: 12, color: "#f2e3ce" }}>
-                      No sample cover for this selection
-                    </div>
-                  )}
-                </div>
+                    >
+                      <div
+                        onMouseDown={handleMouseDownCover}
+                        style={{
+                          position: "absolute",
+                          top: insetEdges.top,
+                          right: insetEdges.right,
+                          bottom: insetEdges.bottom,
+                          left: insetEdges.left,
+                          overflow: "hidden",
+                          borderRadius: 0,
+                          background: "transparent",
+                          outline: "2px dashed rgba(255, 230, 120, 0.75)",
+                          outlineOffset: -2,
+                          cursor: coverTransformEditable ? "grab" : "default",
+                        }}
+                      >
+                        {currentCoverUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={currentCoverUrl}
+                            alt="Preview cover"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              transform: `translate(${coverOffset.x}%, ${coverOffset.y}%) scale(${coverScale / 100})`,
+                              transformOrigin: "center",
+                              pointerEvents: "none",
+                              userSelect: "none",
+                            }}
+                            draggable={false}
+                          />
+                        ) : (
+                          <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontSize: 12, color: "#f2e3ce" }}>
+                            No sample cover for this selection
+                          </div>
+                        )}
+                      </div>
 
-                <div
-                  onMouseDown={handleMouseDownOverlay}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    cursor: overlayEditable ? "grab" : "default",
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={frameSrc}
-                    alt="Overlay frame"
-                    style={{ width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", userSelect: "none" }}
-                    draggable={false}
-                  />
+                      <div
+                        onMouseDown={handleMouseDownOverlay}
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          cursor: overlayEditable ? "grab" : "default",
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={frameSrc}
+                          alt="Overlay frame"
+                          style={{ width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", userSelect: "none" }}
+                          draggable={false}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+            {debugReadout ? (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 8,
+                  right: 8,
+                  bottom: 8,
+                  zIndex: 10,
+                  background: "rgba(8, 12, 18, 0.75)",
+                  color: "#d8e7ff",
+                  border: "1px solid rgba(150, 176, 220, 0.45)",
+                  borderRadius: 6,
+                  padding: "4px 6px",
+                  fontSize: 10,
+                  lineHeight: 1.25,
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  pointerEvents: "none",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {debugReadout}
+              </div>
+            ) : null}
           </div>
         </div>
 
