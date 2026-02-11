@@ -915,16 +915,7 @@ export default function Page() {
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   
   // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>(() => {
-    if (typeof window === "undefined") return "winterGray";
-    try {
-      const cache = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
-      const cachedTheme = String(cache?.sidebarTheme || "").trim();
-      return cachedTheme || "winterGray";
-    } catch {
-      return "winterGray";
-    }
-  });
+  const [sidebarTheme, setSidebarTheme] = useState<string>("winterGray");
   
   // Theme configurations
   const sidebarThemes = {
@@ -1032,8 +1023,8 @@ export default function Page() {
   });
   
   // Platform-specific cover scale (for the poster image inside the inset)
-  const [platformCoverScale, setPlatformCoverScale] = useState<Record<string, number>>({
-    "Default": 100,
+  const [platformCoverScale, setPlatformCoverScale] = useState<Record<string, { x: number; y: number }>>({
+    "Default": { x: 100, y: 100 },
   });
   
   // Platform-specific cover offset (crop/position inside inset)
@@ -1049,6 +1040,8 @@ export default function Page() {
   const [quickInsetTarget, setQuickInsetTarget] = useState<string>("tv");
   const [quickInsetMode, setQuickInsetMode] = useState<QuickInsetMode>("insetPosition");
   const [quickInsetStep, setQuickInsetStep] = useState<number>(5);
+  const [quickInsetSaveStatus, setQuickInsetSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [themeSaveNotice, setThemeSaveNotice] = useState<string>("");
   const quickOverlayDragRef = useRef<{ x: number; y: number; top: number; left: number } | null>(null);
   const [showVersionNotes, setShowVersionNotes] = useState(false);
   
@@ -1856,7 +1849,7 @@ export default function Page() {
         const platform = selectedPlatformKey;
         const insets = platformInsets[platform] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
         const overlaySettings = platformOverlaySettings[platform] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-        const coverScale = platformCoverScale[platform] || platformCoverScale["Default"] || 100;
+        const coverScale = platformCoverScale[platform] || platformCoverScale["Default"] || { x: 100, y: 100 };
         const coverOffset = platformCoverOffset[platform] || platformCoverOffset["Default"] || { x: 0, y: 0 };
         
         savePromises = [
@@ -1868,7 +1861,8 @@ export default function Page() {
           saveSettingToSheet(`${platform}OverlayHeight`, overlaySettings.height, `${platform} Overlay`, `${platform} Overlay Height (%)`),
           saveSettingToSheet(`${platform}OverlayTop`, overlaySettings.top, `${platform} Overlay`, `${platform} Overlay Top (%)`),
           saveSettingToSheet(`${platform}OverlayLeft`, overlaySettings.left, `${platform} Overlay`, `${platform} Overlay Left (%)`),
-          saveSettingToSheet(`${platform}CoverScale`, coverScale, `${platform} Cover`, `${platform} Cover Scale (%)`),
+          saveSettingToSheet(`${platform}CoverScaleX`, coverScale.x, `${platform} Cover`, `${platform} Cover Scale X (%)`),
+          saveSettingToSheet(`${platform}CoverScaleY`, coverScale.y, `${platform} Cover`, `${platform} Cover Scale Y (%)`),
           saveSettingToSheet(`${platform}CoverOffsetX`, coverOffset.x, `${platform} Cover`, `${platform} Cover Offset X (%)`),
           saveSettingToSheet(`${platform}CoverOffsetY`, coverOffset.y, `${platform} Cover`, `${platform} Cover Offset Y (%)`),
         ];
@@ -1942,8 +1936,12 @@ export default function Page() {
     };
     
     // Also prepare cover scale settings structure
-    const loadedPlatformCoverScale: Record<string, number> = {
-      "Default": getSetting("DefaultCoverScale", 100),
+    const defaultLegacyScale = getSetting("DefaultCoverScale", 100);
+    const loadedPlatformCoverScale: Record<string, { x: number; y: number }> = {
+      "Default": {
+        x: getSetting("DefaultCoverScaleX", defaultLegacyScale),
+        y: getSetting("DefaultCoverScaleY", defaultLegacyScale),
+      },
     };
     
     const loadedPlatformCoverOffset: Record<string, { x: number; y: number }> = {
@@ -1985,11 +1983,15 @@ export default function Page() {
       }
       
       // Also check for cover scale settings
-      const coverScaleMatch = key.match(/^(.+)CoverScale$/);
+      const coverScaleMatch = key.match(/^(.+)CoverScale(?:X|Y)?$/);
       if (coverScaleMatch && coverScaleMatch[1] !== "Default") {
         const rawPlatform = coverScaleMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
-        loadedPlatformCoverScale[platform] = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
+        const legacyScale = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
+        loadedPlatformCoverScale[platform] = {
+          x: getSetting(`${rawPlatform}CoverScaleX`, getSetting(`${platform}CoverScaleX`, legacyScale)),
+          y: getSetting(`${rawPlatform}CoverScaleY`, getSetting(`${platform}CoverScaleY`, legacyScale)),
+        };
         loadedCustomizedPlatforms.add(platform);
       }
       
@@ -2332,11 +2334,25 @@ export default function Page() {
   const updateShelfTheme = (value: string) => {
     setShelfTheme(value);
     saveSetting("shelfTheme", value, "Themes", "Shelf Wood Type");
+    const shelfThemeNames: Record<string, string> = {
+      "/shelves-light-single2.png": "Default (Light Oak)",
+      "/shelf-dark-walnut.png": "Dark Walnut",
+      "/shelf-weathered-oak.png": "Weathered Oak",
+      "/shelf-honey-oak.png": "Honey Oak",
+      "/shelf-teak.png": "Teak",
+    };
+    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
   };
   
   const updateSidebarTheme = (value: string) => {
     setSidebarTheme(value);
     saveSetting("sidebarTheme", value, "Themes", "Sidebar Theme");
+    const sidebarThemeNames: Record<string, string> = {
+      standard: "Standard",
+      winterGray: "Winter Gray",
+      darkBlue: "Dark Blue",
+    };
+    setThemeSaveNotice(`Saved theme: ${sidebarThemeNames[value] || "Sidebar theme"}. This will be used next time.`);
   };
   
   // Update platform-specific insets
@@ -2402,11 +2418,15 @@ export default function Page() {
   };
   
   // Update platform-specific cover scale
-  const updatePlatformCoverScale = (platform: string, value: number) => {
+  const updatePlatformCoverScale = (platform: string, axis: "x" | "y", value: number) => {
     const platformKey = resolvePlatformAlias(platform);
+    const axisLabel = axis.toUpperCase();
     setPlatformCoverScale(prev => ({
       ...prev,
-      [platformKey]: value,
+      [platformKey]: {
+        ...(prev[platformKey] || { x: 100, y: 100 }),
+        [axis]: value,
+      },
     }));
     
     // Mark this platform as customized if it's not Default
@@ -2414,7 +2434,7 @@ export default function Page() {
       setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
     }
     
-    saveSetting(`${platformKey}CoverScale`, value, `${platformKey} Cover`, `${platformKey} Cover Scale (%)`);
+    saveSetting(`${platformKey}CoverScale${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Scale ${axisLabel} (%)`);
   };
   
   // Update platform-specific cover offset (crop position inside inset)
@@ -2809,9 +2829,9 @@ export default function Page() {
       const resolved = platformKey || "Default";
       const insets = platformInsets[resolved] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
       const overlay = platformOverlaySettings[resolved] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-      const scale = platformCoverScale[resolved] || platformCoverScale["Default"] || 100;
+      const scale = platformCoverScale[resolved] || platformCoverScale["Default"] || { x: 100, y: 100 };
       const offset = platformCoverOffset[resolved] || platformCoverOffset["Default"] || { x: 0, y: 0 };
-      return `P:${resolved} | I:${insets.top}/${insets.right}/${insets.bottom}/${insets.left} | O:${overlay.width}/${overlay.height}/${overlay.top}/${overlay.left} | C:${scale}/${offset.x}/${offset.y}`;
+      return `P:${resolved} | I:${insets.top}/${insets.right}/${insets.bottom}/${insets.left} | O:${overlay.width}/${overlay.height}/${overlay.top}/${overlay.left} | C:${scale.x}/${scale.y}/${offset.x}/${offset.y}`;
     },
     [platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]
   );
@@ -2891,7 +2911,7 @@ export default function Page() {
     const gameInset = platformInsets[quickTargetPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
     const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
     const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
-    const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || 100;
+    const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
     return {
       inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
       overlay: gameOverlay,
@@ -3004,8 +3024,10 @@ export default function Page() {
         return;
       }
 
-      const nextScale = quickInsetSnapshot.coverScale + (isLeft || isDown ? -step : step);
-      updatePlatformCoverScale(quickTargetPlatform, nextScale);
+      if (isLeft) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
+      if (isRight) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
+      if (isUp) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
+      if (isDown) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
     },
     [
       quickInsetMode,
@@ -3839,7 +3861,7 @@ export default function Page() {
             overflowY: "auto",
             overflowX: "hidden",
             background: "transparent",
-            border: "1px solid rgba(0,0,0,0.12)",
+            border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
             borderTop: "none",
             borderLeft: "none",
             borderRight: "none",
@@ -4025,7 +4047,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4062,7 +4084,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "books" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4098,7 +4120,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "books" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setReadingStatusOpen((v) => !v)}
                       style={{
@@ -4114,8 +4136,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {readingStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4135,20 +4157,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4177,8 +4199,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {formatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4198,20 +4220,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {format}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4240,8 +4262,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {seriesOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4261,20 +4283,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {series}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4303,8 +4325,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4324,20 +4346,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {genre}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4366,8 +4388,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
                     </button>
                     {wishlistOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4383,20 +4405,20 @@ export default function Page() {
                             gap: 8,
                           }}
                         >
-                          <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                          <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                             Wishlist Books
                           </span>
                           <span
                             style={{
-                              minWidth: 24,
-                              height: 20,
-                              padding: "0 8px",
-                              borderRadius: 12,
-                              fontSize: 12,
+                              minWidth: 20,
+                              height: 18,
+                              padding: "0 6px",
+                              borderRadius: 10,
+                              fontSize: 11,
                               textAlign: "center",
                               background: wishlistFilter ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                              color: "#333",
-                              border: "1px solid rgba(0,0,0,0.12)",
+                              color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                              border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -4433,7 +4455,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4469,7 +4491,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "movies" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setMovieWatchStatusOpen((v) => !v)}
                       style={{
@@ -4485,8 +4507,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4506,20 +4528,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4548,8 +4570,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4569,20 +4591,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {genre}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4622,7 +4644,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "tv" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4658,7 +4680,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "tv" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setWatchStatusOpen((v) => !v)}
                       style={{
@@ -4674,8 +4696,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4695,20 +4717,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4737,8 +4759,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4758,20 +4780,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4800,8 +4822,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
                     </button>
                     {tagOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4821,20 +4843,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {tag}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4877,7 +4899,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4918,7 +4940,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "games" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setGamePlatformOpen((v) => !v)}
                       style={{
@@ -4934,8 +4956,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4955,18 +4977,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4995,8 +5017,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {gameStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5016,18 +5038,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -5056,8 +5078,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5077,18 +5099,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -5117,8 +5139,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5138,18 +5160,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -5178,8 +5200,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5199,18 +5221,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -5239,8 +5261,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5260,18 +5282,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 20,
+                                  height: 18,
+                                  padding: "0 6px",
+                                  borderRadius: 10,
+                                  fontSize: 11,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -5308,7 +5330,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5369,7 +5391,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "watchlist" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5451,7 +5473,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: nav === "year-this" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5487,7 +5509,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: otherMenuOpen ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5521,7 +5543,7 @@ export default function Page() {
                         padding: "8px 0",
                         fontSize: 14,
                         fontFamily: "Nunito, sans-serif",
-                        color: "#4A4A4A",
+                        color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A",
                         background: nav === "year-previous" ? currentTheme.activeHighlight : "transparent",
                         border: "none",
                         cursor: "pointer",
@@ -5601,7 +5623,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         display: "inline-flex",
                         alignItems: "center",
@@ -5637,7 +5659,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: showThemes ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5676,7 +5698,7 @@ export default function Page() {
                       aria-hidden
                       style={{
                         width: 20,
-                        height: 20,
+                        height: 18,
                         borderRadius: 4,
                         background: showSettings ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5698,6 +5720,23 @@ export default function Page() {
 
             {showThemes ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+                {themeSaveNotice ? (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#0a7f2e",
+                      background: "rgba(10,127,46,0.12)",
+                      border: "1px solid rgba(10,127,46,0.35)",
+                      borderRadius: 6,
+                      padding: "6px 8px",
+                    }}
+                  >
+                    {themeSaveNotice}
+                  </div>
+                ) : null}
+                <div style={{ fontSize: 10, color: "rgba(0,0,0,0.68)" }}>
+                  Theme changes auto-save immediately and are used next time.
+                </div>
                 {/* Sidebar Theme Section */}
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>SIDEBAR THEME</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5711,7 +5750,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: sidebarTheme === "standard" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: sidebarTheme === "standard" ? 600 : 400,
                     }}
                   >
@@ -5727,7 +5766,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: sidebarTheme === "winterGray" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: sidebarTheme === "winterGray" ? 600 : 400,
                     }}
                   >
@@ -5743,7 +5782,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: sidebarTheme === "darkBlue" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: sidebarTheme === "darkBlue" ? 600 : 400,
                     }}
                   >
@@ -5764,7 +5803,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelves-light-single2.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelves-light-single2.png" ? 600 : 400,
                     }}
                   >
@@ -5780,7 +5819,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-dark-walnut.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-dark-walnut.png" ? 600 : 400,
                     }}
                   >
@@ -5796,7 +5835,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-weathered-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-weathered-oak.png" ? 600 : 400,
                     }}
                   >
@@ -5812,7 +5851,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-honey-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-honey-oak.png" ? 600 : 400,
                     }}
                   >
@@ -5828,7 +5867,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-teak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-teak.png" ? 600 : 400,
                     }}
                   >
@@ -5884,7 +5923,7 @@ export default function Page() {
                         borderRadius: 8,
                         padding: "4px 8px",
                         cursor: "pointer",
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                       }}
                     >
@@ -6016,7 +6055,7 @@ export default function Page() {
                         <select
                           value={quickInsetTarget}
                           onChange={(e) => setQuickInsetTarget(e.target.value)}
-                          style={{ padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
+                          style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
                         >
                           {quickInsetTargetOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -6028,7 +6067,7 @@ export default function Page() {
                         <select
                           value={quickInsetMode}
                           onChange={(e) => setQuickInsetMode(e.target.value as QuickInsetMode)}
-                          style={{ padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
+                          style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
                         >
                           {(quickTargetType === "game"
                             ? [
@@ -6142,25 +6181,34 @@ export default function Page() {
                     <div style={{ fontSize: 10, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
                       Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
                       {quickTargetType === "game" ? (
-                        <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover S/X/Y: {quickInsetSnapshot.coverScale.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
+                        <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
                       ) : null}
                     </div>
 
-                    <button
-                      onClick={() => saveInsetsToSheet(quickInsetSaveType)}
-                      style={{
-                        padding: "7px 10px",
-                        fontSize: 11,
-                        background: "#0066cc",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {quickInsetSaveLabel}
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button
+                        onClick={async () => {
+                          setQuickInsetSaveStatus("saving");
+                          const ok = await saveInsetsToSheet(quickInsetSaveType);
+                          setQuickInsetSaveStatus(ok ? "saved" : "error");
+                        }}
+                        style={{
+                          padding: "7px 10px",
+                          fontSize: 11,
+                          background: "#0066cc",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {quickInsetSaveLabel}
+                      </button>
+                      {quickInsetSaveStatus === "saving" ? <span style={{ fontSize: 10, color: "#555" }}>Saving inset settings...</span> : null}
+                      {quickInsetSaveStatus === "saved" ? <span style={{ fontSize: 10, color: "#0a7f2e" }}>Saved. These inset settings will be used next time.</span> : null}
+                      {quickInsetSaveStatus === "error" ? <span style={{ fontSize: 10, color: "#b42318" }}>Save failed</span> : null}
+                    </div>
                   </div>
                 ) : null}
 
@@ -6547,7 +6595,7 @@ export default function Page() {
                     border: "1px solid rgba(92, 60, 56, 0.3)",
                     background: "linear-gradient(180deg, rgba(139, 76, 76, 0.9) 0%, rgba(115, 62, 62, 0.9) 100%)",
                     color: "#fff",
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
                     boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
@@ -6576,7 +6624,7 @@ export default function Page() {
                     border: "1px solid rgba(60, 92, 92, 0.3)",
                     background: "linear-gradient(180deg, rgba(76, 115, 115, 0.9) 0%, rgba(62, 95, 95, 0.9) 100%)",
                     color: "#fff",
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
                     boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
@@ -6607,7 +6655,7 @@ export default function Page() {
                   justifyContent: "space-between",
                   gap: 10,
                   padding: "10px 12px",
-                  borderRadius: 12,
+                  borderRadius: 10,
                   background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
                   border: "1px solid rgba(92, 60, 56, 0.2)",
                   boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
@@ -6803,7 +6851,7 @@ export default function Page() {
                 width: 160,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 700 }}>Header Debug</div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Header Debug</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                 <span />
                 <button onClick={() => nudgeDebugHeader(0, -1)} style={{ cursor: "pointer" }}>↑</button>
@@ -6815,15 +6863,15 @@ export default function Page() {
                 <button onClick={() => nudgeDebugHeader(0, 1)} style={{ cursor: "pointer" }}>↓</button>
                 <span />
               </div>
-              <div ref={debugHeaderReadoutRef} style={{ fontSize: 12, opacity: 0.9 }}>X: 0, Y: 0</div>
+              <div ref={debugHeaderReadoutRef} style={{ fontSize: 11, opacity: 0.9 }}>X: 0, Y: 0</div>
             </div>
           ) : null}
           {error ? (
             <div
               style={{
                 background: "#fff",
-                border: "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 12,
+                border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                borderRadius: 10,
                 padding: 14,
                 color: "#8b0000",
                 fontWeight: 700,
@@ -6839,8 +6887,8 @@ export default function Page() {
             <div
               style={{
                 background: "#fff",
-                border: "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 12,
+                border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                borderRadius: 10,
                 padding: 14,
                 fontWeight: 700,
                 marginBottom: 16,
@@ -6908,7 +6956,7 @@ export default function Page() {
                     borderRadius: 8,
                     padding: "4px 8px",
                     cursor: "pointer",
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 700,
                   }}
                 >
@@ -7095,7 +7143,7 @@ export default function Page() {
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 900,
                         color: "rgba(250, 242, 230, 0.68)",
                         letterSpacing: "0.01em",
@@ -7122,7 +7170,7 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         height: 24,
-                        minWidth: 24,
+                        minWidth: 20,
                         padding: "3px 5px",
                         background: "rgba(28, 18, 10, 0.52)",
                         border: "1px solid rgba(10, 6, 3, 0.78)",
@@ -7157,7 +7205,7 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         height: 24,
-                        minWidth: 24,
+                        minWidth: 20,
                         padding: "3px 5px",
                         background: "rgba(28, 18, 10, 0.52)",
                         border: "1px solid rgba(10, 6, 3, 0.78)",
@@ -7257,7 +7305,7 @@ export default function Page() {
                       let overlayHeight = 100;
                       let overlayTop = 0;
                       let overlayLeft = 0;
-                      let coverScale = 100;
+                      let coverScale = { x: 100, y: 100 };
                       let coverOffsetX = 0;
                       let coverOffsetY = 0;
                       
@@ -7272,7 +7320,7 @@ export default function Page() {
                         overlayTop = overlay.top;
                         overlayLeft = overlay.left;
                         
-                        coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || 100;
+                        coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
                         const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
                         const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
                         coverOffsetX = platformCoverOffsetSettings.x;
@@ -7337,16 +7385,7 @@ export default function Page() {
                           />
 
                           {isGame ? (
-                            <div
-                              style={{
-                                position: "absolute",
-                                top: `${50 + overlayTop}%`,
-                                left: `${50 + overlayLeft}%`,
-                                width: "100%",
-                                height: "100%",
-                                transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
-                              }}
-                            >
+                            <>
                               <div
                                 style={{
                                   position: "absolute",
@@ -7384,7 +7423,7 @@ export default function Page() {
                                       height: "100%",
                                       objectFit: "cover",
                                       display: "block",
-                                      transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale / 100})`,
+                                      transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
                                       transformOrigin: "center",
                                     }}
                                     onError={e => {
@@ -7421,7 +7460,7 @@ export default function Page() {
                                       justifyContent: "center",
                                       textAlign: "center",
                                       padding: 10,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                       fontWeight: 800,
                                       color: "rgba(0,0,0,0.65)",
                                       background:
@@ -7443,31 +7482,43 @@ export default function Page() {
                                     background:
                                       "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
                                     mixBlendMode: "screen",
-                                    transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale / 100})`,
+                                    transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
                                     transformOrigin: "center",
                                   }}
                                 />
                               </div>
 
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={getPlatformFrameFilename(gamePlatform)}
-                                onError={(e) => {
-                                  if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
-                                    e.currentTarget.src = GAME_FRAME_IMAGE;
-                                  }
-                                }}
-                                alt=""
+                              <div
                                 style={{
                                   position: "absolute",
-                                  inset: 0,
-                                  objectFit: "fill",
+                                  top: `${50 + overlayTop}%`,
+                                  left: `${50 + overlayLeft}%`,
+                                  width: "100%",
+                                  height: "100%",
+                                  transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
                                   pointerEvents: "none",
-                                  userSelect: "none",
                                 }}
-                                draggable={false}
-                              />
-                            </div>
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={getPlatformFrameFilename(gamePlatform)}
+                                  onError={(e) => {
+                                    if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
+                                      e.currentTarget.src = GAME_FRAME_IMAGE;
+                                    }
+                                  }}
+                                  alt=""
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    objectFit: "fill",
+                                    pointerEvents: "none",
+                                    userSelect: "none",
+                                  }}
+                                  draggable={false}
+                                />
+                              </div>
+                            </>
                           ) : (
                             <>
                               <div
@@ -7542,7 +7593,7 @@ export default function Page() {
                                       justifyContent: "center",
                                       textAlign: "center",
                                       padding: 10,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                       fontWeight: 800,
                                       color: "rgba(0,0,0,0.65)",
                                       background:
@@ -7636,7 +7687,7 @@ export default function Page() {
               ))}
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
+            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
               View: {nav} · Shelves: {shelves.length} · {postersPerShelf} per shelf · lip offset {LIP_FROM_BOTTOM}px
             </div>
           </div>
@@ -7726,9 +7777,9 @@ export default function Page() {
           width: 100%;
           padding: 5px 8px;
           border-radius: 8px;
-          border: 1px solid rgba(0, 0, 0, 0.06);
-          background: rgba(255, 255, 255, 0.6);
-          color: rgba(0, 0, 0, 0.7);
+          border: ${sidebarTheme === "darkBlue" ? "1px solid rgba(142, 178, 234, 0.42)" : "1px solid rgba(0, 0, 0, 0.06)"};
+          background: ${sidebarTheme === "darkBlue" ? "rgba(19, 39, 72, 0.62)" : "rgba(255, 255, 255, 0.6)"};
+          color: ${sidebarTheme === "darkBlue" ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)"};
           font-size: 14px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
@@ -7736,11 +7787,12 @@ export default function Page() {
           transition: background 140ms ease, border-color 140ms ease;
         }
         .sideSubItem:hover {
-          background: rgba(0, 0, 0, 0.05);
+          background: ${sidebarTheme === "darkBlue" ? "rgba(36, 71, 122, 0.7)" : "rgba(0, 0, 0, 0.05)"};
         }
         .sideSubItem.active {
           background: ${currentTheme.activeHighlight};
           border-color: ${currentTheme.highlightBorder};
+          color: ${sidebarTheme === "darkBlue" ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
           font-weight: 700;
         }
         .case {
@@ -7782,7 +7834,7 @@ function NavButton({
       onClick={onClick}
       style={{
         width: "100%",
-        borderRadius: 12,
+        borderRadius: 10,
         border: "1px solid rgba(0,0,0,0.16)",
         background: active
           ? "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(230,230,230,0.95))"
@@ -7815,15 +7867,15 @@ function NavButton({
         style={{
           minWidth: 34,
           height: 22,
-          padding: "0 8px",
+          padding: "0 6px",
           borderRadius: 999,
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: 900,
           background: "rgba(0,0,0,0.08)",
-          border: "1px solid rgba(0,0,0,0.12)",
+          border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
           color: "rgba(0,0,0,0.72)",
         }}
       >
