@@ -247,6 +247,7 @@ const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const GAME_FRAME_IMAGE = "/game-frame.png";
 const APP_ICON = "/logo4.png";
+const SHOW_HEADER_DEBUG_CONTROLS = false;
 
 // Helper function to convert platform name to frame filename
 function getPlatformFrameFilename(platform?: string): string {
@@ -879,6 +880,32 @@ export default function Page() {
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
+  const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
+  const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const applyDebugHeaderOffset = useCallback(() => {
+    const { x, y } = debugHeaderOffsetRef.current;
+    if (debugHeaderLayerRef.current) {
+      debugHeaderLayerRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) scaleX(-1)`;
+    }
+    if (debugHeaderReadoutRef.current) {
+      debugHeaderReadoutRef.current.textContent = `X: ${x}, Y: ${y}`;
+    }
+  }, []);
+
+  const nudgeDebugHeader = useCallback((dx: number, dy: number) => {
+    debugHeaderOffsetRef.current = {
+      x: debugHeaderOffsetRef.current.x + dx,
+      y: debugHeaderOffsetRef.current.y + dy,
+    };
+    applyDebugHeaderOffset();
+  }, [applyDebugHeaderOffset]);
+
+  const resetDebugHeader = useCallback(() => {
+    debugHeaderOffsetRef.current = { x: 0, y: 0 };
+    applyDebugHeaderOffset();
+  }, [applyDebugHeaderOffset]);
 
   const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
 
@@ -936,6 +963,11 @@ export default function Page() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [settingsPopupOpen]);
+
+  useEffect(() => {
+    if (!SHOW_HEADER_DEBUG_CONTROLS) return;
+    applyDebugHeaderOffset();
+  }, [applyDebugHeaderOffset]);
 
   useEffect(() => {
     try {
@@ -3227,10 +3259,28 @@ export default function Page() {
   }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, posterSizeBooks, posterSizeMovies, posterSizeGames, posterSizeTv, gap]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111" }}>
+    <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
+      <div
+        aria-hidden
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 69,
+          zIndex: 1300,
+          pointerEvents: "none",
+          backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+          backgroundRepeat: "repeat-x",
+          backgroundPosition: "0 0",
+          backgroundSize: "auto 69px",
+          boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+        }}
+      />
       {/* Main layout: Sidebar + Content */}
       <div
         style={{
+          position: "relative",
           width: "100%",
           margin: 0,
           padding: 0,
@@ -3246,17 +3296,18 @@ export default function Page() {
           style={{
             position: "sticky",
             top: 0,
-            zIndex: settingsPopupOpen ? 6000 : 1200,
+            zIndex: settingsPopupOpen ? 6000 : 1400,
             alignSelf: "start",
             height: "100vh",
             minHeight: "100vh",
             borderRadius: "0 0 0 0",
+            isolation: "isolate",
             overflowY: "auto",
             overflowX: "hidden",
-            backgroundImage: currentTheme.background,
-            backgroundSize: "auto, 100% 100%",
-            backgroundPosition: "0 0, 0 0",
+            background: "transparent",
             border: "1px solid rgba(0,0,0,0.12)",
+            borderTop: "none",
+            borderLeft: "none",
             borderRight: "none",
             boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
             display: "flex",
@@ -3264,13 +3315,67 @@ export default function Page() {
             padding: "6px",
           }}
         >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 69,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 0,
+              pointerEvents: "none",
+              backgroundImage: `url(${shelfTheme})`,
+              backgroundRepeat: "repeat-y",
+              backgroundPosition: "center top",
+              backgroundSize: `100% ${SHELF_HEIGHT}px`,
+            }}
+          />
+          <div
+            ref={debugHeaderLayerRef}
+            aria-hidden
+            style={{
+              display: SHOW_HEADER_DEBUG_CONTROLS ? "block" : "none",
+              position: "absolute",
+              top: -1,
+              left: -220,
+              right: -220,
+              height: 69,
+              zIndex: 0,
+              pointerEvents: "none",
+              backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+              backgroundRepeat: "repeat-x",
+              backgroundPosition: "0 0",
+              backgroundSize: "auto 69px",
+              boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+              transform: "translate3d(0, 0, 0) scaleX(-1)",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 6,
+              zIndex: 1,
+              pointerEvents: "none",
+              borderRadius: 16,
+              overflow: "hidden",
+              clipPath: "inset(1px 0 0 0 round 16px)",
+              opacity: sidebarTheme === "winterGray" ? 0.8 : 0.84,
+              backgroundImage: currentTheme.background,
+              backgroundSize: "auto, 100% 100%",
+              backgroundPosition: "0 0, 0 0",
+            }}
+          />
           {/* Transparent module bubble wrapper */}
           <div
             style={{
+              position: "relative",
+              zIndex: 2,
               background: "rgba(255, 255, 255, 0.125)",
               borderRadius: 16,
-              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
-              border: "1px solid rgba(255, 255, 255, 0.4)",
+              boxShadow: "0 8px 18px rgba(0, 0, 0, 0.42), 0 3px 8px rgba(0, 0, 0, 0.28)",
+              border: "none",
               display: "flex",
               flexDirection: "column",
               flex: 1,
@@ -6671,6 +6776,39 @@ export default function Page() {
 
         {/* RIGHT CONTENT */}
         <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative" }}>
+          {SHOW_HEADER_DEBUG_CONTROLS ? (
+            <div
+              style={{
+                position: "fixed",
+                right: 20,
+                bottom: 20,
+                zIndex: 9000,
+                background: "rgba(20, 20, 20, 0.88)",
+                color: "#fff",
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.2)",
+                padding: 10,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                width: 160,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Header Debug</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                <span />
+                <button onClick={() => nudgeDebugHeader(0, -1)} style={{ cursor: "pointer" }}>↑</button>
+                <span />
+                <button onClick={() => nudgeDebugHeader(-1, 0)} style={{ cursor: "pointer" }}>←</button>
+                <button onClick={resetDebugHeader} style={{ cursor: "pointer" }}>Reset</button>
+                <button onClick={() => nudgeDebugHeader(1, 0)} style={{ cursor: "pointer" }}>→</button>
+                <span />
+                <button onClick={() => nudgeDebugHeader(0, 1)} style={{ cursor: "pointer" }}>↓</button>
+                <span />
+              </div>
+              <div ref={debugHeaderReadoutRef} style={{ fontSize: 12, opacity: 0.9 }}>X: 0, Y: 0</div>
+            </div>
+          ) : null}
           {error ? (
             <div
               style={{
@@ -6730,10 +6868,7 @@ export default function Page() {
                     position: "relative",
                     height: 69,
                     overflow: "hidden",
-                    backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center",
-                    backgroundSize: "100% 100%",
+                    background: "transparent",
                     borderRadius: 0,
                   }}
                 >
@@ -6741,18 +6876,214 @@ export default function Page() {
                     style={{
                       position: "absolute",
                       inset: 0,
+                      zIndex: 1401,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "flex-end",
+                      justifyContent: "space-between",
+                      paddingLeft: 18,
                       paddingRight: 20,
                       gap: 10,
                     }}
                   >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, width: "min(700px, calc(100% - 230px))" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          flex: 1,
+                          borderRadius: 14,
+                          border: "1px solid rgba(10, 6, 3, 0.68)",
+                          background: "rgba(16, 10, 6, 0.54)",
+                          boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+                          paddingLeft: 10,
+                        }}
+                      >
+                        <img
+                          src="/icon-search.png"
+                          alt=""
+                          width={14}
+                          height={14}
+                          style={{ display: "block", marginRight: 7, filter: "brightness(0) invert(1) opacity(0.62)" }}
+                        />
+                        <input
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="Search..."
+                          style={{
+                            flex: 1,
+                            height: 36,
+                            border: "none",
+                            background: "transparent",
+                            color: "rgba(250, 242, 230, 0.86)",
+                            fontSize: 15,
+                            fontWeight: 600,
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 800,
+                          letterSpacing: "0.08em",
+                          color: "rgba(250, 242, 230, 0.62)",
+                          textTransform: "uppercase",
+                          padding: "0 2px",
+                        }}
+                      >
+                        Sort
+                      </span>
+                      <div style={{ position: "relative", width: 160 }}>
+                        <div
+                          aria-hidden
+                          style={{
+                            height: 36,
+                            borderRadius: 12,
+                            border: "1px solid rgba(10, 6, 3, 0.78)",
+                            background: "rgba(28, 18, 10, 0.52)",
+                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                            color: "rgba(250, 242, 230, 0.68)",
+                            fontSize: 15,
+                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0 30px 0 10px",
+                          }}
+                        >
+                          {({
+                            Title: "Title",
+                            ReleaseDate: "Release Date",
+                            CompletedDate: "Completed Date",
+                            MyRatingSort: "My Rating",
+                            ExternalRatingSort: "User Rating",
+                            LastAirDate: "Last Air Date",
+                            FirstAirDate: "First Air Date",
+                          } as Record<string, string>)[sortField] || sortField}
+                        </div>
+                        <select
+                          value={sortField}
+                          onChange={(e) => setSortField(e.target.value)}
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            opacity: 0,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {nav === "books" && (
+                            <>
+                              <option value="Title">Title</option>
+                              <option value="ReleaseDate">Release Date</option>
+                              <option value="CompletedDate">Completed Date</option>
+                              <option value="MyRatingSort">My Rating</option>
+                              <option value="ExternalRatingSort">User Rating</option>
+                            </>
+                          )}
+                          {nav === "movies" && (
+                            <>
+                              <option value="Title">Title</option>
+                              <option value="ReleaseDate">Release Date</option>
+                              <option value="MyRatingSort">My Rating</option>
+                              <option value="ExternalRatingSort">User Rating</option>
+                            </>
+                          )}
+                          {nav === "tv" && (
+                            <>
+                              <option value="Title">Title</option>
+                              <option value="LastAirDate">Last Air Date</option>
+                              <option value="FirstAirDate">First Air Date</option>
+                              <option value="MyRatingSort">My Rating</option>
+                              <option value="ExternalRatingSort">User Rating</option>
+                            </>
+                          )}
+                          {nav === "games" && (
+                            <>
+                              <option value="Title">Title</option>
+                              <option value="ReleaseDate">Release Date</option>
+                              <option value="MyRatingSort">My Rating</option>
+                              <option value="ExternalRatingSort">User Rating</option>
+                            </>
+                          )}
+                          {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
+                            <>
+                              <option value="Title">Title</option>
+                              <option value="ReleaseDate">Release Date</option>
+                            </>
+                          )}
+                        </select>
+                        <span
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            right: 10,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "rgba(250, 242, 230, 0.68)",
+                            fontSize: 11,
+                            pointerEvents: "none",
+                          }}
+                        >
+                          ▼
+                        </span>
+                      </div>
+                      <div style={{ position: "relative", width: 86 }}>
+                        <div
+                          aria-hidden
+                          style={{
+                            height: 36,
+                            borderRadius: 12,
+                            border: "1px solid rgba(10, 6, 3, 0.78)",
+                            background: "rgba(28, 18, 10, 0.52)",
+                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                            color: "rgba(250, 242, 230, 0.68)",
+                            fontSize: 15,
+                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0 26px 0 10px",
+                          }}
+                        >
+                          {sortOrder}
+                        </div>
+                        <select
+                          value={sortOrder}
+                          onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            opacity: 0,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value="Asc">Asc</option>
+                          <option value="Desc">Desc</option>
+                        </select>
+                        <span
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            right: 10,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "rgba(250, 242, 230, 0.68)",
+                            fontSize: 11,
+                            pointerEvents: "none",
+                          }}
+                        >
+                          ▼
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span
                       style={{
-                        fontSize: 26,
+                        fontSize: 21,
                         fontWeight: 900,
-                        color: "rgba(250, 242, 230, 0.88)",
+                        color: "rgba(250, 242, 230, 0.68)",
                         letterSpacing: "0.01em",
                         lineHeight: 1,
                         transform: "translateY(-4px)",
@@ -6777,13 +7108,13 @@ export default function Page() {
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        height: 42,
-                        minWidth: 42,
-                        padding: "8px 10px",
+                        height: 39,
+                        minWidth: 39,
+                        padding: "8px 11px",
                         background: "rgba(28, 18, 10, 0.52)",
                         border: "1px solid rgba(10, 6, 3, 0.78)",
                         borderRadius: 12,
-                        color: "rgba(250, 242, 230, 0.92)",
+                        color: "rgba(250, 242, 230, 0.68)",
                         boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
                         cursor: "pointer",
                         transform: "translateY(-4px)",
@@ -6794,6 +7125,7 @@ export default function Page() {
                         <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
                       </svg>
                     </button>
+                    </div>
                   </div>
                 </div>
               ) : null}
