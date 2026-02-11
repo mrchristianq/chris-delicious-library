@@ -1024,11 +1024,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
           <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}${isEditingBook || isEditingShow || isEditingMovie || isEditingGame ? " bookEditRightPane" : ""}`}>
             {itemType !== "book" ? (
-              heroUrl ? (
-                <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" />
-              ) : (
-                <div className="heroFallback" />
-              )
+              heroUrl ? <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" /> : null
             ) : null}
 
             {description && itemType !== "book" && !(itemType === "tv" && isEditingShow) && !(itemType === "movie" && isEditingMovie) && !(itemType === "game" && isEditingGame) ? (
@@ -1370,8 +1366,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: grid;
           place-items: center;
           padding: 22px;
-          background: rgba(6, 11, 22, 0.72);
-          backdrop-filter: blur(5px);
+          background: rgba(0, 0, 0, 0.02);
         }
 
         .mediaModalCard {
@@ -1379,39 +1374,48 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           width: min(1320px, 96vw);
           max-height: min(92vh, 1100px);
           overflow: auto;
-          padding: 14px 16px 16px;
+          padding: 10px 12px 12px;
           border-radius: 22px;
-          border: 1px solid rgba(70, 98, 152, 0.35);
-          background: linear-gradient(180deg, rgba(7, 14, 32, 0.97) 0%, rgba(8, 12, 25, 0.97) 100%);
-          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+          border: 1px solid rgba(108, 146, 214, 0.35);
+          background: linear-gradient(180deg, rgba(18, 34, 61, 0.78) 0%, rgba(12, 24, 44, 0.74) 100%);
+          box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(2px);
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .mediaModalCard::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
         }
 
         .closeButton {
-          width: 34px;
-          height: 34px;
-          border: 1px solid rgba(86, 110, 160, 0.5);
+          width: 30px;
+          height: 30px;
+          border: 1px solid rgba(120, 153, 220, 0.5);
           border-radius: 10px;
-          background: rgba(10, 22, 49, 0.9);
-          color: #d6deef;
-          font-size: 22px;
+          background: rgba(14, 30, 58, 0.72);
+          color: #dbe6fa;
+          font-size: 19px;
           line-height: 1;
           cursor: pointer;
         }
 
         .topRightActions {
           position: absolute;
-          top: 10px;
-          right: 10px;
+          top: 8px;
+          right: 8px;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
           z-index: 2;
         }
 
         .contentLayout {
           display: grid;
-          grid-template-columns: 300px minmax(0, 1fr);
-          gap: 18px;
+          grid-template-columns: 270px minmax(0, 1fr);
+          gap: 12px;
           align-items: start;
         }
 
@@ -1461,7 +1465,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border-radius: 16px;
           background: rgba(6, 16, 35, 0.82);
           color: #dff0ff;
-          font-size: 13px;
+          font-size: 11px;
           font-weight: 700;
           letter-spacing: 0.03em;
           opacity: 0;
@@ -1478,8 +1482,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
           color: #d6e2ff;
-          padding: 7px 10px;
-          font-size: 12px;
+          padding: 6px 8px;
+          font-size: 11px;
           font-weight: 700;
           cursor: pointer;
           width: 100%;
@@ -1495,7 +1499,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .replaceCoverError {
           color: #ffb6b6;
-          font-size: 12px;
+          font-size: 11px;
           margin-top: 8px;
           line-height: 1.35;
         }
@@ -1509,18 +1513,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .title {
-          margin: 14px 0 10px;
+          margin: 10px 0 7px;
           color: #f4f7ff;
-          font-size: 36px;
+          font-size: 28px;
           line-height: 1.05;
           letter-spacing: 0.01em;
           font-weight: 800;
         }
 
         .subtitle {
-          margin: -4px 0 10px;
+          margin: -2px 0 7px;
           color: #d7e1f8;
-          font-size: 20px;
+          font-size: 16px;
           line-height: 1.2;
           font-weight: 600;
         }
@@ -1536,28 +1540,28 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .titleInput {
-          margin: 14px 0 8px;
-          font-size: 28px;
+          margin: 10px 0 6px;
+          font-size: 22px;
           line-height: 1.1;
           font-weight: 800;
-          padding: 8px 10px;
+          padding: 6px 8px;
         }
 
         .subtitleInput {
-          margin: 0 0 10px;
-          font-size: 18px;
+          margin: 0 0 7px;
+          font-size: 15px;
           line-height: 1.2;
           font-weight: 600;
-          padding: 8px 10px;
+          padding: 6px 8px;
         }
 
         .coverActionsPanel {
           width: 100%;
           margin: 2px 0 2px;
           border: 1px solid rgba(73, 102, 154, 0.35);
-          border-radius: 14px;
+          border-radius: 12px;
           background: rgba(15, 24, 44, 0.62);
-          padding: 10px;
+          padding: 8px;
         }
 
         .coverSourceRow {
@@ -1569,8 +1573,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         .chipWrap {
           display: flex;
           flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 6px;
+          gap: 6px;
+          margin-top: 4px;
         }
 
         .chip {
@@ -1578,20 +1582,20 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border: 1px solid rgba(90, 116, 170, 0.45);
           background: rgba(28, 42, 70, 0.65);
           color: #d6deef;
-          font-size: 15px;
+          font-size: 12px;
           font-weight: 700;
           line-height: 1;
-          padding: 10px 16px;
+          padding: 6px 10px;
         }
 
         .chipSection {
           width: 100%;
-          margin-top: 10px;
+          margin-top: 7px;
         }
 
         .chipSectionLabel {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.06em;
           text-transform: uppercase;
@@ -1599,13 +1603,13 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .statusValue {
           color: #f0f4ff;
-          font-size: 20px;
+          font-size: 15px;
           font-weight: 600;
-          margin-top: 6px;
+          margin-top: 4px;
         }
 
         .twoStateTextOnly {
-          font-size: 20px;
+          font-size: 15px;
           font-weight: 800;
           line-height: 1.2;
         }
@@ -1624,7 +1628,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .coverSourceHeading {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.06em;
           text-transform: uppercase;
@@ -1633,7 +1637,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .activeSource {
           color: #f0f4ff;
-          font-size: 13px;
+          font-size: 11px;
           font-weight: 700;
           margin-top: 0;
           line-height: 1.35;
@@ -1650,7 +1654,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .bookEditToolbar {
           display: flex;
-          gap: 8px;
+          gap: 6px;
           align-items: center;
         }
 
@@ -1660,8 +1664,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
           color: #d6e2ff;
-          padding: 8px 12px;
-          font-size: 12px;
+          padding: 6px 9px;
+          font-size: 11px;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.05em;
@@ -1669,8 +1673,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .topActionButton {
-          padding: 6px 9px;
-          font-size: 11px;
+          padding: 5px 8px;
+          font-size: 10px;
         }
 
         .editButton:disabled,
@@ -1682,17 +1686,17 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         .editGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
+          gap: 8px;
         }
 
         .editField {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          border-radius: 14px;
+          gap: 4px;
+          border-radius: 10px;
           border: 1px solid rgba(73, 102, 154, 0.35);
           background: rgba(15, 24, 44, 0.72);
-          padding: 10px 12px;
+          padding: 7px 8px;
         }
 
         .editFieldFullWidth {
@@ -1701,7 +1705,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .editLabel {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.04em;
           text-transform: uppercase;
@@ -1709,7 +1713,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .editHelp {
           color: rgba(178, 193, 224, 0.75);
-          font-size: 11px;
+          font-size: 10px;
           line-height: 1.2;
         }
 
@@ -1721,40 +1725,40 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border-radius: 8px;
           background: rgba(8, 14, 30, 0.8);
           color: #eff5ff;
-          padding: 8px 10px;
-          font-size: 14px;
+          padding: 6px 8px;
+          font-size: 12px;
           line-height: 1.3;
           outline: none;
         }
 
         .editTextarea {
           resize: vertical;
-          min-height: 96px;
+          min-height: 76px;
         }
 
         .multiSelectInput {
-          min-height: 120px;
-          padding-top: 8px;
-          padding-bottom: 8px;
+          min-height: 94px;
+          padding-top: 6px;
+          padding-bottom: 6px;
         }
 
         .editDescriptionTextarea {
-          min-height: 220px;
-          line-height: 1.45;
+          min-height: 170px;
+          line-height: 1.35;
         }
 
         .bookSaveError {
           margin: 6px 0 2px;
           grid-column: 1 / -1;
           color: #ffb6b6;
-          font-size: 13px;
+          font-size: 11px;
           line-height: 1.35;
         }
 
         .bookSaveSuccess {
           margin: 6px 0 2px;
           color: #b9f5d0;
-          font-size: 13px;
+          font-size: 11px;
           line-height: 1.35;
         }
 
@@ -1762,7 +1766,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           min-width: 0;
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          gap: 10px;
         }
 
         .bookRightPane {
@@ -1777,12 +1781,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           margin-top: 8px;
         }
 
-        .heroImage,
-        .heroFallback {
+        .heroImage {
           width: 100%;
-          min-height: 280px;
-          max-height: 420px;
-          border-radius: 24px;
+          min-height: 220px;
+          max-height: 320px;
+          border-radius: 16px;
           border: 1px solid rgba(83, 111, 167, 0.32);
         }
 
@@ -1791,24 +1794,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: block;
         }
 
-        .heroFallback {
-          background:
-            radial-gradient(circle at 70% 18%, rgba(59, 82, 128, 0.42), transparent 52%),
-            linear-gradient(160deg, rgba(16, 30, 58, 0.85) 0%, rgba(9, 17, 35, 0.95) 100%);
-        }
-
         .infoGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
+          gap: 9px;
         }
 
         .infoCard,
         .descriptionCard {
-          border-radius: 20px;
+          border-radius: 14px;
           border: 1px solid rgba(73, 102, 154, 0.35);
           background: rgba(15, 24, 44, 0.72);
-          padding: 14px 16px;
+          padding: 10px 11px;
         }
 
         .infoCardFullWidth {
@@ -1817,27 +1814,27 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .label {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 15px;
+          font-size: 12px;
           font-weight: 700;
           letter-spacing: 0.04em;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
 
         .value {
           color: #f0f4ff;
-          font-size: 20px;
+          font-size: 15px;
           line-height: 1.25;
           font-weight: 700;
-          min-height: 26px;
+          min-height: 20px;
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 7px;
         }
 
         :global(.ratingValue) {
           display: inline-flex;
           align-items: center;
-          gap: 10px;
+          gap: 6px;
         }
 
         :global(.stars) {
@@ -1867,14 +1864,14 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         :global(.score) {
           color: #edf4ff;
-          font-size: 20px;
+          font-size: 15px;
           font-weight: 800;
         }
 
         .description {
           color: #e2e9fb;
-          font-size: 16px;
-          line-height: 1.4;
+          font-size: 13px;
+          line-height: 1.3;
           white-space: pre-wrap;
         }
 
@@ -1937,8 +1934,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             padding: 8px;
           }
 
-          .heroImage,
-          .heroFallback {
+          .heroImage {
             min-height: 180px;
             border-radius: 14px;
           }

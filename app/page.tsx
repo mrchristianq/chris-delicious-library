@@ -1,6 +1,6 @@
 /* =====================================================================================
   Chris' Delicious Library
-  Version: 3.0.0
+  Version: 4.0.0
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -9,6 +9,16 @@
    - Posters align to shelf lip
    - DVD case frame overlay (no left border) + glossy black edge
    
+   v4.0.0 Changes:
+   - Added full Inset Studio modal workflow for cover inset editing
+   - Inset Studio now supports TV Shows, Movies, Books, and Games
+   - Games support platform-specific overlay transform + cover scale/offset controls
+   - Added random sample cover preview cycling in Inset Studio
+   - Added visual save feedback in Inset Studio (Saving / Saved / Failed)
+   - Improved cover clipping alignment so game cover art cannot bleed outside overlay aperture
+   - Added direct "Cover Inset Studio" button at top of Settings modal
+   - Reduced Media popup density (smaller typography/padding) so more fields fit onscreen
+
    v3.0.0 Changes:
    - Added Sidebar Theme system with two themes: Standard and Winter Gray
    - New "Sidebar Theme" section under Themes menu for easy switching
@@ -93,6 +103,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
+import { InsetStudioModal } from "./components/InsetStudioModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -241,7 +252,7 @@ const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
-const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_header_dark_walnut.png";
+const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -652,6 +663,7 @@ export default function Page() {
   const [nav, setNav] = useState<NavKey>("home");
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
+  const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
   const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
@@ -734,6 +746,26 @@ export default function Page() {
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
 
+  const clearAllFilters = useCallback(() => {
+    setQuery("");
+    setWatchFilter(null);
+    setShowFilter(null);
+    setTagFilter(null);
+    setMovieWatchFilter(null);
+    setMovieGenreFilter(null);
+    setReadingStatusFilter(null);
+    setFormatFilter(null);
+    setSeriesFilter(null);
+    setGenreFilter(null);
+    setGamePlatformFilter(null);
+    setGameStatusFilter(null);
+    setGameOwnershipFilter(null);
+    setGameFormatFilter(null);
+    setGameYearPlayedFilter(null);
+    setGameGenreFilter(null);
+    setWishlistFilter(false);
+  }, []);
+
   // Logo positioning and sizing
   const [logoSize, setLogoSize] = useState<number>(230);
   const [logoTop, setLogoTop] = useState<number>(12);
@@ -768,7 +800,16 @@ export default function Page() {
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   
   // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>("winterGray");
+  const [sidebarTheme, setSidebarTheme] = useState<string>(() => {
+    if (typeof window === "undefined") return "winterGray";
+    try {
+      const cache = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      const cachedTheme = String(cache?.sidebarTheme || "").trim();
+      return cachedTheme || "winterGray";
+    } catch {
+      return "winterGray";
+    }
+  });
   
   // Theme configurations
   const sidebarThemes = {
@@ -807,6 +848,25 @@ export default function Page() {
       highlightBgEnd: "rgba(100, 130, 128, 0.95)",
       highlightBorder: "rgba(118, 151, 149, 0.6)",
       activeHighlight: "rgba(118, 151, 149, 0.28)",
+    },
+    darkBlue: {
+      background:
+        "linear-gradient(180deg, rgba(18, 34, 61, 0.78) 0%, rgba(12, 24, 44, 0.74) 100%), linear-gradient(180deg, rgba(10, 20, 38, 0.72) 0%, rgba(8, 15, 30, 0.72) 100%)",
+      primaryColor: "#9eb8e6",
+      secondaryColor: "#d7e4ff",
+      textColor: "rgba(233, 240, 255, 0.9)",
+      arrowColor: "rgba(210, 226, 255, 0.65)",
+      rolodexColor: "#b7c9ef",
+      rolodexDigitColor: "#d7e4ff",
+      rolodexLabelColor: "#dbe7ff",
+      rolodexTileBg: "linear-gradient(180deg, rgba(30, 49, 82, 0.92) 0%, rgba(22, 36, 63, 0.92) 100%)",
+      rolodexTileBorder: "rgba(148,177,228,.35)",
+      countBubbleColor: "#5a78b8",
+      syncedTextColor: "#cfe0ff",
+      highlightBg: "rgba(42, 69, 114, 0.92)",
+      highlightBgEnd: "rgba(31, 54, 95, 0.95)",
+      highlightBorder: "rgba(121, 154, 214, 0.52)",
+      activeHighlight: "rgba(89, 123, 186, 0.28)",
     }
   };
   
@@ -861,11 +921,18 @@ export default function Page() {
     "Default": 100,
   });
   
+  // Platform-specific cover offset (crop/position inside inset)
+  const [platformCoverOffset, setPlatformCoverOffset] = useState<Record<string, { x: number; y: number }>>({
+    "Default": { x: 0, y: 0 },
+  });
+  
   // Track which platforms have been explicitly customized (not using Default)
   const [customizedPlatforms, setCustomizedPlatforms] = useState<Set<string>>(new Set());
   
   // UI: Selected platform for editing insets
   const [selectedPlatformForInsets, setSelectedPlatformForInsets] = useState<string>("Default");
+  const [insetStudioOpen, setInsetStudioOpen] = useState<boolean>(false);
+  const [insetStudioMediaType, setInsetStudioMediaType] = useState<"tv" | "movie" | "book" | "game">("game");
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   
@@ -956,13 +1023,16 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (!settingsPopupOpen) return;
+    if (!settingsPopupOpen && !sortPopupOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSettingsPopupOpen(false);
+      if (event.key === "Escape") {
+        setSettingsPopupOpen(false);
+        setSortPopupOpen(false);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [settingsPopupOpen]);
+  }, [settingsPopupOpen, sortPopupOpen]);
 
   useEffect(() => {
     if (!SHOW_HEADER_DEBUG_CONTROLS) return;
@@ -1669,6 +1739,7 @@ export default function Page() {
         const insets = platformInsets[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
         const overlaySettings = platformOverlaySettings[platform] || { width: 100, height: 100, top: 0, left: 0 };
         const coverScale = platformCoverScale[platform] || 100;
+        const coverOffset = platformCoverOffset[platform] || { x: 0, y: 0 };
         
         savePromises = [
           saveSettingToSheet(`${platform}InsetTopPx`, insets.top, `${platform} Insets`, `${platform} Top Inset (px)`),
@@ -1680,6 +1751,8 @@ export default function Page() {
           saveSettingToSheet(`${platform}OverlayTop`, overlaySettings.top, `${platform} Overlay`, `${platform} Overlay Top (%)`),
           saveSettingToSheet(`${platform}OverlayLeft`, overlaySettings.left, `${platform} Overlay`, `${platform} Overlay Left (%)`),
           saveSettingToSheet(`${platform}CoverScale`, coverScale, `${platform} Cover`, `${platform} Cover Scale (%)`),
+          saveSettingToSheet(`${platform}CoverOffsetX`, coverOffset.x, `${platform} Cover`, `${platform} Cover Offset X (%)`),
+          saveSettingToSheet(`${platform}CoverOffsetY`, coverOffset.y, `${platform} Cover`, `${platform} Cover Offset Y (%)`),
         ];
       }
 
@@ -1691,10 +1764,12 @@ export default function Page() {
       setTimeout(() => {
         setSyncMsg("Synced");
       }, 2000);
+      return true;
     } catch (e) {
       console.error(`Failed to save ${insetType} insets:`, e);
       setSyncState("error");
       setSyncMsg(`Failed to save ${insetType} insets`);
+      return false;
     }
   };
 
@@ -1753,6 +1828,13 @@ export default function Page() {
       "Default": getSetting("DefaultCoverScale", 100),
     };
     
+    const loadedPlatformCoverOffset: Record<string, { x: number; y: number }> = {
+      "Default": {
+        x: getSetting("DefaultCoverOffsetX", 0),
+        y: getSetting("DefaultCoverOffsetY", 0),
+      },
+    };
+    
     // Load settings for any platforms found in settings
     settingsRows.forEach(row => {
       const key = safeStr(row["Key"]);
@@ -1793,11 +1875,22 @@ export default function Page() {
         loadedPlatformCoverScale[platform] = getSetting(`${platform}CoverScale`, 100);
         loadedCustomizedPlatforms.add(platform);
       }
+      
+      const coverOffsetMatch = key.match(/^(.+)CoverOffsetX$/);
+      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default") {
+        const platform = coverOffsetMatch[1];
+        loadedPlatformCoverOffset[platform] = {
+          x: getSetting(`${platform}CoverOffsetX`, 0),
+          y: getSetting(`${platform}CoverOffsetY`, 0),
+        };
+        loadedCustomizedPlatforms.add(platform);
+      }
     });
     
     setPlatformInsets(loadedPlatformInsets);
     setPlatformOverlaySettings(loadedPlatformOverlaySettings);
     setPlatformCoverScale(loadedPlatformCoverScale);
+    setPlatformCoverOffset(loadedPlatformCoverOffset);
     setCustomizedPlatforms(loadedCustomizedPlatforms);
     
     setLogoSize(getSetting("logoSize", 230));
@@ -2203,6 +2296,24 @@ export default function Page() {
     saveSetting(`${platform}CoverScale`, value, `${platform} Cover`, `${platform} Cover Scale (%)`);
   };
   
+  // Update platform-specific cover offset (crop position inside inset)
+  const updatePlatformCoverOffset = (platform: string, axis: 'x' | 'y', value: number) => {
+    const axisLabel = axis.toUpperCase();
+    setPlatformCoverOffset(prev => ({
+      ...prev,
+      [platform]: {
+        ...(prev[platform] || { x: 0, y: 0 }),
+        [axis]: value,
+      },
+    }));
+    
+    if (platform !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    }
+    
+    saveSetting(`${platform}CoverOffset${axisLabel}`, value, `${platform} Cover`, `${platform} Cover Offset ${axisLabel} (%)`);
+  };
+  
   const updateLogoSize = (value: number) => {
     setLogoSize(value);
     saveSetting("logoSize", value, "Logo Settings", "Logo Size (px)");
@@ -2570,6 +2681,65 @@ export default function Page() {
       return a.localeCompare(b);
     });
   }, [allGames]);
+
+  const insetStudioSampleCoversByType = useMemo(() => {
+    const gamePlatform = selectedPlatformForInsets;
+    const tv = Array.from(
+      new Set(
+        allShows
+          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
+          .filter(Boolean)
+      )
+    );
+    const movie = Array.from(
+      new Set(
+        allMovies
+          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl))
+          .filter(Boolean)
+      )
+    );
+    const book = Array.from(
+      new Set(
+        allBooks
+          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
+          .filter(Boolean)
+      )
+    );
+    const game = Array.from(
+      new Set(
+        allGames
+          .filter((gameItem) => {
+            if (gamePlatform === "Default") return true;
+            const values = safeStr(gameItem.platform)
+              .split(",")
+              .map((part) => part.trim())
+              .filter(Boolean);
+            return values.includes(gamePlatform);
+          })
+          .map((item) => safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl) || safeStr(item.posterUrlFallback))
+          .filter(Boolean)
+      )
+    );
+    return { tv, movie, book, game };
+  }, [allBooks, allGames, allMovies, allShows, selectedPlatformForInsets]);
+
+  const insetStudioSampleCovers = insetStudioSampleCoversByType[insetStudioMediaType];
+
+  const saveInsetStudioSettings = async () => {
+    const ok = await saveInsetsToSheet(insetStudioMediaType);
+    if (!ok) {
+      throw new Error("Failed to save inset settings");
+    }
+  };
+
+  const insetStudioSaveLabel =
+    insetStudioMediaType === "game"
+      ? `Save ${selectedPlatformForInsets} Game Insets`
+      : insetStudioMediaType === "tv"
+        ? "Save TV Show Insets"
+        : insetStudioMediaType === "movie"
+          ? "Save Movie Insets"
+          : "Save Book Insets";
 
   // Note: We do NOT auto-initialize platformInsets for detected platforms
   // Only platforms explicitly customized (or loaded from settings) get entries
@@ -3267,13 +3437,13 @@ export default function Page() {
           top: 0,
           left: 0,
           right: 0,
-          height: 69,
+          height: 45,
           zIndex: 1300,
           pointerEvents: "none",
           backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
           backgroundRepeat: "repeat-x",
           backgroundPosition: "0 0",
-          backgroundSize: "auto 69px",
+          backgroundSize: "auto 45px",
           boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
         }}
       />
@@ -3319,7 +3489,7 @@ export default function Page() {
             aria-hidden
             style={{
               position: "absolute",
-              top: 69,
+              top: 45,
               left: 0,
               right: 0,
               bottom: 0,
@@ -3340,13 +3510,13 @@ export default function Page() {
               top: -1,
               left: -220,
               right: -220,
-              height: 69,
+              height: 45,
               zIndex: 0,
               pointerEvents: "none",
               backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
               backgroundRepeat: "repeat-x",
               backgroundPosition: "0 0",
-              backgroundSize: "auto 69px",
+              backgroundSize: "auto 45px",
               boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
               transform: "translate3d(0, 0, 0) scaleX(-1)",
             }}
@@ -3361,7 +3531,7 @@ export default function Page() {
               borderRadius: 16,
               overflow: "hidden",
               clipPath: "inset(1px 0 0 0 round 16px)",
-              opacity: sidebarTheme === "winterGray" ? 0.8 : 0.84,
+              opacity: sidebarTheme === "winterGray" ? 0.8 : sidebarTheme === "darkBlue" ? 0.9 : 0.84,
               backgroundImage: currentTheme.background,
               backgroundSize: "auto, 100% 100%",
               backgroundPosition: "0 0, 0 0",
@@ -3369,6 +3539,7 @@ export default function Page() {
           />
           {/* Transparent module bubble wrapper */}
           <div
+            className="sidebarScrollContent"
             style={{
               position: "relative",
               zIndex: 2,
@@ -3440,142 +3611,6 @@ export default function Page() {
               />
             </div>
           )}
-
-          {/* Search */}
-          <div style={{ padding: "10px 18px 0 18px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                borderRadius: 16,
-                border: `1px solid ${currentTheme.highlightBorder}`,
-                background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
-                paddingLeft: "10px",
-              }}
-            >
-              <img src="/icon-search.png" alt="" width={iconSize * 0.6} height={iconSize * 0.6} style={{ display: "block", background: "transparent", marginRight: "6px", filter: "brightness(0) invert(1) opacity(0.7)" }} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…"
-                style={{
-                  flex: 1,
-                  padding: "9px 10px",
-                  border: "none",
-                  background: "transparent",
-                  color: "rgba(255, 255, 255, 0.95)",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  outline: "none",
-                }}
-                className="search-input"
-              />
-            </div>
-          </div>
-
-          {/* Sort Module */}
-          <div style={{ padding: "0 18px", marginTop: 10 }}>
-            <div
-              style={{
-                fontSize: sidebarHeaderFontSize,
-                fontWeight: sidebarHeaderFontWeight,
-                letterSpacing: "0.04em",
-                color: currentTheme.primaryColor,
-                marginBottom: 6,
-                fontFamily: "Nunito, sans-serif",
-              }}
-            >
-              SORT
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {/* Sort Field Dropdown */}
-              <div style={{ flex: 1 }}>
-                <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: `1px solid ${currentTheme.highlightBorder}`,
-                    background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
-                    color: "rgba(255, 255, 255, 0.95)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    outline: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {nav === "books" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="CompletedDate">Completed Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "movies" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "tv" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="LastAirDate">Last Air Date</option>
-                      <option value="FirstAirDate">First Air Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "games" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                    </>
-                  )}
-                </select>
-              </div>
-              
-              {/* Sort Order Dropdown */}
-              <div style={{ flex: 1 }}>
-                <select
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: `1px solid ${currentTheme.highlightBorder}`,
-                    background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
-                    color: "rgba(255, 255, 255, 0.95)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    outline: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <option value="Asc">Asc</option>
-                  <option value="Desc">Desc</option>
-                </select>
-              </div>
-            </div>
-          </div>
 
           <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 12, flex: 1, marginTop: 14 }}>
             {/* Library Module */}
@@ -4503,7 +4538,12 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(26, 47, 92, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
                         color: "#fff",
                       }}
                     >
@@ -4929,7 +4969,12 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(112, 88, 174, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
                         color: "#fff",
                       }}
                     >
@@ -4985,7 +5030,12 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "watchlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(56, 142, 173, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
                         color: "#fff",
                       }}
                     >
@@ -5319,6 +5369,22 @@ export default function Page() {
                   >
                     Winter Gray
                   </button>
+                  <button
+                    onClick={() => updateSidebarTheme("darkBlue")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: sidebarTheme === "darkBlue" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: sidebarTheme === "darkBlue" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: sidebarTheme === "darkBlue" ? 600 : 400,
+                    }}
+                  >
+                    Dark Blue
+                  </button>
                 </div>
                 
                 {/* Shelf Wood Type Section */}
@@ -5462,6 +5528,26 @@ export default function Page() {
                     </button>
                   </div>
                 ) : null}
+                <button
+                  onClick={() => setInsetStudioOpen(true)}
+                  style={{
+                    width: "100%",
+                    marginBottom: 8,
+                    padding: "10px 12px",
+                    border: "1px solid rgba(13, 99, 199, 0.55)",
+                    background: "linear-gradient(180deg, #1b74de 0%, #0f5fbe 100%)",
+                    color: "#fff",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    letterSpacing: "0.02em",
+                    textAlign: "center",
+                    boxShadow: "0 6px 14px rgba(11, 59, 118, 0.28)",
+                  }}
+                >
+                  Cover Inset Studio
+                </button>
                 {/* Cover Size */}
                 <button
                   onClick={() => setSettingsOpen({ ...settingsOpen, coverSize: !settingsOpen.coverSize })}
@@ -6027,6 +6113,24 @@ export default function Page() {
                               ))}
                             </select>
                           </label>
+                          <button
+                            onClick={() => {
+                              setInsetStudioMediaType("game");
+                              setInsetStudioOpen(true);
+                            }}
+                            style={{
+                              padding: "8px 10px",
+                              fontSize: 12,
+                              background: "#1b6ed1",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Open Inset Studio
+                          </button>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
                             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                               <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
@@ -6776,6 +6880,41 @@ export default function Page() {
 
         {/* RIGHT CONTENT */}
         <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative" }}>
+          <div
+            aria-hidden
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 320,
+              right: 0,
+              height: 45,
+              zIndex: 1399,
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
+                fontSize: 24,
+                fontWeight: 500,
+                lineHeight: 1,
+                letterSpacing: "0.01em",
+                color: "rgba(76, 52, 34, 0.55)",
+                textShadow:
+                  "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
+                mixBlendMode: "multiply",
+                opacity: 0.9,
+                transform: "translateY(-2.5px)",
+                userSelect: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {APP_TITLE}
+            </span>
+          </div>
           {SHOW_HEADER_DEBUG_CONTROLS ? (
             <div
               style={{
@@ -6841,10 +6980,13 @@ export default function Page() {
             </div>
           ) : null}
 
-          {settingsPopupOpen ? (
+          {settingsPopupOpen || sortPopupOpen ? (
             <button
-              aria-label="Close settings popup"
-              onClick={() => setSettingsPopupOpen(false)}
+              aria-label="Close popup"
+              onClick={() => {
+                setSettingsPopupOpen(false);
+                setSortPopupOpen(false);
+              }}
               style={{
                 position: "fixed",
                 inset: 0,
@@ -6858,6 +7000,136 @@ export default function Page() {
             />
           ) : null}
 
+          {sortPopupOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                top: 84,
+                right: 74,
+                width: "min(320px, calc(100vw - 40px))",
+                zIndex: 5000,
+                padding: 14,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                background: "rgba(248, 244, 236, 0.98)",
+                border: "1px solid rgba(58, 37, 24, 0.38)",
+                borderRadius: 14,
+                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+                backdropFilter: "blur(2px)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingBottom: 8,
+                  borderBottom: "1px solid rgba(0,0,0,0.12)",
+                }}
+              >
+                <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Sort</span>
+                <button
+                  onClick={() => setSortPopupOpen(false)}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.85)",
+                    color: "#5c3c38",
+                    borderRadius: 8,
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>
+                SORT BY
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {nav === "books" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="CompletedDate">Completed Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "movies" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "tv" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="LastAirDate">Last Air Date</option>
+                      <option value="FirstAirDate">First Air Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "games" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                    </>
+                  )}
+                </select>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>
+                ORDER
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="Asc">Asc</option>
+                  <option value="Desc">Desc</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
           {/* Stage measures width so shelves always align */}
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
@@ -6865,11 +7137,13 @@ export default function Page() {
               {shelfTheme === DEFAULT_SHELF_IMAGE ? (
                 <div
                   style={{
-                    position: "relative",
-                    height: 69,
+                    position: "sticky",
+                    top: 0,
+                    height: 45,
                     overflow: "hidden",
                     background: "transparent",
                     borderRadius: 0,
+                    zIndex: 2000,
                   }}
                 >
                   <div
@@ -6880,30 +7154,31 @@ export default function Page() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      paddingLeft: 18,
-                      paddingRight: 20,
-                      gap: 10,
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      gap: 5,
+                      transform: "translateY(-4.5px)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, width: "min(700px, calc(100% - 230px))" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(260px, calc(100% - 220px))" }}>
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           flex: 1,
-                          borderRadius: 14,
+                          borderRadius: 9,
                           border: "1px solid rgba(10, 6, 3, 0.68)",
                           background: "rgba(16, 10, 6, 0.54)",
                           boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
-                          paddingLeft: 10,
+                          paddingLeft: 7,
                         }}
                       >
                         <img
                           src="/icon-search.png"
                           alt=""
-                          width={14}
-                          height={14}
-                          style={{ display: "block", marginRight: 7, filter: "brightness(0) invert(1) opacity(0.62)" }}
+                          width={9}
+                          height={9}
+                          style={{ display: "block", marginRight: 4, filter: "brightness(0) invert(1) opacity(0.62)" }}
                         />
                         <input
                           value={query}
@@ -6911,187 +7186,55 @@ export default function Page() {
                           placeholder="Search..."
                           style={{
                             flex: 1,
-                            height: 36,
+                            height: 22,
                             border: "none",
                             background: "transparent",
                             color: "rgba(250, 242, 230, 0.86)",
-                            fontSize: 15,
+                            fontSize: 11,
                             fontWeight: 600,
                             outline: "none",
                           }}
                         />
                       </div>
-                      <span
+                      <button
+                        onClick={clearAllFilters}
+                        title="Clear filters"
+                        aria-label="Clear filters"
                         style={{
-                          fontSize: 13,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 24,
+                          minWidth: 58,
+                          padding: "3px 6px",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: "rgba(250, 242, 230, 0.72)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                          fontSize: 10,
                           fontWeight: 800,
-                          letterSpacing: "0.08em",
-                          color: "rgba(250, 242, 230, 0.62)",
+                          letterSpacing: "0.04em",
                           textTransform: "uppercase",
-                          padding: "0 2px",
                         }}
                       >
-                        Sort
-                      </span>
-                      <div style={{ position: "relative", width: 160 }}>
-                        <div
-                          aria-hidden
-                          style={{
-                            height: 36,
-                            borderRadius: 12,
-                            border: "1px solid rgba(10, 6, 3, 0.78)",
-                            background: "rgba(28, 18, 10, 0.52)",
-                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                            color: "rgba(250, 242, 230, 0.68)",
-                            fontSize: 15,
-                            fontWeight: 600,
-                            display: "flex",
-                            alignItems: "center",
-                            padding: "0 30px 0 10px",
-                          }}
-                        >
-                          {({
-                            Title: "Title",
-                            ReleaseDate: "Release Date",
-                            CompletedDate: "Completed Date",
-                            MyRatingSort: "My Rating",
-                            ExternalRatingSort: "User Rating",
-                            LastAirDate: "Last Air Date",
-                            FirstAirDate: "First Air Date",
-                          } as Record<string, string>)[sortField] || sortField}
-                        </div>
-                        <select
-                          value={sortField}
-                          onChange={(e) => setSortField(e.target.value)}
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            width: "100%",
-                            height: "100%",
-                            opacity: 0,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {nav === "books" && (
-                            <>
-                              <option value="Title">Title</option>
-                              <option value="ReleaseDate">Release Date</option>
-                              <option value="CompletedDate">Completed Date</option>
-                              <option value="MyRatingSort">My Rating</option>
-                              <option value="ExternalRatingSort">User Rating</option>
-                            </>
-                          )}
-                          {nav === "movies" && (
-                            <>
-                              <option value="Title">Title</option>
-                              <option value="ReleaseDate">Release Date</option>
-                              <option value="MyRatingSort">My Rating</option>
-                              <option value="ExternalRatingSort">User Rating</option>
-                            </>
-                          )}
-                          {nav === "tv" && (
-                            <>
-                              <option value="Title">Title</option>
-                              <option value="LastAirDate">Last Air Date</option>
-                              <option value="FirstAirDate">First Air Date</option>
-                              <option value="MyRatingSort">My Rating</option>
-                              <option value="ExternalRatingSort">User Rating</option>
-                            </>
-                          )}
-                          {nav === "games" && (
-                            <>
-                              <option value="Title">Title</option>
-                              <option value="ReleaseDate">Release Date</option>
-                              <option value="MyRatingSort">My Rating</option>
-                              <option value="ExternalRatingSort">User Rating</option>
-                            </>
-                          )}
-                          {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
-                            <>
-                              <option value="Title">Title</option>
-                              <option value="ReleaseDate">Release Date</option>
-                            </>
-                          )}
-                        </select>
-                        <span
-                          aria-hidden
-                          style={{
-                            position: "absolute",
-                            right: 10,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "rgba(250, 242, 230, 0.68)",
-                            fontSize: 11,
-                            pointerEvents: "none",
-                          }}
-                        >
-                          ▼
-                        </span>
-                      </div>
-                      <div style={{ position: "relative", width: 86 }}>
-                        <div
-                          aria-hidden
-                          style={{
-                            height: 36,
-                            borderRadius: 12,
-                            border: "1px solid rgba(10, 6, 3, 0.78)",
-                            background: "rgba(28, 18, 10, 0.52)",
-                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                            color: "rgba(250, 242, 230, 0.68)",
-                            fontSize: 15,
-                            fontWeight: 600,
-                            display: "flex",
-                            alignItems: "center",
-                            padding: "0 26px 0 10px",
-                          }}
-                        >
-                          {sortOrder}
-                        </div>
-                        <select
-                          value={sortOrder}
-                          onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            width: "100%",
-                            height: "100%",
-                            opacity: 0,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <option value="Asc">Asc</option>
-                          <option value="Desc">Desc</option>
-                        </select>
-                        <span
-                          aria-hidden
-                          style={{
-                            position: "absolute",
-                            right: 10,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            color: "rgba(250, 242, 230, 0.68)",
-                            fontSize: 11,
-                            pointerEvents: "none",
-                          }}
-                        >
-                          ▼
-                        </span>
-                      </div>
+                        Clear
+                      </button>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span
                       style={{
-                        fontSize: 21,
+                        fontSize: 12,
                         fontWeight: 900,
                         color: "rgba(250, 242, 230, 0.68)",
                         letterSpacing: "0.01em",
                         lineHeight: 1,
-                        transform: "translateY(-4px)",
                         textShadow: "0 2px 4px rgba(0, 0, 0, 0.5)",
                         background: "rgba(28, 18, 10, 0.52)",
                         border: "1px solid rgba(10, 6, 3, 0.78)",
-                        borderRadius: 12,
-                        padding: "8px 16px",
+                        borderRadius: 9,
+                        padding: "4px 7px",
                         boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
                       }}
                     >
@@ -7099,7 +7242,42 @@ export default function Page() {
                     </span>
                     <button
                       onClick={() => {
+                        setSettingsPopupOpen(false);
+                        setSortPopupOpen((prev) => !prev);
+                      }}
+                      title="Open sort options"
+                      aria-label="Open sort options"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: 24,
+                        minWidth: 24,
+                        padding: "3px 5px",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 9,
+                        color: "rgba(250, 242, 230, 0.68)",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="4" y1="6" x2="14" y2="6"></line>
+                        <circle cx="17" cy="6" r="2"></circle>
+                        <line x1="20" y1="6" x2="21" y2="6"></line>
+                        <line x1="4" y1="12" x2="7" y2="12"></line>
+                        <circle cx="10" cy="12" r="2"></circle>
+                        <line x1="13" y1="12" x2="21" y2="12"></line>
+                        <line x1="4" y1="18" x2="11" y2="18"></line>
+                        <circle cx="14" cy="18" r="2"></circle>
+                        <line x1="17" y1="18" x2="21" y2="18"></line>
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
                         setShowSettings(true);
+                        setSortPopupOpen(false);
                         setSettingsPopupOpen((prev) => !prev);
                       }}
                       title="Open settings"
@@ -7108,19 +7286,18 @@ export default function Page() {
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        height: 39,
-                        minWidth: 39,
-                        padding: "8px 11px",
+                        height: 24,
+                        minWidth: 24,
+                        padding: "3px 5px",
                         background: "rgba(28, 18, 10, 0.52)",
                         border: "1px solid rgba(10, 6, 3, 0.78)",
-                        borderRadius: 12,
+                        borderRadius: 9,
                         color: "rgba(250, 242, 230, 0.68)",
                         boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
                         cursor: "pointer",
-                        transform: "translateY(-4px)",
                       }}
                     >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
                       </svg>
@@ -7219,6 +7396,8 @@ export default function Page() {
                       let overlayTop = 0;
                       let overlayLeft = 0;
                       let coverScale = 100;
+                      let coverOffsetX = 0;
+                      let coverOffsetY = 0;
                       
                       if (isGame) {
                         const platformKey = gamePlatform || "Default";
@@ -7232,6 +7411,10 @@ export default function Page() {
                         overlayLeft = overlay.left;
                         
                         coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || 100;
+                        const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
+                        const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
+                        coverOffsetX = platformCoverOffsetSettings.x;
+                        coverOffsetY = platformCoverOffsetSettings.y;
                       }
                       
                       const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
@@ -7291,137 +7474,257 @@ export default function Page() {
                             }}
                           />
 
-                          {/* Insert area (poster) */}
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: insetTop,
-                              right: insetRight,
-                              bottom: insetBottom,
-                              left: insetLeft,
-                              overflow: "hidden",
-                              borderRadius: 0,
-                              background: isGame ? "transparent" : "rgba(255,255,255,0.12)",
-                            }}
-                          >
-                            {showInsetGuide ? (
+                          {isGame ? (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: `${50 + overlayTop}%`,
+                                left: `${50 + overlayLeft}%`,
+                                width: "100%",
+                                height: "100%",
+                                transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
+                              }}
+                            >
                               <div
-                                aria-hidden
+                                style={{
+                                  position: "absolute",
+                                  top: insetTop,
+                                  right: insetRight,
+                                  bottom: insetBottom,
+                                  left: insetLeft,
+                                  overflow: "hidden",
+                                  borderRadius: 0,
+                                  background: "transparent",
+                                }}
+                              >
+                                {showInsetGuide ? (
+                                  <div
+                                    aria-hidden
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      outline: "2px dashed rgba(255,0,0,0.75)",
+                                      outlineOffset: "-2px",
+                                      pointerEvents: "none",
+                                    }}
+                                  />
+                                ) : null}
+
+                                {selectedCoverUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    className="case-poster"
+                                    src={selectedCoverUrl}
+                                    alt={show.title}
+                                    loading="lazy"
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                      display: "block",
+                                      transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale / 100})`,
+                                      transformOrigin: "center",
+                                    }}
+                                    onError={e => {
+                                      const itemKey = getMediaItemKey(show);
+                                      const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                      if (!failedUrl) return;
+                                      const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                      const nextAttempts = currentAttempts + 1;
+                                      setFailedCoverAttempts((prev) => {
+                                        const itemAttempts = prev[itemKey] || {};
+                                        return {
+                                          ...prev,
+                                          [itemKey]: {
+                                            ...itemAttempts,
+                                            [failedUrl]: nextAttempts,
+                                          },
+                                        };
+                                      });
+                                      if (nextAttempts < 2) return;
+                                      setFailedCoverUrls((prev) => {
+                                        const existing = prev[itemKey] || [];
+                                        if (existing.includes(failedUrl)) return prev;
+                                        return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                      });
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      textAlign: "center",
+                                      padding: 10,
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      color: "rgba(0,0,0,0.65)",
+                                      background:
+                                        "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
+                                    }}
+                                  >
+                                    No poster
+                                  </div>
+                                )}
+
+                                <div
+                                  aria-hidden
+                                  className="case-reflection"
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    pointerEvents: "none",
+                                    zIndex: 2,
+                                    background:
+                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
+                                    mixBlendMode: "screen",
+                                    transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale / 100})`,
+                                    transformOrigin: "center",
+                                  }}
+                                />
+                              </div>
+
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={getPlatformFrameFilename(gamePlatform)}
+                                onError={(e) => {
+                                  if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
+                                    e.currentTarget.src = GAME_FRAME_IMAGE;
+                                  }
+                                }}
+                                alt=""
                                 style={{
                                   position: "absolute",
                                   inset: 0,
-                                  outline: "2px dashed rgba(255,0,0,0.75)",
-                                  outlineOffset: "-2px",
+                                  objectFit: "fill",
                                   pointerEvents: "none",
+                                  userSelect: "none",
                                 }}
+                                draggable={false}
                               />
-                            ) : null}
-
-                            {selectedCoverUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                className="case-poster"
-                                src={selectedCoverUrl}
-                                alt={show.title}
-                                loading="lazy"
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  display: "block",
-                                  transform: isGame ? `scale(${coverScale / 100})` : "none",
-                                }}
-                                onError={e => {
-                                  const itemKey = getMediaItemKey(show);
-                                  const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
-                                  if (!failedUrl) return;
-                                  const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
-                                  const nextAttempts = currentAttempts + 1;
-                                  setFailedCoverAttempts((prev) => {
-                                    const itemAttempts = prev[itemKey] || {};
-                                    return {
-                                      ...prev,
-                                      [itemKey]: {
-                                        ...itemAttempts,
-                                        [failedUrl]: nextAttempts,
-                                      },
-                                    };
-                                  });
-                                  if (nextAttempts < 2) return;
-                                  setFailedCoverUrls((prev) => {
-                                    const existing = prev[itemKey] || [];
-                                    if (existing.includes(failedUrl)) return prev;
-                                    return { ...prev, [itemKey]: [...existing, failedUrl] };
-                                  });
-                                }}
-                              />
-                            ) : (
+                            </div>
+                          ) : (
+                            <>
                               <div
                                 style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  textAlign: "center",
-                                  padding: 10,
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  color: "rgba(0,0,0,0.65)",
-                                  background:
-                                    "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
+                                  position: "absolute",
+                                  top: insetTop,
+                                  right: insetRight,
+                                  bottom: insetBottom,
+                                  left: insetLeft,
+                                  overflow: "hidden",
+                                  borderRadius: 0,
+                                  background: "rgba(255,255,255,0.12)",
                                 }}
                               >
-                                No poster
+                                {showInsetGuide ? (
+                                  <div
+                                    aria-hidden
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      outline: "2px dashed rgba(255,0,0,0.75)",
+                                      outlineOffset: "-2px",
+                                      pointerEvents: "none",
+                                    }}
+                                  />
+                                ) : null}
+
+                                {selectedCoverUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    className="case-poster"
+                                    src={selectedCoverUrl}
+                                    alt={show.title}
+                                    loading="lazy"
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                      display: "block",
+                                    }}
+                                    onError={e => {
+                                      const itemKey = getMediaItemKey(show);
+                                      const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                      if (!failedUrl) return;
+                                      const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                      const nextAttempts = currentAttempts + 1;
+                                      setFailedCoverAttempts((prev) => {
+                                        const itemAttempts = prev[itemKey] || {};
+                                        return {
+                                          ...prev,
+                                          [itemKey]: {
+                                            ...itemAttempts,
+                                            [failedUrl]: nextAttempts,
+                                          },
+                                        };
+                                      });
+                                      if (nextAttempts < 2) return;
+                                      setFailedCoverUrls((prev) => {
+                                        const existing = prev[itemKey] || [];
+                                        if (existing.includes(failedUrl)) return prev;
+                                        return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                      });
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      textAlign: "center",
+                                      padding: 10,
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      color: "rgba(0,0,0,0.65)",
+                                      background:
+                                        "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
+                                    }}
+                                  >
+                                    No poster
+                                  </div>
+                                )}
+
+                                <div
+                                  aria-hidden
+                                  className="case-reflection"
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    pointerEvents: "none",
+                                    zIndex: 2,
+                                    background:
+                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
+                                    mixBlendMode: "screen",
+                                  }}
+                                />
                               </div>
-                            )}
 
-                            {/* Subtle reflection confined to the cover art */}
-                          <div
-                            aria-hidden
-                            className="case-reflection"
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              pointerEvents: "none",
-                              zIndex: 2,
-                              background:
-                                "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
-                              mixBlendMode: "screen",
-                              transform: isGame ? `scale(${coverScale / 100})` : "none",
-                            }}
-                          />
-                          </div>
-
-                          {/* Case frame overlay */}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={
-                              isBook ? BOOK_FRAME_IMAGE : 
-                              isMovie ? MOVIE_FRAME_IMAGE : 
-                              isGame ? getPlatformFrameFilename(gamePlatform) : 
-                              CASE_FRAME_IMAGE
-                            }
-                            onError={(e) => {
-                              // Fall back to default game frame if platform-specific frame fails to load
-                              if (isGame && e.currentTarget.src !== GAME_FRAME_IMAGE) {
-                                e.currentTarget.src = GAME_FRAME_IMAGE;
-                              }
-                            }}
-                            alt=""
-                            style={{
-                            position: "absolute",
-                            top: isGame ? `${50 + overlayTop}%` : 0,
-                            left: isGame ? `${50 + overlayLeft}%` : 0,
-                            width: isGame ? "100%" : "100%",
-                            height: isGame ? "100%" : "100%",
-                            transform: isGame ? `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})` : "none",
-                            objectFit: "fill",
-                            pointerEvents: "none",
-                            userSelect: "none",
-                          }}
-                          draggable={false}
-                        />
+                              {/* Case frame overlay */}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={isBook ? BOOK_FRAME_IMAGE : isMovie ? MOVIE_FRAME_IMAGE : CASE_FRAME_IMAGE}
+                                alt=""
+                                style={{
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "fill",
+                                  pointerEvents: "none",
+                                  userSelect: "none",
+                                }}
+                                draggable={false}
+                              />
+                            </>
+                          )}
 
                           {/* Optional: extra spec highlight */}
                           <div
@@ -7451,6 +7754,86 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      {/* MediaModal for cover/info popup - overlays app */}
+      <InsetStudioModal
+        open={insetStudioOpen}
+        onClose={() => setInsetStudioOpen(false)}
+        onSaveToSheet={saveInsetStudioSettings}
+        saveLabel={insetStudioSaveLabel}
+        mediaType={insetStudioMediaType}
+        onMediaTypeChange={setInsetStudioMediaType}
+        previewShelfImage={shelfTheme}
+        platform={selectedPlatformForInsets}
+        platforms={detectedPlatforms}
+        onPlatformChange={setSelectedPlatformForInsets}
+        frameSrc={
+          insetStudioMediaType === "book"
+            ? BOOK_FRAME_IMAGE
+            : insetStudioMediaType === "movie"
+              ? MOVIE_FRAME_IMAGE
+              : insetStudioMediaType === "tv"
+                ? CASE_FRAME_IMAGE
+                : getPlatformFrameFilename(selectedPlatformForInsets)
+        }
+        sourceWidth={insetStudioMediaType === "book" ? BOOK_SRC_W : insetStudioMediaType === "movie" ? MOVIE_SRC_W : insetStudioMediaType === "tv" ? CASE_SRC_W : GAME_SRC_W}
+        sourceHeight={insetStudioMediaType === "book" ? BOOK_SRC_H : insetStudioMediaType === "movie" ? MOVIE_SRC_H : insetStudioMediaType === "tv" ? CASE_SRC_H : GAME_SRC_H}
+        insets={
+          insetStudioMediaType === "book"
+            ? { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx }
+            : insetStudioMediaType === "movie"
+              ? { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx }
+              : insetStudioMediaType === "tv"
+                ? { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx }
+                : platformInsets[selectedPlatformForInsets] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 }
+        }
+        overlay={
+          insetStudioMediaType === "game"
+            ? platformOverlaySettings[selectedPlatformForInsets] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 }
+            : { width: 100, height: 100, top: 0, left: 0 }
+        }
+        coverScale={insetStudioMediaType === "game" ? (platformCoverScale[selectedPlatformForInsets] || platformCoverScale["Default"] || 100) : 100}
+        coverOffset={insetStudioMediaType === "game" ? (platformCoverOffset[selectedPlatformForInsets] || platformCoverOffset["Default"] || { x: 0, y: 0 }) : { x: 0, y: 0 }}
+        sampleCovers={insetStudioSampleCovers}
+        overlayEditable={insetStudioMediaType === "game"}
+        coverTransformEditable={insetStudioMediaType === "game"}
+        onInsetChange={(edge, value) => {
+          if (insetStudioMediaType === "book") {
+            if (edge === "top") updateBookInsetTopPx(value);
+            if (edge === "right") updateBookInsetRightPx(value);
+            if (edge === "bottom") updateBookInsetBottomPx(value);
+            if (edge === "left") updateBookInsetLeftPx(value);
+            return;
+          }
+          if (insetStudioMediaType === "movie") {
+            if (edge === "top") updateMovieInsetTopPx(value);
+            if (edge === "right") updateMovieInsetRightPx(value);
+            if (edge === "bottom") updateMovieInsetBottomPx(value);
+            if (edge === "left") updateMovieInsetLeftPx(value);
+            return;
+          }
+          if (insetStudioMediaType === "tv") {
+            if (edge === "top") updateCaseInsetTopPx(value);
+            if (edge === "right") updateCaseInsetRightPx(value);
+            if (edge === "bottom") updateCaseInsetBottomPx(value);
+            if (edge === "left") updateCaseInsetLeftPx(value);
+            return;
+          }
+          updatePlatformInset(selectedPlatformForInsets, edge, value);
+        }}
+        onOverlayChange={(key, value) => {
+          if (insetStudioMediaType !== "game") return;
+          updatePlatformOverlay(selectedPlatformForInsets, key, value);
+        }}
+        onCoverScaleChange={(value) => {
+          if (insetStudioMediaType !== "game") return;
+          updatePlatformCoverScale(selectedPlatformForInsets, value);
+        }}
+        onCoverOffsetChange={(axis, value) => {
+          if (insetStudioMediaType !== "game") return;
+          updatePlatformCoverOffset(selectedPlatformForInsets, axis, value);
+        }}
+      />
 
       {/* MediaModal for cover/info popup - overlays app */}
       <MediaModal
@@ -7488,6 +7871,22 @@ export default function Page() {
           background-repeat: repeat, no-repeat;
           background-size: auto 28px, cover;
           background-position: top left, center;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .sidebar::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+        .sidebarScrollContent {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .sidebarScrollContent::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
         }
         .sideItem {
           width: 100%;
@@ -7495,7 +7894,7 @@ export default function Page() {
           border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
-          color: #2A2A2A;
+          color: ${sidebarTheme === "darkBlue" ? "rgba(230, 239, 255, 0.92)" : "#2A2A2A"};
           font-size: 17px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
@@ -7503,7 +7902,7 @@ export default function Page() {
           transition: all 150ms ease;
         }
         .sideItem:hover { 
-          background: rgba(0,0,0,0.02);
+          background: ${sidebarTheme === "darkBlue" ? "rgba(124, 160, 224, 0.14)" : "rgba(0,0,0,0.02)"};
         }
         .sideItem.active {
           background: ${currentTheme.activeHighlight};
