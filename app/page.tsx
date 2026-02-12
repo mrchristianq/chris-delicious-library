@@ -316,42 +316,13 @@ function getPlatformFrameFilename(platform?: string): string {
   if (!platform || platform === "Default") {
     return GAME_FRAME_IMAGE;
   }
-  const normalizedToken = safeStr(platform)
+  const canonicalLabel = canonicalizePlatformLabel(platform);
+  const slug = safeStr(canonicalLabel)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-  const canonicalToken =
-    normalizedToken === "ps5"
-      ? "playstation5"
-      : normalizedToken === "ps4"
-        ? "playstation4"
-        : normalizedToken === "ps3"
-          ? "playstation3"
-          : normalizedToken === "ps2"
-            ? "playstation2"
-            : normalizedToken === "xboxseriesxs"
-              ? "xboxseriesx"
-              : normalizedToken === "xboxseriesx|s"
-                ? "xboxseriesx"
-                : normalizedToken;
-
-  const explicitSlugMap: Record<string, string> = {
-    playstation5: "playstation-5",
-    playstation4: "playstation-4",
-    playstation3: "playstation-3",
-    playstation2: "playstation-2",
-    xboxseriesx: "xbox-series-x",
-    xboxone: "xbox-one",
-    xbox360: "xbox-360",
-    epicgamesstore: "epic-games-store",
-    windows11: "windows-11",
-    steam: "steam",
-    dreamcast: "dreamcast",
-  };
-  const mappedSlug = explicitSlugMap[canonicalToken];
-  if (mappedSlug) return `/${mappedSlug}-frame.png`;
-  // Unknown platforms should fall back immediately to the default frame
-  // to avoid repeated 404 requests on every rerender.
-  return GAME_FRAME_IMAGE;
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `/${slug || "game"}-frame.png`;
 }
 
 function safeStr(v: unknown) {
@@ -894,9 +865,9 @@ export default function Page() {
   const [iconSize, setIconSize] = useState<number>(16);
 
   // Sidebar text styling
-  const [sidebarFontSize, setSidebarFontSize] = useState<number>(13);
+  const [sidebarFontSize, setSidebarFontSize] = useState<number>(11);
   const [sidebarFontWeight, setSidebarFontWeight] = useState<string>("400");
-  const [sidebarGap, setSidebarGap] = useState<number>(10);
+  const [sidebarGap, setSidebarGap] = useState<number>(8);
   const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
   const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("600");
 
@@ -979,6 +950,7 @@ export default function Page() {
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
 
   // Layout tuning
+  const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
@@ -1054,10 +1026,14 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [overlayFrameOverrides, setOverlayFrameOverrides] = useState<Record<string, string>>({});
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  const [uploadingOverlayForKey, setUploadingOverlayForKey] = useState<string | null>(null);
+  const [overlayUploadError, setOverlayUploadError] = useState<string | null>(null);
+  const overlayFileInputRef = useRef<HTMLInputElement | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1126,6 +1102,36 @@ export default function Page() {
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
+  const getOverlayFrameDefaultPath = useCallback(
+    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
+      if (itemType === "book") return BOOK_FRAME_IMAGE;
+      if (itemType === "movie") return MOVIE_FRAME_IMAGE;
+      if (itemType === "tv") return CASE_FRAME_IMAGE;
+      return getPlatformFrameFilename(platform);
+    },
+    []
+  );
+
+  const getOverlayFrameOverrideKey = useCallback(
+    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
+      if (itemType !== "game") return itemType;
+      const rawPlatform = safeStr(platform) || "Default";
+      const canonicalPlatform = canonicalizePlatformLabel(rawPlatform);
+      return `game:${canonicalPlatform || "Default"}`;
+    },
+    []
+  );
+
+  const getOverlayFrameUrl = useCallback(
+    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
+      const overrideKey = getOverlayFrameOverrideKey(itemType, platform);
+      const override = safeStr(overlayFrameOverrides[overrideKey]);
+      if (override) return override;
+      return getOverlayFrameDefaultPath(itemType, platform);
+    },
+    [getOverlayFrameDefaultPath, getOverlayFrameOverrideKey, overlayFrameOverrides]
+  );
+
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight || 0);
     onResize();
@@ -1164,19 +1170,44 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cdlOverlayFrameOverrides");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setOverlayFrameOverrides(parsed as Record<string, string>);
+      }
+    } catch (e) {
+      console.warn("Failed to load overlay frame overrides from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!settingsRows.length) return;
     const fromSheet: Record<string, string> = {};
+    const overlayFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
-      if (!key.startsWith("coverOverride:")) return;
-      const mediaKey = key.slice("coverOverride:".length);
       const value = safeStr(r["Value"]);
-      if (mediaKey && value) {
-        fromSheet[mediaKey] = value;
+      if (key.startsWith("coverOverride:")) {
+        const mediaKey = key.slice("coverOverride:".length);
+        if (mediaKey && value) {
+          fromSheet[mediaKey] = value;
+        }
+      }
+      if (key.startsWith("overlayFrameOverride:")) {
+        const overlayKey = key.slice("overlayFrameOverride:".length);
+        if (overlayKey && value) {
+          overlayFromSheet[overlayKey] = value;
+        }
       }
     });
-    if (!Object.keys(fromSheet).length) return;
-    setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+    if (Object.keys(fromSheet).length) {
+      setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+    }
+    if (Object.keys(overlayFromSheet).length) {
+      setOverlayFrameOverrides((prev) => ({ ...overlayFromSheet, ...prev }));
+    }
   }, [settingsRows]);
 
   useEffect(() => {
@@ -2022,9 +2053,9 @@ export default function Page() {
     
     setIconSize(getSetting("iconSize", 16));
     
-    setSidebarFontSize(getSetting("sidebarFontSize", 13));
+    setSidebarFontSize(getSetting("sidebarFontSize", 11));
     setSidebarFontWeight(getSetting("sidebarFontWeight", "400"));
-    setSidebarGap(getSetting("sidebarGap", 10));
+    setSidebarGap(getSetting("sidebarGap", 8));
     setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
     setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
     
@@ -2199,9 +2230,9 @@ export default function Page() {
         setSyncIconTop(getNum("syncIconTop", 8));
         
         setIconSize(getNum("iconSize", 16));
-        setSidebarFontSize(getNum("sidebarFontSize", 13));
+        setSidebarFontSize(getNum("sidebarFontSize", 11));
         setSidebarFontWeight(getStr("sidebarFontWeight", "400"));
-        setSidebarGap(getNum("sidebarGap", 10));
+        setSidebarGap(getNum("sidebarGap", 8));
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
@@ -2904,6 +2935,104 @@ export default function Page() {
     [detectedPlatforms]
   );
 
+  const quickOverlayTargetKey = useMemo(
+    () => getOverlayFrameOverrideKey(quickTargetType, quickTargetPlatformKey),
+    [getOverlayFrameOverrideKey, quickTargetPlatformKey, quickTargetType]
+  );
+
+  const quickOverlayExpectedPath = useMemo(
+    () => getOverlayFrameDefaultPath(quickTargetType, quickTargetPlatformKey),
+    [getOverlayFrameDefaultPath, quickTargetPlatformKey, quickTargetType]
+  );
+
+  const quickOverlayExpectedFilename = useMemo(() => {
+    const parts = quickOverlayExpectedPath.split("/").filter(Boolean);
+    return parts[parts.length - 1] || quickOverlayExpectedPath;
+  }, [quickOverlayExpectedPath]);
+
+  const quickOverlayOverrideUrl = useMemo(
+    () => safeStr(overlayFrameOverrides[quickOverlayTargetKey]),
+    [overlayFrameOverrides, quickOverlayTargetKey]
+  );
+
+  const handleReplaceOverlayForQuickTarget = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file) return;
+      const targetKey = quickOverlayTargetKey;
+      setUploadingOverlayForKey(targetKey);
+      setOverlayUploadError(null);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("itemKey", targetKey);
+        formData.append("mediaType", "overlay-frame");
+        formData.append("title", targetKey);
+
+        const res = await fetch("/api/upload-cover", {
+          method: "POST",
+          body: formData,
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) {
+          throw new Error(payload?.error || `Overlay upload failed (${res.status})`);
+        }
+
+        const uploadedUrl = String(payload.url);
+        setOverlayFrameOverrides((prev) => {
+          const next = { ...prev, [targetKey]: uploadedUrl };
+          try {
+            localStorage.setItem("cdlOverlayFrameOverrides", JSON.stringify(next));
+          } catch (e) {
+            console.warn("Failed to persist overlay overrides locally:", e);
+          }
+          return next;
+        });
+
+        if (settingsWriteUrl) {
+          saveSettingToSheet(
+            `overlayFrameOverride:${targetKey}`,
+            uploadedUrl,
+            "Overlay Overrides",
+            `Overlay frame override for ${targetKey}`
+          );
+        }
+      } catch (e: any) {
+        const msg = e?.message || "Failed to upload overlay";
+        setOverlayUploadError(msg);
+        console.error("Overlay upload failed:", e);
+      } finally {
+        setUploadingOverlayForKey(null);
+      }
+    },
+    [quickOverlayTargetKey, settingsWriteUrl]
+  );
+
+  const handleResetOverlayForQuickTarget = useCallback(() => {
+    const targetKey = quickOverlayTargetKey;
+    setOverlayUploadError(null);
+    setOverlayFrameOverrides((prev) => {
+      if (!(targetKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[targetKey];
+      try {
+        localStorage.setItem("cdlOverlayFrameOverrides", JSON.stringify(next));
+      } catch (e) {
+        console.warn("Failed to persist overlay overrides locally:", e);
+      }
+      return next;
+    });
+
+    if (settingsWriteUrl) {
+      saveSettingToSheet(
+        `overlayFrameOverride:${targetKey}`,
+        "",
+        "Overlay Overrides",
+        `Clear overlay frame override for ${targetKey}`
+      );
+    }
+  }, [quickOverlayTargetKey, settingsWriteUrl]);
+
   const quickInsetSnapshot = useMemo(() => {
     const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
     const movieInset = { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx };
@@ -3497,10 +3626,9 @@ export default function Page() {
     if (nav === "wishlist") {
       const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
       const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
-      const deduplicatedGames = deduplicateGames(qg);
 
       const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
-      const queryFilteredGames = q ? deduplicatedGames.filter((g) => g.title.toLowerCase().includes(q)) : deduplicatedGames;
+      const queryFilteredGames = q ? qg.filter((g) => g.title.toLowerCase().includes(q)) : qg;
 
       const combined = [
         ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
@@ -3641,14 +3769,11 @@ export default function Page() {
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
         : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
       
-      // Deduplicate games by title - keep only primary platform version
-      const deduplicatedGames = deduplicateGames(qg);
-
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
         ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -3681,31 +3806,10 @@ export default function Page() {
         : allMovies.filter((m) => safeStr(m.tag) === yearStr);
       
       // Games: Use Year Played column
-      let qg = q 
+      const qg = q 
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === yearStr)
         : allGames.filter((g) => safeStr(g.yearPlayed) === yearStr);
       
-      // Deduplicate games by title - keep only primary platform version
-      const gamesByTitle2 = new Map<string, Game>();
-      qg.forEach(game => {
-        const existingGame = gamesByTitle2.get(game.title);
-        if (!existingGame) {
-          gamesByTitle2.set(game.title, game);
-        } else {
-          const existingPlatform = getPrimaryPlatform(existingGame.platform);
-          const currentPlatform = getPrimaryPlatform(game.platform);
-          const priority = (platform: string) => {
-            if (platform === "Steam") return 3;
-            if (platform === "Epic Games Store") return 2;
-            return 1;
-          };
-          if (priority(currentPlatform) > priority(existingPlatform)) {
-            gamesByTitle2.set(game.title, game);
-          }
-        }
-      });
-      qg = Array.from(gamesByTitle2.values());
-
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
@@ -3743,7 +3847,7 @@ export default function Page() {
 
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
-    const wishlistGames = deduplicateGames(allGames.filter((g) => hasWishlistOwnership(g.ownership))).length;
+    const wishlistGames = allGames.filter((g) => hasWishlistOwnership(g.ownership)).length;
     const watchlistShows = allShows.filter((s) => {
       const status = normalizeStatus(s.watchStatus);
       return status !== "completed" && status !== "abandoned";
@@ -3841,7 +3945,7 @@ export default function Page() {
           margin: 0,
           padding: 0,
           display: "grid",
-          gridTemplateColumns: "320px 1fr",
+          gridTemplateColumns: `${SIDEBAR_WIDTH}px 1fr`,
           gap: 0,
           alignItems: "stretch",
         }}
@@ -3858,14 +3962,11 @@ export default function Page() {
             minHeight: "100vh",
             borderRadius: "0 0 0 0",
             isolation: "isolate",
-            overflowY: "auto",
-            overflowX: "hidden",
+            overflowY: "visible",
+            overflowX: "visible",
             background: "transparent",
-            border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
-            borderTop: "none",
-            borderLeft: "none",
-            borderRight: "none",
-            boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
+            border: "none",
+            boxShadow: "none",
             display: "flex",
             flexDirection: "column",
             padding: "6px",
@@ -3875,7 +3976,7 @@ export default function Page() {
             aria-hidden
             style={{
               position: "absolute",
-              top: 45,
+              top: 43,
               left: 0,
               right: 0,
               bottom: 0,
@@ -3916,7 +4017,6 @@ export default function Page() {
               pointerEvents: "none",
               borderRadius: 16,
               overflow: "hidden",
-              clipPath: "inset(1px 0 0 0 round 16px)",
               opacity: sidebarTheme === "winterGray" ? 0.8 : sidebarTheme === "darkBlue" ? 0.9 : 0.84,
               backgroundImage: currentTheme.background,
               backgroundSize: "auto, 100% 100%",
@@ -3931,7 +4031,8 @@ export default function Page() {
               zIndex: 2,
               background: "rgba(255, 255, 255, 0.125)",
               borderRadius: 16,
-              boxShadow: "0 8px 18px rgba(0, 0, 0, 0.42), 0 3px 8px rgba(0, 0, 0, 0.28)",
+              boxShadow:
+                "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)",
               border: "none",
               display: "flex",
               flexDirection: "column",
@@ -3945,7 +4046,7 @@ export default function Page() {
             style={{
               background: "transparent",
               borderBottom: "none",
-              padding: "0px 12px 10px 12px",
+              padding: "0px 8px 10px 8px",
               border: "none",
               overflow: "visible",
               display: "flex",
@@ -3959,7 +4060,7 @@ export default function Page() {
             {/* Logo taking full width */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={APP_ICON}
+              src={sidebarTheme === "darkBlue" ? "/logo5.png" : APP_ICON}
               alt={APP_TITLE}
               style={{
                 width: logoSize,
@@ -3976,7 +4077,7 @@ export default function Page() {
 
           {/* Rolodex Counter */}
           {!loading && (
-            <div style={{ padding: "10px 18px 0 18px", display: "flex", justifyContent: "center" }}>
+            <div style={{ padding: "10px 10px 0 10px", display: "flex", justifyContent: "center" }}>
               <RolodexCounter 
                 value={shows.length} 
                 digitHeight={counterTileSize}
@@ -3998,7 +4099,7 @@ export default function Page() {
             </div>
           )}
 
-          <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 12, flex: 1, marginTop: 14 }}>
+          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 10, flex: 1, marginTop: 12 }}>
             {/* Library Module */}
             <div
               style={{
@@ -4046,8 +4147,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4083,8 +4184,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "books" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4101,8 +4202,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -4136,8 +4237,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {readingStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4162,11 +4263,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4199,8 +4300,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {formatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4225,11 +4326,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4262,8 +4363,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {seriesOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4288,11 +4389,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4325,8 +4426,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4351,11 +4452,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4388,8 +4489,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
                     </button>
                     {wishlistOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4410,11 +4511,11 @@ export default function Page() {
                           </span>
                           <span
                             style={{
-                              minWidth: 20,
-                              height: 18,
-                              padding: "0 6px",
-                              borderRadius: 10,
-                              fontSize: 11,
+                              minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                               textAlign: "center",
                               background: wishlistFilter ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
                               color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4454,8 +4555,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4472,8 +4573,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -4507,8 +4608,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4533,11 +4634,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4570,8 +4671,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4596,11 +4697,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4643,8 +4744,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "tv" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4661,8 +4762,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -4696,8 +4797,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4722,11 +4823,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4759,8 +4860,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4785,11 +4886,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4822,8 +4923,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
                     </button>
                     {tagOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4848,11 +4949,11 @@ export default function Page() {
                               </span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -4898,8 +4999,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4916,8 +5017,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -4956,8 +5057,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4980,11 +5081,11 @@ export default function Page() {
                               <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -5017,8 +5118,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {gameStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5041,11 +5142,11 @@ export default function Page() {
                               <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -5078,8 +5179,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5102,11 +5203,11 @@ export default function Page() {
                               <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -5139,8 +5240,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5163,11 +5264,11 @@ export default function Page() {
                               <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -5200,8 +5301,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5224,11 +5325,11 @@ export default function Page() {
                               <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -5261,8 +5362,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5285,11 +5386,11 @@ export default function Page() {
                               <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 20,
-                                  height: 18,
-                                  padding: "0 6px",
-                                  borderRadius: 10,
-                                  fontSize: 11,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -5329,8 +5430,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5347,8 +5448,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -5390,8 +5491,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "watchlist" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5408,8 +5509,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -5472,8 +5573,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "year-this" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5508,8 +5609,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: otherMenuOpen ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5622,8 +5723,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         display: "inline-flex",
                         alignItems: "center",
@@ -5658,8 +5759,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: showThemes ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5697,8 +5798,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 18,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: showSettings ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5723,7 +5824,7 @@ export default function Page() {
                 {themeSaveNotice ? (
                   <div
                     style={{
-                      fontSize: 10,
+                      fontSize: 11,
                       color: "#0a7f2e",
                       background: "rgba(10,127,46,0.12)",
                       border: "1px solid rgba(10,127,46,0.35)",
@@ -5734,7 +5835,7 @@ export default function Page() {
                     {themeSaveNotice}
                   </div>
                 ) : null}
-                <div style={{ fontSize: 10, color: "rgba(0,0,0,0.68)" }}>
+                <div style={{ fontSize: 11, color: "rgba(0,0,0,0.68)" }}>
                   Theme changes auto-save immediately and are used next time.
                 </div>
                 {/* Sidebar Theme Section */}
@@ -6050,7 +6151,7 @@ export default function Page() {
                 {settingsOpen.framePosition ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10, fontWeight: 700, color: "#7f7f7f" }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: "#7f7f7f" }}>
                         TARGET
                         <select
                           value={quickInsetTarget}
@@ -6062,7 +6163,7 @@ export default function Page() {
                           ))}
                         </select>
                       </label>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 10, fontWeight: 700, color: "#7f7f7f" }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: "#7f7f7f" }}>
                         MODE
                         <select
                           value={quickInsetMode}
@@ -6083,6 +6184,65 @@ export default function Page() {
                           ))}
                         </select>
                       </label>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 9px", borderRadius: 8, background: "rgba(0,0,0,0.045)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#6d6d6d" }}>
+                        OVERLAY FILE
+                      </div>
+                      <div style={{ fontSize: 11, color: "#4f4f4f", display: "flex", flexDirection: "column", gap: 3 }}>
+                        <span>Expected filename: <strong>{quickOverlayExpectedFilename}</strong></span>
+                        <span>
+                          Active source: {quickOverlayOverrideUrl ? "Custom upload" : "Bundled file"} ({quickOverlayTargetKey})
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => overlayFileInputRef.current?.click()}
+                          disabled={uploadingOverlayForKey === quickOverlayTargetKey}
+                          style={{
+                            padding: "6px 9px",
+                            fontSize: 11,
+                            borderRadius: 6,
+                            border: "1px solid rgba(0,0,0,0.2)",
+                            background: "rgba(255,255,255,0.9)",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {uploadingOverlayForKey === quickOverlayTargetKey ? "Uploading..." : "Replace Overlay File"}
+                        </button>
+                        {quickOverlayOverrideUrl ? (
+                          <button
+                            onClick={handleResetOverlayForQuickTarget}
+                            style={{
+                              padding: "6px 9px",
+                              fontSize: 11,
+                              borderRadius: 6,
+                              border: "1px solid rgba(0,0,0,0.2)",
+                              background: "rgba(255,255,255,0.85)",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Use Expected File
+                          </button>
+                        ) : null}
+                        <input
+                          ref={overlayFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            handleReplaceOverlayForQuickTarget(file);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                      </div>
+                      {overlayUploadError ? (
+                        <div style={{ fontSize: 11, color: "#b42318" }}>{overlayUploadError}</div>
+                      ) : null}
                     </div>
 
                     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
@@ -6129,7 +6289,7 @@ export default function Page() {
                           position: "relative",
                           width: 170,
                           height: 255,
-                          borderRadius: 10,
+                          borderRadius: 9,
                           border: "1px solid rgba(0,0,0,0.2)",
                           background: "linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.03) 100%)",
                           overflow: "hidden",
@@ -6170,7 +6330,7 @@ export default function Page() {
                         <button onClick={() => applyQuickInsetNudge("up")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↑</button>
                         <span />
                         <button onClick={() => applyQuickInsetNudge("left")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>←</button>
-                        <div style={{ display: "grid", placeItems: "center", fontSize: 10, color: "#777", fontWeight: 700 }}>NUDGE</div>
+                        <div style={{ display: "grid", placeItems: "center", fontSize: 11, color: "#777", fontWeight: 700 }}>NUDGE</div>
                         <button onClick={() => applyQuickInsetNudge("right")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>→</button>
                         <span />
                         <button onClick={() => applyQuickInsetNudge("down")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↓</button>
@@ -6178,7 +6338,7 @@ export default function Page() {
                       </div>
                     </div>
 
-                    <div style={{ fontSize: 10, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
+                    <div style={{ fontSize: 11, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
                       Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
                       {quickTargetType === "game" ? (
                         <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
@@ -6205,9 +6365,9 @@ export default function Page() {
                       >
                         {quickInsetSaveLabel}
                       </button>
-                      {quickInsetSaveStatus === "saving" ? <span style={{ fontSize: 10, color: "#555" }}>Saving inset settings...</span> : null}
-                      {quickInsetSaveStatus === "saved" ? <span style={{ fontSize: 10, color: "#0a7f2e" }}>Saved. These inset settings will be used next time.</span> : null}
-                      {quickInsetSaveStatus === "error" ? <span style={{ fontSize: 10, color: "#b42318" }}>Save failed</span> : null}
+                      {quickInsetSaveStatus === "saving" ? <span style={{ fontSize: 11, color: "#555" }}>Saving inset settings...</span> : null}
+                      {quickInsetSaveStatus === "saved" ? <span style={{ fontSize: 11, color: "#0a7f2e" }}>Saved. These inset settings will be used next time.</span> : null}
+                      {quickInsetSaveStatus === "error" ? <span style={{ fontSize: 11, color: "#b42318" }}>Save failed</span> : null}
                     </div>
                   </div>
                 ) : null}
@@ -6647,7 +6807,7 @@ export default function Page() {
             </div>
 
             {/* Synced Module at Bottom */}
-            <div style={{ padding: "0 12px", marginTop: "auto", marginBottom: 12 }}>
+            <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -6655,7 +6815,7 @@ export default function Page() {
                   justifyContent: "space-between",
                   gap: 10,
                   padding: "10px 12px",
-                  borderRadius: 10,
+                  borderRadius: 9,
                   background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
                   border: "1px solid rgba(92, 60, 56, 0.2)",
                   boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
@@ -6696,26 +6856,9 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
-                      <button
-                        onClick={() => setShowVersionNotes((prev) => !prev)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "rgba(0,0,0,0.6)",
-                          fontSize: 10,
-                          fontWeight: 500,
-                          whiteSpace: "nowrap",
-                          padding: 0,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                        }}
-                        title="Show recent version notes"
-                      >
-                        · v{APP_VERSION}
-                      </button>
                     </div>
                     {syncState === "error" && syncMsg ? (
                       <div
@@ -6730,38 +6873,6 @@ export default function Page() {
                         }}
                       >
                         {syncMsg}
-                      </div>
-                    ) : null}
-                    {showVersionNotes ? (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "100%",
-                          right: 0,
-                          width: "min(280px, calc(100vw - 70px))",
-                          zIndex: 30,
-                          marginTop: 6,
-                          borderRadius: 10,
-                          border: "1px solid rgba(0,0,0,0.14)",
-                          background: "rgba(249, 245, 236, 0.97)",
-                          boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
-                          padding: 10,
-                          textAlign: "left",
-                        }}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
-                        {VERSION_HISTORY.slice(0, 3).map((entry) => (
-                          <div key={entry.version} style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
-                              v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
-                            </div>
-                            <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 10, lineHeight: 1.35, color: "#4b3c31" }}>
-                              {entry.notes.map((note) => (
-                                <li key={note}>{note}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
                       </div>
                     ) : null}
                   </div>
@@ -6797,13 +6908,13 @@ export default function Page() {
         </aside>
 
         {/* RIGHT CONTENT */}
-        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative" }}>
+        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative", marginLeft: "-1px" }}>
           <div
             aria-hidden
             style={{
               position: "fixed",
               top: 0,
-              left: 320,
+              left: SIDEBAR_WIDTH - 1,
               right: 0,
               height: 45,
               zIndex: 1399,
@@ -6842,7 +6953,7 @@ export default function Page() {
                 zIndex: 9000,
                 background: "rgba(20, 20, 20, 0.88)",
                 color: "#fff",
-                borderRadius: 10,
+                borderRadius: 9,
                 border: "1px solid rgba(255,255,255,0.2)",
                 padding: 10,
                 display: "flex",
@@ -6871,7 +6982,7 @@ export default function Page() {
               style={{
                 background: "#fff",
                 border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 10,
+                borderRadius: 9,
                 padding: 14,
                 color: "#8b0000",
                 fontWeight: 700,
@@ -6888,7 +6999,7 @@ export default function Page() {
               style={{
                 background: "#fff",
                 border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 10,
+                borderRadius: 9,
                 padding: 14,
                 fontWeight: 700,
                 marginBottom: 16,
@@ -6904,6 +7015,7 @@ export default function Page() {
               onClick={() => {
                 setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
+                setShowVersionNotes(false);
               }}
               style={{
                 position: "fixed",
@@ -6971,7 +7083,7 @@ export default function Page() {
                   style={{
                     width: "100%",
                     padding: "9px 10px",
-                    borderRadius: 10,
+                    borderRadius: 9,
                     border: "1px solid rgba(0,0,0,0.2)",
                     background: "rgba(255,255,255,0.9)",
                     color: "#3a2f28",
@@ -7031,7 +7143,7 @@ export default function Page() {
                   style={{
                     width: "100%",
                     padding: "9px 10px",
-                    borderRadius: 10,
+                    borderRadius: 9,
                     border: "1px solid rgba(0,0,0,0.2)",
                     background: "rgba(255,255,255,0.9)",
                     color: "#3a2f28",
@@ -7131,7 +7243,7 @@ export default function Page() {
                           color: "rgba(250, 242, 230, 0.72)",
                           boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
                           cursor: "pointer",
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: 800,
                           letterSpacing: "0.04em",
                           textTransform: "uppercase",
@@ -7162,6 +7274,7 @@ export default function Page() {
                       onClick={() => {
                         setSettingsPopupOpen(false);
                         setSortPopupOpen((prev) => !prev);
+                        setShowVersionNotes(false);
                       }}
                       title="Open sort options"
                       aria-label="Open sort options"
@@ -7170,7 +7283,7 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         height: 24,
-                        minWidth: 20,
+                        minWidth: 18,
                         padding: "3px 5px",
                         background: "rgba(28, 18, 10, 0.52)",
                         border: "1px solid rgba(10, 6, 3, 0.78)",
@@ -7192,34 +7305,98 @@ export default function Page() {
                         <line x1="17" y1="18" x2="21" y2="18"></line>
                       </svg>
                     </button>
-                    <button
-                      onClick={() => {
-                        setShowSettings(true);
-                        setSortPopupOpen(false);
-                        setSettingsPopupOpen((prev) => !prev);
-                      }}
-                      title="Open settings"
-                      aria-label="Open settings"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: 24,
-                        minWidth: 20,
-                        padding: "3px 5px",
-                        background: "rgba(28, 18, 10, 0.52)",
-                        border: "1px solid rgba(10, 6, 3, 0.78)",
-                        borderRadius: 9,
-                        color: "rgba(250, 242, 230, 0.68)",
-                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
-                      </svg>
-                    </button>
+                    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <button
+                        onClick={() => {
+                          setShowSettings(true);
+                          setSortPopupOpen(false);
+                          setShowVersionNotes(false);
+                          setSettingsPopupOpen((prev) => !prev);
+                        }}
+                        title="Open settings"
+                        aria-label="Open settings"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 24,
+                          minWidth: 18,
+                          padding: "3px 5px",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: "rgba(250, 242, 230, 0.68)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSettingsPopupOpen(false);
+                          setSortPopupOpen(false);
+                          setShowVersionNotes((prev) => !prev);
+                        }}
+                        title="Show recent version notes"
+                        aria-label="Show recent version notes"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 24,
+                          minWidth: 54,
+                          padding: "3px 6px",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: "rgba(250, 242, 230, 0.72)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.03em",
+                          lineHeight: 1,
+                        }}
+                      >
+                        v{APP_VERSION}
+                      </button>
+                      {showVersionNotes ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            right: 0,
+                            width: "min(280px, calc(100vw - 70px))",
+                            zIndex: 5001,
+                            marginTop: 6,
+                            borderRadius: 9,
+                            border: "1px solid rgba(0,0,0,0.14)",
+                            background: "rgba(249, 245, 236, 0.97)",
+                            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
+                            padding: 10,
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
+                          {VERSION_HISTORY.slice(0, 3).map((entry) => (
+                            <div key={entry.version} style={{ marginBottom: 8 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
+                                v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
+                              </div>
+                              <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
+                                {entry.notes.map((note) => (
+                                  <li key={note}>{note}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -7326,6 +7503,12 @@ export default function Page() {
                         coverOffsetX = platformCoverOffsetSettings.x;
                         coverOffsetY = platformCoverOffsetSettings.y;
                       }
+
+                      const gameOverlaySrc = isGame ? getOverlayFrameUrl("game", gamePlatform) : "";
+                      const gameOverlayExpectedSrc = isGame ? getOverlayFrameDefaultPath("game", gamePlatform) : GAME_FRAME_IMAGE;
+                      const nonGameOverlayType: "tv" | "movie" | "book" = isBook ? "book" : isMovie ? "movie" : "tv";
+                      const nonGameOverlaySrc = getOverlayFrameUrl(nonGameOverlayType);
+                      const nonGameOverlayExpectedSrc = getOverlayFrameDefaultPath(nonGameOverlayType);
                       
                       const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
                       const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
@@ -7501,8 +7684,14 @@ export default function Page() {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={getPlatformFrameFilename(gamePlatform)}
+                                  src={gameOverlaySrc}
                                   onError={(e) => {
+                                    const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                    if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== gameOverlayExpectedSrc) {
+                                      e.currentTarget.dataset.fallbackTried = "1";
+                                      e.currentTarget.src = gameOverlayExpectedSrc;
+                                      return;
+                                    }
                                     if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
                                       e.currentTarget.src = GAME_FRAME_IMAGE;
                                     }
@@ -7622,7 +7811,14 @@ export default function Page() {
                               {/* Case frame overlay */}
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={isBook ? BOOK_FRAME_IMAGE : isMovie ? MOVIE_FRAME_IMAGE : CASE_FRAME_IMAGE}
+                                src={nonGameOverlaySrc}
+                                onError={(e) => {
+                                  const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                  if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
+                                    e.currentTarget.dataset.fallbackTried = "1";
+                                    e.currentTarget.src = nonGameOverlayExpectedSrc;
+                                  }
+                                }}
                                 alt=""
                                 style={{
                                   position: "absolute",
@@ -7749,12 +7945,12 @@ export default function Page() {
         }
         .sideItem {
           width: 100%;
-          padding: 3px 12px;
+          padding: 1px 4px;
           border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
           color: ${sidebarTheme === "darkBlue" ? "rgba(230, 239, 255, 0.92)" : "#2A2A2A"};
-          font-size: 17px;
+          font-size: 13px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
@@ -7775,12 +7971,12 @@ export default function Page() {
         .sideItem.primary.active { background: ${currentTheme.activeHighlight}; color: ${currentTheme.secondaryColor}; }
         .sideSubItem {
           width: 100%;
-          padding: 5px 8px;
+          padding: 4px 6px;
           border-radius: 8px;
           border: ${sidebarTheme === "darkBlue" ? "1px solid rgba(142, 178, 234, 0.42)" : "1px solid rgba(0, 0, 0, 0.06)"};
           background: ${sidebarTheme === "darkBlue" ? "rgba(19, 39, 72, 0.62)" : "rgba(255, 255, 255, 0.6)"};
           color: ${sidebarTheme === "darkBlue" ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)"};
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
@@ -7834,7 +8030,7 @@ function NavButton({
       onClick={onClick}
       style={{
         width: "100%",
-        borderRadius: 10,
+        borderRadius: 9,
         border: "1px solid rgba(0,0,0,0.16)",
         background: active
           ? "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(230,230,230,0.95))"
@@ -7867,7 +8063,7 @@ function NavButton({
         style={{
           minWidth: 34,
           height: 22,
-          padding: "0 6px",
+          padding: "0 5px",
           borderRadius: 999,
           display: "inline-flex",
           alignItems: "center",
