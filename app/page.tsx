@@ -1,6 +1,6 @@
 /* =====================================================================================
   Chris' Delicious Library
-  Version: 3.0.0
+  Version: 4.1.2
    Notes:
    - Client-side CSV load from Google Sheets (published CSV)
    - Left sidebar menu (Delicious Library style)
@@ -9,6 +9,23 @@
    - Posters align to shelf lip
    - DVD case frame overlay (no left border) + glossy black edge
    
+   v4.1.2 Changes:
+   - Added keyboard arrow key nudging for the quick inset editor
+
+   v4.1.1 Changes:
+   - Rebuilt Cover Insets into one fast quick editor
+   - Added target dropdown for TV, Movies, Books, and Game platforms
+   - Added mode-based nudge controls with live transparent preview
+
+   v4.1.0 Changes:
+   - Removed Inset Studio to reset this feature from scratch
+   - Added visible in-app version badge in sidebar
+   - Added clickable recent version notes panel
+
+   v4.0.0 Changes:
+   - Added platform-specific game overlay and inset controls
+   - Reduced Media popup density (smaller typography/padding) so more fields fit onscreen
+
    v3.0.0 Changes:
    - Added Sidebar Theme system with two themes: Standard and Winter Gray
    - New "Sidebar Theme" section under Themes menu for easy switching
@@ -97,6 +114,7 @@ import { MediaModal } from "./components/MediaModal";
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
 type MediaType = "book" | "movie" | "tv" | "game";
+type QuickInsetMode = "insetPosition" | "overlayPosition" | "overlayScale" | "coverPosition" | "coverScale";
 
 type Show = {
   title: string;
@@ -233,6 +251,50 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
+const APP_VERSION = "4.1.2";
+const VERSION_HISTORY = [
+  {
+    version: "4.1.2",
+    date: "2026-02-11",
+    notes: [
+      "Added keyboard arrow key support for quick inset nudging.",
+    ],
+  },
+  {
+    version: "4.1.1",
+    date: "2026-02-11",
+    notes: [
+      "Rebuilt Cover Insets into a single quick editor.",
+      "Target dropdown now includes TV, Movies, Books, and game platforms.",
+      "Added faster directional nudge controls with a live transparent preview.",
+    ],
+  },
+  {
+    version: "4.1.0",
+    date: "2026-02-11",
+    notes: [
+      "Removed Inset Studio to rebuild it from scratch.",
+      "Added clickable version badge on the page.",
+      "Added recent version notes panel.",
+    ],
+  },
+  {
+    version: "4.0.0",
+    date: "2026-02-11",
+    notes: [
+      "Platform-specific game frame/inset controls.",
+      "General settings and layout tuning.",
+    ],
+  },
+  {
+    version: "3.0.0",
+    date: "2026-02-09",
+    notes: [
+      "Introduced sidebar theming system.",
+      "Added theme persistence settings.",
+    ],
+  },
+] as const;
 const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
@@ -241,20 +303,26 @@ const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
+const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const GAME_FRAME_IMAGE = "/game-frame.png";
 const APP_ICON = "/logo4.png";
+const SHOW_HEADER_DEBUG_CONTROLS = false;
 
 // Helper function to convert platform name to frame filename
 function getPlatformFrameFilename(platform?: string): string {
   if (!platform || platform === "Default") {
     return GAME_FRAME_IMAGE;
   }
-  // Convert platform name to lowercase and replace spaces with hyphens
-  const normalizedName = platform.toLowerCase().replace(/\s+/g, '-');
-  return `/${normalizedName}-frame.png`;
+  const canonicalLabel = canonicalizePlatformLabel(platform);
+  const slug = safeStr(canonicalLabel)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `/${slug || "game"}-frame.png`;
 }
 
 function safeStr(v: unknown) {
@@ -299,6 +367,37 @@ function normalizeTitleKey(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function normalizePlatformToken(platform: string): string {
+  return safeStr(platform)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+const PLATFORM_TOKEN_ALIASES: Record<string, string> = {
+  ps5: "playstation5",
+  ps4: "playstation4",
+  ps3: "playstation3",
+  ps2: "playstation2",
+  xboxseriesxs: "xboxseriesx",
+  "xboxseriesx|s": "xboxseriesx",
+};
+
+const PLATFORM_CANONICAL_LABELS: Record<string, string> = {
+  playstation5: "PlayStation 5",
+  playstation4: "PlayStation 4",
+  playstation3: "PlayStation 3",
+  playstation2: "PlayStation 2",
+  xboxseriesx: "Xbox Series X",
+};
+
+function canonicalizePlatformLabel(platform: string): string {
+  const raw = safeStr(platform);
+  if (!raw || raw === "Default") return "Default";
+  const normalizedRaw = normalizePlatformToken(raw);
+  const normalized = PLATFORM_TOKEN_ALIASES[normalizedRaw] || normalizedRaw;
+  return PLATFORM_CANONICAL_LABELS[normalized] || raw;
 }
 
 function getMediaType(item: any): MediaType {
@@ -614,18 +713,18 @@ function useElementWidth<T extends HTMLElement>() {
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
-  const tvCsvUrl = (process.env as any)[ENV_KEY] as string | undefined;
-  const booksCsvUrl = (process.env as any)[BOOKS_ENV_KEY] as string | undefined;
-  const moviesCsvUrl = (process.env as any)[MOVIES_ENV_KEY] as string | undefined;
-  const gamesCsvUrl = (process.env as any)[GAMES_ENV_KEY] as string | undefined;
-  const settingsCsvUrl = (process.env as any)[SETTINGS_ENV_KEY] as string | undefined;
-  const settingsWriteUrl = (process.env as any)["NEXT_PUBLIC_SETTINGS_WRITE_URL"] as string | undefined;
-  const booksWriteUrl = (process.env as any)["NEXT_PUBLIC_BOOKS_WRITE_URL"] as string | undefined;
+  const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
+  const booksCsvUrl = process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL;
+  const moviesCsvUrl = process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
+  const gamesCsvUrl = process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
+  const settingsCsvUrl = process.env.NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL;
+  const settingsWriteUrl = process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL;
+  const booksWriteUrl = process.env.NEXT_PUBLIC_BOOKS_WRITE_URL;
   const showsWriteUrl =
-    ((process.env as any)["NEXT_PUBLIC_SHOWS_WRITE_URL"] as string | undefined) ||
-    ((process.env as any)["NEXT_PUBLIC_TV_WRITE_URL"] as string | undefined);
-  const moviesWriteUrl = (process.env as any)["NEXT_PUBLIC_MOVIES_WRITE_URL"] as string | undefined;
-  const gamesWriteUrl = (process.env as any)["NEXT_PUBLIC_GAMES_WRITE_URL"] as string | undefined;
+    process.env.NEXT_PUBLIC_SHOWS_WRITE_URL ||
+    process.env.NEXT_PUBLIC_TV_WRITE_URL;
+  const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
+  const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
@@ -649,6 +748,8 @@ export default function Page() {
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
+  const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
   const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
@@ -731,6 +832,26 @@ export default function Page() {
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
 
+  const clearAllFilters = useCallback(() => {
+    setQuery("");
+    setWatchFilter(null);
+    setShowFilter(null);
+    setTagFilter(null);
+    setMovieWatchFilter(null);
+    setMovieGenreFilter(null);
+    setReadingStatusFilter(null);
+    setFormatFilter(null);
+    setSeriesFilter(null);
+    setGenreFilter(null);
+    setGamePlatformFilter(null);
+    setGameStatusFilter(null);
+    setGameOwnershipFilter(null);
+    setGameFormatFilter(null);
+    setGameYearPlayedFilter(null);
+    setGameGenreFilter(null);
+    setWishlistFilter(false);
+  }, []);
+
   // Logo positioning and sizing
   const [logoSize, setLogoSize] = useState<number>(230);
   const [logoTop, setLogoTop] = useState<number>(12);
@@ -744,9 +865,9 @@ export default function Page() {
   const [iconSize, setIconSize] = useState<number>(16);
 
   // Sidebar text styling
-  const [sidebarFontSize, setSidebarFontSize] = useState<number>(13);
+  const [sidebarFontSize, setSidebarFontSize] = useState<number>(11);
   const [sidebarFontWeight, setSidebarFontWeight] = useState<string>("400");
-  const [sidebarGap, setSidebarGap] = useState<number>(10);
+  const [sidebarGap, setSidebarGap] = useState<number>(8);
   const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
   const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("600");
 
@@ -804,12 +925,32 @@ export default function Page() {
       highlightBgEnd: "rgba(100, 130, 128, 0.95)",
       highlightBorder: "rgba(118, 151, 149, 0.6)",
       activeHighlight: "rgba(118, 151, 149, 0.28)",
+    },
+    darkBlue: {
+      background:
+        "linear-gradient(180deg, rgba(18, 34, 61, 0.78) 0%, rgba(12, 24, 44, 0.74) 100%), linear-gradient(180deg, rgba(10, 20, 38, 0.72) 0%, rgba(8, 15, 30, 0.72) 100%)",
+      primaryColor: "#9eb8e6",
+      secondaryColor: "#d7e4ff",
+      textColor: "rgba(233, 240, 255, 0.9)",
+      arrowColor: "rgba(210, 226, 255, 0.65)",
+      rolodexColor: "#b7c9ef",
+      rolodexDigitColor: "#d7e4ff",
+      rolodexLabelColor: "#dbe7ff",
+      rolodexTileBg: "linear-gradient(180deg, rgba(30, 49, 82, 0.92) 0%, rgba(22, 36, 63, 0.92) 100%)",
+      rolodexTileBorder: "rgba(148,177,228,.35)",
+      countBubbleColor: "#5a78b8",
+      syncedTextColor: "#cfe0ff",
+      highlightBg: "rgba(42, 69, 114, 0.92)",
+      highlightBgEnd: "rgba(31, 54, 95, 0.95)",
+      highlightBorder: "rgba(121, 154, 214, 0.52)",
+      activeHighlight: "rgba(89, 123, 186, 0.28)",
     }
   };
   
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
 
   // Layout tuning
+  const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
@@ -854,8 +995,13 @@ export default function Page() {
   });
   
   // Platform-specific cover scale (for the poster image inside the inset)
-  const [platformCoverScale, setPlatformCoverScale] = useState<Record<string, number>>({
-    "Default": 100,
+  const [platformCoverScale, setPlatformCoverScale] = useState<Record<string, { x: number; y: number }>>({
+    "Default": { x: 100, y: 100 },
+  });
+  
+  // Platform-specific cover offset (crop/position inside inset)
+  const [platformCoverOffset, setPlatformCoverOffset] = useState<Record<string, { x: number; y: number }>>({
+    "Default": { x: 0, y: 0 },
   });
   
   // Track which platforms have been explicitly customized (not using Default)
@@ -863,6 +1009,13 @@ export default function Page() {
   
   // UI: Selected platform for editing insets
   const [selectedPlatformForInsets, setSelectedPlatformForInsets] = useState<string>("Default");
+  const [quickInsetTarget, setQuickInsetTarget] = useState<string>("tv");
+  const [quickInsetMode, setQuickInsetMode] = useState<QuickInsetMode>("insetPosition");
+  const [quickInsetStep, setQuickInsetStep] = useState<number>(5);
+  const [quickInsetSaveStatus, setQuickInsetSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [themeSaveNotice, setThemeSaveNotice] = useState<string>("");
+  const quickOverlayDragRef = useRef<{ x: number; y: number; top: number; left: number } | null>(null);
+  const [showVersionNotes, setShowVersionNotes] = useState(false);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   
@@ -873,10 +1026,40 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [overlayFrameOverrides, setOverlayFrameOverrides] = useState<Record<string, string>>({});
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  const [uploadingOverlayForKey, setUploadingOverlayForKey] = useState<string | null>(null);
+  const [overlayUploadError, setOverlayUploadError] = useState<string | null>(null);
+  const overlayFileInputRef = useRef<HTMLInputElement | null>(null);
+  const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
+  const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
+  const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const applyDebugHeaderOffset = useCallback(() => {
+    const { x, y } = debugHeaderOffsetRef.current;
+    if (debugHeaderLayerRef.current) {
+      debugHeaderLayerRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) scaleX(-1)`;
+    }
+    if (debugHeaderReadoutRef.current) {
+      debugHeaderReadoutRef.current.textContent = `X: ${x}, Y: ${y}`;
+    }
+  }, []);
+
+  const nudgeDebugHeader = useCallback((dx: number, dy: number) => {
+    debugHeaderOffsetRef.current = {
+      x: debugHeaderOffsetRef.current.x + dx,
+      y: debugHeaderOffsetRef.current.y + dy,
+    };
+    applyDebugHeaderOffset();
+  }, [applyDebugHeaderOffset]);
+
+  const resetDebugHeader = useCallback(() => {
+    debugHeaderOffsetRef.current = { x: 0, y: 0 };
+    applyDebugHeaderOffset();
+  }, [applyDebugHeaderOffset]);
 
   const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
 
@@ -919,12 +1102,59 @@ export default function Page() {
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
+  const getOverlayFrameDefaultPath = useCallback(
+    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
+      if (itemType === "book") return BOOK_FRAME_IMAGE;
+      if (itemType === "movie") return MOVIE_FRAME_IMAGE;
+      if (itemType === "tv") return CASE_FRAME_IMAGE;
+      return getPlatformFrameFilename(platform);
+    },
+    []
+  );
+
+  const getOverlayFrameOverrideKey = useCallback(
+    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
+      if (itemType !== "game") return itemType;
+      const rawPlatform = safeStr(platform) || "Default";
+      const canonicalPlatform = canonicalizePlatformLabel(rawPlatform);
+      return `game:${canonicalPlatform || "Default"}`;
+    },
+    []
+  );
+
+  const getOverlayFrameUrl = useCallback(
+    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
+      const overrideKey = getOverlayFrameOverrideKey(itemType, platform);
+      const override = safeStr(overlayFrameOverrides[overrideKey]);
+      if (override) return override;
+      return getOverlayFrameDefaultPath(itemType, platform);
+    },
+    [getOverlayFrameDefaultPath, getOverlayFrameOverrideKey, overlayFrameOverrides]
+  );
+
   useEffect(() => {
     const onResize = () => setViewportH(window.innerHeight || 0);
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!settingsPopupOpen && !sortPopupOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSettingsPopupOpen(false);
+        setSortPopupOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsPopupOpen, sortPopupOpen]);
+
+  useEffect(() => {
+    if (!SHOW_HEADER_DEBUG_CONTROLS) return;
+    applyDebugHeaderOffset();
+  }, [applyDebugHeaderOffset]);
 
   useEffect(() => {
     try {
@@ -940,19 +1170,44 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cdlOverlayFrameOverrides");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setOverlayFrameOverrides(parsed as Record<string, string>);
+      }
+    } catch (e) {
+      console.warn("Failed to load overlay frame overrides from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!settingsRows.length) return;
     const fromSheet: Record<string, string> = {};
+    const overlayFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
-      if (!key.startsWith("coverOverride:")) return;
-      const mediaKey = key.slice("coverOverride:".length);
       const value = safeStr(r["Value"]);
-      if (mediaKey && value) {
-        fromSheet[mediaKey] = value;
+      if (key.startsWith("coverOverride:")) {
+        const mediaKey = key.slice("coverOverride:".length);
+        if (mediaKey && value) {
+          fromSheet[mediaKey] = value;
+        }
+      }
+      if (key.startsWith("overlayFrameOverride:")) {
+        const overlayKey = key.slice("overlayFrameOverride:".length);
+        if (overlayKey && value) {
+          overlayFromSheet[overlayKey] = value;
+        }
       }
     });
-    if (!Object.keys(fromSheet).length) return;
-    setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+    if (Object.keys(fromSheet).length) {
+      setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+    }
+    if (Object.keys(overlayFromSheet).length) {
+      setOverlayFrameOverrides((prev) => ({ ...overlayFromSheet, ...prev }));
+    }
   }, [settingsRows]);
 
   useEffect(() => {
@@ -1014,6 +1269,23 @@ export default function Page() {
     }
   };
 
+  const postSheetWrite = async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+    const res = await fetch("/api/sheets-write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, payload }),
+    });
+
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !data?.ok) {
+      const errorMessage =
+        (typeof data?.error === "string" && data.error) ||
+        (typeof data?.result === "string" && data.result) ||
+        fallbackMessage;
+      throw new Error(errorMessage);
+    }
+  };
+
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
     if (!booksWriteUrl) {
       throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
@@ -1021,9 +1293,10 @@ export default function Page() {
 
     const matchGoogleBooksVolumeId = safeStr(updates.googleBooksVolumeId) || safeStr(item?.googleBooksVolumeId);
     const matchOpenLibraryWorkKey = safeStr(updates.openLibraryWorkKey) || safeStr(item?.openLibraryWorkKey);
+    const matchIsbn = safeStr(updates.isbn) || safeStr(item?.isbn);
     const matchTitle = safeStr(item?.title);
 
-    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
       throw new Error("Unable to identify this book row to update.");
     }
 
@@ -1032,6 +1305,7 @@ export default function Page() {
       match: {
         googleBooksVolumeId: matchGoogleBooksVolumeId,
         openLibraryWorkKey: matchOpenLibraryWorkKey,
+        isbn: matchIsbn,
         title: matchTitle,
       },
       updates: {
@@ -1059,12 +1333,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(booksWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(booksWriteUrl, payload, "Failed to save book edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save book edits");
     }
@@ -1147,12 +1416,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(showsWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(showsWriteUrl, payload, "Failed to save show edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save show edits");
     }
@@ -1227,12 +1491,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(moviesWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(moviesWriteUrl, payload, "Failed to save movie edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save movie edits");
     }
@@ -1319,12 +1578,7 @@ export default function Page() {
     };
 
     try {
-      await fetch(gamesWriteUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      await postSheetWrite(gamesWriteUrl, payload, "Failed to save game edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save game edits");
     }
@@ -1623,10 +1877,11 @@ export default function Page() {
         ];
       } else if (insetType === 'game') {
         // Save only the currently selected platform's insets, overlay settings, and cover scale
-        const platform = selectedPlatformForInsets;
-        const insets = platformInsets[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
-        const overlaySettings = platformOverlaySettings[platform] || { width: 100, height: 100, top: 0, left: 0 };
-        const coverScale = platformCoverScale[platform] || 100;
+        const platform = selectedPlatformKey;
+        const insets = platformInsets[platform] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+        const overlaySettings = platformOverlaySettings[platform] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+        const coverScale = platformCoverScale[platform] || platformCoverScale["Default"] || { x: 100, y: 100 };
+        const coverOffset = platformCoverOffset[platform] || platformCoverOffset["Default"] || { x: 0, y: 0 };
         
         savePromises = [
           saveSettingToSheet(`${platform}InsetTopPx`, insets.top, `${platform} Insets`, `${platform} Top Inset (px)`),
@@ -1637,7 +1892,10 @@ export default function Page() {
           saveSettingToSheet(`${platform}OverlayHeight`, overlaySettings.height, `${platform} Overlay`, `${platform} Overlay Height (%)`),
           saveSettingToSheet(`${platform}OverlayTop`, overlaySettings.top, `${platform} Overlay`, `${platform} Overlay Top (%)`),
           saveSettingToSheet(`${platform}OverlayLeft`, overlaySettings.left, `${platform} Overlay`, `${platform} Overlay Left (%)`),
-          saveSettingToSheet(`${platform}CoverScale`, coverScale, `${platform} Cover`, `${platform} Cover Scale (%)`),
+          saveSettingToSheet(`${platform}CoverScaleX`, coverScale.x, `${platform} Cover`, `${platform} Cover Scale X (%)`),
+          saveSettingToSheet(`${platform}CoverScaleY`, coverScale.y, `${platform} Cover`, `${platform} Cover Scale Y (%)`),
+          saveSettingToSheet(`${platform}CoverOffsetX`, coverOffset.x, `${platform} Cover`, `${platform} Cover Offset X (%)`),
+          saveSettingToSheet(`${platform}CoverOffsetY`, coverOffset.y, `${platform} Cover`, `${platform} Cover Offset Y (%)`),
         ];
       }
 
@@ -1649,10 +1907,12 @@ export default function Page() {
       setTimeout(() => {
         setSyncMsg("Synced");
       }, 2000);
+      return true;
     } catch (e) {
       console.error(`Failed to save ${insetType} insets:`, e);
       setSyncState("error");
       setSyncMsg(`Failed to save ${insetType} insets`);
+      return false;
     }
   };
 
@@ -1707,8 +1967,19 @@ export default function Page() {
     };
     
     // Also prepare cover scale settings structure
-    const loadedPlatformCoverScale: Record<string, number> = {
-      "Default": getSetting("DefaultCoverScale", 100),
+    const defaultLegacyScale = getSetting("DefaultCoverScale", 100);
+    const loadedPlatformCoverScale: Record<string, { x: number; y: number }> = {
+      "Default": {
+        x: getSetting("DefaultCoverScaleX", defaultLegacyScale),
+        y: getSetting("DefaultCoverScaleY", defaultLegacyScale),
+      },
+    };
+    
+    const loadedPlatformCoverOffset: Record<string, { x: number; y: number }> = {
+      "Default": {
+        x: getSetting("DefaultCoverOffsetX", 0),
+        y: getSetting("DefaultCoverOffsetY", 0),
+      },
     };
     
     // Load settings for any platforms found in settings
@@ -1716,39 +1987,53 @@ export default function Page() {
       const key = safeStr(row["Key"]);
       const match = key.match(/^(.+)InsetTopPx$/);
       if (match && match[1] !== "Default") {
-        const platform = match[1];
-        if (!loadedPlatformInsets[platform]) {
-          loadedPlatformInsets[platform] = {
-            top: getSetting(`${platform}InsetTopPx`, 5),
-            right: getSetting(`${platform}InsetRightPx`, 5),
-            bottom: getSetting(`${platform}InsetBottomPx`, 5),
-            left: getSetting(`${platform}InsetLeftPx`, 5),
-          };
-          // Mark this platform as customized since it was saved in settings
-          loadedCustomizedPlatforms.add(platform);
-        }
+        const rawPlatform = match[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        loadedPlatformInsets[platform] = {
+          top: getSetting(`${rawPlatform}InsetTopPx`, getSetting(`${platform}InsetTopPx`, 5)),
+          right: getSetting(`${rawPlatform}InsetRightPx`, getSetting(`${platform}InsetRightPx`, 5)),
+          bottom: getSetting(`${rawPlatform}InsetBottomPx`, getSetting(`${platform}InsetBottomPx`, 5)),
+          left: getSetting(`${rawPlatform}InsetLeftPx`, getSetting(`${platform}InsetLeftPx`, 5)),
+        };
+        // Mark this platform as customized since it was saved in settings
+        loadedCustomizedPlatforms.add(platform);
       }
       
       // Also check for overlay settings
       const overlayMatch = key.match(/^(.+)OverlayWidth$/);
       if (overlayMatch && overlayMatch[1] !== "Default") {
-        const platform = overlayMatch[1];
-        if (!loadedPlatformOverlaySettings[platform]) {
-          loadedPlatformOverlaySettings[platform] = {
-            width: getSetting(`${platform}OverlayWidth`, 100),
-            height: getSetting(`${platform}OverlayHeight`, 100),
-            top: getSetting(`${platform}OverlayTop`, 0),
-            left: getSetting(`${platform}OverlayLeft`, 0),
-          };
-          loadedCustomizedPlatforms.add(platform);
-        }
+        const rawPlatform = overlayMatch[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        loadedPlatformOverlaySettings[platform] = {
+          width: getSetting(`${rawPlatform}OverlayWidth`, getSetting(`${platform}OverlayWidth`, 100)),
+          height: getSetting(`${rawPlatform}OverlayHeight`, getSetting(`${platform}OverlayHeight`, 100)),
+          top: getSetting(`${rawPlatform}OverlayTop`, getSetting(`${platform}OverlayTop`, 0)),
+          left: getSetting(`${rawPlatform}OverlayLeft`, getSetting(`${platform}OverlayLeft`, 0)),
+        };
+        loadedCustomizedPlatforms.add(platform);
       }
       
       // Also check for cover scale settings
-      const coverScaleMatch = key.match(/^(.+)CoverScale$/);
+      const coverScaleMatch = key.match(/^(.+)CoverScale(?:X|Y)?$/);
       if (coverScaleMatch && coverScaleMatch[1] !== "Default") {
-        const platform = coverScaleMatch[1];
-        loadedPlatformCoverScale[platform] = getSetting(`${platform}CoverScale`, 100);
+        const rawPlatform = coverScaleMatch[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        const legacyScale = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
+        loadedPlatformCoverScale[platform] = {
+          x: getSetting(`${rawPlatform}CoverScaleX`, getSetting(`${platform}CoverScaleX`, legacyScale)),
+          y: getSetting(`${rawPlatform}CoverScaleY`, getSetting(`${platform}CoverScaleY`, legacyScale)),
+        };
+        loadedCustomizedPlatforms.add(platform);
+      }
+      
+      const coverOffsetMatch = key.match(/^(.+)CoverOffsetX$/);
+      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default") {
+        const rawPlatform = coverOffsetMatch[1];
+        const platform = canonicalizePlatformLabel(rawPlatform);
+        loadedPlatformCoverOffset[platform] = {
+          x: getSetting(`${rawPlatform}CoverOffsetX`, getSetting(`${platform}CoverOffsetX`, 0)),
+          y: getSetting(`${rawPlatform}CoverOffsetY`, getSetting(`${platform}CoverOffsetY`, 0)),
+        };
         loadedCustomizedPlatforms.add(platform);
       }
     });
@@ -1756,6 +2041,7 @@ export default function Page() {
     setPlatformInsets(loadedPlatformInsets);
     setPlatformOverlaySettings(loadedPlatformOverlaySettings);
     setPlatformCoverScale(loadedPlatformCoverScale);
+    setPlatformCoverOffset(loadedPlatformCoverOffset);
     setCustomizedPlatforms(loadedCustomizedPlatforms);
     
     setLogoSize(getSetting("logoSize", 230));
@@ -1767,9 +2053,9 @@ export default function Page() {
     
     setIconSize(getSetting("iconSize", 16));
     
-    setSidebarFontSize(getSetting("sidebarFontSize", 13));
+    setSidebarFontSize(getSetting("sidebarFontSize", 11));
     setSidebarFontWeight(getSetting("sidebarFontWeight", "400"));
-    setSidebarGap(getSetting("sidebarGap", 10));
+    setSidebarGap(getSetting("sidebarGap", 8));
     setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
     setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
     
@@ -1944,9 +2230,9 @@ export default function Page() {
         setSyncIconTop(getNum("syncIconTop", 8));
         
         setIconSize(getNum("iconSize", 16));
-        setSidebarFontSize(getNum("sidebarFontSize", 13));
+        setSidebarFontSize(getNum("sidebarFontSize", 11));
         setSidebarFontWeight(getStr("sidebarFontWeight", "400"));
-        setSidebarGap(getNum("sidebarGap", 10));
+        setSidebarGap(getNum("sidebarGap", 8));
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
@@ -2079,27 +2365,42 @@ export default function Page() {
   const updateShelfTheme = (value: string) => {
     setShelfTheme(value);
     saveSetting("shelfTheme", value, "Themes", "Shelf Wood Type");
+    const shelfThemeNames: Record<string, string> = {
+      "/shelves-light-single2.png": "Default (Light Oak)",
+      "/shelf-dark-walnut.png": "Dark Walnut",
+      "/shelf-weathered-oak.png": "Weathered Oak",
+      "/shelf-honey-oak.png": "Honey Oak",
+      "/shelf-teak.png": "Teak",
+    };
+    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
   };
   
   const updateSidebarTheme = (value: string) => {
     setSidebarTheme(value);
     saveSetting("sidebarTheme", value, "Themes", "Sidebar Theme");
+    const sidebarThemeNames: Record<string, string> = {
+      standard: "Standard",
+      winterGray: "Winter Gray",
+      darkBlue: "Dark Blue",
+    };
+    setThemeSaveNotice(`Saved theme: ${sidebarThemeNames[value] || "Sidebar theme"}. This will be used next time.`);
   };
   
   // Update platform-specific insets
   const updatePlatformInset = (platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
     const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
-    const settingKey = `${platform}Inset${edgeCapitalized}Px`;
+    const settingKey = `${platformKey}Inset${edgeCapitalized}Px`;
     
     debouncedUpdate(
       settingKey,
       value,
       () => {
         setPlatformInsets(prev => {
-          const currentPlatformInsets = prev[platform] || { top: 5, right: 5, bottom: 5, left: 5 };
+          const currentPlatformInsets = prev[platformKey] || { top: 5, right: 5, bottom: 5, left: 5 };
           return {
             ...prev,
-            [platform]: {
+            [platformKey]: {
               ...currentPlatformInsets,
               [edge]: value,
             }
@@ -2107,29 +2408,30 @@ export default function Page() {
         });
         
         // Mark this platform as customized if it's not Default
-        if (platform !== "Default") {
-          setCustomizedPlatforms(prev => new Set(prev).add(platform));
+        if (platformKey !== "Default") {
+          setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
         }
       },
-      `${platform} Insets`,
-      `${platform} ${edgeCapitalized} Inset (px)`
+      `${platformKey} Insets`,
+      `${platformKey} ${edgeCapitalized} Inset (px)`
     );
   };
   
   // Update platform-specific overlay settings
   const updatePlatformOverlay = (platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
     const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
-    const settingKey = `${platform}Overlay${propertyCapitalized}`;
+    const settingKey = `${platformKey}Overlay${propertyCapitalized}`;
     
     debouncedUpdate(
       settingKey,
       value,
       () => {
         setPlatformOverlaySettings(prev => {
-          const currentOverlaySettings = prev[platform] || { width: 100, height: 100, top: 0, left: 0 };
+          const currentOverlaySettings = prev[platformKey] || { width: 100, height: 100, top: 0, left: 0 };
           return {
             ...prev,
-            [platform]: {
+            [platformKey]: {
               ...currentOverlaySettings,
               [property]: value,
             }
@@ -2137,28 +2439,52 @@ export default function Page() {
         });
         
         // Mark this platform as customized if it's not Default
-        if (platform !== "Default") {
-          setCustomizedPlatforms(prev => new Set(prev).add(platform));
+        if (platformKey !== "Default") {
+          setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
         }
       },
-      `${platform} Overlay`,
-      `${platform} Overlay ${propertyCapitalized} (%)`
+      `${platformKey} Overlay`,
+      `${platformKey} Overlay ${propertyCapitalized} (%)`
     );
   };
   
   // Update platform-specific cover scale
-  const updatePlatformCoverScale = (platform: string, value: number) => {
+  const updatePlatformCoverScale = (platform: string, axis: "x" | "y", value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
+    const axisLabel = axis.toUpperCase();
     setPlatformCoverScale(prev => ({
       ...prev,
-      [platform]: value,
+      [platformKey]: {
+        ...(prev[platformKey] || { x: 100, y: 100 }),
+        [axis]: value,
+      },
     }));
     
     // Mark this platform as customized if it's not Default
-    if (platform !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platform));
+    if (platformKey !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
     }
     
-    saveSetting(`${platform}CoverScale`, value, `${platform} Cover`, `${platform} Cover Scale (%)`);
+    saveSetting(`${platformKey}CoverScale${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Scale ${axisLabel} (%)`);
+  };
+  
+  // Update platform-specific cover offset (crop position inside inset)
+  const updatePlatformCoverOffset = (platform: string, axis: 'x' | 'y', value: number) => {
+    const platformKey = resolvePlatformAlias(platform);
+    const axisLabel = axis.toUpperCase();
+    setPlatformCoverOffset(prev => ({
+      ...prev,
+      [platformKey]: {
+        ...(prev[platformKey] || { x: 0, y: 0 }),
+        [axis]: value,
+      },
+    }));
+    
+    if (platformKey !== "Default") {
+      setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
+    }
+    
+    saveSetting(`${platformKey}CoverOffset${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Offset ${axisLabel} (%)`);
   };
   
   const updateLogoSize = (value: number) => {
@@ -2481,7 +2807,7 @@ export default function Page() {
     // Return the first platform in the list
     return platforms[0];
   };
-  
+
   // Helper to deduplicate games by title - keeps only primary platform version
   const deduplicateGames = (games: Game[]): Game[] => {
     const gamesByTitle = new Map<string, Game>();
@@ -2518,7 +2844,7 @@ export default function Page() {
       if (game.platform) {
         // Split comma-separated platforms and add each individually
         const individualPlatforms = game.platform.split(',').map(p => p.trim()).filter(Boolean);
-        individualPlatforms.forEach(p => platforms.add(p));
+        individualPlatforms.forEach(p => platforms.add(canonicalizePlatformLabel(p)));
       }
     });
     return Array.from(platforms).sort((a, b) => {
@@ -2528,6 +2854,407 @@ export default function Page() {
       return a.localeCompare(b);
     });
   }, [allGames]);
+
+  const getGameInsetDebugReadout = useCallback(
+    (platformKey: string) => {
+      const resolved = platformKey || "Default";
+      const insets = platformInsets[resolved] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+      const overlay = platformOverlaySettings[resolved] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+      const scale = platformCoverScale[resolved] || platformCoverScale["Default"] || { x: 100, y: 100 };
+      const offset = platformCoverOffset[resolved] || platformCoverOffset["Default"] || { x: 0, y: 0 };
+      return `P:${resolved} | I:${insets.top}/${insets.right}/${insets.bottom}/${insets.left} | O:${overlay.width}/${overlay.height}/${overlay.top}/${overlay.left} | C:${scale.x}/${scale.y}/${offset.x}/${offset.y}`;
+    },
+    [platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]
+  );
+
+  const platformAliasMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const knownPlatforms = new Set<string>([
+      ...Object.keys(platformInsets),
+      ...Object.keys(platformOverlaySettings),
+      ...Object.keys(platformCoverScale),
+      ...Object.keys(platformCoverOffset),
+      ...Array.from(customizedPlatforms),
+      ...allGames.flatMap((g) =>
+        safeStr(g.platform)
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
+      ),
+    ]);
+
+    Array.from(knownPlatforms).forEach((platform) => {
+      if (!platform || platform === "Default") return;
+      const normalized = normalizePlatformToken(platform);
+      if (!normalized) return;
+      if (!map.has(normalized)) map.set(normalized, platform);
+    });
+
+    return map;
+  }, [allGames, customizedPlatforms, platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]);
+
+  const resolvePlatformAlias = useCallback(
+    (platform: string) => {
+      const rawNormalized = normalizePlatformToken(platform);
+      if (!rawNormalized) return "Default";
+      const normalized = PLATFORM_TOKEN_ALIASES[rawNormalized] || rawNormalized;
+      return PLATFORM_CANONICAL_LABELS[normalized] || platformAliasMap.get(normalized) || platform;
+    },
+    [platformAliasMap]
+  );
+
+  const selectedPlatformKey = useMemo(
+    () => resolvePlatformAlias(selectedPlatformForInsets),
+    [resolvePlatformAlias, selectedPlatformForInsets]
+  );
+
+  const quickTargetType: "tv" | "movie" | "book" | "game" = useMemo(() => {
+    return quickInsetTarget.startsWith("game:") ? "game" : (quickInsetTarget as "tv" | "movie" | "book");
+  }, [quickInsetTarget]);
+
+  const quickTargetPlatform = useMemo(() => {
+    if (!quickInsetTarget.startsWith("game:")) return "Default";
+    return quickInsetTarget.slice("game:".length) || "Default";
+  }, [quickInsetTarget]);
+
+  const quickTargetPlatformKey = useMemo(() => {
+    if (quickTargetType !== "game") return "Default";
+    return resolvePlatformAlias(quickTargetPlatform);
+  }, [quickTargetPlatform, quickTargetType, resolvePlatformAlias]);
+
+  const quickInsetTargetOptions = useMemo(
+    () => [
+      { value: "tv", label: "TV Shows" },
+      { value: "movie", label: "Movies" },
+      { value: "book", label: "Books" },
+      ...detectedPlatforms.map((platform) => ({
+        value: `game:${platform}`,
+        label: `Games: ${platform}`,
+      })),
+    ],
+    [detectedPlatforms]
+  );
+
+  const quickOverlayTargetKey = useMemo(
+    () => getOverlayFrameOverrideKey(quickTargetType, quickTargetPlatformKey),
+    [getOverlayFrameOverrideKey, quickTargetPlatformKey, quickTargetType]
+  );
+
+  const quickOverlayExpectedPath = useMemo(
+    () => getOverlayFrameDefaultPath(quickTargetType, quickTargetPlatformKey),
+    [getOverlayFrameDefaultPath, quickTargetPlatformKey, quickTargetType]
+  );
+
+  const quickOverlayExpectedFilename = useMemo(() => {
+    const parts = quickOverlayExpectedPath.split("/").filter(Boolean);
+    return parts[parts.length - 1] || quickOverlayExpectedPath;
+  }, [quickOverlayExpectedPath]);
+
+  const quickOverlayOverrideUrl = useMemo(
+    () => safeStr(overlayFrameOverrides[quickOverlayTargetKey]),
+    [overlayFrameOverrides, quickOverlayTargetKey]
+  );
+
+  const handleReplaceOverlayForQuickTarget = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file) return;
+      const targetKey = quickOverlayTargetKey;
+      setUploadingOverlayForKey(targetKey);
+      setOverlayUploadError(null);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("itemKey", targetKey);
+        formData.append("mediaType", "overlay-frame");
+        formData.append("title", targetKey);
+
+        const res = await fetch("/api/upload-cover", {
+          method: "POST",
+          body: formData,
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) {
+          throw new Error(payload?.error || `Overlay upload failed (${res.status})`);
+        }
+
+        const uploadedUrl = String(payload.url);
+        setOverlayFrameOverrides((prev) => {
+          const next = { ...prev, [targetKey]: uploadedUrl };
+          try {
+            localStorage.setItem("cdlOverlayFrameOverrides", JSON.stringify(next));
+          } catch (e) {
+            console.warn("Failed to persist overlay overrides locally:", e);
+          }
+          return next;
+        });
+
+        if (settingsWriteUrl) {
+          saveSettingToSheet(
+            `overlayFrameOverride:${targetKey}`,
+            uploadedUrl,
+            "Overlay Overrides",
+            `Overlay frame override for ${targetKey}`
+          );
+        }
+      } catch (e: any) {
+        const msg = e?.message || "Failed to upload overlay";
+        setOverlayUploadError(msg);
+        console.error("Overlay upload failed:", e);
+      } finally {
+        setUploadingOverlayForKey(null);
+      }
+    },
+    [quickOverlayTargetKey, settingsWriteUrl]
+  );
+
+  const handleResetOverlayForQuickTarget = useCallback(() => {
+    const targetKey = quickOverlayTargetKey;
+    setOverlayUploadError(null);
+    setOverlayFrameOverrides((prev) => {
+      if (!(targetKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[targetKey];
+      try {
+        localStorage.setItem("cdlOverlayFrameOverrides", JSON.stringify(next));
+      } catch (e) {
+        console.warn("Failed to persist overlay overrides locally:", e);
+      }
+      return next;
+    });
+
+    if (settingsWriteUrl) {
+      saveSettingToSheet(
+        `overlayFrameOverride:${targetKey}`,
+        "",
+        "Overlay Overrides",
+        `Clear overlay frame override for ${targetKey}`
+      );
+    }
+  }, [quickOverlayTargetKey, settingsWriteUrl]);
+
+  const quickInsetSnapshot = useMemo(() => {
+    const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
+    const movieInset = { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx };
+    const bookInset = { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx };
+    const gameInset = platformInsets[quickTargetPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+    const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
+    const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
+    const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+    return {
+      inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
+      overlay: gameOverlay,
+      coverOffset: gameCoverOffset,
+      coverScale: gameCoverScale,
+      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : GAME_SRC_W,
+      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : GAME_SRC_H,
+    };
+  }, [
+    BOOK_SRC_H,
+    BOOK_SRC_W,
+    CASE_SRC_H,
+    CASE_SRC_W,
+    GAME_SRC_H,
+    GAME_SRC_W,
+    MOVIE_SRC_H,
+    MOVIE_SRC_W,
+    bookInsetBottomPx,
+    bookInsetLeftPx,
+    bookInsetRightPx,
+    bookInsetTopPx,
+    caseInsetBottomPx,
+    caseInsetLeftPx,
+    caseInsetRightPx,
+    caseInsetTopPx,
+    movieInsetBottomPx,
+    movieInsetLeftPx,
+    movieInsetRightPx,
+    movieInsetTopPx,
+    platformCoverOffset,
+    platformCoverScale,
+    platformInsets,
+    platformOverlaySettings,
+    quickTargetPlatformKey,
+    quickTargetType,
+  ]);
+
+  useEffect(() => {
+    if (quickTargetType !== "game" && quickInsetMode !== "insetPosition") {
+      setQuickInsetMode("insetPosition");
+    }
+    if (quickTargetType === "game") {
+      setSelectedPlatformForInsets(quickTargetPlatform);
+    }
+  }, [quickInsetMode, quickTargetPlatform, quickTargetType]);
+
+  const applyQuickInsetNudge = useCallback(
+    (direction: "up" | "down" | "left" | "right") => {
+      const step = quickInsetStep;
+      const inset = quickInsetSnapshot.inset;
+      const overlay = quickInsetSnapshot.overlay;
+      const cover = quickInsetSnapshot.coverOffset;
+      const isUp = direction === "up";
+      const isDown = direction === "down";
+      const isLeft = direction === "left";
+      const isRight = direction === "right";
+
+      if (quickInsetMode === "insetPosition") {
+        if (quickTargetType === "tv") {
+          if (isUp) { updateCaseInsetTopPx(inset.top - step); updateCaseInsetBottomPx(inset.bottom + step); }
+          if (isDown) { updateCaseInsetTopPx(inset.top + step); updateCaseInsetBottomPx(inset.bottom - step); }
+          if (isLeft) { updateCaseInsetLeftPx(inset.left - step); updateCaseInsetRightPx(inset.right + step); }
+          if (isRight) { updateCaseInsetLeftPx(inset.left + step); updateCaseInsetRightPx(inset.right - step); }
+          return;
+        }
+        if (quickTargetType === "movie") {
+          if (isUp) { updateMovieInsetTopPx(inset.top - step); updateMovieInsetBottomPx(inset.bottom + step); }
+          if (isDown) { updateMovieInsetTopPx(inset.top + step); updateMovieInsetBottomPx(inset.bottom - step); }
+          if (isLeft) { updateMovieInsetLeftPx(inset.left - step); updateMovieInsetRightPx(inset.right + step); }
+          if (isRight) { updateMovieInsetLeftPx(inset.left + step); updateMovieInsetRightPx(inset.right - step); }
+          return;
+        }
+        if (quickTargetType === "book") {
+          if (isUp) { updateBookInsetTopPx(inset.top - step); updateBookInsetBottomPx(inset.bottom + step); }
+          if (isDown) { updateBookInsetTopPx(inset.top + step); updateBookInsetBottomPx(inset.bottom - step); }
+          if (isLeft) { updateBookInsetLeftPx(inset.left - step); updateBookInsetRightPx(inset.right + step); }
+          if (isRight) { updateBookInsetLeftPx(inset.left + step); updateBookInsetRightPx(inset.right - step); }
+          return;
+        }
+        if (isUp) { updatePlatformInset(quickTargetPlatform, "top", inset.top - step); updatePlatformInset(quickTargetPlatform, "bottom", inset.bottom + step); }
+        if (isDown) { updatePlatformInset(quickTargetPlatform, "top", inset.top + step); updatePlatformInset(quickTargetPlatform, "bottom", inset.bottom - step); }
+        if (isLeft) { updatePlatformInset(quickTargetPlatform, "left", inset.left - step); updatePlatformInset(quickTargetPlatform, "right", inset.right + step); }
+        if (isRight) { updatePlatformInset(quickTargetPlatform, "left", inset.left + step); updatePlatformInset(quickTargetPlatform, "right", inset.right - step); }
+        return;
+      }
+
+      if (quickTargetType !== "game") return;
+
+      if (quickInsetMode === "overlayPosition") {
+        if (isUp) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
+        if (isDown) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
+        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
+        if (isRight) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
+        return;
+      }
+
+      if (quickInsetMode === "overlayScale") {
+        if (isUp) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
+        if (isDown) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
+        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
+        if (isRight) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
+        return;
+      }
+
+      if (quickInsetMode === "coverPosition") {
+        if (isUp) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
+        if (isDown) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
+        if (isLeft) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
+        if (isRight) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
+        return;
+      }
+
+      if (isLeft) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
+      if (isRight) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
+      if (isUp) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
+      if (isDown) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
+    },
+    [
+      quickInsetMode,
+      quickInsetSnapshot,
+      quickInsetStep,
+      quickTargetPlatform,
+      quickTargetType,
+      updateBookInsetBottomPx,
+      updateBookInsetLeftPx,
+      updateBookInsetRightPx,
+      updateBookInsetTopPx,
+      updateCaseInsetBottomPx,
+      updateCaseInsetLeftPx,
+      updateCaseInsetRightPx,
+      updateCaseInsetTopPx,
+      updateMovieInsetBottomPx,
+      updateMovieInsetLeftPx,
+      updateMovieInsetRightPx,
+      updateMovieInsetTopPx,
+      updatePlatformCoverOffset,
+      updatePlatformCoverScale,
+      updatePlatformInset,
+      updatePlatformOverlay,
+    ]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!settingsPopupOpen || !settingsOpen.framePosition) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active) {
+        const tag = active.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) {
+          return;
+        }
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        applyQuickInsetNudge("up");
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        applyQuickInsetNudge("down");
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        applyQuickInsetNudge("left");
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        applyQuickInsetNudge("right");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [applyQuickInsetNudge, settingsOpen.framePosition, settingsPopupOpen]);
+
+  const quickInsetPreview = useMemo(() => {
+    const inset = quickInsetSnapshot.inset;
+    const top = (inset.top / quickInsetSnapshot.sourceHeight) * 100;
+    const right = (inset.right / quickInsetSnapshot.sourceWidth) * 100;
+    const bottom = (inset.bottom / quickInsetSnapshot.sourceHeight) * 100;
+    const left = (inset.left / quickInsetSnapshot.sourceWidth) * 100;
+    return {
+      top,
+      left,
+      width: Math.max(5, 100 - left - right),
+      height: Math.max(5, 100 - top - bottom),
+    };
+  }, [quickInsetSnapshot]);
+
+  const quickInsetSaveType: "tv" | "movie" | "book" | "game" = quickTargetType;
+  const quickInsetSaveLabel =
+    quickTargetType === "tv"
+      ? "Save TV Insets"
+      : quickTargetType === "movie"
+        ? "Save Movie Insets"
+        : quickTargetType === "book"
+          ? "Save Book Insets"
+          : `Save ${quickTargetPlatform} Inset`;
+
+  // For rendering: use the first platform listed in the row as primary.
+  // This keeps shelf rendering deterministic when a platform
+  // (e.g. PlayStation 5) is selected.
+  const getRenderPlatform = useCallback(
+    (platformString: string | undefined): string => {
+      if (!platformString) return "Default";
+      const platforms = platformString
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => resolvePlatformAlias(p));
+      if (platforms.length === 0) return "Default";
+      return platforms[0];
+    },
+    [resolvePlatformAlias]
+  );
 
   // Note: We do NOT auto-initialize platformInsets for detected platforms
   // Only platforms explicitly customized (or loaded from settings) get entries
@@ -2899,10 +3626,9 @@ export default function Page() {
     if (nav === "wishlist") {
       const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
       const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
-      const deduplicatedGames = deduplicateGames(qg);
 
       const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
-      const queryFilteredGames = q ? deduplicatedGames.filter((g) => g.title.toLowerCase().includes(q)) : deduplicatedGames;
+      const queryFilteredGames = q ? qg.filter((g) => g.title.toLowerCase().includes(q)) : qg;
 
       const combined = [
         ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
@@ -3043,14 +3769,11 @@ export default function Page() {
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
         : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
       
-      // Deduplicate games by title - keep only primary platform version
-      const deduplicatedGames = deduplicateGames(qg);
-
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
         ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -3083,31 +3806,10 @@ export default function Page() {
         : allMovies.filter((m) => safeStr(m.tag) === yearStr);
       
       // Games: Use Year Played column
-      let qg = q 
+      const qg = q 
         ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === yearStr)
         : allGames.filter((g) => safeStr(g.yearPlayed) === yearStr);
       
-      // Deduplicate games by title - keep only primary platform version
-      const gamesByTitle2 = new Map<string, Game>();
-      qg.forEach(game => {
-        const existingGame = gamesByTitle2.get(game.title);
-        if (!existingGame) {
-          gamesByTitle2.set(game.title, game);
-        } else {
-          const existingPlatform = getPrimaryPlatform(existingGame.platform);
-          const currentPlatform = getPrimaryPlatform(game.platform);
-          const priority = (platform: string) => {
-            if (platform === "Steam") return 3;
-            if (platform === "Epic Games Store") return 2;
-            return 1;
-          };
-          if (priority(currentPlatform) > priority(existingPlatform)) {
-            gamesByTitle2.set(game.title, game);
-          }
-        }
-      });
-      qg = Array.from(gamesByTitle2.values());
-
       const combined = [
         ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
@@ -3145,7 +3847,7 @@ export default function Page() {
 
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
-    const wishlistGames = deduplicateGames(allGames.filter((g) => hasWishlistOwnership(g.ownership))).length;
+    const wishlistGames = allGames.filter((g) => hasWishlistOwnership(g.ownership)).length;
     const watchlistShows = allShows.filter((s) => {
       const status = normalizeStatus(s.watchStatus);
       return status !== "completed" && status !== "abandoned";
@@ -3164,12 +3866,12 @@ export default function Page() {
 
   const postersPerShelf = useMemo(() => {
     const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
+    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
   const shelves = useMemo(() => {
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2 - 60); // Reserve 60px for the counter
+    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     const out: any[][] = [];
     
     // For mixed-item views, calculate shelf distribution based on actual item sizes
@@ -3217,15 +3919,33 @@ export default function Page() {
   }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, posterSizeBooks, posterSizeMovies, posterSizeGames, posterSizeTv, gap]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111" }}>
+    <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
+      <div
+        aria-hidden
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 45,
+          zIndex: 1300,
+          pointerEvents: "none",
+          backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+          backgroundRepeat: "repeat-x",
+          backgroundPosition: "0 0",
+          backgroundSize: "auto 45px",
+          boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+        }}
+      />
       {/* Main layout: Sidebar + Content */}
       <div
         style={{
+          position: "relative",
           width: "100%",
           margin: 0,
           padding: 0,
           display: "grid",
-          gridTemplateColumns: "320px 1fr",
+          gridTemplateColumns: `${SIDEBAR_WIDTH}px 1fr`,
           gap: 0,
           alignItems: "stretch",
         }}
@@ -3236,30 +3956,84 @@ export default function Page() {
           style={{
             position: "sticky",
             top: 0,
+            zIndex: settingsPopupOpen ? 6000 : 1400,
             alignSelf: "start",
             height: "100vh",
             minHeight: "100vh",
             borderRadius: "0 0 0 0",
-            overflowY: "auto",
-            overflowX: "hidden",
-            backgroundImage: currentTheme.background,
-            backgroundSize: "auto, 100% 100%",
-            backgroundPosition: "0 0, 0 0",
-            border: "1px solid rgba(0,0,0,0.12)",
-            borderRight: "none",
-            boxShadow: "0 10px 18px rgba(0,0,0,0.12)",
+            isolation: "isolate",
+            overflowY: "visible",
+            overflowX: "visible",
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
             display: "flex",
             flexDirection: "column",
             padding: "6px",
           }}
         >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 43,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 0,
+              pointerEvents: "none",
+              backgroundImage: `url(${shelfTheme})`,
+              backgroundRepeat: "repeat-y",
+              backgroundPosition: "center top",
+              backgroundSize: `100% ${SHELF_HEIGHT}px`,
+            }}
+          />
+          <div
+            ref={debugHeaderLayerRef}
+            aria-hidden
+            style={{
+              display: SHOW_HEADER_DEBUG_CONTROLS ? "block" : "none",
+              position: "absolute",
+              top: -1,
+              left: -220,
+              right: -220,
+              height: 45,
+              zIndex: 0,
+              pointerEvents: "none",
+              backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+              backgroundRepeat: "repeat-x",
+              backgroundPosition: "0 0",
+              backgroundSize: "auto 45px",
+              boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+              transform: "translate3d(0, 0, 0) scaleX(-1)",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 6,
+              zIndex: 1,
+              pointerEvents: "none",
+              borderRadius: 16,
+              overflow: "hidden",
+              opacity: sidebarTheme === "winterGray" ? 0.8 : sidebarTheme === "darkBlue" ? 0.9 : 0.84,
+              backgroundImage: currentTheme.background,
+              backgroundSize: "auto, 100% 100%",
+              backgroundPosition: "0 0, 0 0",
+            }}
+          />
           {/* Transparent module bubble wrapper */}
           <div
+            className="sidebarScrollContent"
             style={{
+              position: "relative",
+              zIndex: 2,
               background: "rgba(255, 255, 255, 0.125)",
               borderRadius: 16,
-              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
-              border: "1px solid rgba(255, 255, 255, 0.4)",
+              boxShadow:
+                "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)",
+              border: "none",
               display: "flex",
               flexDirection: "column",
               flex: 1,
@@ -3272,7 +4046,7 @@ export default function Page() {
             style={{
               background: "transparent",
               borderBottom: "none",
-              padding: "0px 12px 10px 12px",
+              padding: "0px 8px 10px 8px",
               border: "none",
               overflow: "visible",
               display: "flex",
@@ -3286,7 +4060,7 @@ export default function Page() {
             {/* Logo taking full width */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={APP_ICON}
+              src={sidebarTheme === "darkBlue" ? "/logo5.png" : APP_ICON}
               alt={APP_TITLE}
               style={{
                 width: logoSize,
@@ -3303,7 +4077,7 @@ export default function Page() {
 
           {/* Rolodex Counter */}
           {!loading && (
-            <div style={{ padding: "10px 18px 0 18px", display: "flex", justifyContent: "center" }}>
+            <div style={{ padding: "10px 10px 0 10px", display: "flex", justifyContent: "center" }}>
               <RolodexCounter 
                 value={shows.length} 
                 digitHeight={counterTileSize}
@@ -3325,143 +4099,7 @@ export default function Page() {
             </div>
           )}
 
-          {/* Search */}
-          <div style={{ padding: "10px 18px 0 18px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                borderRadius: 16,
-                border: `1px solid ${currentTheme.highlightBorder}`,
-                background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
-                paddingLeft: "10px",
-              }}
-            >
-              <img src="/icon-search.png" alt="" width={iconSize * 0.6} height={iconSize * 0.6} style={{ display: "block", background: "transparent", marginRight: "6px", filter: "brightness(0) invert(1) opacity(0.7)" }} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…"
-                style={{
-                  flex: 1,
-                  padding: "9px 10px",
-                  border: "none",
-                  background: "transparent",
-                  color: "rgba(255, 255, 255, 0.95)",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  outline: "none",
-                }}
-                className="search-input"
-              />
-            </div>
-          </div>
-
-          {/* Sort Module */}
-          <div style={{ padding: "0 18px", marginTop: 10 }}>
-            <div
-              style={{
-                fontSize: sidebarHeaderFontSize,
-                fontWeight: sidebarHeaderFontWeight,
-                letterSpacing: "0.04em",
-                color: currentTheme.primaryColor,
-                marginBottom: 6,
-                fontFamily: "Nunito, sans-serif",
-              }}
-            >
-              SORT
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {/* Sort Field Dropdown */}
-              <div style={{ flex: 1 }}>
-                <select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: `1px solid ${currentTheme.highlightBorder}`,
-                    background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
-                    color: "rgba(255, 255, 255, 0.95)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    outline: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {nav === "books" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="CompletedDate">Completed Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "movies" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "tv" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="LastAirDate">Last Air Date</option>
-                      <option value="FirstAirDate">First Air Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "games" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                    </>
-                  )}
-                </select>
-              </div>
-              
-              {/* Sort Order Dropdown */}
-              <div style={{ flex: 1 }}>
-                <select
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: `1px solid ${currentTheme.highlightBorder}`,
-                    background: `linear-gradient(180deg, ${currentTheme.highlightBg} 0%, ${currentTheme.highlightBgEnd} 100%)`,
-                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)",
-                    color: "rgba(255, 255, 255, 0.95)",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    outline: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <option value="Asc">Asc</option>
-                  <option value="Desc">Desc</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 12, flex: 1, marginTop: 14 }}>
+          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 10, flex: 1, marginTop: 12 }}>
             {/* Library Module */}
             <div
               style={{
@@ -3509,8 +4147,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -3546,8 +4184,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "books" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -3564,8 +4202,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -3583,7 +4221,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "books" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setReadingStatusOpen((v) => !v)}
                       style={{
@@ -3599,8 +4237,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {readingStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3620,20 +4258,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -3662,8 +4300,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {formatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3683,20 +4321,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {format}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -3725,8 +4363,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {seriesOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3746,20 +4384,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {series}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -3788,8 +4426,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3809,20 +4447,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {genre}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -3851,8 +4489,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
                     </button>
                     {wishlistOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3868,20 +4506,20 @@ export default function Page() {
                             gap: 8,
                           }}
                         >
-                          <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                          <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                             Wishlist Books
                           </span>
                           <span
                             style={{
-                              minWidth: 24,
-                              height: 20,
-                              padding: "0 8px",
-                              borderRadius: 12,
-                              fontSize: 12,
+                              minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                               textAlign: "center",
                               background: wishlistFilter ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                              color: "#333",
-                              border: "1px solid rgba(0,0,0,0.12)",
+                              color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                              border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -3917,8 +4555,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -3935,8 +4573,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -3954,7 +4592,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "movies" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setMovieWatchStatusOpen((v) => !v)}
                       style={{
@@ -3970,8 +4608,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3991,20 +4629,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4033,8 +4671,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4054,20 +4692,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {genre}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4106,8 +4744,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "tv" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4124,8 +4762,8 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
@@ -4143,7 +4781,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "tv" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setWatchStatusOpen((v) => !v)}
                       style={{
@@ -4159,8 +4797,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4180,20 +4818,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4222,8 +4860,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4243,20 +4881,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4285,8 +4923,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
                     </button>
                     {tagOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4306,20 +4944,20 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {tag}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4361,8 +4999,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4379,15 +5017,20 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(26, 47, 92, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
                         color: "#fff",
                       }}
                     >
@@ -4398,7 +5041,7 @@ export default function Page() {
                 </button>
 
                 {openSection === "games" ? (
-                  <div style={{ marginTop: 8, paddingLeft: 28, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
                     <button
                       onClick={() => setGamePlatformOpen((v) => !v)}
                       style={{
@@ -4414,8 +5057,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4435,18 +5078,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4475,8 +5118,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {gameStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4496,18 +5139,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4536,8 +5179,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4557,18 +5200,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4597,8 +5240,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4618,18 +5261,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4658,8 +5301,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4679,18 +5322,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4719,8 +5362,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
-                      <span style={{ color: "#4A4A4A", fontWeight: 600, fontSize: 14, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
+                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4740,18 +5383,18 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 24,
-                                  height: 20,
-                                  padding: "0 8px",
-                                  borderRadius: 12,
-                                  fontSize: 12,
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
+                                  borderRadius: 8,
+                                  fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                                  color: "#333",
-                                  border: "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -4787,8 +5430,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4805,15 +5448,20 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(112, 88, 174, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
                         color: "#fff",
                       }}
                     >
@@ -4843,8 +5491,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "watchlist" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4861,15 +5509,20 @@ export default function Page() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 48,
-                        height: 24,
+                        width: 38,
+                        height: 18,
                         borderRadius: 999,
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "watchlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#333",
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(56, 142, 173, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
                         color: "#fff",
                       }}
                     >
@@ -4920,8 +5573,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: nav === "year-this" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4956,8 +5609,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: otherMenuOpen ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -4991,7 +5644,7 @@ export default function Page() {
                         padding: "8px 0",
                         fontSize: 14,
                         fontFamily: "Nunito, sans-serif",
-                        color: "#4A4A4A",
+                        color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A",
                         background: nav === "year-previous" ? currentTheme.activeHighlight : "transparent",
                         border: "none",
                         cursor: "pointer",
@@ -5070,8 +5723,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         display: "inline-flex",
                         alignItems: "center",
@@ -5106,8 +5759,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: showThemes ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5126,7 +5779,9 @@ export default function Page() {
 
                 <button
                   onClick={() => {
-                    setShowSettings(!showSettings);
+                    const nextOpen = !showSettings;
+                    setShowSettings(nextOpen);
+                    if (!nextOpen) setSettingsPopupOpen(false);
                   }}
                   className={`sideItem primary ${showSettings ? "active" : ""}`}
                   style={{
@@ -5143,8 +5798,8 @@ export default function Page() {
                     <span
                       aria-hidden
                       style={{
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 14,
                         borderRadius: 4,
                         background: showSettings ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
@@ -5166,6 +5821,23 @@ export default function Page() {
 
             {showThemes ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+                {themeSaveNotice ? (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#0a7f2e",
+                      background: "rgba(10,127,46,0.12)",
+                      border: "1px solid rgba(10,127,46,0.35)",
+                      borderRadius: 6,
+                      padding: "6px 8px",
+                    }}
+                  >
+                    {themeSaveNotice}
+                  </div>
+                ) : null}
+                <div style={{ fontSize: 11, color: "rgba(0,0,0,0.68)" }}>
+                  Theme changes auto-save immediately and are used next time.
+                </div>
                 {/* Sidebar Theme Section */}
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>SIDEBAR THEME</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5179,7 +5851,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: sidebarTheme === "standard" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: sidebarTheme === "standard" ? 600 : 400,
                     }}
                   >
@@ -5195,11 +5867,27 @@ export default function Page() {
                       borderRadius: 8,
                       background: sidebarTheme === "winterGray" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: sidebarTheme === "winterGray" ? 600 : 400,
                     }}
                   >
                     Winter Gray
+                  </button>
+                  <button
+                    onClick={() => updateSidebarTheme("darkBlue")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: sidebarTheme === "darkBlue" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: sidebarTheme === "darkBlue" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: sidebarTheme === "darkBlue" ? 600 : 400,
+                    }}
+                  >
+                    Dark Blue
                   </button>
                 </div>
                 
@@ -5216,7 +5904,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelves-light-single2.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelves-light-single2.png" ? 600 : 400,
                     }}
                   >
@@ -5232,7 +5920,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-dark-walnut.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-dark-walnut.png" ? 600 : 400,
                     }}
                   >
@@ -5248,7 +5936,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-weathered-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-weathered-oak.png" ? 600 : 400,
                     }}
                   >
@@ -5264,7 +5952,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-honey-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-honey-oak.png" ? 600 : 400,
                     }}
                   >
@@ -5280,7 +5968,7 @@ export default function Page() {
                       borderRadius: 8,
                       background: shelfTheme === "/shelf-teak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-teak.png" ? 600 : 400,
                     }}
                   >
@@ -5290,8 +5978,60 @@ export default function Page() {
               </div>
             ) : null}
 
-            {showSettings ? (
-              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+            {showSettings || settingsPopupOpen ? (
+              <div
+                style={
+                  settingsPopupOpen
+                    ? {
+                        position: "fixed",
+                        top: 84,
+                        right: 20,
+                        width: "min(560px, calc(100vw - 40px))",
+                        maxHeight: "calc(100vh - 110px)",
+                        overflowY: "auto",
+                        zIndex: 5000,
+                        padding: 14,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                        background: "rgba(248, 244, 236, 0.98)",
+                        border: "1px solid rgba(58, 37, 24, 0.38)",
+                        borderRadius: 14,
+                        boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+                        backdropFilter: "blur(2px)",
+                      }
+                    : { padding: 12, display: "flex", flexDirection: "column", gap: 6 }
+                }
+              >
+                {settingsPopupOpen ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                      paddingBottom: 8,
+                      borderBottom: "1px solid rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
+                    <button
+                      onClick={() => setSettingsPopupOpen(false)}
+                      style={{
+                        border: "1px solid rgba(0,0,0,0.2)",
+                        background: "rgba(255,255,255,0.85)",
+                        color: "#5c3c38",
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : null}
                 {/* Cover Size */}
                 <button
                   onClick={() => setSettingsOpen({ ...settingsOpen, coverSize: !settingsOpen.coverSize })}
@@ -5410,661 +6150,224 @@ export default function Page() {
 
                 {settingsOpen.framePosition ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    {/* TV Show Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, tvShowInsetsCollapsed: !settingsOpen.tvShowInsetsCollapsed })}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
-                        }}
-                      >
-                        <span>TV SHOWS</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.tvShowInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.tvShowInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetTopPx(caseInsetTopPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetTopPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetTopPx(caseInsetTopPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetRightPx(caseInsetRightPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetRightPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetRightPx(caseInsetRightPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetBottomPx(caseInsetBottomPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetBottomPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetBottomPx(caseInsetBottomPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateCaseInsetLeftPx(caseInsetLeftPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={caseInsetLeftPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateCaseInsetLeftPx(caseInsetLeftPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: "#7f7f7f" }}>
+                        TARGET
+                        <select
+                          value={quickInsetTarget}
+                          onChange={(e) => setQuickInsetTarget(e.target.value)}
+                          style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
+                        >
+                          {quickInsetTargetOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: "#7f7f7f" }}>
+                        MODE
+                        <select
+                          value={quickInsetMode}
+                          onChange={(e) => setQuickInsetMode(e.target.value as QuickInsetMode)}
+                          style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
+                        >
+                          {(quickTargetType === "game"
+                            ? [
+                                { value: "insetPosition", label: "Inset Position" },
+                                { value: "overlayPosition", label: "Overlay Position" },
+                                { value: "overlayScale", label: "Overlay Scale" },
+                                { value: "coverPosition", label: "Cover Position" },
+                                { value: "coverScale", label: "Cover Scale" },
+                              ]
+                            : [{ value: "insetPosition", label: "Inset Position" }]
+                          ).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 9px", borderRadius: 8, background: "rgba(0,0,0,0.045)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#6d6d6d" }}>
+                        OVERLAY FILE
+                      </div>
+                      <div style={{ fontSize: 11, color: "#4f4f4f", display: "flex", flexDirection: "column", gap: 3 }}>
+                        <span>Expected filename: <strong>{quickOverlayExpectedFilename}</strong></span>
+                        <span>
+                          Active source: {quickOverlayOverrideUrl ? "Custom upload" : "Bundled file"} ({quickOverlayTargetKey})
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => overlayFileInputRef.current?.click()}
+                          disabled={uploadingOverlayForKey === quickOverlayTargetKey}
+                          style={{
+                            padding: "6px 9px",
+                            fontSize: 11,
+                            borderRadius: 6,
+                            border: "1px solid rgba(0,0,0,0.2)",
+                            background: "rgba(255,255,255,0.9)",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {uploadingOverlayForKey === quickOverlayTargetKey ? "Uploading..." : "Replace Overlay File"}
+                        </button>
+                        {quickOverlayOverrideUrl ? (
                           <button
-                            onClick={() => saveInsetsToSheet('tv')}
+                            onClick={handleResetOverlayForQuickTarget}
                             style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
+                              padding: "6px 9px",
+                              fontSize: 11,
+                              borderRadius: 6,
+                              border: "1px solid rgba(0,0,0,0.2)",
+                              background: "rgba(255,255,255,0.85)",
                               cursor: "pointer",
-                              fontWeight: 600,
+                              fontWeight: 700,
                             }}
                           >
-                            Save TV Insets
+                            Use Expected File
                           </button>
-                        </div>
+                        ) : null}
+                        <input
+                          ref={overlayFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            handleReplaceOverlayForQuickTarget(file);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                      </div>
+                      {overlayUploadError ? (
+                        <div style={{ fontSize: 11, color: "#b42318" }}>{overlayUploadError}</div>
                       ) : null}
                     </div>
 
-                    {/* Book Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, bookInsetsCollapsed: !settingsOpen.bookInsetsCollapsed })}
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Step
+                      <input
+                        type="range"
+                        min={1}
+                        max={12}
+                        step={1}
+                        value={quickInsetStep}
+                        onChange={(e) => setQuickInsetStep(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 22, textAlign: "right" }}>{quickInsetStep}</span>
+                    </label>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 10, alignItems: "center" }}>
+                      <div
+                        onMouseDown={(e) => {
+                          if (quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          quickOverlayDragRef.current = {
+                            x: e.clientX,
+                            y: e.clientY,
+                            top: quickInsetSnapshot.overlay.top,
+                            left: quickInsetSnapshot.overlay.left,
+                          };
+                        }}
+                        onMouseMove={(e) => {
+                          const drag = quickOverlayDragRef.current;
+                          if (!drag || quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const dxPct = ((e.clientX - drag.x) / rect.width) * 100;
+                          const dyPct = ((e.clientY - drag.y) / rect.height) * 100;
+                          updatePlatformOverlay(quickTargetPlatform, "left", Number((drag.left + dxPct).toFixed(2)));
+                          updatePlatformOverlay(quickTargetPlatform, "top", Number((drag.top + dyPct).toFixed(2)));
+                        }}
+                        onMouseUp={() => {
+                          quickOverlayDragRef.current = null;
+                        }}
+                        onMouseLeave={() => {
+                          quickOverlayDragRef.current = null;
+                        }}
                         style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
+                          position: "relative",
+                          width: 170,
+                          height: 255,
+                          borderRadius: 9,
+                          border: "1px solid rgba(0,0,0,0.2)",
+                          background: "linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.03) 100%)",
+                          overflow: "hidden",
+                          cursor: quickTargetType === "game" && quickInsetMode === "overlayPosition" ? "move" : "default",
                         }}
                       >
-                        <span>BOOKS</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.bookInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.bookInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetTopPx(bookInsetTopPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetTopPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetTopPx(bookInsetTopPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetRightPx(bookInsetRightPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetRightPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetRightPx(bookInsetRightPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetBottomPx(bookInsetBottomPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetBottomPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetBottomPx(bookInsetBottomPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateBookInsetLeftPx(bookInsetLeftPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={bookInsetLeftPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateBookInsetLeftPx(bookInsetLeftPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('book')}
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: `${quickInsetPreview.top}%`,
+                            left: `${quickInsetPreview.left}%`,
+                            width: `${quickInsetPreview.width}%`,
+                            height: `${quickInsetPreview.height}%`,
+                            border: "2px dashed rgba(31, 117, 221, 0.9)",
+                            background: "rgba(31, 117, 221, 0.12)",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                        {quickTargetType === "game" ? (
+                          <div
                             style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
+                              position: "absolute",
+                              top: `${50 + quickInsetSnapshot.overlay.top}%`,
+                              left: `${50 + quickInsetSnapshot.overlay.left}%`,
+                              width: `${quickInsetSnapshot.overlay.width}%`,
+                              height: `${quickInsetSnapshot.overlay.height}%`,
+                              transform: "translate(-50%, -50%)",
+                              border: "2px solid rgba(255, 189, 76, 0.95)",
+                              background: "rgba(255, 189, 76, 0.14)",
+                              boxSizing: "border-box",
                             }}
-                          >
-                            Save Book Insets
-                          </button>
-                        </div>
+                          />
+                        ) : null}
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "46px 46px 46px", gridTemplateRows: "46px 46px 46px", gap: 6, justifyContent: "center" }}>
+                        <span />
+                        <button onClick={() => applyQuickInsetNudge("up")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↑</button>
+                        <span />
+                        <button onClick={() => applyQuickInsetNudge("left")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>←</button>
+                        <div style={{ display: "grid", placeItems: "center", fontSize: 11, color: "#777", fontWeight: 700 }}>NUDGE</div>
+                        <button onClick={() => applyQuickInsetNudge("right")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>→</button>
+                        <span />
+                        <button onClick={() => applyQuickInsetNudge("down")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↓</button>
+                        <span />
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: 11, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
+                      Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
+                      {quickTargetType === "game" ? (
+                        <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
                       ) : null}
                     </div>
 
-                    {/* Movie Insets Sub-section - COLLAPSIBLE */}
-                    <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, movieInsetsCollapsed: !settingsOpen.movieInsetsCollapsed })}
+                        onClick={async () => {
+                          setQuickInsetSaveStatus("saving");
+                          const ok = await saveInsetsToSheet(quickInsetSaveType);
+                          setQuickInsetSaveStatus(ok ? "saved" : "error");
+                        }}
                         style={{
-                          width: "100%",
-                          textAlign: "left",
+                          padding: "7px 10px",
+                          fontSize: 11,
+                          background: "#0066cc",
+                          color: "white",
                           border: "none",
-                          background: "transparent",
-                          padding: 0,
+                          borderRadius: 6,
                           cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
+                          fontWeight: 700,
                         }}
                       >
-                        <span>MOVIES</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.movieInsetsCollapsed ? "+" : "−"}</span>
+                        {quickInsetSaveLabel}
                       </button>
-                      {settingsOpen.movieInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 4, marginTop: 4 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetTopPx(movieInsetTopPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetTopPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetTopPx(movieInsetTopPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetRightPx(movieInsetRightPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetRightPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetRightPx(movieInsetRightPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetBottomPx(movieInsetBottomPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetBottomPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetBottomPx(movieInsetBottomPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updateMovieInsetLeftPx(movieInsetLeftPx - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={movieInsetLeftPx}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updateMovieInsetLeftPx(movieInsetLeftPx + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('movie')}
-                            style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Save Movie Insets
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {/* Game Insets Sub-section - COLLAPSIBLE */}
-                    <div>
-                      <button
-                        onClick={() => setSettingsOpen({ ...settingsOpen, gameInsetsCollapsed: !settingsOpen.gameInsetsCollapsed })}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#999",
-                        }}
-                      >
-                        <span>GAMES</span>
-                        <span style={{ fontSize: 12 }}>{settingsOpen.gameInsetsCollapsed ? "+" : "−"}</span>
-                      </button>
-                      {settingsOpen.gameInsetsCollapsed ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 4, marginTop: 4 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.85 }}>
-                            Platform
-                            <select
-                              value={selectedPlatformForInsets}
-                              onChange={(e) => setSelectedPlatformForInsets(e.target.value)}
-                              style={{ flex: 1, padding: "4px 8px", fontSize: 11 }}
-                            >
-                              {detectedPlatforms.map(platform => (
-                                <option key={platform} value={platform}>{platform}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Top</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformForInsets]?.top ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.top ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'top', (platformInsets[selectedPlatformForInsets]?.top ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Right</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformForInsets]?.right ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.right ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'right', (platformInsets[selectedPlatformForInsets]?.right ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Bottom</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformForInsets]?.bottom ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.bottom ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'bottom', (platformInsets[selectedPlatformForInsets]?.bottom ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600 }}>Left</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformForInsets]?.left ?? 5) - 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  ←
-                                </button>
-                                <input
-                                  type="text"
-                                  value={platformInsets[selectedPlatformForInsets]?.left ?? 5}
-                                  readOnly
-                                  style={{ width: 40, textAlign: "center", border: "1px solid #ddd", borderRadius: 4, padding: "3px", fontSize: 10 }}
-                                />
-                                <button 
-                                  onClick={() => updatePlatformInset(selectedPlatformForInsets, 'left', (platformInsets[selectedPlatformForInsets]?.left ?? 5) + 5)}
-                                  style={{ fontSize: 10, padding: "3px 6px", cursor: "pointer", background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4 }}
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-                            Frame: {GAME_SRC_W}×{GAME_SRC_H}
-                          </div>
-                          
-                          {/* Overlay Size & Position Controls */}
-                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.1)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 4 }}>OVERLAY ADJUSTMENTS</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 11, opacity: 0.8 }}>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Width
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.width ?? 100}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'width', Number(e.target.value) || 100)}
-                                  style={{ width: 60 }}
-                                  min={50}
-                                  max={150}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Height
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.height ?? 100}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'height', Number(e.target.value) || 100)}
-                                  style={{ width: 60 }}
-                                  min={50}
-                                  max={150}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Top
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.top ?? 0}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'top', Number(e.target.value) || 0)}
-                                  style={{ width: 60 }}
-                                  min={-50}
-                                  max={50}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                Left
-                                <input
-                                  type="number"
-                                  value={platformOverlaySettings[selectedPlatformForInsets]?.left ?? 0}
-                                  onChange={(e) => updatePlatformOverlay(selectedPlatformForInsets, 'left', Number(e.target.value) || 0)}
-                                  style={{ width: 60 }}
-                                  min={-50}
-                                  max={50}
-                                  step={0.1}
-                                />
-                                <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                              </label>
-                            </div>
-                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
-                              Adjust overlay frame size and position
-                            </div>
-                          </div>
-                          
-                          {/* Cover Scale Control */}
-                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.1)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 600, color: "#999", marginBottom: 4 }}>COVER IMAGE SCALE</div>
-                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
-                              Scale
-                              <input
-                                type="number"
-                                value={platformCoverScale[selectedPlatformForInsets] ?? 100}
-                                onChange={(e) => updatePlatformCoverScale(selectedPlatformForInsets, Number(e.target.value) || 100)}
-                                style={{ width: 60 }}
-                                min={50}
-                                max={200}
-                                step={1}
-                              />
-                              <span style={{ fontSize: 9, opacity: 0.6 }}>%</span>
-                            </label>
-                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
-                              Scale the cover art to prevent cutoff (100% = original size)
-                            </div>
-                          </div>
-                          
-                          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 8, padding: "6px 8px", background: "rgba(0,0,0,0.05)", borderRadius: 4 }}>
-                            <div style={{ fontWeight: 600, marginBottom: 2 }}>Frame File:</div>
-                            <code style={{ fontSize: 10, background: "rgba(0,0,0,0.08)", padding: "2px 6px", borderRadius: 3, fontFamily: "monospace" }}>
-                              {getPlatformFrameFilename(selectedPlatformForInsets)}
-                            </code>
-                            <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
-                              Place in /public folder
-                              {selectedPlatformForInsets === "Default" ? " (falls back to game-frame.png)" : ""}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => saveInsetsToSheet('game')}
-                            style={{
-                              padding: "4px 8px",
-                              fontSize: 10,
-                              background: "#0066cc",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 3,
-                              cursor: "pointer",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Save {selectedPlatformForInsets} Inset
-                          </button>
-                        </div>
-                      ) : null}
+                      {quickInsetSaveStatus === "saving" ? <span style={{ fontSize: 11, color: "#555" }}>Saving inset settings...</span> : null}
+                      {quickInsetSaveStatus === "saved" ? <span style={{ fontSize: 11, color: "#0a7f2e" }}>Saved. These inset settings will be used next time.</span> : null}
+                      {quickInsetSaveStatus === "error" ? <span style={{ fontSize: 11, color: "#b42318" }}>Save failed</span> : null}
                     </div>
                   </div>
                 ) : null}
@@ -6452,7 +6755,7 @@ export default function Page() {
                     border: "1px solid rgba(92, 60, 56, 0.3)",
                     background: "linear-gradient(180deg, rgba(139, 76, 76, 0.9) 0%, rgba(115, 62, 62, 0.9) 100%)",
                     color: "#fff",
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
                     boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
@@ -6481,7 +6784,7 @@ export default function Page() {
                     border: "1px solid rgba(60, 92, 92, 0.3)",
                     background: "linear-gradient(180deg, rgba(76, 115, 115, 0.9) 0%, rgba(62, 95, 95, 0.9) 100%)",
                     color: "#fff",
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
                     boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
@@ -6504,7 +6807,7 @@ export default function Page() {
             </div>
 
             {/* Synced Module at Bottom */}
-            <div style={{ padding: "0 12px", marginTop: "auto", marginBottom: 12 }}>
+            <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -6512,7 +6815,7 @@ export default function Page() {
                   justifyContent: "space-between",
                   gap: 10,
                   padding: "10px 12px",
-                  borderRadius: 12,
+                  borderRadius: 9,
                   background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
                   border: "1px solid rgba(92, 60, 56, 0.2)",
                   boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
@@ -6542,8 +6845,8 @@ export default function Page() {
                   }}
                 />
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, position: "relative" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
                       <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                         {syncState === "saving"
                           ? "Syncing"
@@ -6553,7 +6856,7 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
@@ -6605,38 +6908,81 @@ export default function Page() {
         </aside>
 
         {/* RIGHT CONTENT */}
-        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative" }}>
-          {/* Item Counter - Top Right */}
+        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative", marginLeft: "-1px" }}>
           <div
+            aria-hidden
             style={{
               position: "fixed",
-              top: 8,
-              right: 12,
-              fontSize: 14,
-              fontWeight: 700,
-              color: "#5c3c38",
-              fontFamily: "Nunito, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
-              textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-              opacity: 0.75,
-              letterSpacing: "-0.01em",
+              top: 0,
+              left: SIDEBAR_WIDTH - 1,
+              right: 0,
+              height: 45,
+              zIndex: 1399,
               pointerEvents: "none",
-              zIndex: 1000,
-              background: "rgba(244, 241, 234, 0.5)",
-              padding: "2px 6px",
-              borderRadius: 6,
-              border: "1px solid rgba(92, 60, 56, 0.15)",
-              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            {shows.length}
+            <span
+              style={{
+                fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
+                fontSize: 24,
+                fontWeight: 500,
+                lineHeight: 1,
+                letterSpacing: "0.01em",
+                color: "rgba(76, 52, 34, 0.55)",
+                textShadow:
+                  "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
+                mixBlendMode: "multiply",
+                opacity: 0.9,
+                transform: "translateY(-2.5px)",
+                userSelect: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {APP_TITLE}
+            </span>
           </div>
-
+          {SHOW_HEADER_DEBUG_CONTROLS ? (
+            <div
+              style={{
+                position: "fixed",
+                right: 20,
+                bottom: 20,
+                zIndex: 9000,
+                background: "rgba(20, 20, 20, 0.88)",
+                color: "#fff",
+                borderRadius: 9,
+                border: "1px solid rgba(255,255,255,0.2)",
+                padding: 10,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                width: 160,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Header Debug</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                <span />
+                <button onClick={() => nudgeDebugHeader(0, -1)} style={{ cursor: "pointer" }}>↑</button>
+                <span />
+                <button onClick={() => nudgeDebugHeader(-1, 0)} style={{ cursor: "pointer" }}>←</button>
+                <button onClick={resetDebugHeader} style={{ cursor: "pointer" }}>Reset</button>
+                <button onClick={() => nudgeDebugHeader(1, 0)} style={{ cursor: "pointer" }}>→</button>
+                <span />
+                <button onClick={() => nudgeDebugHeader(0, 1)} style={{ cursor: "pointer" }}>↓</button>
+                <span />
+              </div>
+              <div ref={debugHeaderReadoutRef} style={{ fontSize: 11, opacity: 0.9 }}>X: 0, Y: 0</div>
+            </div>
+          ) : null}
           {error ? (
             <div
               style={{
                 background: "#fff",
-                border: "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 12,
+                border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                borderRadius: 9,
                 padding: 14,
                 color: "#8b0000",
                 fontWeight: 700,
@@ -6652,8 +6998,8 @@ export default function Page() {
             <div
               style={{
                 background: "#fff",
-                border: "1px solid rgba(0,0,0,0.12)",
-                borderRadius: 12,
+                border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                borderRadius: 9,
                 padding: 14,
                 fontWeight: 700,
                 marginBottom: 16,
@@ -6663,10 +7009,398 @@ export default function Page() {
             </div>
           ) : null}
 
+          {settingsPopupOpen || sortPopupOpen ? (
+            <button
+              aria-label="Close popup"
+              onClick={() => {
+                setSettingsPopupOpen(false);
+                setSortPopupOpen(false);
+                setShowVersionNotes(false);
+              }}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 4000,
+                border: "none",
+                margin: 0,
+                padding: 0,
+                background: "rgba(0, 0, 0, 0.28)",
+                cursor: "pointer",
+              }}
+            />
+          ) : null}
+
+          {sortPopupOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                top: 84,
+                right: 74,
+                width: "min(320px, calc(100vw - 40px))",
+                zIndex: 5000,
+                padding: 14,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                background: "rgba(248, 244, 236, 0.98)",
+                border: "1px solid rgba(58, 37, 24, 0.38)",
+                borderRadius: 14,
+                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+                backdropFilter: "blur(2px)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingBottom: 8,
+                  borderBottom: "1px solid rgba(0,0,0,0.12)",
+                }}
+              >
+                <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Sort</span>
+                <button
+                  onClick={() => setSortPopupOpen(false)}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.85)",
+                    color: "#5c3c38",
+                    borderRadius: 8,
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>
+                SORT BY
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {nav === "books" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="CompletedDate">Completed Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "movies" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "tv" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="LastAirDate">Last Air Date</option>
+                      <option value="FirstAirDate">First Air Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "games" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                    </>
+                  )}
+                </select>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>
+                ORDER
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="Asc">Asc</option>
+                  <option value="Desc">Desc</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
           {/* Stage measures width so shelves always align */}
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {shelfTheme === DEFAULT_SHELF_IMAGE ? (
+                <div
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    height: 45,
+                    overflow: "hidden",
+                    background: "transparent",
+                    borderRadius: 0,
+                    zIndex: 2000,
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 1401,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingLeft: 10,
+                      paddingRight: 10,
+                      gap: 5,
+                      transform: "translateY(-4.5px)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(260px, calc(100% - 220px))" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          flex: 1,
+                          borderRadius: 9,
+                          border: "1px solid rgba(10, 6, 3, 0.68)",
+                          background: "rgba(16, 10, 6, 0.54)",
+                          boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+                          paddingLeft: 7,
+                        }}
+                      >
+                        <img
+                          src="/icon-search.png"
+                          alt=""
+                          width={9}
+                          height={9}
+                          style={{ display: "block", marginRight: 4, filter: "brightness(0) invert(1) opacity(0.62)" }}
+                        />
+                        <input
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="Search..."
+                          style={{
+                            flex: 1,
+                            height: 22,
+                            border: "none",
+                            background: "transparent",
+                            color: "rgba(250, 242, 230, 0.86)",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={clearAllFilters}
+                        title="Clear filters"
+                        aria-label="Clear filters"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 24,
+                          minWidth: 58,
+                          padding: "3px 6px",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: "rgba(250, 242, 230, 0.72)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 900,
+                        color: "rgba(250, 242, 230, 0.68)",
+                        letterSpacing: "0.01em",
+                        lineHeight: 1,
+                        textShadow: "0 2px 4px rgba(0, 0, 0, 0.5)",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 9,
+                        padding: "4px 7px",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                      }}
+                    >
+                      {`${shows.length} items`}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSettingsPopupOpen(false);
+                        setSortPopupOpen((prev) => !prev);
+                        setShowVersionNotes(false);
+                      }}
+                      title="Open sort options"
+                      aria-label="Open sort options"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: 24,
+                        minWidth: 18,
+                        padding: "3px 5px",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 9,
+                        color: "rgba(250, 242, 230, 0.68)",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="4" y1="6" x2="14" y2="6"></line>
+                        <circle cx="17" cy="6" r="2"></circle>
+                        <line x1="20" y1="6" x2="21" y2="6"></line>
+                        <line x1="4" y1="12" x2="7" y2="12"></line>
+                        <circle cx="10" cy="12" r="2"></circle>
+                        <line x1="13" y1="12" x2="21" y2="12"></line>
+                        <line x1="4" y1="18" x2="11" y2="18"></line>
+                        <circle cx="14" cy="18" r="2"></circle>
+                        <line x1="17" y1="18" x2="21" y2="18"></line>
+                      </svg>
+                    </button>
+                    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <button
+                        onClick={() => {
+                          setShowSettings(true);
+                          setSortPopupOpen(false);
+                          setShowVersionNotes(false);
+                          setSettingsPopupOpen((prev) => !prev);
+                        }}
+                        title="Open settings"
+                        aria-label="Open settings"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 24,
+                          minWidth: 18,
+                          padding: "3px 5px",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: "rgba(250, 242, 230, 0.68)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSettingsPopupOpen(false);
+                          setSortPopupOpen(false);
+                          setShowVersionNotes((prev) => !prev);
+                        }}
+                        title="Show recent version notes"
+                        aria-label="Show recent version notes"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: 24,
+                          minWidth: 54,
+                          padding: "3px 6px",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: "rgba(250, 242, 230, 0.72)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.03em",
+                          lineHeight: 1,
+                        }}
+                      >
+                        v{APP_VERSION}
+                      </button>
+                      {showVersionNotes ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            right: 0,
+                            width: "min(280px, calc(100vw - 70px))",
+                            zIndex: 5001,
+                            marginTop: 6,
+                            borderRadius: 9,
+                            border: "1px solid rgba(0,0,0,0.14)",
+                            background: "rgba(249, 245, 236, 0.97)",
+                            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
+                            padding: 10,
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
+                          {VERSION_HISTORY.slice(0, 3).map((entry) => (
+                            <div key={entry.version} style={{ marginBottom: 8 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
+                                v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
+                              </div>
+                              <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
+                                {entry.notes.map((note) => (
+                                  <li key={note}>{note}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {shelves.map((shelfShows, shelfIndex) => (
                 <div
                   key={`shelf-${shelfIndex}`}
@@ -6697,7 +7431,7 @@ export default function Page() {
                       const isGame = show.__type === "game";
                       const gamePlatformRaw = isGame && 'platform' in show ? show.platform : undefined;
                       // Determine primary platform based on priority (Steam > Epic > Default)
-                      const gamePlatform = isGame ? getPrimaryPlatform(gamePlatformRaw) : undefined;
+                      const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const isSteam = gamePlatform === "Steam";
                       const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
                       // Calculate x as cumulative sum of all previous items + gaps
@@ -6729,16 +7463,8 @@ export default function Page() {
                       } else if (isGame) {
                         const platformKey = gamePlatform || "Default";
                         const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-                        
-                        // Use platform-specific insets ONLY if this platform exists AND is different from Default
                         const platformInset = platformInsets[platformKey];
-                        const isPlatformCustomized = platformInset && 
-                          (platformInset.top !== defaultInsets.top ||
-                           platformInset.right !== defaultInsets.right ||
-                           platformInset.bottom !== defaultInsets.bottom ||
-                           platformInset.left !== defaultInsets.left);
-                        
-                        const insets = isPlatformCustomized && platformKey !== "Default" ? platformInset : defaultInsets;
+                        const insets = platformKey !== "Default" && platformInset ? platformInset : defaultInsets;
                         
                         insetTopVal = insets.top;
                         insetRightVal = insets.right;
@@ -6756,7 +7482,9 @@ export default function Page() {
                       let overlayHeight = 100;
                       let overlayTop = 0;
                       let overlayLeft = 0;
-                      let coverScale = 100;
+                      let coverScale = { x: 100, y: 100 };
+                      let coverOffsetX = 0;
+                      let coverOffsetY = 0;
                       
                       if (isGame) {
                         const platformKey = gamePlatform || "Default";
@@ -6769,8 +7497,18 @@ export default function Page() {
                         overlayTop = overlay.top;
                         overlayLeft = overlay.left;
                         
-                        coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || 100;
+                        coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+                        const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
+                        const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
+                        coverOffsetX = platformCoverOffsetSettings.x;
+                        coverOffsetY = platformCoverOffsetSettings.y;
                       }
+
+                      const gameOverlaySrc = isGame ? getOverlayFrameUrl("game", gamePlatform) : "";
+                      const gameOverlayExpectedSrc = isGame ? getOverlayFrameDefaultPath("game", gamePlatform) : GAME_FRAME_IMAGE;
+                      const nonGameOverlayType: "tv" | "movie" | "book" = isBook ? "book" : isMovie ? "movie" : "tv";
+                      const nonGameOverlaySrc = getOverlayFrameUrl(nonGameOverlayType);
+                      const nonGameOverlayExpectedSrc = getOverlayFrameDefaultPath(nonGameOverlayType);
                       
                       const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
                       const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
@@ -6829,137 +7567,273 @@ export default function Page() {
                             }}
                           />
 
-                          {/* Insert area (poster) */}
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: insetTop,
-                              right: insetRight,
-                              bottom: insetBottom,
-                              left: insetLeft,
-                              overflow: "hidden",
-                              borderRadius: 0,
-                              background: isGame ? "transparent" : "rgba(255,255,255,0.12)",
-                            }}
-                          >
-                            {showInsetGuide ? (
+                          {isGame ? (
+                            <>
                               <div
-                                aria-hidden
                                 style={{
                                   position: "absolute",
-                                  inset: 0,
-                                  outline: "2px dashed rgba(255,0,0,0.75)",
-                                  outlineOffset: "-2px",
-                                  pointerEvents: "none",
-                                }}
-                              />
-                            ) : null}
-
-                            {selectedCoverUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                className="case-poster"
-                                src={selectedCoverUrl}
-                                alt={show.title}
-                                loading="lazy"
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  display: "block",
-                                  transform: isGame ? `scale(${coverScale / 100})` : "none",
-                                }}
-                                onError={e => {
-                                  const itemKey = getMediaItemKey(show);
-                                  const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
-                                  if (!failedUrl) return;
-                                  const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
-                                  const nextAttempts = currentAttempts + 1;
-                                  setFailedCoverAttempts((prev) => {
-                                    const itemAttempts = prev[itemKey] || {};
-                                    return {
-                                      ...prev,
-                                      [itemKey]: {
-                                        ...itemAttempts,
-                                        [failedUrl]: nextAttempts,
-                                      },
-                                    };
-                                  });
-                                  if (nextAttempts < 2) return;
-                                  setFailedCoverUrls((prev) => {
-                                    const existing = prev[itemKey] || [];
-                                    if (existing.includes(failedUrl)) return prev;
-                                    return { ...prev, [itemKey]: [...existing, failedUrl] };
-                                  });
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  textAlign: "center",
-                                  padding: 10,
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  color: "rgba(0,0,0,0.65)",
-                                  background:
-                                    "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
+                                  top: insetTop,
+                                  right: insetRight,
+                                  bottom: insetBottom,
+                                  left: insetLeft,
+                                  overflow: "hidden",
+                                  borderRadius: 0,
+                                  background: "transparent",
                                 }}
                               >
-                                No poster
+                                {showInsetGuide ? (
+                                  <div
+                                    aria-hidden
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      outline: "2px dashed rgba(255,0,0,0.75)",
+                                      outlineOffset: "-2px",
+                                      pointerEvents: "none",
+                                    }}
+                                  />
+                                ) : null}
+
+                                {selectedCoverUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    className="case-poster"
+                                    src={selectedCoverUrl}
+                                    alt={show.title}
+                                    loading="lazy"
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                      display: "block",
+                                      transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
+                                    }}
+                                    onError={e => {
+                                      const itemKey = getMediaItemKey(show);
+                                      const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                      if (!failedUrl) return;
+                                      const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                      const nextAttempts = currentAttempts + 1;
+                                      setFailedCoverAttempts((prev) => {
+                                        const itemAttempts = prev[itemKey] || {};
+                                        return {
+                                          ...prev,
+                                          [itemKey]: {
+                                            ...itemAttempts,
+                                            [failedUrl]: nextAttempts,
+                                          },
+                                        };
+                                      });
+                                      if (nextAttempts < 2) return;
+                                      setFailedCoverUrls((prev) => {
+                                        const existing = prev[itemKey] || [];
+                                        if (existing.includes(failedUrl)) return prev;
+                                        return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                      });
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      textAlign: "center",
+                                      padding: 10,
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                      color: "rgba(0,0,0,0.65)",
+                                      background:
+                                        "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
+                                    }}
+                                  >
+                                    No poster
+                                  </div>
+                                )}
+
+                                <div
+                                  aria-hidden
+                                  className="case-reflection"
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    pointerEvents: "none",
+                                    zIndex: 2,
+                                    background:
+                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
+                                    mixBlendMode: "screen",
+                                    transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                    transformOrigin: "center",
+                                  }}
+                                />
                               </div>
-                            )}
 
-                            {/* Subtle reflection confined to the cover art */}
-                          <div
-                            aria-hidden
-                            className="case-reflection"
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              pointerEvents: "none",
-                              zIndex: 2,
-                              background:
-                                "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
-                              mixBlendMode: "screen",
-                              transform: isGame ? `scale(${coverScale / 100})` : "none",
-                            }}
-                          />
-                          </div>
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: `${50 + overlayTop}%`,
+                                  left: `${50 + overlayLeft}%`,
+                                  width: "100%",
+                                  height: "100%",
+                                  transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={gameOverlaySrc}
+                                  onError={(e) => {
+                                    const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                    if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== gameOverlayExpectedSrc) {
+                                      e.currentTarget.dataset.fallbackTried = "1";
+                                      e.currentTarget.src = gameOverlayExpectedSrc;
+                                      return;
+                                    }
+                                    if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
+                                      e.currentTarget.src = GAME_FRAME_IMAGE;
+                                    }
+                                  }}
+                                  alt=""
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    objectFit: "fill",
+                                    pointerEvents: "none",
+                                    userSelect: "none",
+                                  }}
+                                  draggable={false}
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: insetTop,
+                                  right: insetRight,
+                                  bottom: insetBottom,
+                                  left: insetLeft,
+                                  overflow: "hidden",
+                                  borderRadius: 0,
+                                  background: "rgba(255,255,255,0.12)",
+                                }}
+                              >
+                                {showInsetGuide ? (
+                                  <div
+                                    aria-hidden
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      outline: "2px dashed rgba(255,0,0,0.75)",
+                                      outlineOffset: "-2px",
+                                      pointerEvents: "none",
+                                    }}
+                                  />
+                                ) : null}
 
-                          {/* Case frame overlay */}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={
-                              isBook ? BOOK_FRAME_IMAGE : 
-                              isMovie ? MOVIE_FRAME_IMAGE : 
-                              isGame ? getPlatformFrameFilename(gamePlatform) : 
-                              CASE_FRAME_IMAGE
-                            }
-                            onError={(e) => {
-                              // Fall back to default game frame if platform-specific frame fails to load
-                              if (isGame && e.currentTarget.src !== GAME_FRAME_IMAGE) {
-                                e.currentTarget.src = GAME_FRAME_IMAGE;
-                              }
-                            }}
-                            alt=""
-                            style={{
-                            position: "absolute",
-                            top: isGame ? `${50 + overlayTop}%` : 0,
-                            left: isGame ? `${50 + overlayLeft}%` : 0,
-                            width: isGame ? "100%" : "100%",
-                            height: isGame ? "100%" : "100%",
-                            transform: isGame ? `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})` : "none",
-                            objectFit: "fill",
-                            pointerEvents: "none",
-                            userSelect: "none",
-                          }}
-                          draggable={false}
-                        />
+                                {selectedCoverUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    className="case-poster"
+                                    src={selectedCoverUrl}
+                                    alt={show.title}
+                                    loading="lazy"
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                      display: "block",
+                                    }}
+                                    onError={e => {
+                                      const itemKey = getMediaItemKey(show);
+                                      const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                      if (!failedUrl) return;
+                                      const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                      const nextAttempts = currentAttempts + 1;
+                                      setFailedCoverAttempts((prev) => {
+                                        const itemAttempts = prev[itemKey] || {};
+                                        return {
+                                          ...prev,
+                                          [itemKey]: {
+                                            ...itemAttempts,
+                                            [failedUrl]: nextAttempts,
+                                          },
+                                        };
+                                      });
+                                      if (nextAttempts < 2) return;
+                                      setFailedCoverUrls((prev) => {
+                                        const existing = prev[itemKey] || [];
+                                        if (existing.includes(failedUrl)) return prev;
+                                        return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                      });
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      textAlign: "center",
+                                      padding: 10,
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                      color: "rgba(0,0,0,0.65)",
+                                      background:
+                                        "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
+                                    }}
+                                  >
+                                    No poster
+                                  </div>
+                                )}
+
+                                <div
+                                  aria-hidden
+                                  className="case-reflection"
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    pointerEvents: "none",
+                                    zIndex: 2,
+                                    background:
+                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
+                                    mixBlendMode: "screen",
+                                  }}
+                                />
+                              </div>
+
+                              {/* Case frame overlay */}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={nonGameOverlaySrc}
+                                onError={(e) => {
+                                  const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                  if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
+                                    e.currentTarget.dataset.fallbackTried = "1";
+                                    e.currentTarget.src = nonGameOverlayExpectedSrc;
+                                  }
+                                }}
+                                alt=""
+                                style={{
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "fill",
+                                  pointerEvents: "none",
+                                  userSelect: "none",
+                                }}
+                                draggable={false}
+                              />
+                            </>
+                          )}
 
                           {/* Optional: extra spec highlight */}
                           <div
@@ -6975,6 +7849,32 @@ export default function Page() {
                               opacity: 0.25,
                             }}
                           />
+
+                          {showInsetGuide && isGame ? (
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: 4,
+                                right: 4,
+                                bottom: 4,
+                                zIndex: 20,
+                                background: "rgba(8, 12, 18, 0.78)",
+                                color: "#d8e7ff",
+                                border: "1px solid rgba(150, 176, 220, 0.45)",
+                                borderRadius: 4,
+                                padding: "2px 4px",
+                                fontSize: 8,
+                                lineHeight: 1.2,
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              {getGameInsetDebugReadout(gamePlatform || "Default")}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -6983,7 +7883,7 @@ export default function Page() {
               ))}
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
+            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
               View: {nav} · Shelves: {shelves.length} · {postersPerShelf} per shelf · lip offset {LIP_FROM_BOTTOM}px
             </div>
           </div>
@@ -7026,22 +7926,38 @@ export default function Page() {
           background-repeat: repeat, no-repeat;
           background-size: auto 28px, cover;
           background-position: top left, center;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .sidebar::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+        .sidebarScrollContent {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .sidebarScrollContent::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
         }
         .sideItem {
           width: 100%;
-          padding: 3px 12px;
+          padding: 1px 4px;
           border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
-          color: #2A2A2A;
-          font-size: 17px;
+          color: ${sidebarTheme === "darkBlue" ? "rgba(230, 239, 255, 0.92)" : "#2A2A2A"};
+          font-size: 13px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
           transition: all 150ms ease;
         }
         .sideItem:hover { 
-          background: rgba(0,0,0,0.02);
+          background: ${sidebarTheme === "darkBlue" ? "rgba(124, 160, 224, 0.14)" : "rgba(0,0,0,0.02)"};
         }
         .sideItem.active {
           background: ${currentTheme.activeHighlight};
@@ -7055,23 +7971,24 @@ export default function Page() {
         .sideItem.primary.active { background: ${currentTheme.activeHighlight}; color: ${currentTheme.secondaryColor}; }
         .sideSubItem {
           width: 100%;
-          padding: 5px 8px;
+          padding: 4px 6px;
           border-radius: 8px;
-          border: 1px solid rgba(0, 0, 0, 0.06);
-          background: rgba(255, 255, 255, 0.6);
-          color: rgba(0, 0, 0, 0.7);
-          font-size: 14px;
+          border: ${sidebarTheme === "darkBlue" ? "1px solid rgba(142, 178, 234, 0.42)" : "1px solid rgba(0, 0, 0, 0.06)"};
+          background: ${sidebarTheme === "darkBlue" ? "rgba(19, 39, 72, 0.62)" : "rgba(255, 255, 255, 0.6)"};
+          color: ${sidebarTheme === "darkBlue" ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)"};
+          font-size: 12px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
           cursor: pointer;
           transition: background 140ms ease, border-color 140ms ease;
         }
         .sideSubItem:hover {
-          background: rgba(0, 0, 0, 0.05);
+          background: ${sidebarTheme === "darkBlue" ? "rgba(36, 71, 122, 0.7)" : "rgba(0, 0, 0, 0.05)"};
         }
         .sideSubItem.active {
           background: ${currentTheme.activeHighlight};
           border-color: ${currentTheme.highlightBorder};
+          color: ${sidebarTheme === "darkBlue" ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
           font-weight: 700;
         }
         .case {
@@ -7113,7 +8030,7 @@ function NavButton({
       onClick={onClick}
       style={{
         width: "100%",
-        borderRadius: 12,
+        borderRadius: 9,
         border: "1px solid rgba(0,0,0,0.16)",
         background: active
           ? "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(230,230,230,0.95))"
@@ -7146,15 +8063,15 @@ function NavButton({
         style={{
           minWidth: 34,
           height: 22,
-          padding: "0 8px",
+          padding: "0 5px",
           borderRadius: 999,
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: 900,
           background: "rgba(0,0,0,0.08)",
-          border: "1px solid rgba(0,0,0,0.12)",
+          border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
           color: "rgba(0,0,0,0.72)",
         }}
       >
