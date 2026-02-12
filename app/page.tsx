@@ -8071,7 +8071,7 @@ function NavButton({
           fontSize: 11,
           fontWeight: 900,
           background: "rgba(0,0,0,0.08)",
-          border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+          border: "1px solid rgba(0,0,0,0.12)",
           color: "rgba(0,0,0,0.72)",
         }}
       >
