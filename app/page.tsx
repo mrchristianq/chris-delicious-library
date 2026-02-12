@@ -400,6 +400,30 @@ function canonicalizePlatformLabel(platform: string): string {
   return PLATFORM_CANONICAL_LABELS[normalized] || raw;
 }
 
+function getGameCoverFit(platform?: string): "cover" | "contain" {
+  const normalized = normalizePlatformToken(safeStr(platform));
+  if (!normalized) return "cover";
+
+  const isPlayStation = normalized.startsWith("playstation") || normalized.startsWith("ps");
+  const isNintendoDs =
+    normalized === "nintendods" ||
+    normalized === "nds" ||
+    normalized === "ds";
+  const isDreamcast =
+    normalized === "dreamcast" ||
+    normalized === "segadreamcast";
+  const isNintendo64 =
+    normalized === "nintendo64" ||
+    normalized === "n64";
+
+  // Square platforms should avoid side-cropping; N64 art is rectangular and should also keep full artwork.
+  if (isPlayStation || isNintendoDs || isDreamcast || isNintendo64) {
+    return "contain";
+  }
+
+  return "cover";
+}
+
 function getMediaType(item: any): MediaType {
   if (item?.__type === "book") return "book";
   if (item?.__type === "movie") return "movie";
@@ -7503,6 +7527,7 @@ export default function Page() {
                         coverOffsetX = platformCoverOffsetSettings.x;
                         coverOffsetY = platformCoverOffsetSettings.y;
                       }
+                      const gameCoverFit = getGameCoverFit(gamePlatform);
 
                       const gameOverlaySrc = isGame ? getOverlayFrameUrl("game", gamePlatform) : "";
                       const gameOverlayExpectedSrc = isGame ? getOverlayFrameDefaultPath("game", gamePlatform) : GAME_FRAME_IMAGE;
@@ -7604,7 +7629,7 @@ export default function Page() {
                                     style={{
                                       width: "100%",
                                       height: "100%",
-                                      objectFit: "cover",
+                                      objectFit: gameCoverFit,
                                       display: "block",
                                       transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
                                       transformOrigin: "center",
