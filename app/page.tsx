@@ -326,6 +326,13 @@ const COMPACT_GAME_FRAME_FILES = new Set([
   "/xbox-one-frame.png",
   "/xbox-series-x-frame.png",
 ]);
+const KNOWN_GAME_FRAME_FILES = new Set([
+  ...Array.from(COMPACT_GAME_FRAME_FILES),
+  "/epic-games-store-frame.png",
+  "/nes-frame.png",
+  "/steam-frame.png",
+  "/windows-11-frame.png",
+]);
 
 // Helper function to convert platform name to frame filename
 function getPlatformFrameFilename(platform?: string): string {
@@ -347,7 +354,8 @@ function getPlatformFrameFilename(platform?: string): string {
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `/${slug || "game"}-frame.png`;
+  const guessedFramePath = `/${slug || "game"}-frame.png`;
+  return KNOWN_GAME_FRAME_FILES.has(guessedFramePath) ? guessedFramePath : GAME_FRAME_IMAGE;
 }
 
 function getGameFrameSourceDimensions(platform?: string): { width: number; height: number } {
@@ -483,8 +491,8 @@ const STATUS_COLOR_YELLOW = "#d3aa2f";
 const STATUS_COLOR_RED = "#c54848";
 const STATUS_COLOR_ORANGE = "#d97a2a";
 const STATUS_DOT_SIZE = 15;
-const STATUS_DOT_NUDGE_LEFT_PX = 13;
-const STATUS_DOT_NUDGE_UP_PX = 19;
+const STATUS_DOT_NUDGE_LEFT_PX = 6;
+const STATUS_DOT_NUDGE_UP_PX = 6;
 
 const BOOK_GENRE_CANONICAL = [
   "Mystery",
@@ -798,8 +806,9 @@ export default function Page() {
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
+  const settingsPersistTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Debounce timers for inset adjustments to prevent render lag
+  // Debounce timers for settings persistence
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const [loading, setLoading] = useState(false);
@@ -902,6 +911,8 @@ export default function Page() {
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
+  const [windowScrollY, setWindowScrollY] = useState(0);
+  const [stageTopAbs, setStageTopAbs] = useState(0);
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -1209,6 +1220,34 @@ export default function Page() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setWindowScrollY(window.scrollY || window.pageYOffset || 0);
+      });
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  const measureStageTop = useCallback(() => {
+    const node = stageRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setStageTopAbs(rect.top + (window.scrollY || window.pageYOffset || 0));
+  }, [stageRef]);
+
+  useEffect(() => {
+    measureStageTop();
+  }, [measureStageTop, nav, viewportH, refreshNonce]);
 
   useEffect(() => {
     if (!settingsPopupOpen && !sortPopupOpen) return;
@@ -1865,14 +1904,69 @@ export default function Page() {
       // Update in-memory cache
       if (settingsCacheRef.current) {
         settingsCacheRef.current[key] = String(value);
-        
-        // Write to localStorage (this is the slow part, but only happens once per change)
-        localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+        // Batch localStorage writes so rapid nudge/slider updates stay responsive.
+        if (settingsPersistTimerRef.current) {
+          clearTimeout(settingsPersistTimerRef.current);
+        }
+        settingsPersistTimerRef.current = setTimeout(() => {
+          try {
+            if (settingsCacheRef.current) {
+              localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+            }
+          } catch (persistError) {
+            console.warn("Failed to persist settings cache:", persistError);
+          } finally {
+            settingsPersistTimerRef.current = null;
+          }
+        }, 120);
       }
     } catch (e) {
       console.warn("Failed to save to localStorage:", e);
     }
   };
+
+  const removeSetting = (key: string) => {
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      if (!settingsCacheRef.current) return;
+      if (!(key in settingsCacheRef.current)) return;
+      delete settingsCacheRef.current[key];
+      if (settingsPersistTimerRef.current) {
+        clearTimeout(settingsPersistTimerRef.current);
+      }
+      settingsPersistTimerRef.current = setTimeout(() => {
+        try {
+          if (settingsCacheRef.current) {
+            localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+          }
+        } catch (persistError) {
+          console.warn("Failed to persist settings cache:", persistError);
+        } finally {
+          settingsPersistTimerRef.current = null;
+        }
+      }, 120);
+    } catch (e) {
+      console.warn("Failed to remove setting from localStorage:", e);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (settingsPersistTimerRef.current) {
+        clearTimeout(settingsPersistTimerRef.current);
+      }
+      // Best effort final flush on unmount/navigation.
+      try {
+        if (settingsCacheRef.current) {
+          localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+        }
+      } catch (persistError) {
+        console.warn("Failed to persist settings cache on cleanup:", persistError);
+      }
+    };
+  }, []);
 
   // Save a specific setting to Google Sheet
   const saveSettingToSheet = async (key: string, value: any, category: string = "", description: string = "") => {
@@ -2383,21 +2477,20 @@ export default function Page() {
     saveSetting("showStatusIndicators", value, "Display", "Show status indicator dots on covers");
   };
   
-  // Debounced update helper for number inputs (prevents render lag on rapid changes)
+  // Update UI immediately; debounce only persistence so controls remain responsive.
   const debouncedUpdate = useCallback((key: string, value: number, setter: (v: number) => void, category: string, description: string) => {
-    // Clear existing timer for this key
+    // Apply the visual/state update immediately.
+    setter(value);
+
+    // Debounce local persistence for this specific key.
     if (debounceTimers.current[key]) {
       clearTimeout(debounceTimers.current[key]);
     }
-    
-    // Save to localStorage immediately (fast)
-    saveSetting(key, value, category, description);
-    
-    // Debounce the state update (which triggers expensive re-renders)
+
     debounceTimers.current[key] = setTimeout(() => {
-      setter(value);
+      saveSetting(key, value, category, description);
       delete debounceTimers.current[key];
-    }, 150); // 150ms delay feels instant but batches rapid changes
+    }, 150);
   }, []);
   
   const updateCaseInsetTopPx = (value: number) => {
@@ -2948,10 +3041,6 @@ export default function Page() {
   const platformAliasMap = useMemo(() => {
     const map = new Map<string, string>();
     const knownPlatforms = new Set<string>([
-      ...Object.keys(platformInsets),
-      ...Object.keys(platformOverlaySettings),
-      ...Object.keys(platformCoverScale),
-      ...Object.keys(platformCoverOffset),
       ...Array.from(customizedPlatforms),
       ...allGames.flatMap((g) =>
         safeStr(g.platform)
@@ -2969,7 +3058,7 @@ export default function Page() {
     });
 
     return map;
-  }, [allGames, customizedPlatforms, platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]);
+  }, [allGames, customizedPlatforms]);
 
   const resolvePlatformAlias = useCallback(
     (platform: string) => {
@@ -3315,6 +3404,115 @@ export default function Page() {
         : quickTargetType === "book"
           ? "Save Book Insets"
           : `Save ${quickTargetPlatform} Inset`;
+
+  const resetQuickInsetTarget = useCallback(() => {
+    setQuickInsetSaveStatus("idle");
+
+    if (quickTargetType === "tv") {
+      setCaseInsetTopPx(156);
+      setCaseInsetRightPx(121);
+      setCaseInsetBottomPx(136);
+      setCaseInsetLeftPx(74);
+      saveSetting("caseInsetTopPx", 156, "TV Insets", "TV Case Top Inset (px)");
+      saveSetting("caseInsetRightPx", 121, "TV Insets", "TV Case Right Inset (px)");
+      saveSetting("caseInsetBottomPx", 136, "TV Insets", "TV Case Bottom Inset (px)");
+      saveSetting("caseInsetLeftPx", 74, "TV Insets", "TV Case Left Inset (px)");
+      return;
+    }
+
+    if (quickTargetType === "movie") {
+      setMovieInsetTopPx(156);
+      setMovieInsetRightPx(100);
+      setMovieInsetBottomPx(136);
+      setMovieInsetLeftPx(120);
+      saveSetting("movieInsetTopPx", 156, "Movie Insets", "Movie Top Inset (px)");
+      saveSetting("movieInsetRightPx", 100, "Movie Insets", "Movie Right Inset (px)");
+      saveSetting("movieInsetBottomPx", 136, "Movie Insets", "Movie Bottom Inset (px)");
+      saveSetting("movieInsetLeftPx", 120, "Movie Insets", "Movie Left Inset (px)");
+      return;
+    }
+
+    if (quickTargetType === "book") {
+      setBookInsetTopPx(99);
+      setBookInsetRightPx(75);
+      setBookInsetBottomPx(104);
+      setBookInsetLeftPx(62);
+      saveSetting("bookInsetTopPx", 99, "Book Insets", "Book Top Inset (px)");
+      saveSetting("bookInsetRightPx", 75, "Book Insets", "Book Right Inset (px)");
+      saveSetting("bookInsetBottomPx", 104, "Book Insets", "Book Bottom Inset (px)");
+      saveSetting("bookInsetLeftPx", 62, "Book Insets", "Book Left Inset (px)");
+      return;
+    }
+
+    const platformKey = quickTargetPlatformKey || "Default";
+    const settingKeys = [
+      `${platformKey}InsetTopPx`,
+      `${platformKey}InsetRightPx`,
+      `${platformKey}InsetBottomPx`,
+      `${platformKey}InsetLeftPx`,
+      `${platformKey}OverlayWidth`,
+      `${platformKey}OverlayHeight`,
+      `${platformKey}OverlayTop`,
+      `${platformKey}OverlayLeft`,
+      `${platformKey}CoverScaleX`,
+      `${platformKey}CoverScaleY`,
+      `${platformKey}CoverOffsetX`,
+      `${platformKey}CoverOffsetY`,
+    ];
+
+    if (platformKey === "Default") {
+      setPlatformInsets((prev) => ({ ...prev, Default: { top: 5, right: 5, bottom: 5, left: 5 } }));
+      setPlatformOverlaySettings((prev) => ({ ...prev, Default: { width: 100, height: 100, top: 0, left: 0 } }));
+      setPlatformCoverScale((prev) => ({ ...prev, Default: { x: 100, y: 100 } }));
+      setPlatformCoverOffset((prev) => ({ ...prev, Default: { x: 0, y: 0 } }));
+      saveSetting("DefaultInsetTopPx", 5, "Default Insets", "Default Top Inset (px)");
+      saveSetting("DefaultInsetRightPx", 5, "Default Insets", "Default Right Inset (px)");
+      saveSetting("DefaultInsetBottomPx", 5, "Default Insets", "Default Bottom Inset (px)");
+      saveSetting("DefaultInsetLeftPx", 5, "Default Insets", "Default Left Inset (px)");
+      saveSetting("DefaultOverlayWidth", 100, "Default Overlay", "Default Overlay Width (%)");
+      saveSetting("DefaultOverlayHeight", 100, "Default Overlay", "Default Overlay Height (%)");
+      saveSetting("DefaultOverlayTop", 0, "Default Overlay", "Default Overlay Top (%)");
+      saveSetting("DefaultOverlayLeft", 0, "Default Overlay", "Default Overlay Left (%)");
+      saveSetting("DefaultCoverScaleX", 100, "Default Cover", "Default Cover Scale X (%)");
+      saveSetting("DefaultCoverScaleY", 100, "Default Cover", "Default Cover Scale Y (%)");
+      saveSetting("DefaultCoverOffsetX", 0, "Default Cover", "Default Cover Offset X (%)");
+      saveSetting("DefaultCoverOffsetY", 0, "Default Cover", "Default Cover Offset Y (%)");
+      return;
+    }
+
+    // For platform-specific game targets, clear overrides and fall back to Default.
+    setPlatformInsets((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setPlatformOverlaySettings((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setPlatformCoverScale((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setPlatformCoverOffset((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setCustomizedPlatforms((prev) => {
+      const next = new Set(prev);
+      next.delete(platformKey);
+      return next;
+    });
+    settingKeys.forEach((key) => removeSetting(key));
+  }, [
+    quickTargetPlatformKey,
+    quickTargetType,
+    removeSetting,
+    saveSetting,
+  ]);
 
   // For rendering: use the first platform listed in the row as primary.
   // This keeps shelf rendering deterministic when a platform
@@ -4063,6 +4261,24 @@ export default function Page() {
 
     return out;
   }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, posterSizeBooks, posterSizeMovies, posterSizeGames, posterSizeTv, gap]);
+
+  const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
+
+  const shelfRenderWindow = useMemo(() => {
+    if (!insetEditorOpen) {
+      return { start: 0, end: shelves.length, padTop: 0, padBottom: 0 };
+    }
+    const localScroll = Math.max(0, windowScrollY - stageTopAbs);
+    const viewH = Math.max(1, viewportH);
+    const start = Math.max(0, Math.floor(localScroll / SHELF_HEIGHT) - 2);
+    const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / SHELF_HEIGHT) + 2);
+    return {
+      start,
+      end,
+      padTop: start * SHELF_HEIGHT,
+      padBottom: Math.max(0, (shelves.length - end) * SHELF_HEIGHT),
+    };
+  }, [insetEditorOpen, shelves.length, windowScrollY, stageTopAbs, viewportH, SHELF_HEIGHT]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
@@ -6493,6 +6709,21 @@ export default function Page() {
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <button
+                        onClick={resetQuickInsetTarget}
+                        style={{
+                          padding: "7px 10px",
+                          fontSize: 11,
+                          background: "#f2f2f2",
+                          color: "#222",
+                          border: "1px solid rgba(0,0,0,0.2)",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Reset {quickTargetType === "game" ? quickTargetPlatform : quickTargetType} Insets
+                      </button>
+                      <button
                         onClick={async () => {
                           setQuickInsetSaveStatus("saving");
                           const ok = await saveInsetsToSheet(quickInsetSaveType);
@@ -7592,7 +7823,17 @@ export default function Page() {
                   </div>
                 </div>
               ) : null}
-              {shelves.map((shelfShows, shelfIndex) => (
+              {insetEditorOpen && shelfRenderWindow.padTop > 0 ? (
+                <div style={{ height: shelfRenderWindow.padTop }} />
+              ) : null}
+              {(insetEditorOpen
+                ? shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end)
+                : shelves
+              ).map((shelfShows, visibleShelfIndex) => {
+                const shelfIndex = insetEditorOpen
+                  ? shelfRenderWindow.start + visibleShelfIndex
+                  : visibleShelfIndex;
+                return (
                 <div
                   key={`shelf-${shelfIndex}`}
                   style={{
@@ -7616,7 +7857,9 @@ export default function Page() {
                       bottom: 0,
                     }}
                   >
-                    {shelfShows.map((show, i) => {
+                    {(() => {
+                      let runningX = 0;
+                      return shelfShows.map((show, i) => {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
@@ -7625,16 +7868,8 @@ export default function Page() {
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const isSteam = gamePlatform === "Steam";
                       const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
-                      // Calculate x as cumulative sum of all previous items + gaps
-                      let x = 0;
-                      for (let j = 0; j < i; j++) {
-                        const prevShow = shelfShows[j];
-                        const prevIsBook = prevShow.__type === "book";
-                        const prevIsMovie = prevShow.__type === "movie";
-                        const prevIsGame = prevShow.__type === "game";
-                        const prevSize = prevIsBook ? posterSizeBooks : prevIsMovie ? posterSizeMovies : prevIsGame ? posterSizeGames : posterSizeTv;
-                        x += prevSize + gap;
-                      }
+                      const x = runningX;
+                      runningX += itemSize + gap;
                       const caseWidth = itemSize;
                       const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
@@ -7710,17 +7945,39 @@ export default function Page() {
                       const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
                       const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
                       const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
+                      const coverTranslateX = coverOffsetX * 0.35;
+                      const coverTranslateY = coverOffsetY * 0.35;
+                      const insetWidthPx = Math.max(1, caseWidth - insetLeft - insetRight);
+                      const insetHeightPx = Math.max(1, caseHeight - insetTop - insetBottom);
+                      const coverScaleX = coverScale.x / 100;
+                      const coverScaleY = coverScale.y / 100;
+                      const coverTranslateXPx = (coverTranslateX / 100) * insetWidthPx;
+                      const coverTranslateYPx = (coverTranslateY / 100) * insetHeightPx;
+                      const coverVisualWidthPx = insetWidthPx * coverScaleX;
+                      const coverVisualHeightPx = insetHeightPx * coverScaleY;
+                      const coverVisualLeftPx =
+                        insetLeft + (insetWidthPx - coverVisualWidthPx) / 2 + coverTranslateXPx;
+                      const coverVisualTopPx =
+                        insetTop + (insetHeightPx - coverVisualHeightPx) / 2 + coverTranslateYPx;
                       const selectedCoverUrl = getDisplayCoverUrl(show);
                       const statusIndicator = getStatusIndicator(show);
-                      const gameFrameLeftPx = ((50 + overlayLeft - overlayWidth / 2) / 100) * caseWidth;
-                      const gameFrameTopPx = ((50 + overlayTop - overlayHeight / 2) / 100) * caseHeight;
-                      const gameFrameWidthPx = (overlayWidth / 100) * caseWidth;
-                      const gameFrameHeightPx = (overlayHeight / 100) * caseHeight;
+                      const statusRegionLeftPx = isGame ? coverVisualLeftPx : insetLeft;
+                      const statusRegionTopPx = isGame ? coverVisualTopPx : insetTop;
+                      const statusRegionWidthPx = isGame ? coverVisualWidthPx : insetWidthPx;
+                      const statusRegionHeightPx = isGame ? coverVisualHeightPx : insetHeightPx;
                       const statusDotLeftPx = Math.round(
-                        gameFrameLeftPx + gameFrameWidthPx - STATUS_DOT_NUDGE_LEFT_PX - STATUS_DOT_SIZE
+                        statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - STATUS_DOT_SIZE
                       );
                       const statusDotTopPx = Math.round(
-                        gameFrameTopPx + gameFrameHeightPx - STATUS_DOT_NUDGE_UP_PX - STATUS_DOT_SIZE
+                        statusRegionTopPx + statusRegionHeightPx - STATUS_DOT_NUDGE_UP_PX - STATUS_DOT_SIZE
+                      );
+                      const statusDotLeftClampedPx = Math.max(
+                        insetLeft,
+                        Math.min(caseWidth - insetRight - STATUS_DOT_SIZE, statusDotLeftPx)
+                      );
+                      const statusDotTopClampedPx = Math.max(
+                        insetTop,
+                        Math.min(caseHeight - insetBottom - STATUS_DOT_SIZE, statusDotTopPx)
                       );
 
                       return (
@@ -7809,8 +8066,9 @@ export default function Page() {
                                       width: "100%",
                                       height: "100%",
                                       objectFit: gameCoverFit,
+                                      objectPosition: "center",
                                       display: "block",
-                                      transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
                                       transformOrigin: "center",
                                     }}
                                     onError={e => {
@@ -7869,7 +8127,7 @@ export default function Page() {
                                     background:
                                       "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
                                     mixBlendMode: "screen",
-                                    transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                    transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
                                     transformOrigin: "center",
                                   }}
                                 />
@@ -8045,20 +8303,15 @@ export default function Page() {
                               title={statusIndicator.label}
                               style={{
                                 position: "absolute",
-                                left: isGame ? statusDotLeftPx : undefined,
-                                top: isGame ? statusDotTopPx : undefined,
-                                right: isGame ? undefined : 0,
-                                bottom: isGame ? undefined : 0,
-                                transform: isGame
-                                  ? undefined
-                                  : `translate(-${STATUS_DOT_NUDGE_LEFT_PX}px, -${STATUS_DOT_NUDGE_UP_PX}px)`,
+                                left: statusDotLeftClampedPx,
+                                top: statusDotTopClampedPx,
                                 width: STATUS_DOT_SIZE,
                                 height: STATUS_DOT_SIZE,
                                 borderRadius: "50%",
-                                border: "0.6px solid rgba(198, 206, 218, 0.95)",
-                                background: `radial-gradient(circle at 30% 22%, rgba(255,255,255,0.58) 0%, ${statusIndicator.color} 22%, ${statusIndicator.color} 80%, rgba(52,28,16,0.46) 100%)`,
+                                border: "none",
+                                background: `radial-gradient(circle at 28% 24%, rgba(255,255,255,0.92) 0%, color-mix(in srgb, ${statusIndicator.color} 72%, white) 18%, ${statusIndicator.color} 46%, color-mix(in srgb, ${statusIndicator.color} 88%, black) 100%)`,
                                 boxShadow:
-                                  `0 0 0 0.6px rgba(164, 174, 188, 0.92), inset 0 0 0 0.8px rgba(96, 108, 124, 0.42), inset 0 -1px 1px rgba(26,14,8,0.22), 0 2px 6px rgba(8, 5, 3, 0.62), 0 0 15px ${statusIndicator.color}, 0 0 24px color-mix(in srgb, ${statusIndicator.color} 92%, white)`,
+                                  `inset 0 1px 2px rgba(255,255,255,0.4), inset 0 -1px 2px rgba(0,0,0,0.28), 0 2px 8px rgba(5, 4, 4, 0.62), 0 0 18px color-mix(in srgb, ${statusIndicator.color} 92%, white), 0 0 34px color-mix(in srgb, ${statusIndicator.color} 95%, white)`,
                                 zIndex: 26,
                                 pointerEvents: "none",
                               }}
@@ -8107,10 +8360,15 @@ export default function Page() {
                           ) : null}
                         </div>
                       );
-                    })}
+                    });
+                  })()}
                   </div>
                 </div>
-              ))}
+              );
+              })}
+              {insetEditorOpen && shelfRenderWindow.padBottom > 0 ? (
+                <div style={{ height: shelfRenderWindow.padBottom }} />
+              ) : null}
             </div>
 
             <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
