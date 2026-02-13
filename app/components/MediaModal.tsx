@@ -15,6 +15,8 @@ interface MediaModalProps {
   gameFormatOptions?: string[];
   isReplacingCover?: boolean;
   replaceCoverError?: string | null;
+  popupCoverMode?: "custom" | "default";
+  onPopupCoverModeChange?: (item: Record<string, any>, mode: "custom" | "default") => void;
 }
 
 type InfoRow = {
@@ -470,6 +472,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   gameFormatOptions = [],
   isReplacingCover = false,
   replaceCoverError,
+  popupCoverMode,
+  onPopupCoverModeChange,
 }) => {
   const [posterIndex, setPosterIndex] = React.useState(0);
   const [isEditingBook, setIsEditingBook] = React.useState(false);
@@ -547,6 +551,30 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     ? sourceItem.coverCandidates.filter((c: any) => c && typeof c.url === "string" && c.url.trim())
     : [];
   const candidateUrls = coverCandidates.map((c: any) => String(c.url).trim()).filter(Boolean);
+  const customCoverCandidateUrl = (() => {
+    for (const candidate of coverCandidates) {
+      const label = String(candidate?.label || "").toLowerCase();
+      const url = String(candidate?.url || "").trim();
+      if (!url) continue;
+      if (label.includes("override") || label.includes("custom")) return url;
+    }
+    return "";
+  })();
+  const defaultCoverCandidateUrl = (() => {
+    for (const candidate of coverCandidates) {
+      const label = String(candidate?.label || "").toLowerCase();
+      const url = String(candidate?.url || "").trim();
+      if (!url) continue;
+      if (label.includes("metadata") || label.includes("default")) return url;
+    }
+    return "";
+  })();
+  const canChooseCustomCover = Boolean(customCoverCandidateUrl);
+  const canChooseDefaultCover = Boolean(defaultCoverCandidateUrl);
+  const preferredPosterUrl =
+    popupCoverMode === "default"
+      ? defaultCoverCandidateUrl || customCoverCandidateUrl || posterUrl
+      : customCoverCandidateUrl || defaultCoverCandidateUrl || posterUrl;
   const heroUrl =
     itemType === "game"
       ? firstNonEmpty(sourceItem, ["screensotsUrl", "ScreensotsURL", "screenshotUrl", "backgroundUrl", "heroUrl"])
@@ -555,9 +583,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
   React.useEffect(() => {
     if (!open || !item) return;
-    const preferredIdx = candidateUrls.findIndex((url) => url === posterUrl);
+    const preferredIdx = candidateUrls.findIndex((url) => url === preferredPosterUrl);
     setPosterIndex(preferredIdx >= 0 ? preferredIdx : 0);
-  }, [open, item, posterUrl, candidateUrls.join("|")]);
+  }, [open, item, preferredPosterUrl, candidateUrls.join("|")]);
 
   React.useEffect(() => {
     if (!open || !item) return;
@@ -602,6 +630,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     if (label.includes("override") || label.includes("custom")) return "Custom Cover";
     return "Metadata Cover";
   })();
+  const shouldContainPoster = coverLocation === "Custom Cover";
 
   if (!open || !item) return null;
 
@@ -909,6 +938,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   src={resolvedPosterUrl}
                   alt={title}
                   className="poster"
+                  style={{ objectFit: shouldContainPoster ? "contain" : "cover" }}
                   onError={() => {
                     setPosterIndex((idx) => (idx < candidateUrls.length - 1 ? idx + 1 : idx));
                   }}
@@ -1012,6 +1042,28 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   )}
                 </div>
               </div>
+              {onPopupCoverModeChange && item && (canChooseCustomCover || canChooseDefaultCover) ? (
+                <div className="coverModeRow">
+                  {canChooseCustomCover ? (
+                    <button
+                      type="button"
+                      className={`coverModeButton${popupCoverMode !== "default" ? " active" : ""}`}
+                      onClick={() => onPopupCoverModeChange(item, "custom")}
+                    >
+                      Use Custom
+                    </button>
+                  ) : null}
+                  {canChooseDefaultCover ? (
+                    <button
+                      type="button"
+                      className={`coverModeButton${popupCoverMode === "default" ? " active" : ""}`}
+                      onClick={() => onPopupCoverModeChange(item, "default")}
+                    >
+                      Use Default
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {onReplaceCover ? (
                 <button
                   type="button"
@@ -1610,6 +1662,31 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: flex;
           align-items: center;
           gap: 8px;
+        }
+
+        .coverModeRow {
+          display: flex;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .coverModeButton {
+          border: 1px solid rgba(95, 122, 177, 0.5);
+          border-radius: 8px;
+          background: rgba(14, 28, 52, 0.8);
+          color: #cfdcff;
+          padding: 5px 8px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .coverModeButton.active {
+          border-color: rgba(153, 203, 255, 0.92);
+          background: rgba(46, 92, 146, 0.65);
+          color: #ecf5ff;
         }
 
         .chipWrap {

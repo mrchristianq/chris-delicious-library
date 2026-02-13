@@ -491,7 +491,14 @@ function getMediaType(item: any): MediaType {
 
 function getMediaItemKey(item: any): string {
   const type = getMediaType(item);
-  return `${type}:${normalizeTitleKey(item?.title || "")}`;
+  const normalizedTitle = normalizeTitleKey(item?.title || "");
+  if (type === "game") {
+    const normalizedPlatform = normalizePlatformToken(
+      safeStr(item?.__renderPlatform || item?.platform)
+    );
+    return `${type}:${normalizedTitle}:${normalizedPlatform || "default"}`;
+  }
+  return `${type}:${normalizedTitle}`;
 }
 
 type StatusIndicator = {
@@ -1120,6 +1127,7 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
   const [overlayFrameOverrides, setOverlayFrameOverrides] = useState<Record<string, string>>({});
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
@@ -1337,6 +1345,25 @@ export default function Page() {
 
   useEffect(() => {
     try {
+      const raw = localStorage.getItem("cdlPopupCoverModes");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        const normalized: Record<string, "custom" | "default"> = {};
+        Object.entries(parsed as Record<string, unknown>).forEach(([key, value]) => {
+          if (value === "custom" || value === "default") {
+            normalized[key] = value;
+          }
+        });
+        setPopupCoverModes(normalized);
+      }
+    } catch (e) {
+      console.warn("Failed to load popup cover modes from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       const raw = localStorage.getItem("cdlOverlayFrameOverrides");
       if (!raw) return;
       const parsed = JSON.parse(raw);
@@ -1351,6 +1378,7 @@ export default function Page() {
   useEffect(() => {
     if (!settingsRows.length) return;
     const fromSheet: Record<string, string> = {};
+    const popupModesFromSheet: Record<string, "custom" | "default"> = {};
     const overlayFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
@@ -1367,9 +1395,18 @@ export default function Page() {
           overlayFromSheet[overlayKey] = value;
         }
       }
+      if (key.startsWith("popupCoverMode:")) {
+        const mediaKey = key.slice("popupCoverMode:".length);
+        if (mediaKey && (value === "custom" || value === "default")) {
+          popupModesFromSheet[mediaKey] = value;
+        }
+      }
     });
     if (Object.keys(fromSheet).length) {
       setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+    }
+    if (Object.keys(popupModesFromSheet).length) {
+      setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
     }
     if (Object.keys(overlayFromSheet).length) {
       setOverlayFrameOverrides((prev) => ({ ...overlayFromSheet, ...prev }));
@@ -1432,6 +1469,28 @@ export default function Page() {
       console.error("Cover upload failed:", e);
     } finally {
       setUploadingCoverForKey(null);
+    }
+  };
+
+  const handlePopupCoverModeChange = (item: any, mode: "custom" | "default") => {
+    const itemKey = getMediaItemKey(item);
+    const mediaType = getMediaType(item);
+    setPopupCoverModes((prev) => {
+      const next = { ...prev, [itemKey]: mode };
+      try {
+        localStorage.setItem("cdlPopupCoverModes", JSON.stringify(next));
+      } catch (e) {
+        console.warn("Failed to persist popup cover modes locally:", e);
+      }
+      return next;
+    });
+    if (settingsWriteUrl) {
+      saveSettingToSheet(
+        `popupCoverMode:${itemKey}`,
+        mode,
+        "Popup Cover Modes",
+        `${mediaType} popup cover mode for ${safeStr(item?.title)}`
+      );
     }
   };
 
@@ -8635,6 +8694,8 @@ export default function Page() {
         gameOwnershipOptions={gameOwnershipOptions}
         gameFormatOptions={gameFormatOptions}
         gameStatusOptions={gameStatusOptions}
+        popupCoverMode={modalItem ? popupCoverModes[getMediaItemKey(modalItem)] : undefined}
+        onPopupCoverModeChange={handlePopupCoverModeChange}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
         replaceCoverError={coverUploadError}
       />
