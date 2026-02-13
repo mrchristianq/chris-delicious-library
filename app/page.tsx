@@ -251,8 +251,18 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "4.1.2";
+const APP_VERSION = "4.5.0";
 const VERSION_HISTORY = [
+  {
+    version: "4.5.0",
+    date: "2026-02-13",
+    notes: [
+      "Fixed Xbox One game covers getting clipped at the top by using platform-aware contain fit.",
+      "Updated Games platform filtering so selected platforms render with matching platform overlays while Home still shows one deduplicated game per title.",
+      "Made Games > Platform sidebar options denser and uniform-width (matching the widest item) so more platforms fit in view.",
+      "Reduced sidebar module spacing for a tighter layout.",
+    ],
+  },
   {
     version: "4.1.2",
     date: "2026-02-11",
@@ -445,6 +455,10 @@ function getGameCoverFit(platform?: string): "cover" | "contain" {
   if (!normalized) return "cover";
 
   const isPlayStation = normalized.startsWith("playstation") || normalized.startsWith("ps");
+  const isXboxOne =
+    normalized === "xboxone" ||
+    normalized === "xboxonex" ||
+    normalized === "xboxones";
   const isNintendoDs =
     normalized === "nintendods" ||
     normalized === "nds" ||
@@ -457,7 +471,7 @@ function getGameCoverFit(platform?: string): "cover" | "contain" {
     normalized === "n64";
 
   // Square platforms should avoid side-cropping; N64 art is rectangular and should also keep full artwork.
-  if (isPlayStation || isNintendoDs || isDreamcast || isNintendo64) {
+  if (isPlayStation || isXboxOne || isNintendoDs || isDreamcast || isNintendo64) {
     return "contain";
   }
 
@@ -4191,7 +4205,11 @@ export default function Page() {
 
       const filteredByQuery = q ? filtered.filter((g) => g.titleLC.includes(q)) : filtered;
       const sorted = applySorting(filteredByQuery.map((g) => g.item), sortField, sortOrder);
-      return sorted.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })) as any[];
+      return sorted.map((g) => ({
+        ...g,
+        __type: "game",
+        __renderPlatform: gamePlatformFilter ? resolvePlatformAlias(gamePlatformFilter) : undefined,
+      } as Game & { __type: "game"; __renderPlatform?: string })) as any[];
     }
 
     // Smart List: This Year - Filter all items with appropriate year field matching current year
@@ -4289,7 +4307,7 @@ export default function Page() {
     applySorting, deduplicateGames,
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
-    isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus,
+    isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
     deferredQuery, readingStatusFilter, selectedPreviousYear, seriesFilter, showFilter, sortField, sortOrder, tagFilter, watchFilter, wishlistFilter
   ]);
 
@@ -4573,7 +4591,7 @@ export default function Page() {
             </div>
           )}
 
-          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 10, flex: 1, marginTop: 12 }}>
+          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 6, flex: 1, marginTop: 12 }}>
             {/* Library Module */}
             <div
               style={{
@@ -5535,14 +5553,14 @@ export default function Page() {
                       <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", width: "fit-content", maxWidth: "100%" }}>
                         {gamePlatformOptions.map((option) => {
                           const active = gamePlatformFilter === option;
                           return (
                             <button
                               key={`game-platform-${option}`}
                               onClick={() => setGamePlatformFilter(active ? null : option)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
+                              className={`sideSubItem compactPlatformItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
                                 textAlign: "left",
@@ -5552,14 +5570,14 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)", fontSize: 11, lineHeight: 1.15 }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
+                                  minWidth: 14,
+                                  height: 12,
+                                  padding: "0 3px",
                                   borderRadius: 8,
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -8004,7 +8022,7 @@ export default function Page() {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
-                      const gamePlatformRaw = isGame && 'platform' in show ? show.platform : undefined;
+                      const gamePlatformRaw = isGame ? safeStr((show as any).__renderPlatform || show.platform) : undefined;
                       // Determine primary platform from the row to keep shelf rendering deterministic.
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
@@ -8603,6 +8621,11 @@ export default function Page() {
           border-color: ${currentTheme.highlightBorder};
           color: ${sidebarTheme === "darkBlue" ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
           font-weight: 700;
+        }
+        .compactPlatformItem {
+          padding: 2px 5px;
+          border-radius: 6px;
+          font-size: 11px;
         }
         .case {
           transition: transform 60ms ease;
