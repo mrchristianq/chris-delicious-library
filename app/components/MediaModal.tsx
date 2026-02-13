@@ -191,6 +191,44 @@ function isTruthyValue(value: string): boolean {
   );
 }
 
+function normalizeStatusToken(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getStatusTone(value: string): "positive" | "warning" | "active" | "neutral" | "" {
+  const normalized = normalizeStatusToken(value);
+  if (!normalized || normalized === DASH.toLowerCase()) return "";
+
+  if (
+    normalized.includes("completed") ||
+    normalized.includes("watched") ||
+    normalized.includes("finished")
+  ) {
+    return "positive";
+  }
+
+  if (
+    normalized.includes("abandoned") ||
+    normalized.includes("dropped") ||
+    normalized.includes("canceled") ||
+    normalized.includes("cancelled") ||
+    normalized.includes("quit") ||
+    normalized.includes("dnf")
+  ) {
+    return "warning";
+  }
+
+  if (
+    normalized.includes("now playing") ||
+    normalized.includes("playing") ||
+    normalized.includes("currently watching")
+  ) {
+    return "active";
+  }
+
+  return "neutral";
+}
+
 function renderTwoStateToggle(isOn: boolean, onText: string, offText: string) {
   return (
     <span
@@ -584,6 +622,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       : firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
         firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
         DASH;
+  const statusTone = getStatusTone(String(statusValue || ""));
+  const statusDisplayText = statusValue && statusValue !== DASH ? String(statusValue).toUpperCase() : statusValue;
   const categoryChips = Array.from(
     new Set(
       itemType === "book"
@@ -986,7 +1026,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             </div>
             <div className="chipSection">
               <div className="chipSectionLabel">{itemType === "tv" || itemType === "movie" ? "Watch Status" : "Status"}</div>
-              <div className="statusValue">{statusValue}</div>
+              <div className={`statusValue statusValueProminent${statusTone ? ` statusTone-${statusTone}` : ""}`}>
+                {statusDisplayText}
+              </div>
             </div>
             {itemType === "game" ? (
               <div className="chipSection">
@@ -1606,6 +1648,32 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           font-size: 15px;
           font-weight: 600;
           margin-top: 4px;
+        }
+
+        .statusValueProminent {
+          font-size: 20px;
+          line-height: 1.05;
+          font-weight: 900;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-top: 5px;
+          text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+        }
+
+        .statusTone-positive {
+          color: #5cd364;
+        }
+
+        .statusTone-warning {
+          color: #f3a34e;
+        }
+
+        .statusTone-active {
+          color: #58b8ff;
+        }
+
+        .statusTone-neutral {
+          color: #d9e6ff;
         }
 
         .twoStateTextOnly {
