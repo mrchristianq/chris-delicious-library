@@ -5577,7 +5577,7 @@ export default function Page() {
                             <button
                               key={`game-platform-${option}`}
                               onClick={() => setGamePlatformFilter(active ? null : option)}
-                              className={`sideSubItem compactPlatformItem ${active ? "active" : ""}`}
+                              className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
                                 textAlign: "left",
@@ -5587,14 +5587,14 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)", fontSize: 11, lineHeight: 1.15 }}>{option}</span>
+                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
-                                  minWidth: 14,
-                                  height: 12,
-                                  padding: "0 3px",
+                                  minWidth: 16,
+                                  height: 14,
+                                  padding: "0 4px",
                                   borderRadius: 8,
-                                  fontSize: 9,
+                                  fontSize: 10,
                                   textAlign: "center",
                                   background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
                                   color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
@@ -8638,11 +8638,6 @@ export default function Page() {
           border-color: ${currentTheme.highlightBorder};
           color: ${sidebarTheme === "darkBlue" ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
           font-weight: 700;
-        }
-        .compactPlatformItem {
-          padding: 2px 5px;
-          border-radius: 6px;
-          font-size: 11px;
         }
         .case {
           transition: transform 60ms ease;
