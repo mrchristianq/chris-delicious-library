@@ -803,10 +803,53 @@ export default function Page() {
     process.env.NEXT_PUBLIC_TV_WRITE_URL;
   const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
   const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
+  const writeConfigChecks = useMemo(
+    () => [
+      {
+        key: "settings",
+        label: "Settings + overlays persistence",
+        configured: Boolean(settingsWriteUrl),
+        env: "NEXT_PUBLIC_SETTINGS_WRITE_URL",
+      },
+      {
+        key: "books",
+        label: "Book edits",
+        configured: Boolean(booksWriteUrl),
+        env: "NEXT_PUBLIC_BOOKS_WRITE_URL",
+      },
+      {
+        key: "shows",
+        label: "TV/show edits",
+        configured: Boolean(showsWriteUrl),
+        env: "NEXT_PUBLIC_SHOWS_WRITE_URL or NEXT_PUBLIC_TV_WRITE_URL",
+      },
+      {
+        key: "movies",
+        label: "Movie edits",
+        configured: Boolean(moviesWriteUrl),
+        env: "NEXT_PUBLIC_MOVIES_WRITE_URL",
+      },
+      {
+        key: "games",
+        label: "Game edits",
+        configured: Boolean(gamesWriteUrl),
+        env: "NEXT_PUBLIC_GAMES_WRITE_URL",
+      },
+    ],
+    [booksWriteUrl, gamesWriteUrl, moviesWriteUrl, settingsWriteUrl, showsWriteUrl]
+  );
+  const missingWriteConfigChecks = useMemo(
+    () => writeConfigChecks.filter((entry) => !entry.configured),
+    [writeConfigChecks]
+  );
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
   const settingsPersistTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSettingsSheetWritesRef = useRef<
+    Record<string, { value: string; category: string; description: string }>
+  >({});
+  const settingsSheetFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Debounce timers for settings persistence
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -1494,7 +1537,7 @@ export default function Page() {
     }
   };
 
-  const postSheetWrite = async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+  const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
     const res = await fetch("/api/sheets-write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1509,7 +1552,7 @@ export default function Page() {
         fallbackMessage;
       throw new Error(errorMessage);
     }
-  };
+  }, []);
 
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
     if (!booksWriteUrl) {
@@ -2024,9 +2067,59 @@ export default function Page() {
     return defaultValue;
   }, [settingsRows]);
 
-  const saveSetting = useCallback((key: string, value: any, _category: string = "", _description: string = "") => {
-    // Save to localStorage only - no auto-sync to Google Sheet
-    // Use saveSettingToSheet() for manual Google Sheet syncs
+  const flushPendingSettingsSheetWrites = useCallback(async () => {
+    if (!settingsWriteUrl) return;
+    const pending = pendingSettingsSheetWritesRef.current;
+    const entries = Object.entries(pending);
+    if (!entries.length) return;
+
+    // Clear queue first so new writes can continue while this batch is in flight.
+    pendingSettingsSheetWritesRef.current = {};
+
+    await Promise.allSettled(
+      entries.map(([key, entry]) =>
+        postSheetWrite(
+          settingsWriteUrl,
+          {
+            key,
+            value: entry.value,
+            category: entry.category,
+            description: entry.description,
+          },
+          `Failed to save setting: ${key}`
+        )
+      )
+    );
+  }, [postSheetWrite, settingsWriteUrl]);
+
+  const queueSettingSheetWrite = useCallback(
+    (key: string, value: any, category: string = "", description: string = "") => {
+      if (!settingsWriteUrl) return;
+
+      const valueStr = String(value);
+      if (valueStr.includes("#REF!")) {
+        console.log(`Skipping: ${key} (contains #REF! error)`);
+        return;
+      }
+
+      pendingSettingsSheetWritesRef.current[key] = {
+        value: valueStr,
+        category,
+        description,
+      };
+
+      if (settingsSheetFlushTimerRef.current) {
+        clearTimeout(settingsSheetFlushTimerRef.current);
+      }
+      settingsSheetFlushTimerRef.current = setTimeout(() => {
+        settingsSheetFlushTimerRef.current = null;
+        void flushPendingSettingsSheetWrites();
+      }, 700);
+    },
+    [flushPendingSettingsSheetWrites, settingsWriteUrl]
+  );
+
+  const saveSetting = useCallback((key: string, value: any, category: string = "", description: string = "") => {
     try {
       // Initialize cache from localStorage if not already loaded
       if (settingsCacheRef.current === null) {
@@ -2055,7 +2148,8 @@ export default function Page() {
     } catch (e) {
       console.warn("Failed to save to localStorage:", e);
     }
-  }, []);
+    queueSettingSheetWrite(key, value, category, description);
+  }, [queueSettingSheetWrite]);
 
   const removeSetting = useCallback((key: string) => {
     try {
@@ -2089,6 +2183,9 @@ export default function Page() {
       if (settingsPersistTimerRef.current) {
         clearTimeout(settingsPersistTimerRef.current);
       }
+      if (settingsSheetFlushTimerRef.current) {
+        clearTimeout(settingsSheetFlushTimerRef.current);
+      }
       // Best effort final flush on unmount/navigation.
       try {
         if (settingsCacheRef.current) {
@@ -2097,8 +2194,34 @@ export default function Page() {
       } catch (persistError) {
         console.warn("Failed to persist settings cache on cleanup:", persistError);
       }
+      void flushPendingSettingsSheetWrites();
     };
-  }, []);
+  }, [flushPendingSettingsSheetWrites]);
+
+  useEffect(() => {
+    if (!settingsWriteUrl) return;
+
+    const flushNow = () => {
+      if (settingsSheetFlushTimerRef.current) {
+        clearTimeout(settingsSheetFlushTimerRef.current);
+        settingsSheetFlushTimerRef.current = null;
+      }
+      void flushPendingSettingsSheetWrites();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushNow();
+      }
+    };
+
+    window.addEventListener("beforeunload", flushNow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", flushNow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushPendingSettingsSheetWrites, settingsWriteUrl]);
 
   // Save a specific setting to Google Sheet
   const saveSettingToSheet = useCallback(async (key: string, value: any, category: string = "", description: string = "") => {
@@ -2114,34 +2237,16 @@ export default function Page() {
     }
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      try {
-        await fetch(settingsWriteUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, value, category, description }),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        console.log(`✓ Saved to sheet: ${key} = ${value}`);
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        // Handle abort timeout gracefully
-        if (fetchError instanceof Error && fetchError.name === "AbortError") {
-          console.warn(`⏱ Timeout saving ${key} to sheet (5s timeout)`);
-          // Don't throw, just warn - the setting is already saved locally
-        } else {
-          console.warn(`✗ Failed to save ${key} to sheet:`, fetchError);
-        }
-      }
+      await postSheetWrite(
+        settingsWriteUrl,
+        { key, value: valueStr, category, description },
+        `Failed to save setting: ${key}`
+      );
+      console.log(`✓ Saved to sheet: ${key} = ${valueStr}`);
     } catch (e) {
       console.warn(`✗ Error in saveSettingToSheet:`, e);
     }
-  }, [settingsWriteUrl]);
+  }, [postSheetWrite, settingsWriteUrl]);
 
   // Save all insets of a specific type to Google Sheet
   const saveInsetsToSheet = async (insetType: 'tv' | 'book' | 'movie' | 'game') => {
@@ -2434,19 +2539,7 @@ export default function Page() {
         // Log each setting being sent for debugging
         console.log(`Sending: ${setting.key} = ${setting.value}`);
         try {
-          // Add timeout to prevent hanging on a single request (5 second timeout)
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000);
-          
-          await fetch(settingsWriteUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(setting),
-            signal: controller.signal,
-          });
-          
-          clearTimeout(timeoutId);
+          await postSheetWrite(settingsWriteUrl, setting, `Failed to save setting: ${setting.key}`);
           sentCount++;
         } catch (fetchError) {
           console.warn(`Failed to send ${setting.key}, continuing:`, fetchError);
@@ -7750,6 +7843,34 @@ export default function Page() {
               }}
             >
               {error}
+            </div>
+          ) : null}
+
+          {missingWriteConfigChecks.length > 0 ? (
+            <div
+              style={{
+                background: "#fff7e6",
+                border: "1px solid #d9981e",
+                borderRadius: 9,
+                padding: 12,
+                marginBottom: 14,
+                color: "#5f3a00",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                Persistence Warning
+              </div>
+              <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.35 }}>
+                Some live edits will not persist across deployments until these write URLs are configured:
+              </div>
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                {missingWriteConfigChecks.map((entry) => (
+                  <div key={entry.key} style={{ fontSize: 11, lineHeight: 1.3 }}>
+                    <strong>{entry.label}:</strong> <code>{entry.env}</code>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
