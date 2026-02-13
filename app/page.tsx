@@ -1888,7 +1888,13 @@ export default function Page() {
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
     try {
-      return new Date(ts).toLocaleString();
+      return new Intl.DateTimeFormat(undefined, {
+        year: "2-digit",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(ts));
     } catch {
       return "—";
     }
@@ -7447,9 +7453,9 @@ export default function Page() {
                     border: "1.5px solid rgba(255, 255, 255, 0.6)",
                   }}
                 />
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10, flex: "1 1 auto" }}>
                   <div style={{ minWidth: 0, position: "relative" }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                       <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                         {syncState === "saving"
                           ? "Syncing"
@@ -7459,7 +7465,7 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
