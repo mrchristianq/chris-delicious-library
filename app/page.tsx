@@ -311,18 +311,51 @@ const GAME_FRAME_IMAGE = "/game-frame.png";
 const APP_ICON = "/logo4.png";
 const SHOW_HEADER_DEBUG_CONTROLS = false;
 
+const COMPACT_GAME_FRAME_SIZE = { width: 646, height: 800 } as const;
+const DEFAULT_GAME_FRAME_SIZE = { width: 1024, height: 1536 } as const;
+const COMPACT_GAME_FRAME_FILES = new Set([
+  "/dreamcast-frame.png",
+  "/playstation-frame.png",
+  "/playstation-2-frame.png",
+  "/playstation-3-frame.png",
+  "/playstation-4-frame.png",
+  "/playstation-5-frame.png",
+  "/switch-frame.png",
+  "/switch-2-frame.png",
+  "/xbox-360-frame.png",
+  "/xbox-one-frame.png",
+  "/xbox-series-x-frame.png",
+]);
+
 // Helper function to convert platform name to frame filename
 function getPlatformFrameFilename(platform?: string): string {
   if (!platform || platform === "Default") {
     return GAME_FRAME_IMAGE;
   }
   const canonicalLabel = canonicalizePlatformLabel(platform);
+  const normalizedCanonical = normalizePlatformToken(canonicalLabel);
+  const frameOverrideByPlatform: Record<string, string> = {
+    nintendoswitch: "/switch-frame.png",
+    switch: "/switch-frame.png",
+    nintendoswitch2: "/switch-2-frame.png",
+    switch2: "/switch-2-frame.png",
+  };
+  const explicitFrame = frameOverrideByPlatform[normalizedCanonical];
+  if (explicitFrame) return explicitFrame;
   const slug = safeStr(canonicalLabel)
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return `/${slug || "game"}-frame.png`;
+}
+
+function getGameFrameSourceDimensions(platform?: string): { width: number; height: number } {
+  const framePath = getPlatformFrameFilename(platform).toLowerCase();
+  if (COMPACT_GAME_FRAME_FILES.has(framePath)) {
+    return { width: COMPACT_GAME_FRAME_SIZE.width, height: COMPACT_GAME_FRAME_SIZE.height };
+  }
+  return { width: DEFAULT_GAME_FRAME_SIZE.width, height: DEFAULT_GAME_FRAME_SIZE.height };
 }
 
 function safeStr(v: unknown) {
@@ -439,6 +472,19 @@ function getMediaItemKey(item: any): string {
   const type = getMediaType(item);
   return `${type}:${normalizeTitleKey(item?.title || "")}`;
 }
+
+type StatusIndicator = {
+  color: string;
+  label: string;
+};
+
+const STATUS_COLOR_GREEN = "#4f9f50";
+const STATUS_COLOR_YELLOW = "#d3aa2f";
+const STATUS_COLOR_RED = "#c54848";
+const STATUS_COLOR_ORANGE = "#d97a2a";
+const STATUS_DOT_SIZE = 15;
+const STATUS_DOT_NUDGE_LEFT_PX = 13;
+const STATUS_DOT_NUDGE_UP_PX = 19;
 
 const BOOK_GENRE_CANONICAL = [
   "Mystery",
@@ -854,6 +900,7 @@ export default function Page() {
   const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
+  const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
 
   const clearAllFilters = useCallback(() => {
@@ -2092,6 +2139,7 @@ export default function Page() {
     setCounterLabelLeft(getSetting("counterLabelLeft", 0));
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
+    setShowStatusIndicators(getSetting("showStatusIndicators", false));
     
     setSidebarTheme(getSetting("sidebarTheme", "winterGray"));
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
@@ -2137,6 +2185,7 @@ export default function Page() {
       { key: "sidebarTheme", value: sidebarTheme, category: "Themes", description: "Sidebar Theme" },
       { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Wood Type" },
       { key: "showInsetGuide", value: showInsetGuide, category: "Cover Sizes", description: "Show inset frame guide" },
+      { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
     ];
     
     try {
@@ -2261,6 +2310,7 @@ export default function Page() {
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
         setSidebarTheme(getStr("sidebarTheme", "winterGray"));
+        setShowStatusIndicators(getBool("showStatusIndicators", false));
       }, 100);
       
       setSyncState("ok");
@@ -2327,6 +2377,10 @@ export default function Page() {
   const updateTight = (value: boolean) => {
     setTight(value);
     saveSetting("tight", value, "Spacing", "Tight spacing between items");
+  };
+  const updateShowStatusIndicators = (value: boolean) => {
+    setShowStatusIndicators(value);
+    saveSetting("showStatusIndicators", value, "Display", "Show status indicator dots on covers");
   };
   
   // Debounced update helper for number inputs (prevents render lag on rapid changes)
@@ -3065,21 +3119,20 @@ export default function Page() {
     const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
     const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
     const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+    const gameFrameSource = getGameFrameSourceDimensions(quickTargetPlatformKey);
     return {
       inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
       overlay: gameOverlay,
       coverOffset: gameCoverOffset,
       coverScale: gameCoverScale,
-      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : GAME_SRC_W,
-      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : GAME_SRC_H,
+      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : gameFrameSource.width,
+      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : gameFrameSource.height,
     };
   }, [
     BOOK_SRC_H,
     BOOK_SRC_W,
     CASE_SRC_H,
     CASE_SRC_W,
-    GAME_SRC_H,
-    GAME_SRC_W,
     MOVIE_SRC_H,
     MOVIE_SRC_W,
     bookInsetBottomPx,
@@ -3291,6 +3344,75 @@ export default function Page() {
 
   const hasWishlistOwnership = (value?: string) => normalizeStatus(value) === "wishlist";
   const hasOwnedOwnership = (value?: string) => normalizeStatus(value) === "owned";
+
+  const getStatusIndicator = (item: any): StatusIndicator | null => {
+    const mediaType = getMediaType(item);
+    const isAbandonedStatus = (value: string) =>
+      value === "abandoned" || value === "dropped" || value === "drop" || value === "quit" || value === "dnf";
+
+    if (mediaType === "tv") {
+      const status = normalizeStatus(item?.watchStatus || item?.watched || item?.showStatus || item?.status);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (
+        status === "completed" ||
+        status === "watched" ||
+        status === "true" ||
+        status === "yes" ||
+        status === "1"
+      ) {
+        return { color: STATUS_COLOR_GREEN, label: "Watched / Completed" };
+      }
+      if (
+        status === "currently watching" ||
+        status === "watching" ||
+        status === "in progress" ||
+        status === "paused" ||
+        status === "watch next" ||
+        status === "pending return"
+      ) {
+        return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Watched" };
+    }
+
+    if (mediaType === "movie") {
+      const status = normalizeStatus(item?.movieStatus || item?.status || item?.watchStatus || item?.watched);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (isMovieWatched(item as Movie)) return { color: STATUS_COLOR_GREEN, label: "Watched" };
+      return { color: STATUS_COLOR_RED, label: "Not Watched" };
+    }
+
+    if (mediaType === "game") {
+      const status = normalizeStatus(item?.status || item?.playStatus || item?.gameStatus || item?.completed);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (status === "completed" || status === "done" || status === "beaten" || status === "finished") {
+        return { color: STATUS_COLOR_GREEN, label: "Completed" };
+      }
+      if (
+        status === "playing" ||
+        status === "currently playing" ||
+        status === "in progress" ||
+        status === "paused"
+      ) {
+        return { color: STATUS_COLOR_YELLOW, label: "Playing" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Played" };
+    }
+
+    if (mediaType === "book") {
+      const status = normalizeStatus(item?.status);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (status === "completed" || status === "finished" || status === "read") {
+        return { color: STATUS_COLOR_GREEN, label: "Completed" };
+      }
+      if (status === "reading" || status === "currently reading" || status === "in progress" || status === "paused") {
+        return { color: STATUS_COLOR_YELLOW, label: "Reading" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Read" };
+    }
+
+    return null;
+  };
 
   const isMovieWatched = (movie: Movie) => {
     const status = normalizeStatus(movie.movieStatus || movie.status);
@@ -7214,7 +7336,7 @@ export default function Page() {
                       transform: "translateY(-4.5px)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(260px, calc(100% - 220px))" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(340px, calc(100% - 220px))" }}>
                       <div
                         style={{
                           display: "flex",
@@ -7274,6 +7396,51 @@ export default function Page() {
                         }}
                       >
                         Clear
+                      </button>
+                      <button
+                        onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
+                        title="Toggle status indicators"
+                        aria-label="Toggle status indicators"
+                        aria-pressed={showStatusIndicators}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          height: 24,
+                          minWidth: 68,
+                          padding: "3px 7px",
+                          background: showStatusIndicators
+                            ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
+                            : "rgba(28, 18, 10, 0.52)",
+                          border: showStatusIndicators
+                            ? "1px solid rgba(190, 221, 166, 0.75)"
+                            : "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: showStatusIndicators ? "rgba(242, 255, 228, 0.95)" : "rgba(250, 242, 230, 0.72)",
+                          boxShadow: showStatusIndicators
+                            ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
+                            : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: showStatusIndicators ? "rgba(194, 246, 166, 0.95)" : "rgba(250, 242, 230, 0.45)",
+                            boxShadow: showStatusIndicators
+                              ? "0 0 0 1px rgba(173, 237, 138, 0.8), 0 0 8px rgba(150, 223, 108, 0.55)"
+                              : "0 0 0 1px rgba(255, 255, 255, 0.2)",
+                          }}
+                        />
+                        Status
                       </button>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -7534,15 +7701,27 @@ export default function Page() {
                       const nonGameOverlayType: "tv" | "movie" | "book" = isBook ? "book" : isMovie ? "movie" : "tv";
                       const nonGameOverlaySrc = getOverlayFrameUrl(nonGameOverlayType);
                       const nonGameOverlayExpectedSrc = getOverlayFrameDefaultPath(nonGameOverlayType);
-                      
-                      const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
-                      const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
+
+                      const gameFrameSource = isGame ? getGameFrameSourceDimensions(gamePlatform) : DEFAULT_GAME_FRAME_SIZE;
+                      const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? gameFrameSource.width : CASE_SRC_W;
+                      const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? gameFrameSource.height : CASE_SRC_H;
 
                       const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
                       const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
                       const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
                       const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
                       const selectedCoverUrl = getDisplayCoverUrl(show);
+                      const statusIndicator = getStatusIndicator(show);
+                      const gameFrameLeftPx = ((50 + overlayLeft - overlayWidth / 2) / 100) * caseWidth;
+                      const gameFrameTopPx = ((50 + overlayTop - overlayHeight / 2) / 100) * caseHeight;
+                      const gameFrameWidthPx = (overlayWidth / 100) * caseWidth;
+                      const gameFrameHeightPx = (overlayHeight / 100) * caseHeight;
+                      const statusDotLeftPx = Math.round(
+                        gameFrameLeftPx + gameFrameWidthPx - STATUS_DOT_NUDGE_LEFT_PX - STATUS_DOT_SIZE
+                      );
+                      const statusDotTopPx = Math.round(
+                        gameFrameTopPx + gameFrameHeightPx - STATUS_DOT_NUDGE_UP_PX - STATUS_DOT_SIZE
+                      );
 
                       return (
                         <div
@@ -7859,6 +8038,32 @@ export default function Page() {
                               />
                             </>
                           )}
+
+                          {showStatusIndicators && statusIndicator ? (
+                            <div
+                              aria-label={`Status: ${statusIndicator.label}`}
+                              title={statusIndicator.label}
+                              style={{
+                                position: "absolute",
+                                left: isGame ? statusDotLeftPx : undefined,
+                                top: isGame ? statusDotTopPx : undefined,
+                                right: isGame ? undefined : 0,
+                                bottom: isGame ? undefined : 0,
+                                transform: isGame
+                                  ? undefined
+                                  : `translate(-${STATUS_DOT_NUDGE_LEFT_PX}px, -${STATUS_DOT_NUDGE_UP_PX}px)`,
+                                width: STATUS_DOT_SIZE,
+                                height: STATUS_DOT_SIZE,
+                                borderRadius: "50%",
+                                border: "0.6px solid rgba(198, 206, 218, 0.95)",
+                                background: `radial-gradient(circle at 30% 22%, rgba(255,255,255,0.58) 0%, ${statusIndicator.color} 22%, ${statusIndicator.color} 80%, rgba(52,28,16,0.46) 100%)`,
+                                boxShadow:
+                                  `0 0 0 0.6px rgba(164, 174, 188, 0.92), inset 0 0 0 0.8px rgba(96, 108, 124, 0.42), inset 0 -1px 1px rgba(26,14,8,0.22), 0 2px 6px rgba(8, 5, 3, 0.62), 0 0 15px ${statusIndicator.color}, 0 0 24px color-mix(in srgb, ${statusIndicator.color} 92%, white)`,
+                                zIndex: 26,
+                                pointerEvents: "none",
+                              }}
+                            />
+                          ) : null}
 
                           {/* Optional: extra spec highlight */}
                           <div
