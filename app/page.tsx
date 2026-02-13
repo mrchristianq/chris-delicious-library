@@ -106,7 +106,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
@@ -299,7 +299,6 @@ const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
 const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
-const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
@@ -496,29 +495,7 @@ const STATUS_DOT_MAX_SIZE = 24;
 const STATUS_DOT_NUDGE_LEFT_PX = 7;
 const STATUS_DOT_NUDGE_UP_PX = 7;
 
-const BOOK_GENRE_CANONICAL = [
-  "Mystery",
-  "Thriller / Suspense",
-  "Horror",
-  "Science Fiction",
-  "Fantasy",
-  "Romance",
-  "Historical Fiction",
-  "Literary / Contemporary Fiction",
-  "Humor / Comedy",
-  "Adventure / Action",
-  "Young Adult (YA)",
-  "Children's",
-  "Biography / Memoir",
-  "History",
-  "Self-Help",
-  "Science / Popular Science",
-  "Business",
-  "True Crime",
-  "Strategy Guide",
-] as const;
-
-function mapBookGenre(input: string): (typeof BOOK_GENRE_CANONICAL)[number] | null {
+function mapBookGenre(input: string): string | null {
   const g = safeStr(input).toLowerCase();
   if (!g) return null;
 
@@ -825,13 +802,13 @@ export default function Page() {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
-  const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
   const [selectedPreviousYear, setSelectedPreviousYear] = useState<number>(2025);
 
@@ -1023,10 +1000,10 @@ export default function Page() {
       secondaryColor: "#d7e4ff",
       textColor: "rgba(233, 240, 255, 0.9)",
       arrowColor: "rgba(210, 226, 255, 0.65)",
-      rolodexColor: "#b7c9ef",
-      rolodexDigitColor: "#d7e4ff",
-      rolodexLabelColor: "#dbe7ff",
-      rolodexTileBg: "linear-gradient(180deg, rgba(30, 49, 82, 0.92) 0%, rgba(22, 36, 63, 0.92) 100%)",
+      rolodexColor: "#4f74b8",
+      rolodexDigitColor: "#2f5fae",
+      rolodexLabelColor: "#dbe8ff",
+      rolodexTileBg: "linear-gradient(180deg, #eef4ff 0%, #dde9ff 100%)",
       rolodexTileBorder: "rgba(148,177,228,.35)",
       countBubbleColor: "#5a78b8",
       syncedTextColor: "#cfe0ff",
@@ -1038,6 +1015,23 @@ export default function Page() {
   };
   
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
+
+  // Apply cached theme settings immediately on mount so we don't flash the default theme
+  // while waiting for CSV/settings sync.
+  useLayoutEffect(() => {
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      const cache = settingsCacheRef.current || {};
+      const cachedSidebarTheme = safeStr(cache["sidebarTheme"]);
+      const cachedShelfTheme = safeStr(cache["shelfTheme"]);
+      if (cachedSidebarTheme) setSidebarTheme(cachedSidebarTheme);
+      if (cachedShelfTheme) setShelfTheme(cachedShelfTheme);
+    } catch (e) {
+      console.warn("Failed to apply cached theme settings on mount:", e);
+    }
+  }, []);
 
   // Layout tuning
   const SIDEBAR_WIDTH = 260;
@@ -1069,10 +1063,6 @@ export default function Page() {
   const [movieInsetRightPx, setMovieInsetRightPx] = useState(100);
   const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
   const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
-  
-  // Game frame: platform-based insets for game covers
-  const GAME_SRC_W = 1024;
-  const GAME_SRC_H = 1536;
   
   // Platform-specific insets (stored as a single object)
   const [platformInsets, setPlatformInsets] = useState<Record<string, { top: number; right: number; bottom: number; left: number }>>({
@@ -1127,6 +1117,8 @@ export default function Page() {
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const caseTiltRafRef = useRef<number | null>(null);
+  const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -1243,6 +1235,48 @@ export default function Page() {
     return () => {
       if (rafId !== null) window.cancelAnimationFrame(rafId);
       window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  const flushCaseTilt = useCallback(() => {
+    caseTiltRafRef.current = null;
+    const pending = caseTiltPendingRef.current;
+    if (!pending) return;
+    pending.el.style.setProperty("--tiltY", `${pending.tiltY}deg`);
+    pending.el.style.setProperty("--tiltX", `${pending.tiltX}deg`);
+    caseTiltPendingRef.current = null;
+  }, []);
+
+  const handleCaseMouseMove = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const xRel = (e.clientX - rect.left) / rect.width - 0.5;
+      const yRel = (e.clientY - rect.top) / rect.height - 0.5;
+      const maxTilt = 20;
+      const tiltY = Math.max(-maxTilt, Math.min(maxTilt, xRel * maxTilt * 2));
+      const tiltX = Math.max(-10, Math.min(10, -yRel * 16));
+      caseTiltPendingRef.current = { el: e.currentTarget, tiltY, tiltX };
+      if (caseTiltRafRef.current === null) {
+        caseTiltRafRef.current = window.requestAnimationFrame(flushCaseTilt);
+      }
+    },
+    [flushCaseTilt]
+  );
+
+  const handleCaseMouseLeave = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (caseTiltPendingRef.current?.el === el) {
+      caseTiltPendingRef.current = null;
+    }
+    el.style.setProperty("--tiltY", "0deg");
+    el.style.setProperty("--tiltX", "0deg");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (caseTiltRafRef.current !== null) {
+        window.cancelAnimationFrame(caseTiltRafRef.current);
+      }
     };
   }, []);
 
@@ -1861,7 +1895,7 @@ export default function Page() {
   //   - Logs success/failure to console for debugging
   //   - Even if Google Sheet is down, data is protected in localStorage
   //
-  const getSetting = (key: string, defaultValue: any) => {
+  const getSetting = useCallback((key: string, defaultValue: any) => {
     // First, try to get from settingsRows (from the sheet)
     const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
     if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
@@ -1898,9 +1932,9 @@ export default function Page() {
     }
     
     return defaultValue;
-  };
+  }, [settingsRows]);
 
-  const saveSetting = (key: string, value: any, category: string = "", description: string = "") => {
+  const saveSetting = useCallback((key: string, value: any, _category: string = "", _description: string = "") => {
     // Save to localStorage only - no auto-sync to Google Sheet
     // Use saveSettingToSheet() for manual Google Sheet syncs
     try {
@@ -1931,9 +1965,9 @@ export default function Page() {
     } catch (e) {
       console.warn("Failed to save to localStorage:", e);
     }
-  };
+  }, []);
 
-  const removeSetting = (key: string) => {
+  const removeSetting = useCallback((key: string) => {
     try {
       if (settingsCacheRef.current === null) {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
@@ -1958,7 +1992,7 @@ export default function Page() {
     } catch (e) {
       console.warn("Failed to remove setting from localStorage:", e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1977,7 +2011,7 @@ export default function Page() {
   }, []);
 
   // Save a specific setting to Google Sheet
-  const saveSettingToSheet = async (key: string, value: any, category: string = "", description: string = "") => {
+  const saveSettingToSheet = useCallback(async (key: string, value: any, category: string = "", description: string = "") => {
     if (!settingsWriteUrl) {
       console.warn("No settings write URL configured");
       return;
@@ -2017,7 +2051,7 @@ export default function Page() {
     } catch (e) {
       console.warn(`✗ Error in saveSettingToSheet:`, e);
     }
-  };
+  }, [settingsWriteUrl]);
 
   // Save all insets of a specific type to Google Sheet
   const saveInsetsToSheet = async (insetType: 'tv' | 'book' | 'movie' | 'game') => {
@@ -2248,7 +2282,7 @@ export default function Page() {
     
     setSidebarTheme(getSetting("sidebarTheme", "winterGray"));
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
-  }, [settingsRows]);
+  }, [getSetting, settingsRows]);
 
   // Function to save all current settings to spreadsheet
   const saveAllSettings = async () => {
@@ -2481,10 +2515,6 @@ export default function Page() {
     setPosterSizeBooks(value);
     saveSetting("posterSizeBooks", value, "Cover Sizes", "Book Cover Size");
   };
-  const updateBookHeightMultiplier = (value: number) => {
-    setBookHeightMultiplier(value);
-    saveSetting("bookHeightMultiplier", value, "Cover Sizes", "Book Height Multiplier");
-  };
   const updateTight = (value: boolean) => {
     setTight(value);
     saveSetting("tight", value, "Spacing", "Tight spacing between items");
@@ -2508,44 +2538,44 @@ export default function Page() {
       saveSetting(key, value, category, description);
       delete debounceTimers.current[key];
     }, 150);
-  }, []);
+  }, [saveSetting]);
   
-  const updateCaseInsetTopPx = (value: number) => {
+  const updateCaseInsetTopPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetTopPx", value, setCaseInsetTopPx, "TV Insets", "TV Case Top Inset (px)");
-  };
-  const updateCaseInsetRightPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateCaseInsetRightPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetRightPx", value, setCaseInsetRightPx, "TV Insets", "TV Case Right Inset (px)");
-  };
-  const updateCaseInsetBottomPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateCaseInsetBottomPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetBottomPx", value, setCaseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)");
-  };
-  const updateCaseInsetLeftPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateCaseInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetLeftPx", value, setCaseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)");
-  };
-  const updateBookInsetTopPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetTopPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetTopPx", value, setBookInsetTopPx, "Book Insets", "Book Top Inset (px)");
-  };
-  const updateBookInsetRightPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetRightPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetRightPx", value, setBookInsetRightPx, "Book Insets", "Book Right Inset (px)");
-  };
-  const updateBookInsetBottomPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetBottomPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetBottomPx", value, setBookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)");
-  };
-  const updateBookInsetLeftPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetLeftPx", value, setBookInsetLeftPx, "Book Insets", "Book Left Inset (px)");
-  };
-  const updateMovieInsetTopPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetTopPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetTopPx", value, setMovieInsetTopPx, "Movie Insets", "Movie Top Inset (px)");
-  };
-  const updateMovieInsetRightPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetRightPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetRightPx", value, setMovieInsetRightPx, "Movie Insets", "Movie Right Inset (px)");
-  };
-  const updateMovieInsetBottomPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetBottomPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetBottomPx", value, setMovieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)");
-  };
-  const updateMovieInsetLeftPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetLeftPx", value, setMovieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)");
-  };
+  }, [debouncedUpdate]);
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
@@ -2575,7 +2605,7 @@ export default function Page() {
   };
   
   // Update platform-specific insets
-  const updatePlatformInset = (platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
+  const updatePlatformInset = useCallback((platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
     const settingKey = `${platformKey}Inset${edgeCapitalized}Px`;
@@ -2603,10 +2633,10 @@ export default function Page() {
       `${platformKey} Insets`,
       `${platformKey} ${edgeCapitalized} Inset (px)`
     );
-  };
+  }, [debouncedUpdate]);
   
   // Update platform-specific overlay settings
-  const updatePlatformOverlay = (platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
+  const updatePlatformOverlay = useCallback((platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
     const settingKey = `${platformKey}Overlay${propertyCapitalized}`;
@@ -2634,10 +2664,10 @@ export default function Page() {
       `${platformKey} Overlay`,
       `${platformKey} Overlay ${propertyCapitalized} (%)`
     );
-  };
+  }, [debouncedUpdate]);
   
   // Update platform-specific cover scale
-  const updatePlatformCoverScale = (platform: string, axis: "x" | "y", value: number) => {
+  const updatePlatformCoverScale = useCallback((platform: string, axis: "x" | "y", value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const axisLabel = axis.toUpperCase();
     setPlatformCoverScale(prev => ({
@@ -2654,10 +2684,10 @@ export default function Page() {
     }
     
     saveSetting(`${platformKey}CoverScale${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Scale ${axisLabel} (%)`);
-  };
+  }, [saveSetting]);
   
   // Update platform-specific cover offset (crop position inside inset)
-  const updatePlatformCoverOffset = (platform: string, axis: 'x' | 'y', value: number) => {
+  const updatePlatformCoverOffset = useCallback((platform: string, axis: 'x' | 'y', value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const axisLabel = axis.toUpperCase();
     setPlatformCoverOffset(prev => ({
@@ -2673,7 +2703,7 @@ export default function Page() {
     }
     
     saveSetting(`${platformKey}CoverOffset${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Offset ${axisLabel} (%)`);
-  };
+  }, [saveSetting]);
   
   const updateLogoSize = (value: number) => {
     setLogoSize(value);
@@ -2812,6 +2842,82 @@ export default function Page() {
       return true;
     }) as Game[];
   }, [gameRows]);
+
+  const indexedBooks = useMemo(
+    () =>
+      allBooks.map((book) => ({
+        item: book,
+        titleLC: safeStr(book.title).toLowerCase(),
+        statusNorm: safeStr(book.status).toLowerCase().replace("cancelled", "canceled"),
+        ownershipNorm: safeStr(book.ownership).toLowerCase().replace("cancelled", "canceled"),
+        types: safeStr(book.types)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+        categories: safeStr(book.categories)
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean),
+        completedYear: book.completedDate ? new Date(book.completedDate).getFullYear().toString() : "",
+      })),
+    [allBooks]
+  );
+
+  const indexedShows = useMemo(
+    () =>
+      allShows.map((show) => ({
+        item: show,
+        titleLC: safeStr(show.title).toLowerCase(),
+        watchStatusNorm: safeStr(show.watchStatus).toLowerCase().replace("cancelled", "canceled"),
+        showStatusNorm: safeStr(show.showStatus).toLowerCase().replace("cancelled", "canceled"),
+        tagValue: safeStr(show.tag),
+        tags: safeStr(show.tag)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      })),
+    [allShows]
+  );
+
+  const indexedMovies = useMemo(
+    () =>
+      allMovies.map((movie) => ({
+        item: movie,
+        titleLC: safeStr(movie.title).toLowerCase(),
+        watchStatusNorm: safeStr(movie.watchStatus).toLowerCase().replace("cancelled", "canceled"),
+        tagValue: safeStr(movie.tag),
+        genres: safeStr(movie.genres)
+          .split(",")
+          .map((g) => g.trim())
+          .filter(Boolean),
+      })),
+    [allMovies]
+  );
+
+  const indexedGames = useMemo(
+    () =>
+      allGames.map((game) => ({
+        item: game,
+        titleLC: safeStr(game.title).toLowerCase(),
+        ownershipNorm: safeStr(game.ownership).toLowerCase().replace("cancelled", "canceled"),
+        statusValue: safeStr(game.status || game.playStatus || game.gameStatus),
+        ownershipValue: safeStr(game.ownership),
+        yearPlayedValue: safeStr(game.yearPlayed),
+        platformValues: safeStr(game.platform)
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+        formatValues: safeStr(game.format)
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+        genreValues: safeStr(game.genres)
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+      })),
+    [allGames]
+  );
 
   const gamePlatformOptions = useMemo(() => {
     const options = new Set<string>();
@@ -3009,7 +3115,7 @@ export default function Page() {
   };
 
   // Helper to deduplicate games by title - keeps only primary platform version
-  const deduplicateGames = (games: Game[]): Game[] => {
+  const deduplicateGames = useCallback((games: Game[]): Game[] => {
     const gamesByTitle = new Map<string, Game>();
     
     // Platform priority helper
@@ -3034,7 +3140,7 @@ export default function Page() {
     });
     
     return Array.from(gamesByTitle.values());
-  };
+  }, []);
 
   // Dynamically detect all unique platforms from games data
   // Parse comma-separated platform values to get individual platforms
@@ -3201,7 +3307,7 @@ export default function Page() {
         setUploadingOverlayForKey(null);
       }
     },
-    [quickOverlayTargetKey, settingsWriteUrl]
+    [quickOverlayTargetKey, saveSettingToSheet, settingsWriteUrl]
   );
 
   const handleResetOverlayForQuickTarget = useCallback(() => {
@@ -3227,7 +3333,7 @@ export default function Page() {
         `Clear overlay frame override for ${targetKey}`
       );
     }
-  }, [quickOverlayTargetKey, settingsWriteUrl]);
+  }, [quickOverlayTargetKey, saveSettingToSheet, settingsWriteUrl]);
 
   const quickInsetSnapshot = useMemo(() => {
     const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
@@ -3564,15 +3670,25 @@ export default function Page() {
   // Only platforms explicitly customized (or loaded from settings) get entries
   // This ensures uncustomized platforms always inherit from Default insets
 
-  const normalizeStatus = (value?: string) =>
-    safeStr(value)
-      .toLowerCase()
-      .replace("cancelled", "canceled");
+  const normalizeStatus = useCallback(
+    (value?: string) =>
+      safeStr(value)
+        .toLowerCase()
+        .replace("cancelled", "canceled"),
+    []
+  );
 
-  const hasWishlistOwnership = (value?: string) => normalizeStatus(value) === "wishlist";
-  const hasOwnedOwnership = (value?: string) => normalizeStatus(value) === "owned";
+  const hasWishlistOwnership = useCallback((value?: string) => normalizeStatus(value) === "wishlist", [normalizeStatus]);
+  const hasOwnedOwnership = useCallback((value?: string) => normalizeStatus(value) === "owned", [normalizeStatus]);
 
-  const getStatusIndicator = (item: any): StatusIndicator | null => {
+  const isMovieWatched = useCallback((movie: Movie) => {
+    const status = normalizeStatus(movie.movieStatus || movie.status);
+    const watched = normalizeStatus(movie.watchStatus || movie.watched);
+    const watchedValues = new Set(["watched", "completed", "true", "yes", "1"]);
+    return watchedValues.has(watched) || watchedValues.has(status);
+  }, [normalizeStatus]);
+
+  const getStatusIndicator = useCallback((item: any): StatusIndicator | null => {
     const mediaType = getMediaType(item);
     const isAbandonedStatus = (value: string) =>
       value === "abandoned" || value === "dropped" || value === "drop" || value === "quit" || value === "dnf";
@@ -3639,14 +3755,7 @@ export default function Page() {
     }
 
     return null;
-  };
-
-  const isMovieWatched = (movie: Movie) => {
-    const status = normalizeStatus(movie.movieStatus || movie.status);
-    const watched = normalizeStatus(movie.watchStatus || movie.watched);
-    const watchedValues = new Set(["watched", "completed", "true", "yes", "1"]);
-    return watchedValues.has(watched) || watchedValues.has(status);
-  };
+  }, [isMovieWatched, normalizeStatus]);
 
   const watchStatuses = useMemo(
     () => [
@@ -3677,7 +3786,7 @@ export default function Page() {
       if (match) counts[match] += 1;
     }
     return counts;
-  }, [allBooks, readingStatuses]);
+  }, [allBooks, normalizeStatus, readingStatuses]);
 
   // Extract unique book formats from comma-separated types
   const bookFormats = useMemo(() => {
@@ -3715,7 +3824,7 @@ export default function Page() {
       }
     });
     return Array.from(series).sort();
-  }, [allBooks]);
+  }, [allBooks, normalizeStatus]);
 
   const seriesCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -3769,7 +3878,7 @@ export default function Page() {
       if (match) counts[match] += 1;
     }
     return counts;
-  }, [allShows, watchStatuses]);
+  }, [allShows, normalizeStatus, watchStatuses]);
 
   const showCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -3780,7 +3889,7 @@ export default function Page() {
       if (match) counts[match] += 1;
     }
     return counts;
-  }, [allShows, showStatuses]);
+  }, [allShows, normalizeStatus, showStatuses]);
 
   // Extract unique TV show tags
   const tvTags = useMemo(() => {
@@ -3860,7 +3969,7 @@ export default function Page() {
   }, [allMovies, movieGenres]);
 
   // Generic sorting function
-  const applySorting = <T extends any>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
+  const applySorting = useCallback(<T,>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
     const ratingNumber = (raw: unknown): number => {
       const n = Number.parseFloat(safeStr(raw));
       return Number.isNaN(n) ? NaN : n;
@@ -3930,64 +4039,59 @@ export default function Page() {
       // Apply sort order
       return order === "Asc" ? aVal - bVal : bVal - aVal;
     });
-  };
+  }, []);
 
   // (Placeholder logic) keep it simple for now
   const shows = useMemo(() => {
-    const q = safeStr(query).toLowerCase();
+    const q = safeStr(deferredQuery).toLowerCase();
     if (nav === "books") {
       const hasBookFilters = Boolean(readingStatusFilter || formatFilter || seriesFilter || genreFilter || wishlistFilter);
-      const bookBase = hasBookFilters ? allBooks : allBooks.filter((b) => hasOwnedOwnership(b.ownership));
-      let filtered = q ? bookBase.filter((b) => b.title.toLowerCase().includes(q)) : bookBase;
+      const bookBase = hasBookFilters ? indexedBooks : indexedBooks.filter((b) => b.ownershipNorm === "owned");
+      let filtered = q ? bookBase.filter((b) => b.titleLC.includes(q)) : bookBase;
       // Apply reading status filter if set
       if (readingStatusFilter) {
-        filtered = filtered.filter((b) => normalizeStatus(b.status) === normalizeStatus(readingStatusFilter));
+        const readingStatusNorm = normalizeStatus(readingStatusFilter);
+        filtered = filtered.filter((b) => b.statusNorm === readingStatusNorm);
       }
       // Apply format filter if set
       if (formatFilter) {
-        filtered = filtered.filter((b) => {
-          if (!b.types) return false;
-          const individualTypes = b.types.split(',').map(t => t.trim()).filter(Boolean);
-          return individualTypes.includes(formatFilter);
-        });
+        filtered = filtered.filter((b) => b.types.includes(formatFilter));
       }
       // Apply series filter if set
       if (seriesFilter) {
-        filtered = filtered.filter((b) => b.series === seriesFilter);
+        filtered = filtered.filter((b) => b.item.series === seriesFilter);
       }
       // Apply genre filter if set
       if (genreFilter) {
-        filtered = filtered.filter((b) => {
-          if (!b.categories) return false;
-          const individualCategories = b.categories.split(',').map(c => c.trim()).filter(Boolean);
-          return individualCategories.includes(genreFilter);
-        });
+        filtered = filtered.filter((b) => b.categories.includes(genreFilter));
       }
       // Apply wishlist filter if set
       if (wishlistFilter) {
-        filtered = filtered.filter((b) => normalizeStatus(b.ownership) === 'wishlist');
+        filtered = filtered.filter((b) => b.ownershipNorm === "wishlist");
       }
-      const sorted = applySorting(filtered, sortField, sortOrder);
+      const sorted = applySorting(filtered.map((b) => b.item), sortField, sortOrder);
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
     // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
     // Filter out Wishlist items - only show owned items
     if (nav === "home") {
-      const qbBase = allBooks.filter((b) => hasOwnedOwnership(b.ownership));
-      const qgBase = allGames.filter((g) => hasOwnedOwnership(g.ownership));
-      const qb = q ? qbBase.filter((b) => b.title.toLowerCase().includes(q)) : qbBase;
-      const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q) && normalizeStatus(s.watchStatus) !== "wishlist") : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist");
-      const qm = q ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && normalizeStatus(m.watchStatus) !== "wishlist") : allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist");
-      const qg = q ? qgBase.filter((g) => g.title.toLowerCase().includes(q)) : qgBase;
+      const qbBase = indexedBooks.filter((b) => b.ownershipNorm === "owned");
+      const qgBase = indexedGames.filter((g) => g.ownershipNorm === "owned");
+      const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
+      const qsBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist");
+      const qmBase = indexedMovies.filter((m) => m.watchStatusNorm !== "wishlist");
+      const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
+      const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
+      const qg = q ? qgBase.filter((g) => g.titleLC.includes(q)) : qgBase;
       
       // Deduplicate games by title - keep only primary platform version
-      const deduplicatedGames = deduplicateGames(qg);
+      const deduplicatedGames = deduplicateGames(qg.map((g) => g.item));
 
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
         ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
@@ -3997,15 +4101,15 @@ export default function Page() {
 
     // Wishlist: books and games only
     if (nav === "wishlist") {
-      const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
-      const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
+      const qb = indexedBooks.filter((b) => b.ownershipNorm === "wishlist");
+      const qg = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
 
-      const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
-      const queryFilteredGames = q ? qg.filter((g) => g.title.toLowerCase().includes(q)) : qg;
+      const queryFilteredBooks = q ? qb.filter((b) => b.titleLC.includes(q)) : qb;
+      const queryFilteredGames = q ? qg.filter((g) => g.titleLC.includes(q)) : qg;
 
       const combined = [
-        ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...queryFilteredGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...queryFilteredBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredGames.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -4014,18 +4118,18 @@ export default function Page() {
 
     // Watchlist: movies not watched + TV not completed/abandoned
     if (nav === "watchlist") {
-      const qs = allShows.filter((s) => {
-        const status = normalizeStatus(s.watchStatus);
+      const qs = indexedShows.filter((s) => {
+        const status = s.watchStatusNorm;
         return status !== "completed" && status !== "abandoned";
       });
-      const qm = allMovies.filter((m) => !isMovieWatched(m));
+      const qm = indexedMovies.filter((m) => !isMovieWatched(m.item));
 
-      const queryFilteredShows = q ? qs.filter((s) => s.title.toLowerCase().includes(q)) : qs;
-      const queryFilteredMovies = q ? qm.filter((m) => m.title.toLowerCase().includes(q)) : qm;
+      const queryFilteredShows = q ? qs.filter((s) => s.titleLC.includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.titleLC.includes(q)) : qm;
 
       const combined = [
-        ...queryFilteredShows.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...queryFilteredMovies.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...queryFilteredShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...queryFilteredMovies.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
       ] as Array<(Show & { __type: "tv" }) | (Movie & { __type: "movie" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -4034,27 +4138,23 @@ export default function Page() {
 
     // Movies path
     if (nav === "movies") {
-      let filtered = allMovies;
+      let filtered = indexedMovies;
       
       // Apply watch status filter if set
       if (movieWatchFilter) {
-        filtered = filtered.filter((m) => (movieWatchFilter === "Watched" ? isMovieWatched(m) : !isMovieWatched(m)));
+        filtered = filtered.filter((m) => (movieWatchFilter === "Watched" ? isMovieWatched(m.item) : !isMovieWatched(m.item)));
       } else {
         // Default Movies view: watched-only. Unwatched items live in Watchlist unless specifically filtered.
-        filtered = filtered.filter((m) => isMovieWatched(m));
+        filtered = filtered.filter((m) => isMovieWatched(m.item));
       }
       
       // Apply genre filter if set
       if (movieGenreFilter) {
-        filtered = filtered.filter((m) => {
-          if (!m.genres) return false;
-          const individualGenres = m.genres.split(',').map(g => g.trim()).filter(Boolean);
-          return individualGenres.includes(movieGenreFilter);
-        });
+        filtered = filtered.filter((m) => m.genres.includes(movieGenreFilter));
       }
       
-      const filteredByQuery = q ? filtered.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : filtered;
-      const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+      const filteredByQuery = q ? filtered.filter((m) => m.titleLC.includes(q)) : filtered;
+      const sorted = applySorting(filteredByQuery.map((m) => m.item), sortField, sortOrder);
       return sorted.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })) as any[];
     }
 
@@ -4063,52 +4163,34 @@ export default function Page() {
       const hasGameFilters = Boolean(
         gamePlatformFilter || gameStatusFilter || gameOwnershipFilter || gameFormatFilter || gameYearPlayedFilter || gameGenreFilter
       );
-      let filtered = hasGameFilters ? allGames : allGames.filter((g) => hasOwnedOwnership(g.ownership));
+      let filtered = hasGameFilters ? indexedGames : indexedGames.filter((g) => g.ownershipNorm === "owned");
 
       if (gamePlatformFilter) {
-        filtered = filtered.filter((g) => {
-          const values = safeStr(g.platform)
-            .split(",")
-            .map((part) => part.trim())
-            .filter(Boolean);
-          return values.includes(gamePlatformFilter);
-        });
+        filtered = filtered.filter((g) => g.platformValues.includes(gamePlatformFilter));
       }
 
       if (gameStatusFilter) {
-        filtered = filtered.filter((g) => safeStr(g.status || g.playStatus || g.gameStatus) === gameStatusFilter);
+        filtered = filtered.filter((g) => g.statusValue === gameStatusFilter);
       }
 
       if (gameOwnershipFilter) {
-        filtered = filtered.filter((g) => safeStr(g.ownership) === gameOwnershipFilter);
+        filtered = filtered.filter((g) => g.ownershipValue === gameOwnershipFilter);
       }
 
       if (gameFormatFilter) {
-        filtered = filtered.filter((g) => {
-          const values = safeStr(g.format)
-            .split(",")
-            .map((part) => part.trim())
-            .filter(Boolean);
-          return values.includes(gameFormatFilter);
-        });
+        filtered = filtered.filter((g) => g.formatValues.includes(gameFormatFilter));
       }
 
       if (gameYearPlayedFilter) {
-        filtered = filtered.filter((g) => safeStr(g.yearPlayed) === gameYearPlayedFilter);
+        filtered = filtered.filter((g) => g.yearPlayedValue === gameYearPlayedFilter);
       }
 
       if (gameGenreFilter) {
-        filtered = filtered.filter((g) => {
-          const values = safeStr(g.genres)
-            .split(",")
-            .map((part) => part.trim())
-            .filter(Boolean);
-          return values.includes(gameGenreFilter);
-        });
+        filtered = filtered.filter((g) => g.genreValues.includes(gameGenreFilter));
       }
 
-      const filteredByQuery = q ? filtered.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : filtered;
-      const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+      const filteredByQuery = q ? filtered.filter((g) => g.titleLC.includes(q)) : filtered;
+      const sorted = applySorting(filteredByQuery.map((g) => g.item), sortField, sortOrder);
       return sorted.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })) as any[];
     }
 
@@ -4118,35 +4200,29 @@ export default function Page() {
       
       // Books: Use year from CompletedDate
       const qb = q 
-        ? allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return b.title.toLowerCase().includes(q) && year === currentYear;
-          })
-        : allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return year === currentYear;
-          });
+        ? indexedBooks.filter((b) => b.titleLC.includes(q) && b.completedYear === currentYear)
+        : indexedBooks.filter((b) => b.completedYear === currentYear);
       
       // TV Shows: Use Tags column
       const qs = q 
-        ? allShows.filter((s) => s.title.toLowerCase().includes(q) && safeStr(s.tag) === currentYear)
-        : allShows.filter((s) => safeStr(s.tag) === currentYear);
+        ? indexedShows.filter((s) => s.titleLC.includes(q) && s.tagValue === currentYear)
+        : indexedShows.filter((s) => s.tagValue === currentYear);
       
       // Movies: Use Tags column
       const qm = q 
-        ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && safeStr(m.tag) === currentYear)
-        : allMovies.filter((m) => safeStr(m.tag) === currentYear);
+        ? indexedMovies.filter((m) => m.titleLC.includes(q) && m.tagValue === currentYear)
+        : indexedMovies.filter((m) => m.tagValue === currentYear);
       
       // Games: Use Year Played column
       const qg = q 
-        ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
-        : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
+        ? indexedGames.filter((g) => g.titleLC.includes(q) && g.yearPlayedValue === currentYear)
+        : indexedGames.filter((g) => g.yearPlayedValue === currentYear);
       
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -4159,35 +4235,29 @@ export default function Page() {
       
       // Books: Use year from CompletedDate
       const qb = q 
-        ? allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return b.title.toLowerCase().includes(q) && year === yearStr;
-          })
-        : allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return year === yearStr;
-          });
+        ? indexedBooks.filter((b) => b.titleLC.includes(q) && b.completedYear === yearStr)
+        : indexedBooks.filter((b) => b.completedYear === yearStr);
       
       // TV Shows: Use Tags column
       const qs = q 
-        ? allShows.filter((s) => s.title.toLowerCase().includes(q) && safeStr(s.tag) === yearStr)
-        : allShows.filter((s) => safeStr(s.tag) === yearStr);
+        ? indexedShows.filter((s) => s.titleLC.includes(q) && s.tagValue === yearStr)
+        : indexedShows.filter((s) => s.tagValue === yearStr);
       
       // Movies: Use Tags column
       const qm = q 
-        ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && safeStr(m.tag) === yearStr)
-        : allMovies.filter((m) => safeStr(m.tag) === yearStr);
+        ? indexedMovies.filter((m) => m.titleLC.includes(q) && m.tagValue === yearStr)
+        : indexedMovies.filter((m) => m.tagValue === yearStr);
       
       // Games: Use Year Played column
       const qg = q 
-        ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === yearStr)
-        : allGames.filter((g) => safeStr(g.yearPlayed) === yearStr);
+        ? indexedGames.filter((g) => g.titleLC.includes(q) && g.yearPlayedValue === yearStr)
+        : indexedGames.filter((g) => g.yearPlayedValue === yearStr);
       
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -4196,27 +4266,32 @@ export default function Page() {
 
     // TV default path
     const hasTvFilters = Boolean(watchFilter || showFilter || tagFilter);
-    const tvBase = hasTvFilters ? allShows : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "backlog");
+    const tvBase = hasTvFilters ? indexedShows : indexedShows.filter((s) => s.watchStatusNorm !== "backlog");
+    const watchStatusNorm = watchFilter ? normalizeStatus(watchFilter) : "";
+    const showStatusNorm = showFilter ? normalizeStatus(showFilter) : "";
     const filteredByWatch = watchFilter
-      ? tvBase.filter((s) => normalizeStatus(s.watchStatus) === normalizeStatus(watchFilter))
+      ? tvBase.filter((s) => s.watchStatusNorm === watchStatusNorm)
       : tvBase;
     const filteredByShow = showFilter
-      ? filteredByWatch.filter((s) => normalizeStatus(s.showStatus) === normalizeStatus(showFilter))
+      ? filteredByWatch.filter((s) => s.showStatusNorm === showStatusNorm)
       : filteredByWatch;
     const filteredByTag = tagFilter
-      ? filteredByShow.filter((s) => {
-          if (!s.tag) return false;
-          const individualTags = s.tag.split(',').map(t => t.trim()).filter(Boolean);
-          return individualTags.includes(tagFilter);
-        })
+      ? filteredByShow.filter((s) => s.tags.includes(tagFilter))
       : filteredByShow;
-    const filteredByQuery = q ? filteredByTag.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : filteredByTag;
+    const filteredByQuery = q ? filteredByTag.filter((s) => s.titleLC.includes(q)) : filteredByTag;
 
-    if (nav !== "tv") return filteredByQuery as any[];
+    if (nav !== "tv") return filteredByQuery.map((s) => s.item) as any[];
 
-    const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+    const sorted = applySorting(filteredByQuery.map((s) => s.item), sortField, sortOrder);
     return sorted as any[];
-  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, gamePlatformFilter, gameStatusFilter, gameOwnershipFilter, gameFormatFilter, gameYearPlayedFilter, gameGenreFilter, nav, query, sortField, sortOrder]);
+  }, [
+    indexedShows, indexedBooks, indexedMovies, indexedGames,
+    applySorting, deduplicateGames,
+    formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
+    genreFilter,
+    isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus,
+    deferredQuery, readingStatusFilter, selectedPreviousYear, seriesFilter, showFilter, sortField, sortOrder, tagFilter, watchFilter, wishlistFilter
+  ]);
 
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
@@ -4235,7 +4310,7 @@ export default function Page() {
       wishlist: wishlistBooks + wishlistGames,
       watchlist: watchlistShows + watchlistMovies,
     };
-  }, [allShows, allBooks, allMovies, allGames]);
+  }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
   const postersPerShelf = useMemo(() => {
     const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
@@ -4248,7 +4323,13 @@ export default function Page() {
     const out: any[][] = [];
     
     // For mixed-item views, calculate shelf distribution based on actual item sizes
-    if (nav === "home" || nav === "wishlist" || nav === "watchlist") {
+    if (
+      nav === "home" ||
+      nav === "wishlist" ||
+      nav === "watchlist" ||
+      nav === "year-this" ||
+      nav === "year-previous"
+    ) {
       let currentShelf: any[] = [];
       let currentWidth = 0;
       
@@ -4294,9 +4375,6 @@ export default function Page() {
   const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
 
   const shelfRenderWindow = useMemo(() => {
-    if (!insetEditorOpen) {
-      return { start: 0, end: shelves.length, padTop: 0, padBottom: 0 };
-    }
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
     const start = Math.max(0, Math.floor(localScroll / SHELF_HEIGHT) - 2);
@@ -4307,7 +4385,12 @@ export default function Page() {
       padTop: start * SHELF_HEIGHT,
       padBottom: Math.max(0, (shelves.length - end) * SHELF_HEIGHT),
     };
-  }, [insetEditorOpen, shelves.length, windowScrollY, stageTopAbs, viewportH, SHELF_HEIGHT]);
+  }, [shelves.length, windowScrollY, stageTopAbs, viewportH, SHELF_HEIGHT]);
+
+  const visibleShelves = useMemo(
+    () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
+    [shelfRenderWindow.end, shelfRenderWindow.start, shelves]
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
@@ -6015,7 +6098,17 @@ export default function Page() {
                     </span>
                     Other
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>
+                  <span
+                    style={{
+                      width: 38,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "rgba(0,0,0,0.4)",
+                      fontSize: 15,
+                      fontWeight: 400,
+                    }}
+                  >
                     {otherMenuOpen ? "−" : "+"}
                   </span>
                 </button>
@@ -7876,16 +7969,11 @@ export default function Page() {
                   </div>
                 </div>
               ) : null}
-              {insetEditorOpen && shelfRenderWindow.padTop > 0 ? (
+              {shelfRenderWindow.padTop > 0 ? (
                 <div style={{ height: shelfRenderWindow.padTop }} />
               ) : null}
-              {(insetEditorOpen
-                ? shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end)
-                : shelves
-              ).map((shelfShows, visibleShelfIndex) => {
-                const shelfIndex = insetEditorOpen
-                  ? shelfRenderWindow.start + visibleShelfIndex
-                  : visibleShelfIndex;
+              {visibleShelves.map((shelfShows, visibleShelfIndex) => {
+                const shelfIndex = shelfRenderWindow.start + visibleShelfIndex;
                 return (
                 <div
                   key={`shelf-${shelfIndex}`}
@@ -7917,9 +8005,8 @@ export default function Page() {
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
                       const gamePlatformRaw = isGame && 'platform' in show ? show.platform : undefined;
-                      // Determine primary platform based on priority (Steam > Epic > Default)
+                      // Determine primary platform from the row to keep shelf rendering deterministic.
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
-                      const isSteam = gamePlatform === "Steam";
                       const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
                       const x = runningX;
                       runningX += itemSize + gap;
@@ -8054,43 +8141,15 @@ export default function Page() {
                             bottom: LIP_FROM_BOTTOM,
                             width: caseWidth,
                             height: caseHeight,
+                            overflow: "hidden",
                           }}
                           onClick={() => {
                             setModalItem(buildItemWithCoverSelection(show, coverOverrides));
                             setModalOpen(true);
                           }}
-                          onMouseMove={(e) => {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const xRel = (e.clientX - rect.left) / rect.width - 0.5;
-                            const yRel = (e.clientY - rect.top) / rect.height - 0.5;
-                            const maxTilt = 20;
-                            const tiltY = Math.max(-maxTilt, Math.min(maxTilt, xRel * maxTilt * 2));
-                            const tiltX = Math.max(-10, Math.min(10, -yRel * 16));
-                            e.currentTarget.style.setProperty("--tiltY", `${tiltY}deg`);
-                            e.currentTarget.style.setProperty("--tiltX", `${tiltX}deg`);
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.setProperty("--tiltY", "0deg");
-                            e.currentTarget.style.setProperty("--tiltX", "0deg");
-                          }}
+                          onMouseMove={handleCaseMouseMove}
+                          onMouseLeave={handleCaseMouseLeave}
                         >
-                          {/* soft shelf shadow (ellipse) */}
-                          <div
-                            aria-hidden
-                            style={{
-                              position: "absolute",
-                              left: "6%",
-                              right: "6%",
-                              height: 12,
-                              bottom: -2,
-                              background:
-                                "radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.0) 70%)",
-                              filter: "blur(2px)",
-                              opacity: 0.7,
-                              pointerEvents: "none",
-                            }}
-                          />
-
                           {isGame ? (
                             <>
                               <div
@@ -8178,22 +8237,23 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
+                                {selectedCoverUrl && gameCoverFit === "cover" ? (
+                                  <div
+                                    aria-hidden
+                                    className="case-reflection"
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      pointerEvents: "none",
+                                      zIndex: 2,
+                                      background:
+                                        "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
+                                    }}
+                                  />
+                                ) : null}
 
-                                <div
-                                  aria-hidden
-                                  className="case-reflection"
-                                  style={{
-                                    position: "absolute",
-                                    inset: 0,
-                                    pointerEvents: "none",
-                                    zIndex: 2,
-                                    background:
-                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
-                                    mixBlendMode: "screen",
-                                    transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
-                                    transformOrigin: "center",
-                                  }}
-                                />
                               </div>
 
                               <div
@@ -8317,20 +8377,21 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
+                                {selectedCoverUrl ? (
+                                  <div
+                                    aria-hidden
+                                    className="case-reflection"
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      pointerEvents: "none",
+                                      zIndex: 2,
+                                      background:
+                                        "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
+                                    }}
+                                  />
+                                ) : null}
 
-                                <div
-                                  aria-hidden
-                                  className="case-reflection"
-                                  style={{
-                                    position: "absolute",
-                                    inset: 0,
-                                    pointerEvents: "none",
-                                    zIndex: 2,
-                                    background:
-                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
-                                    mixBlendMode: "screen",
-                                  }}
-                                />
                               </div>
 
                               {/* Case frame overlay */}
@@ -8394,21 +8455,6 @@ export default function Page() {
                             </div>
                           ) : null}
 
-                          {/* Optional: extra spec highlight */}
-                          <div
-                            aria-hidden
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              borderRadius: 2,
-                              pointerEvents: "none",
-                              background:
-                                "linear-gradient(115deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 18%, rgba(255,255,255,0.00) 45%, rgba(0,0,0,0.06) 100%)",
-                              mixBlendMode: "screen",
-                              opacity: 0.25,
-                            }}
-                          />
-
                           {showInsetGuide && isGame ? (
                             <div
                               style={{
@@ -8440,8 +8486,11 @@ export default function Page() {
                   })()}
                   </div>
                 </div>
-              );
-              })}
+                  );
+                })}
+              {shelfRenderWindow.padBottom > 0 ? (
+                <div style={{ height: shelfRenderWindow.padBottom }} />
+              ) : null}
               {insetEditorOpen && shelfRenderWindow.padBottom > 0 ? (
                 <div style={{ height: shelfRenderWindow.padBottom }} />
               ) : null}
@@ -8556,91 +8605,18 @@ export default function Page() {
           font-weight: 700;
         }
         .case {
-          transition: transform 60ms ease, filter 120ms ease;
+          transition: transform 60ms ease;
           transform: perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg));
-          filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.22));
           transform-style: preserve-3d;
         }
-        .case:hover {
-          filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.26));
-        }
         .case-reflection {
-          transition: opacity 200ms ease, transform 200ms ease;
+          transition: opacity 180ms ease;
           opacity: 0;
-          transform: translateY(-6px);
         }
         .case:hover .case-reflection {
-          opacity: 0.85;
-          transform: translateY(0);
+          opacity: 0.82;
         }
       `}</style>
     </div>
-  );
-}
-
-function NavButton({
-  active,
-  onClick,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: "100%",
-        borderRadius: 9,
-        border: "1px solid rgba(0,0,0,0.16)",
-        background: active
-          ? "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(230,230,230,0.95))"
-          : "linear-gradient(180deg, rgba(255,255,255,0.85), rgba(235,235,235,0.85))",
-        boxShadow: active ? "0 10px 18px rgba(0,0,0,0.16)" : "0 6px 14px rgba(0,0,0,0.10)",
-        padding: "10px 10px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        cursor: "pointer",
-        fontWeight: 900,
-        color: "rgba(0,0,0,0.78)",
-      }}
-    >
-      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span
-          aria-hidden
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 999,
-            background: active ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.25)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-          }}
-        />
-        {label}
-      </span>
-
-      <span
-        style={{
-          minWidth: 34,
-          height: 22,
-          padding: "0 5px",
-          borderRadius: 999,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 11,
-          fontWeight: 900,
-          background: "rgba(0,0,0,0.08)",
-          border: "1px solid rgba(0,0,0,0.12)",
-          color: "rgba(0,0,0,0.72)",
-        }}
-      >
-        {count}
-      </span>
-    </button>
   );
 }
