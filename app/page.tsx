@@ -1916,17 +1916,35 @@ export default function Page() {
   //   - Even if Google Sheet is down, data is protected in localStorage
   //
   const getSetting = useCallback((key: string, defaultValue: any) => {
+    const parseStoredValue = (value: unknown) => {
+      const str = String(value ?? "");
+      const numValue = Number(str);
+      if (!isNaN(numValue) && str !== "") return numValue;
+      if (str === "true") return true;
+      if (str === "false") return false;
+      return str;
+    };
+
+    // For this UI toggle, prefer local cache so header button state survives refresh
+    // even when sheet values are stale.
+    if (key === "showStatusIndicators") {
+      try {
+        if (settingsCacheRef.current === null) {
+          settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+        }
+        const settingsCache = settingsCacheRef.current;
+        if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
+          return parseStoredValue(settingsCache[key]);
+        }
+      } catch (e) {
+        console.warn("Failed to read from localStorage:", e);
+      }
+    }
+
     // First, try to get from settingsRows (from the sheet)
     const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
     if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
-      const value = setting["Value"];
-      const numValue = Number(value);
-      // Try to parse as number if it looks like one and is not NaN
-      if (!isNaN(numValue)) return numValue;
-      // Try to parse as boolean
-      if (value === "true") return true;
-      if (value === "false") return false;
-      return value;
+      return parseStoredValue(setting["Value"]);
     }
     
     // Fallback to localStorage
@@ -1938,14 +1956,7 @@ export default function Page() {
       
       const settingsCache = settingsCacheRef.current;
       if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
-        const value = settingsCache[key];
-        const numValue = Number(value);
-        // Try to parse as number if it looks like one and is not NaN
-        if (!isNaN(numValue)) return numValue;
-        // Try to parse as boolean
-        if (value === "true") return true;
-        if (value === "false") return false;
-        return value;
+        return parseStoredValue(settingsCache[key]);
       }
     } catch (e) {
       console.warn("Failed to read from localStorage:", e);
