@@ -967,7 +967,7 @@ export default function Page() {
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   
   // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>("winterGray");
+  const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
   
   // Theme configurations
   const sidebarThemes = {
@@ -2294,7 +2294,7 @@ export default function Page() {
     setCounterLeft(getSetting("counterLeft", 0));
     setShowStatusIndicators(getSetting("showStatusIndicators", false));
     
-    setSidebarTheme(getSetting("sidebarTheme", "winterGray"));
+    setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
     setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
   }, [getSetting, settingsRows]);
 
@@ -2468,7 +2468,7 @@ export default function Page() {
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
-        setSidebarTheme(getStr("sidebarTheme", "winterGray"));
+        setSidebarTheme(getStr("sidebarTheme", "darkBlue"));
         setShowStatusIndicators(getBool("showStatusIndicators", false));
       }, 100);
       
