@@ -486,13 +486,15 @@ type StatusIndicator = {
   label: string;
 };
 
-const STATUS_COLOR_GREEN = "#4f9f50";
-const STATUS_COLOR_YELLOW = "#d3aa2f";
+const STATUS_COLOR_GREEN = "#54bf3f";
+const STATUS_COLOR_YELLOW = "#e6b52e";
 const STATUS_COLOR_RED = "#c54848";
 const STATUS_COLOR_ORANGE = "#d97a2a";
-const STATUS_DOT_SIZE = 15;
-const STATUS_DOT_NUDGE_LEFT_PX = 6;
-const STATUS_DOT_NUDGE_UP_PX = 6;
+const STATUS_DOT_SIZE_RATIO = 0.16;
+const STATUS_DOT_MIN_SIZE = 14;
+const STATUS_DOT_MAX_SIZE = 24;
+const STATUS_DOT_NUDGE_LEFT_PX = 7;
+const STATUS_DOT_NUDGE_UP_PX = 7;
 
 const BOOK_GENRE_CANONICAL = [
   "Mystery",
@@ -826,7 +828,6 @@ export default function Page() {
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
-  const [showSettings, setShowSettings] = useState<boolean>(false);
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
@@ -847,6 +848,7 @@ export default function Page() {
     gameInsetsCollapsed: boolean;
     logoSize: boolean;
     syncIcon: boolean;
+    statusIcon: boolean;
     icons: boolean;
     sidebar: boolean;
     counter: boolean;
@@ -862,6 +864,7 @@ export default function Page() {
     gameInsetsCollapsed: false,
     logoSize: false,
     syncIcon: false,
+    statusIcon: false,
     icons: false,
     sidebar: false,
     counter: false,
@@ -942,6 +945,11 @@ export default function Page() {
   // Synced icon positioning and sizing
   const [syncIconSize, setSyncIconSize] = useState<number>(12);
   const [syncIconTop, setSyncIconTop] = useState<number>(8);
+
+  // Status icon sizing and position tuning
+  const [statusIconScale, setStatusIconScale] = useState<number>(100);
+  const [statusIconOffsetX, setStatusIconOffsetX] = useState<number>(0);
+  const [statusIconOffsetY, setStatusIconOffsetY] = useState<number>(0);
 
   // Sidebar icon size
   const [iconSize, setIconSize] = useState<number>(16);
@@ -2215,6 +2223,9 @@ export default function Page() {
     
     setSyncIconSize(getSetting("syncIconSize", 12));
     setSyncIconTop(getSetting("syncIconTop", 8));
+    setStatusIconScale(getSetting("statusIconScale", 100));
+    setStatusIconOffsetX(getSetting("statusIconOffsetX", 0));
+    setStatusIconOffsetY(getSetting("statusIconOffsetY", 0));
     
     setIconSize(getSetting("iconSize", 16));
     
@@ -2270,6 +2281,9 @@ export default function Page() {
       { key: "logoLeft", value: logoLeft, category: "Logo Settings", description: "Logo Left Position" },
       { key: "syncIconSize", value: syncIconSize, category: "Sync Icon", description: "Sync Icon Size (px)" },
       { key: "syncIconTop", value: syncIconTop, category: "Sync Icon", description: "Sync Icon Top Position" },
+      { key: "statusIconScale", value: statusIconScale, category: "Status Icon", description: "Status Icon Size (%)" },
+      { key: "statusIconOffsetX", value: statusIconOffsetX, category: "Status Icon", description: "Status Icon Horizontal Offset (px)" },
+      { key: "statusIconOffsetY", value: statusIconOffsetY, category: "Status Icon", description: "Status Icon Vertical Offset (px)" },
       { key: "iconSize", value: iconSize, category: "Icons", description: "Sidebar Icon Size (px)" },
       { key: "sidebarFontSize", value: sidebarFontSize, category: "Sidebar", description: "Sidebar Font Size" },
       { key: "sidebarFontWeight", value: sidebarFontWeight, category: "Sidebar", description: "Sidebar Font Weight" },
@@ -2395,6 +2409,9 @@ export default function Page() {
         
         setSyncIconSize(getNum("syncIconSize", 12));
         setSyncIconTop(getNum("syncIconTop", 8));
+        setStatusIconScale(getNum("statusIconScale", 100));
+        setStatusIconOffsetX(getNum("statusIconOffsetX", 0));
+        setStatusIconOffsetY(getNum("statusIconOffsetY", 0));
         
         setIconSize(getNum("iconSize", 16));
         setSidebarFontSize(getNum("sidebarFontSize", 11));
@@ -2677,6 +2694,18 @@ export default function Page() {
   const updateSyncIconTop = (value: number) => {
     setSyncIconTop(value);
     saveSetting("syncIconTop", value, "Sync Icon", "Sync Icon Top Position");
+  };
+  const updateStatusIconScale = (value: number) => {
+    setStatusIconScale(value);
+    saveSetting("statusIconScale", value, "Status Icon", "Status Icon Size (%)");
+  };
+  const updateStatusIconOffsetX = (value: number) => {
+    setStatusIconOffsetX(value);
+    saveSetting("statusIconOffsetX", value, "Status Icon", "Status Icon Horizontal Offset (px)");
+  };
+  const updateStatusIconOffsetY = (value: number) => {
+    setStatusIconOffsetY(value);
+    saveSetting("statusIconOffsetY", value, "Status Icon", "Status Icon Vertical Offset (px)");
   };
   const updateIconSize = (value: number) => {
     setIconSize(value);
@@ -6139,44 +6168,6 @@ export default function Page() {
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    const nextOpen = !showSettings;
-                    setShowSettings(nextOpen);
-                    if (!nextOpen) setSettingsPopupOpen(false);
-                  }}
-                  className={`sideItem primary ${showSettings ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: showSettings ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: showSettings ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src="/icon-settings.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
-                    </span>
-                    Settings
-                  </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
               </div>
             </div>
             </div>
@@ -6340,7 +6331,7 @@ export default function Page() {
               </div>
             ) : null}
 
-            {showSettings || settingsPopupOpen ? (
+            {settingsPopupOpen ? (
               <div
                 style={
                   settingsPopupOpen
@@ -6366,33 +6357,91 @@ export default function Page() {
                 }
               >
                 {settingsPopupOpen ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: 4,
-                      paddingBottom: 8,
-                      borderBottom: "1px solid rgba(0,0,0,0.12)",
-                    }}
-                  >
-                    <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
-                    <button
-                      onClick={() => setSettingsPopupOpen(false)}
+                  <>
+                    <div
                       style={{
-                        border: "1px solid rgba(0,0,0,0.2)",
-                        background: "rgba(255,255,255,0.85)",
-                        color: "#5c3c38",
-                        borderRadius: 8,
-                        padding: "4px 8px",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 4,
+                        paddingBottom: 8,
+                        borderBottom: "1px solid rgba(0,0,0,0.12)",
                       }}
                     >
-                      Close
-                    </button>
-                  </div>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <button
+                          onClick={() => setShowVersionNotes((prev) => !prev)}
+                          title="Show recent version notes"
+                          aria-label="Show recent version notes"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 54,
+                            padding: "4px 8px",
+                            background: "rgba(255,255,255,0.85)",
+                            border: "1px solid rgba(0,0,0,0.2)",
+                            borderRadius: 8,
+                            color: "#5c3c38",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            letterSpacing: "0.03em",
+                            lineHeight: 1,
+                          }}
+                        >
+                          v{APP_VERSION}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSettingsPopupOpen(false);
+                            setShowVersionNotes(false);
+                          }}
+                          style={{
+                            border: "1px solid rgba(0,0,0,0.2)",
+                            background: "rgba(255,255,255,0.85)",
+                            color: "#5c3c38",
+                            borderRadius: 8,
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                    {showVersionNotes ? (
+                      <div
+                        style={{
+                          marginTop: 2,
+                          marginBottom: 10,
+                          borderRadius: 9,
+                          border: "1px solid rgba(0,0,0,0.14)",
+                          background: "rgba(249, 245, 236, 0.97)",
+                          boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
+                          padding: 10,
+                          textAlign: "left",
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
+                        {VERSION_HISTORY.slice(0, 3).map((entry) => (
+                          <div key={entry.version} style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
+                              v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
+                            </div>
+                            <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
+                              {entry.notes.map((note) => (
+                                <li key={note}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
                 {/* Cover Size */}
                 <button
@@ -6864,6 +6913,72 @@ export default function Page() {
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{syncIconTop}</span>
+                    </label>
+                  </div>
+                ) : null}
+
+                {/* Status Icon */}
+                <button
+                  onClick={() => setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon })}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#8A8A8A",
+                    marginTop: 4,
+                  }}
+                >
+                  <span>STATUS ICON</span>
+                  <span>{settingsOpen.statusIcon ? "−" : "+"}</span>
+                </button>
+                {settingsOpen.statusIcon ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Size %
+                      <input
+                        type="range"
+                        min={50}
+                        max={220}
+                        step={5}
+                        value={statusIconScale}
+                        onChange={(e) => updateStatusIconScale(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 40, textAlign: "right" }}>{statusIconScale}%</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Offset X
+                      <input
+                        type="range"
+                        min={-30}
+                        max={30}
+                        step={1}
+                        value={statusIconOffsetX}
+                        onChange={(e) => updateStatusIconOffsetX(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 40, textAlign: "right" }}>{statusIconOffsetX}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Offset Y
+                      <input
+                        type="range"
+                        min={-30}
+                        max={30}
+                        step={1}
+                        value={statusIconOffsetY}
+                        onChange={(e) => updateStatusIconOffsetY(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 40, textAlign: "right" }}>{statusIconOffsetY}</span>
                     </label>
                   </div>
                 ) : null}
@@ -7730,7 +7845,6 @@ export default function Page() {
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
                         onClick={() => {
-                          setShowSettings(true);
                           setSortPopupOpen(false);
                           setShowVersionNotes(false);
                           setSettingsPopupOpen((prev) => !prev);
@@ -7757,67 +7871,6 @@ export default function Page() {
                           <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
                         </svg>
                       </button>
-                      <button
-                        onClick={() => {
-                          setSettingsPopupOpen(false);
-                          setSortPopupOpen(false);
-                          setShowVersionNotes((prev) => !prev);
-                        }}
-                        title="Show recent version notes"
-                        aria-label="Show recent version notes"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          height: 24,
-                          minWidth: 54,
-                          padding: "3px 6px",
-                          background: "rgba(28, 18, 10, 0.52)",
-                          border: "1px solid rgba(10, 6, 3, 0.78)",
-                          borderRadius: 9,
-                          color: "rgba(250, 242, 230, 0.72)",
-                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 800,
-                          letterSpacing: "0.03em",
-                          lineHeight: 1,
-                        }}
-                      >
-                        v{APP_VERSION}
-                      </button>
-                      {showVersionNotes ? (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "100%",
-                            right: 0,
-                            width: "min(280px, calc(100vw - 70px))",
-                            zIndex: 5001,
-                            marginTop: 6,
-                            borderRadius: 9,
-                            border: "1px solid rgba(0,0,0,0.14)",
-                            background: "rgba(249, 245, 236, 0.97)",
-                            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
-                            padding: 10,
-                            textAlign: "left",
-                          }}
-                        >
-                          <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
-                          {VERSION_HISTORY.slice(0, 3).map((entry) => (
-                            <div key={entry.version} style={{ marginBottom: 8 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
-                                v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
-                              </div>
-                              <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
-                                {entry.notes.map((note) => (
-                                  <li key={note}>{note}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
                     </div>
                     </div>
                   </div>
@@ -7965,19 +8018,29 @@ export default function Page() {
                       const statusRegionTopPx = isGame ? coverVisualTopPx : insetTop;
                       const statusRegionWidthPx = isGame ? coverVisualWidthPx : insetWidthPx;
                       const statusRegionHeightPx = isGame ? coverVisualHeightPx : insetHeightPx;
+                      const statusDotBaseSizePx = Math.round(
+                        Math.max(
+                          STATUS_DOT_MIN_SIZE,
+                          Math.min(STATUS_DOT_MAX_SIZE, statusRegionWidthPx * STATUS_DOT_SIZE_RATIO)
+                        )
+                      );
+                      const statusDotSizePx = Math.max(
+                        8,
+                        Math.round(statusDotBaseSizePx * (statusIconScale / 100))
+                      );
                       const statusDotLeftPx = Math.round(
-                        statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - STATUS_DOT_SIZE
+                        statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotSizePx + statusIconOffsetX
                       );
                       const statusDotTopPx = Math.round(
-                        statusRegionTopPx + statusRegionHeightPx - STATUS_DOT_NUDGE_UP_PX - STATUS_DOT_SIZE
+                        statusRegionTopPx + statusRegionHeightPx - STATUS_DOT_NUDGE_UP_PX - statusDotSizePx + statusIconOffsetY
                       );
                       const statusDotLeftClampedPx = Math.max(
                         insetLeft,
-                        Math.min(caseWidth - insetRight - STATUS_DOT_SIZE, statusDotLeftPx)
+                        Math.min(caseWidth - insetRight - statusDotSizePx, statusDotLeftPx)
                       );
                       const statusDotTopClampedPx = Math.max(
                         insetTop,
-                        Math.min(caseHeight - insetBottom - STATUS_DOT_SIZE, statusDotTopPx)
+                        Math.min(caseHeight - insetBottom - statusDotSizePx, statusDotTopPx)
                       );
 
                       return (
@@ -8305,17 +8368,30 @@ export default function Page() {
                                 position: "absolute",
                                 left: statusDotLeftClampedPx,
                                 top: statusDotTopClampedPx,
-                                width: STATUS_DOT_SIZE,
-                                height: STATUS_DOT_SIZE,
+                                width: statusDotSizePx,
+                                height: statusDotSizePx,
                                 borderRadius: "50%",
-                                border: "none",
-                                background: `radial-gradient(circle at 28% 24%, rgba(255,255,255,0.92) 0%, color-mix(in srgb, ${statusIndicator.color} 72%, white) 18%, ${statusIndicator.color} 46%, color-mix(in srgb, ${statusIndicator.color} 88%, black) 100%)`,
+                                border: `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
+                                background: statusIndicator.color,
                                 boxShadow:
-                                  `inset 0 1px 2px rgba(255,255,255,0.4), inset 0 -1px 2px rgba(0,0,0,0.28), 0 2px 8px rgba(5, 4, 4, 0.62), 0 0 18px color-mix(in srgb, ${statusIndicator.color} 92%, white), 0 0 34px color-mix(in srgb, ${statusIndicator.color} 95%, white)`,
+                                  "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
                                 zIndex: 26,
                                 pointerEvents: "none",
                               }}
-                            />
+                            >
+                              <div
+                                aria-hidden
+                                style={{
+                                  position: "absolute",
+                                  left: 2,
+                                  top: 2,
+                                  width: "40%",
+                                  height: "40%",
+                                  borderRadius: "50%",
+                                  background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
+                                }}
+                              />
+                            </div>
                           ) : null}
 
                           {/* Optional: extra spec highlight */}
