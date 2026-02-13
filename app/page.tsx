@@ -4433,17 +4433,6 @@ export default function Page() {
         aria-hidden
         style={{
           position: "fixed",
-          inset: 0,
-          pointerEvents: "none",
-          zIndex: 4,
-          background:
-            "radial-gradient(1200px 720px at 8% 5%, rgba(255, 244, 214, 0.34) 0%, rgba(255, 244, 214, 0.16) 22%, rgba(255, 244, 214, 0.0) 55%), linear-gradient(145deg, rgba(0,0,0,0.14) 18%, rgba(0,0,0,0) 52%)",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "fixed",
           top: 0,
           left: 0,
           right: 0,
@@ -8032,7 +8021,7 @@ export default function Page() {
                     backgroundPosition: "center",
                     backgroundSize: "100% 100%",
                     borderRadius: 0,
-                    boxShadow: `${shelfIndex === 0 ? "0 14px 30px rgba(0,0,0,0.2), " : ""}inset -30px -18px 36px rgba(255,255,255,0.09), inset 30px 20px 44px rgba(0,0,0,0.32), inset 0 26px 34px rgba(0,0,0,0.48), inset 16px 0 24px rgba(0,0,0,0.3), inset -16px 0 24px rgba(0,0,0,0.36)`,
+                    boxShadow: `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
                   }}
                 >
                   <div
@@ -8531,16 +8520,6 @@ export default function Page() {
                     });
                   })()}
                   </div>
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      pointerEvents: "none",
-                      background:
-                        "linear-gradient(150deg, rgba(255, 248, 224, 0.14) 0%, rgba(255, 248, 224, 0) 28%), linear-gradient(150deg, rgba(0,0,0,0) 34%, rgba(0,0,0,0.2) 100%)",
-                    }}
-                  />
                 </div>
                   );
                 })}
