@@ -781,7 +781,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "current" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -4167,6 +4167,53 @@ export default function Page() {
       return sorted as any[];
     }
 
+    // Current: items actively in progress (watching / now playing / reading / etc.)
+    if (nav === "current") {
+      const isCurrentToken = (value?: string) => {
+        const token = normalizeStatus(value);
+        return (
+          token === "currently watching" ||
+          token === "watching" ||
+          token === "watch next" ||
+          token === "pending return" ||
+          token === "now playing" ||
+          token === "playing" ||
+          token === "reading" ||
+          token === "currently reading" ||
+          token === "in progress" ||
+          token === "paused"
+        );
+      };
+
+      const qb = indexedBooks.filter((b) => isCurrentToken(b.item.status));
+      const qs = indexedShows.filter((s) => isCurrentToken(s.item.watchStatus));
+      const qm = indexedMovies.filter((m) =>
+        isCurrentToken(m.item.watchStatus) ||
+        isCurrentToken(m.item.status) ||
+        isCurrentToken(m.item.movieStatus)
+      );
+      const qg = indexedGames.filter((g) =>
+        isCurrentToken(g.item.status) ||
+        isCurrentToken(g.item.playStatus) ||
+        isCurrentToken(g.item.gameStatus)
+      );
+
+      const queryFilteredBooks = q ? qb.filter((b) => b.titleLC.includes(q)) : qb;
+      const queryFilteredShows = q ? qs.filter((s) => s.titleLC.includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.titleLC.includes(q)) : qm;
+      const queryFilteredGames = q ? qg.filter((g) => g.titleLC.includes(q)) : qg;
+
+      const combined = [
+        ...queryFilteredBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...queryFilteredMovies.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...queryFilteredGames.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
+    }
+
     // Movies path
     if (nav === "movies") {
       let filtered = indexedMovies;
@@ -4362,6 +4409,7 @@ export default function Page() {
       nav === "home" ||
       nav === "wishlist" ||
       nav === "watchlist" ||
+      nav === "current" ||
       nav === "year-this" ||
       nav === "year-previous"
     ) {
@@ -6040,8 +6088,6 @@ export default function Page() {
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
-
-
               </div>
 
               {/* SMART LISTS section */}
@@ -6096,6 +6142,40 @@ export default function Page() {
                       <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     This Year
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+                <button
+                  onClick={() => setNav("current")}
+                  className={`sideItem ${nav === "current" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "current" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "current" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-current.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Current
                   </span>
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
@@ -7747,7 +7827,7 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "current" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
