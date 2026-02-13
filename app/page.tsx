@@ -1103,6 +1103,7 @@ export default function Page() {
   const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
   const gap = tight ? 6 : 12;
+  const topSafeInset = "env(safe-area-inset-top, 0px)";
 
   // DVD case: poster inset inside the frame
   const CASE_SRC_W = 1024;
@@ -4633,7 +4634,7 @@ export default function Page() {
         aria-hidden
         style={{
           position: "fixed",
-          top: 0,
+          top: topSafeInset,
           left: 0,
           right: 0,
           height: 45,
@@ -4664,7 +4665,7 @@ export default function Page() {
           className="sidebar"
           style={{
             position: "sticky",
-            top: 0,
+            top: topSafeInset,
             zIndex: settingsPopupOpen ? 6000 : 1400,
             alignSelf: "start",
             height: "100vh",
@@ -6697,10 +6698,10 @@ export default function Page() {
                   settingsPopupOpen
                     ? {
                         position: "fixed",
-                        top: 84,
+                        top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                         right: 20,
                         width: "min(560px, calc(100vw - 40px))",
-                        maxHeight: "calc(100vh - 110px)",
+                        maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 110px)",
                         overflowY: "auto",
                         zIndex: 5000,
                         padding: 14,
@@ -7765,7 +7766,7 @@ export default function Page() {
             aria-hidden
             style={{
               position: "fixed",
-              top: 0,
+              top: topSafeInset,
               left: SIDEBAR_WIDTH - 1,
               right: 0,
               height: 45,
@@ -7914,7 +7915,7 @@ export default function Page() {
             <div
               style={{
                 position: "fixed",
-                top: 84,
+                top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                 right: 74,
                 width: "min(320px, calc(100vw - 40px))",
                 zIndex: 5000,
@@ -8048,7 +8049,7 @@ export default function Page() {
                 <div
                   style={{
                     position: "sticky",
-                    top: 0,
+                    top: topSafeInset,
                     height: 45,
                     overflow: "hidden",
                     background: "transparent",
