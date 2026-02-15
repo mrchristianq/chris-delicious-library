@@ -379,6 +379,18 @@ function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
 }
 
+function normalizeStatusToken(value?: string): string {
+  return safeStr(value)
+    .toLowerCase()
+    .replace("cancelled", "canceled");
+}
+
+function normalizeOwnership(value?: string): string {
+  const normalized = normalizeStatusToken(value);
+  if (normalized === "ripped") return "owned";
+  return normalized;
+}
+
 // Helper function to generate cover URL from title (served from /public/covers/)
 function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 'games'): string {
   // Sanitize title to match downloaded cover filenames (must match browser utility logic)
@@ -3033,7 +3045,7 @@ export default function Page() {
         item: book,
         titleLC: safeStr(book.title).toLowerCase(),
         statusNorm: safeStr(book.status).toLowerCase().replace("cancelled", "canceled"),
-        ownershipNorm: safeStr(book.ownership).toLowerCase().replace("cancelled", "canceled"),
+        ownershipNorm: normalizeOwnership(book.ownership),
         types: safeStr(book.types)
           .split(",")
           .map((t) => t.trim())
@@ -3083,7 +3095,7 @@ export default function Page() {
       allGames.map((game) => ({
         item: game,
         titleLC: safeStr(game.title).toLowerCase(),
-        ownershipNorm: safeStr(game.ownership).toLowerCase().replace("cancelled", "canceled"),
+        ownershipNorm: normalizeOwnership(game.ownership),
         statusValue: safeStr(game.status || game.playStatus || game.gameStatus),
         ownershipValue: safeStr(game.ownership),
         yearPlayedValue: safeStr(game.yearPlayed),
@@ -3855,15 +3867,12 @@ export default function Page() {
   // This ensures uncustomized platforms always inherit from Default insets
 
   const normalizeStatus = useCallback(
-    (value?: string) =>
-      safeStr(value)
-        .toLowerCase()
-        .replace("cancelled", "canceled"),
+    (value?: string) => normalizeStatusToken(value),
     []
   );
 
-  const hasWishlistOwnership = useCallback((value?: string) => normalizeStatus(value) === "wishlist", [normalizeStatus]);
-  const hasOwnedOwnership = useCallback((value?: string) => normalizeStatus(value) === "owned", [normalizeStatus]);
+  const hasWishlistOwnership = useCallback((value?: string) => normalizeOwnership(value) === "wishlist", []);
+  const hasOwnedOwnership = useCallback((value?: string) => normalizeOwnership(value) === "owned", []);
 
   const isMovieWatched = useCallback((movie: Movie) => {
     const status = normalizeStatus(movie.movieStatus || movie.status);
@@ -4050,8 +4059,8 @@ export default function Page() {
   }, [allBooks, bookGenres]);
 
   const wishlistCount = useMemo(() => {
-    return allBooks.filter(b => normalizeStatus(b.ownership) === 'wishlist').length;
-  }, [allBooks]);
+    return allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
+  }, [allBooks, hasWishlistOwnership]);
 
   const watchCounts = useMemo(() => {
     const counts: Record<string, number> = {};
