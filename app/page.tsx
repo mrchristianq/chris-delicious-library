@@ -1128,6 +1128,18 @@ export default function Page() {
   };
   
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
+  const syncStatusTextColor =
+    sidebarTheme === "darkBlue"
+      ? syncState === "error"
+        ? "#ffd4d4"
+        : syncState === "ok"
+          ? "#d6f5e3"
+          : "#dbe8ff"
+      : syncState === "error"
+        ? "#8b0000"
+        : syncState === "ok"
+          ? "#0d6b3c"
+          : "#754738";
 
   // Apply cached theme settings immediately on mount so we don't flash the default theme
   // while waiting for CSV/settings sync.
@@ -7966,12 +7978,7 @@ export default function Page() {
                       marginTop: 8,
                       fontSize: 11,
                       fontWeight: 700,
-                      color:
-                        syncState === "error"
-                          ? "#8b0000"
-                          : syncState === "ok"
-                            ? "#0d6b3c"
-                            : "#754738",
+                      color: syncStatusTextColor,
                     }}
                   >
                     {syncMsg}
@@ -8057,19 +8064,14 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ color: sidebarTheme === "darkBlue" ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
                     {syncMsg ? (
                       <div
                         style={{
-                          color:
-                            syncState === "error"
-                              ? "#8b0000"
-                              : syncState === "ok"
-                                ? "#0d6b3c"
-                                : "#754738",
+                          color: syncStatusTextColor,
                           fontSize: 11,
                           fontWeight: 800,
                           marginTop: 4,
