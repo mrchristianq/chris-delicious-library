@@ -2581,6 +2581,12 @@ export default function Page() {
         const expected = String(expectedRaw ?? "").trim();
         const actual = String(actualRaw ?? "").trim();
         if (expected === actual) return true;
+        const expectedBool = expected.toLowerCase();
+        const actualBool = actual.toLowerCase();
+        if ((expectedBool === "true" || expectedBool === "false") && (actualBool === "true" || actualBool === "false" || actualBool === "")) {
+          const normalizedActualBool = actualBool === "" ? "false" : actualBool;
+          return expectedBool === normalizedActualBool;
+        }
         const expectedNum = Number(expected);
         const actualNum = Number(actual);
         if (!Number.isNaN(expectedNum) && !Number.isNaN(actualNum)) {
@@ -2600,7 +2606,11 @@ export default function Page() {
         // Log each setting being sent for debugging
         console.log(`Sending: ${setting.key} = ${setting.value}`);
         try {
-          await postSheetWrite(settingsWriteUrl, setting, `Failed to save setting: ${setting.key}`);
+          await postSheetWrite(
+            settingsWriteUrl,
+            { ...setting, value: valueStr },
+            `Failed to save setting: ${setting.key}`
+          );
           sentCount++;
         } catch (fetchError) {
           console.warn(`Failed to send ${setting.key}, continuing:`, fetchError);
