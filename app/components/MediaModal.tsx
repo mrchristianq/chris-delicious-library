@@ -89,6 +89,7 @@ const GAME_FORMAT_FALLBACK_OPTIONS = ["Digital", "Physical", "Cloud", "Subscript
 const SHOW_EDIT_FIELDS: ShowEditField[] = [
   { key: "watchStatus", label: "Watch Status" },
   { key: "showStatus", label: "Show Status" },
+  { key: "dateCompleted", label: "Date Completed" },
   { key: "year", label: "Year" },
   { key: "tmdbId", label: "TMDB ID" },
   { key: "firstAirDate", label: "First Air Date" },
@@ -280,6 +281,7 @@ function buildShowEditValues(item: Record<string, any>): Record<string, string> 
     title: firstNonEmpty(item, ["title", "Title"]),
     year: firstNonEmpty(item, ["year", "Year"]),
     tmdbId: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]),
+    dateCompleted: firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate"]),
     firstAirDate: firstNonEmpty(item, ["firstAirDate", "FirstAirDate"]),
     lastAirDate: firstNonEmpty(item, ["lastAirDate", "LastAirDate"]),
     numberOfSeasons: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]),
@@ -436,6 +438,7 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
 
   if (itemType === "tv") {
     return [
+      { label: "Date Completed", value: firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate"]) || DASH },
       { label: "First Air Date", value: firstNonEmpty(item, ["firstAirDate"]) || DASH },
       { label: "Last Air Date", value: firstNonEmpty(item, ["lastAirDate"]) || DASH },
       { label: "TMDB Rating", value: renderRating(firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]) || "") },
@@ -451,6 +454,7 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
 
   return [
     { label: "Release Date", value: firstNonEmpty(item, ["releaseDate"]) || DASH },
+    { label: "Watched Date", value: firstNonEmpty(item, ["watchDate", "WatchDate"]) || DASH },
     { label: "Release Status", value: firstNonEmpty(item, ["movieStatus", "status"]) || DASH },
     { label: "Genres", value: firstNonEmpty(item, ["genres"]) || DASH },
     { label: "TMDB ID", value: firstNonEmpty(item, ["tmdbId"]) || DASH },

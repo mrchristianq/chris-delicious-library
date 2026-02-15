@@ -131,6 +131,7 @@ type Show = {
   numberOfEpisodes?: string;
   watchStatus?: string;
   watched?: string;
+  dateCompleted?: string;
   caughtUp?: string;
   showStatus?: string;
   networks?: string;
@@ -627,6 +628,7 @@ function rowToShow(r: Row): Show | null {
     numberOfEpisodes: safeStr(r["NumberOfEpisodes"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
     watched: safeStr(r["Watched"]) || undefined,
+    dateCompleted: safeStr(r["Date Completed"]) || safeStr(r["CompletedDate"]) || undefined,
     caughtUp: safeStr(r["CaughtUp"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
     networks: safeStr(r["Networks"]) || undefined,
@@ -835,7 +837,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "current" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -921,6 +923,8 @@ export default function Page() {
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
+  const [smartListsOpen, setSmartListsOpen] = useState<boolean>(false);
+  const [discoverOpen, setDiscoverOpen] = useState<boolean>(true);
   const [selectedPreviousYear, setSelectedPreviousYear] = useState<number>(2025);
 
   // Settings submenus
@@ -1735,6 +1739,8 @@ export default function Page() {
         TMDB_ID: safeStr(updates.tmdbId),
         FirstAirDate: safeStr(updates.firstAirDate),
         LastAirDate: safeStr(updates.lastAirDate),
+        "Date Completed": safeStr(updates.dateCompleted),
+        CompletedDate: safeStr(updates.dateCompleted),
         NumberOfSeasons: safeStr(updates.numberOfSeasons),
         NumberOfEpisodes: safeStr(updates.numberOfEpisodes),
         WatchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
@@ -1768,6 +1774,7 @@ export default function Page() {
         tmdbId: safeStr(updates.tmdbId),
         firstAirDate: safeStr(updates.firstAirDate),
         lastAirDate: safeStr(updates.lastAirDate),
+        dateCompleted: safeStr(updates.dateCompleted),
         numberOfSeasons: safeStr(updates.numberOfSeasons),
         numberOfEpisodes: safeStr(updates.numberOfEpisodes),
         watchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
@@ -4409,8 +4416,23 @@ export default function Page() {
         bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) : 
                (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
       } else if (field === "CompletedDate") {
-        aVal = (a as any).completedDate ? Date.parse((a as any).completedDate) : NaN;
-        bVal = (b as any).completedDate ? Date.parse((b as any).completedDate) : NaN;
+        const aCompleted = (a as any).completedDate ?? (a as any).dateCompleted;
+        const bCompleted = (b as any).completedDate ?? (b as any).dateCompleted;
+        aVal = aCompleted ? Date.parse(aCompleted) : NaN;
+        bVal = bCompleted ? Date.parse(bCompleted) : NaN;
+      } else if (field === "CompletedDateOrReleaseDate") {
+        const aCompleted = (a as any).completedDate ?? (a as any).dateCompleted;
+        const bCompleted = (b as any).completedDate ?? (b as any).dateCompleted;
+        const aType = (a as any).__type;
+        const bType = (b as any).__type;
+        const aRelease = aType === "tv"
+          ? (a as any).lastAirDate ?? (a as any).firstAirDate
+          : (a as any).releaseDate ?? (a as any).firstAirDate;
+        const bRelease = bType === "tv"
+          ? (b as any).lastAirDate ?? (b as any).firstAirDate
+          : (b as any).releaseDate ?? (b as any).firstAirDate;
+        aVal = aCompleted ? Date.parse(aCompleted) : aRelease ? Date.parse(aRelease) : NaN;
+        bVal = bCompleted ? Date.parse(bCompleted) : bRelease ? Date.parse(bRelease) : NaN;
       } else if (field === "LastAirDate") {
         aVal = (a as any).lastAirDate ? Date.parse((a as any).lastAirDate) : NaN;
         bVal = (b as any).lastAirDate ? Date.parse((b as any).lastAirDate) : NaN;
@@ -4528,24 +4550,29 @@ export default function Page() {
       return sorted as any[];
     }
 
+    const isCurrentToken = (value?: string) => {
+      const token = normalizeStatus(value);
+      return (
+        token === "currently watching" ||
+        token === "watching" ||
+        token === "watch next" ||
+        token === "pending return" ||
+        token === "now playing" ||
+        token === "playing" ||
+        token === "reading" ||
+        token === "currently reading" ||
+        token === "in progress" ||
+        token === "paused"
+      );
+    };
+    const isCompletedOrWatchedToken = (value?: string) => {
+      const token = normalizeStatus(value);
+      return token === "completed" || token === "watched";
+    };
+    const isAbandonedToken = (value?: string) => normalizeStatus(value) === "abandoned";
+
     // Current: items actively in progress (watching / now playing / reading / etc.)
     if (nav === "current") {
-      const isCurrentToken = (value?: string) => {
-        const token = normalizeStatus(value);
-        return (
-          token === "currently watching" ||
-          token === "watching" ||
-          token === "watch next" ||
-          token === "pending return" ||
-          token === "now playing" ||
-          token === "playing" ||
-          token === "reading" ||
-          token === "currently reading" ||
-          token === "in progress" ||
-          token === "paused"
-        );
-      };
-
       const qb = indexedBooks.filter((b) => isCurrentToken(b.item.status));
       const qs = indexedShows.filter((s) => isCurrentToken(s.item.watchStatus));
       const qm = indexedMovies.filter((m) =>
@@ -4572,6 +4599,67 @@ export default function Page() {
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
+    }
+
+    // Completed: completed/watched items across all media types
+    if (nav === "completed") {
+      const qb = indexedBooks.filter((b) => isCompletedOrWatchedToken(b.item.status));
+      const qs = indexedShows.filter((s) =>
+        Boolean(safeStr(s.item.dateCompleted)) ||
+        isCompletedOrWatchedToken(s.item.watchStatus) ||
+        isCompletedOrWatchedToken(s.item.showStatus) ||
+        normalizeStatus(s.item.watched) === "true"
+      );
+      const qm = indexedMovies.filter((m) =>
+        isMovieWatched(m.item) ||
+        isCompletedOrWatchedToken(m.item.watchStatus) ||
+        isCompletedOrWatchedToken(m.item.status) ||
+        isCompletedOrWatchedToken(m.item.movieStatus)
+      );
+      const qg = indexedGames.filter((g) =>
+        isCompletedOrWatchedToken(g.item.status) ||
+        isCompletedOrWatchedToken(g.item.playStatus) ||
+        isCompletedOrWatchedToken(g.item.gameStatus) ||
+        normalizeStatus(g.item.completed) === "true"
+      );
+
+      const combined = [
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const queryFiltered = q ? combined.filter((item) => safeStr((item as any).title).toLowerCase().includes(q)) : combined;
+      const sorted = applySorting(queryFiltered, "CompletedDateOrReleaseDate", sortOrder);
+      return sorted as any[];
+    }
+
+    // Abandoned: abandoned items across all media types
+    if (nav === "abandoned") {
+      const qb = indexedBooks.filter((b) => isAbandonedToken(b.item.status));
+      const qs = indexedShows.filter((s) => isAbandonedToken(s.item.watchStatus) || isAbandonedToken(s.item.showStatus));
+      const qm = indexedMovies.filter((m) =>
+        isAbandonedToken(m.item.watchStatus) ||
+        isAbandonedToken(m.item.status) ||
+        isAbandonedToken(m.item.movieStatus)
+      );
+      const qg = indexedGames.filter((g) =>
+        isAbandonedToken(g.item.status) ||
+        isAbandonedToken(g.item.playStatus) ||
+        isAbandonedToken(g.item.gameStatus)
+      );
+
+      const combined = [
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const queryFiltered = q ? combined.filter((item) => safeStr((item as any).title).toLowerCase().includes(q)) : combined;
+      const sorted = applySorting(queryFiltered, sortField, sortOrder);
       return sorted as any[];
     }
 
@@ -4866,6 +4954,8 @@ export default function Page() {
       nav === "wishlist" ||
       nav === "watchlist" ||
       nav === "current" ||
+      nav === "completed" ||
+      nav === "abandoned" ||
       nav === "year-this" ||
       nav === "year-previous"
     ) {
@@ -6539,8 +6629,15 @@ export default function Page() {
 
               {/* SMART LISTS section */}
               <div style={{ marginTop: "16px" }}>
-              <div
+              <button
+                type="button"
+                onClick={() => {
+                  if (smartListsOpen) setOtherMenuOpen(false);
+                  setSmartListsOpen(!smartListsOpen);
+                }}
                 style={{
+                  width: "100%",
+                  textAlign: "left",
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
@@ -6550,13 +6647,17 @@ export default function Page() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: "pointer",
                 }}
               >
                 <span>SMART LISTS</span>
-                <span />
-              </div>
+                <span style={{ color: "rgba(0,0,0,0.5)", fontSize: 16, fontWeight: 500 }}>{smartListsOpen ? "−" : "+"}</span>
+              </button>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {smartListsOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 {/* This Year - Primary clickable */}
                 <button
                   onClick={() => setNav("year-this")}
@@ -6623,6 +6724,74 @@ export default function Page() {
                       <img src="/icon-current.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     Current
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+                <button
+                  onClick={() => setNav("completed")}
+                  className={`sideItem ${nav === "completed" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "completed" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "completed" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-completed.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Completed
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+                <button
+                  onClick={() => setNav("abandoned")}
+                  className={`sideItem ${nav === "abandoned" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "abandoned" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "abandoned" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-abaonded.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Abandoned
                   </span>
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
@@ -6718,7 +6887,7 @@ export default function Page() {
                     )}
                   </div>
                 )}
-              </div>
+              </div> : null}
             </div>
             </div>
             </div>
@@ -6735,8 +6904,15 @@ export default function Page() {
               }}
             >
               <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
-              <div
+              <button
+                type="button"
+                onClick={() => {
+                  if (discoverOpen) setShowThemes(false);
+                  setDiscoverOpen(!discoverOpen);
+                }}
                 style={{
+                  width: "100%",
+                  textAlign: "left",
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
@@ -6746,13 +6922,17 @@ export default function Page() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: "pointer",
                 }}
               >
                 <span>DISCOVER</span>
-                <span />
-              </div>
+                <span style={{ color: "rgba(0,0,0,0.5)", fontSize: 16, fontWeight: 500 }}>{discoverOpen ? "−" : "+"}</span>
+              </button>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {discoverOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
                   className="sideItem"
                   style={{
@@ -6823,11 +7003,11 @@ export default function Page() {
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
-              </div>
+              </div> : null}
             </div>
             </div>
 
-            {showThemes ? (
+            {discoverOpen && showThemes ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
                 {themeSaveNotice ? (
                   <div
@@ -8349,6 +8529,7 @@ export default function Page() {
                   {nav === "tv" && (
                     <>
                       <option value="Title">Title</option>
+                      <option value="CompletedDate">Date Completed</option>
                       <option value="LastAirDate">Last Air Date</option>
                       <option value="FirstAirDate">First Air Date</option>
                       <option value="MyRatingSort">My Rating</option>
@@ -8363,7 +8544,7 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "current" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
