@@ -391,6 +391,13 @@ function normalizeOwnership(value?: string): string {
   return normalized;
 }
 
+function normalizeShowWatchStatusForSheet(value?: string): string {
+  const raw = safeStr(value);
+  if (!raw) return "";
+  if (normalizeStatusToken(raw) === "currently watching") return "Watching";
+  return raw;
+}
+
 // Helper function to generate cover URL from title (served from /public/covers/)
 function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 'games'): string {
   // Sanitize title to match downloaded cover filenames (must match browser utility logic)
@@ -1680,7 +1687,7 @@ export default function Page() {
         LastAirDate: safeStr(updates.lastAirDate),
         NumberOfSeasons: safeStr(updates.numberOfSeasons),
         NumberOfEpisodes: safeStr(updates.numberOfEpisodes),
-        WatchStatus: safeStr(updates.watchStatus),
+        WatchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
         Status: safeStr(updates.showStatus),
         Networks: safeStr(updates.networks),
         StreamingUS: safeStr(updates.streamingUS),
@@ -1713,7 +1720,7 @@ export default function Page() {
         lastAirDate: safeStr(updates.lastAirDate),
         numberOfSeasons: safeStr(updates.numberOfSeasons),
         numberOfEpisodes: safeStr(updates.numberOfEpisodes),
-        watchStatus: safeStr(updates.watchStatus),
+        watchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
         showStatus: safeStr(updates.showStatus),
         networks: safeStr(updates.networks),
         streamingUS: safeStr(updates.streamingUS),

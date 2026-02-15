@@ -11,6 +11,10 @@ function isAllowedScriptUrl(rawUrl: string) {
   }
 }
 
+function stripHtml(text: string) {
+  return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -43,12 +47,19 @@ export async function POST(req: NextRequest) {
       clearTimeout(timeoutId);
     }
 
-    const looksLikeError = /^error\b/i.test(responseText);
+    const lowerText = responseText.toLowerCase();
+    const looksLikeHtml = lowerText.startsWith("<!doctype html") || lowerText.startsWith("<html");
+    const looksLikeError =
+      /^error\b/i.test(responseText) ||
+      lowerText.includes("violates the data validation rules") ||
+      lowerText.includes("exception:") ||
+      lowerText.includes("error:");
     if (upstreamStatus < 200 || upstreamStatus >= 300 || looksLikeError) {
+      const normalizedError = looksLikeHtml ? stripHtml(responseText) : responseText;
       return NextResponse.json(
         {
           ok: false,
-          error: responseText || `Apps Script returned HTTP ${upstreamStatus}`,
+          error: normalizedError || `Apps Script returned HTTP ${upstreamStatus}`,
           upstreamStatus,
         },
         { status: 502 }

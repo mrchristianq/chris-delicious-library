@@ -72,7 +72,7 @@ const BOOK_EDIT_FIELDS: BookEditField[] = [
 
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
 const SHOW_WATCH_STATUS_OPTIONS = [
-  "Currently Watching",
+  "Watching",
   "Completed",
   "Backlog",
   "Abandoned",
