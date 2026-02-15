@@ -12,7 +12,20 @@ function isAllowedScriptUrl(rawUrl: string) {
 }
 
 function stripHtml(text: string) {
-  return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return text
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeShowWatchStatus(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const normalized = raw.toLowerCase().replace(/\s+/g, " ");
+  if (normalized === "currently watching") return "Watching";
+  return raw;
 }
 
 export async function POST(req: NextRequest) {
@@ -28,6 +41,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedPayload =
+      payload &&
+      typeof payload === "object" &&
+      (payload as Record<string, unknown>).action === "updateShow" &&
+      (payload as Record<string, unknown>).updates &&
+      typeof (payload as Record<string, unknown>).updates === "object"
+        ? {
+            ...(payload as Record<string, unknown>),
+            updates: {
+              ...((payload as Record<string, unknown>).updates as Record<string, unknown>),
+              WatchStatus: normalizeShowWatchStatus(
+                ((payload as Record<string, unknown>).updates as Record<string, unknown>).WatchStatus
+              ),
+            },
+          }
+        : payload;
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -37,7 +67,7 @@ export async function POST(req: NextRequest) {
       const upstream = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload ?? {}),
+        body: JSON.stringify(normalizedPayload ?? {}),
         cache: "no-store",
         signal: controller.signal,
       });
