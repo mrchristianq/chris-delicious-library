@@ -313,6 +313,22 @@ const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
 const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
+const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
+const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
+const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
+  "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
+  "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
+  "/shelf-weathered-oak.png": "/wood_beam_header_weathered_oak.png",
+  "/shelf-weathered-gray-oak.png": "/wood_beam_header_weathered_oak.png",
+  "/shelf-honey-oak.png": "/wood_beam_header_honey_oak.png",
+  "/shelf-teak.png": "/wood_beam_header_teak.png",
+  "/shelf_white_oak.png": "/wood_beam_header_white_oak.png",
+  "/shelf-reclaimed-oak.png": "/wood_beam_header_reclaimed_oak.png",
+};
+const normalizeShelfTheme = (theme: string): string => {
+  if (theme === "/shelf-weathered-oak.png") return WEATHERED_OAK_SHELF_IMAGE;
+  return theme;
+};
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -1034,6 +1050,7 @@ export default function Page() {
 
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
+  const currentTopHeaderImage = SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
   
   // Sidebar theme
   const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
@@ -1110,7 +1127,7 @@ export default function Page() {
       const cachedSidebarTheme = safeStr(cache["sidebarTheme"]);
       const cachedShelfTheme = safeStr(cache["shelfTheme"]);
       if (cachedSidebarTheme) setSidebarTheme(cachedSidebarTheme);
-      if (cachedShelfTheme) setShelfTheme(cachedShelfTheme);
+      if (cachedShelfTheme) setShelfTheme(normalizeShelfTheme(cachedShelfTheme));
     } catch (e) {
       console.warn("Failed to apply cached theme settings on mount:", e);
     }
@@ -1182,6 +1199,14 @@ export default function Page() {
   const [showVersionNotes, setShowVersionNotes] = useState(false);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
+  const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
+  const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
+    tv: 100,
+    movies: 108,
+    books: 115,
+    games: 108,
+  });
+  const globalCoverScaleSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const [showInsetGuide, setShowInsetGuide] = useState(false);
 
@@ -2496,7 +2521,7 @@ export default function Page() {
     setShowStatusIndicators(getSetting("showStatusIndicators", false));
     
     setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
-    setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
+    setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
   }, [getSetting, settingsRows]);
 
   // Function to save all current settings to spreadsheet
@@ -2656,7 +2681,7 @@ export default function Page() {
         setSidebarGap(getNum("sidebarGap", 8));
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
-        setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
+        setShelfTheme(normalizeShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE)));
         setSidebarTheme(getStr("sidebarTheme", "darkBlue"));
         setShowStatusIndicators(getBool("showStatusIndicators", false));
       }, 100);
@@ -2783,17 +2808,61 @@ export default function Page() {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
   };
+  const clampUnifiedCoverSize = (value: number) => Math.max(70, Math.min(125, Math.round(value)));
+  const captureGlobalCoverScaleBase = useCallback(() => {
+    globalCoverScaleBaseRef.current = {
+      tv: posterSizeTv,
+      movies: posterSizeMovies,
+      books: posterSizeBooks,
+      games: posterSizeGames,
+    };
+  }, [posterSizeBooks, posterSizeGames, posterSizeMovies, posterSizeTv]);
+  const updateGlobalCoverScale = useCallback((value: number) => {
+    const scalePct = Math.max(70, Math.min(130, value));
+    const scaleFactor = scalePct / 100;
+    const base = globalCoverScaleBaseRef.current;
+    const nextSizes = {
+      tv: clampUnifiedCoverSize(base.tv * scaleFactor),
+      movies: clampUnifiedCoverSize(base.movies * scaleFactor),
+      books: clampUnifiedCoverSize(base.books * scaleFactor),
+      games: clampUnifiedCoverSize(base.games * scaleFactor),
+    };
+
+    setGlobalCoverScalePct(scalePct);
+    setPosterSizeTv(nextSizes.tv);
+    setPosterSizeMovies(nextSizes.movies);
+    setPosterSizeBooks(nextSizes.books);
+    setPosterSizeGames(nextSizes.games);
+
+    if (globalCoverScaleSaveTimerRef.current) {
+      clearTimeout(globalCoverScaleSaveTimerRef.current);
+    }
+
+    globalCoverScaleSaveTimerRef.current = setTimeout(() => {
+      saveSetting("posterSizeTv", nextSizes.tv, "Cover Sizes", "TV Show Cover Size");
+      saveSetting("posterSizeMovies", nextSizes.movies, "Cover Sizes", "Movie Cover Size");
+      saveSetting("posterSizeBooks", nextSizes.books, "Cover Sizes", "Book Cover Size");
+      saveSetting("posterSizeGames", nextSizes.games, "Cover Sizes", "Game Cover Size");
+      globalCoverScaleBaseRef.current = nextSizes;
+      setGlobalCoverScalePct(100);
+      globalCoverScaleSaveTimerRef.current = null;
+    }, 2500);
+  }, [saveSetting]);
   const updateShelfTheme = (value: string) => {
-    setShelfTheme(value);
-    saveSetting("shelfTheme", value, "Themes", "Shelf Wood Type");
+    const normalizedValue = normalizeShelfTheme(value);
+    setShelfTheme(normalizedValue);
+    saveSetting("shelfTheme", normalizedValue, "Themes", "Shelf Wood Type");
     const shelfThemeNames: Record<string, string> = {
       "/shelves-light-single2.png": "Default (Light Oak)",
       "/shelf-dark-walnut.png": "Dark Walnut",
       "/shelf-weathered-oak.png": "Weathered Oak",
+      "/shelf-weathered-gray-oak.png": "Weathered Oak",
       "/shelf-honey-oak.png": "Honey Oak",
       "/shelf-teak.png": "Teak",
+      "/shelf_white_oak.png": "White Oak",
+      "/shelf-reclaimed-oak.png": "Reclaimed Oak",
     };
-    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
+    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[normalizedValue] || shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
   };
   
   const updateSidebarTheme = (value: string) => {
@@ -2806,6 +2875,25 @@ export default function Page() {
     };
     setThemeSaveNotice(`Saved theme: ${sidebarThemeNames[value] || "Sidebar theme"}. This will be used next time.`);
   };
+
+  useEffect(() => {
+    if (globalCoverScalePct === 100 && !globalCoverScaleSaveTimerRef.current) {
+      globalCoverScaleBaseRef.current = {
+        tv: posterSizeTv,
+        movies: posterSizeMovies,
+        books: posterSizeBooks,
+        games: posterSizeGames,
+      };
+    }
+  }, [globalCoverScalePct, posterSizeBooks, posterSizeGames, posterSizeMovies, posterSizeTv]);
+
+  useEffect(() => {
+    return () => {
+      if (globalCoverScaleSaveTimerRef.current) {
+        clearTimeout(globalCoverScaleSaveTimerRef.current);
+      }
+    };
+  }, []);
   
   // Update platform-specific insets
   const updatePlatformInset = useCallback((platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
@@ -4656,7 +4744,7 @@ export default function Page() {
           height: 45,
           zIndex: 1300,
           pointerEvents: "none",
-          backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+          backgroundImage: `url(${currentTopHeaderImage})`,
           backgroundRepeat: "repeat-x",
           backgroundPosition: "0 0",
           backgroundSize: "auto 45px",
@@ -4726,7 +4814,7 @@ export default function Page() {
               height: 45,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+              backgroundImage: `url(${currentTopHeaderImage})`,
               backgroundRepeat: "repeat-x",
               backgroundPosition: "0 0",
               backgroundSize: "auto 45px",
@@ -6657,17 +6745,17 @@ export default function Page() {
                     Dark Walnut
                   </button>
                   <button
-                    onClick={() => updateShelfTheme("/shelf-weathered-oak.png")}
+                    onClick={() => updateShelfTheme(WEATHERED_OAK_SHELF_IMAGE)}
                     style={{
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-weathered-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-weathered-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf-weathered-oak.png" ? 600 : 400,
+                      fontWeight: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? 600 : 400,
                     }}
                   >
                     Weathered Oak
@@ -6703,6 +6791,38 @@ export default function Page() {
                     }}
                   >
                     Teak
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf_white_oak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf_white_oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf_white_oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: shelfTheme === "/shelf_white_oak.png" ? 600 : 400,
+                    }}
+                  >
+                    White Oak
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf-reclaimed-oak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf-reclaimed-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf-reclaimed-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: shelfTheme === "/shelf-reclaimed-oak.png" ? 600 : 400,
+                    }}
+                  >
+                    Reclaimed Oak
                   </button>
                 </div>
               </div>
@@ -7679,6 +7799,35 @@ export default function Page() {
             <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 style={{
+                  marginBottom: 8,
+                  padding: "8px 10px",
+                  borderRadius: 9,
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                  border: "1px solid rgba(92, 60, 56, 0.2)",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.18), inset 0 1px 2px rgba(255, 255, 255, 0.35)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: currentTheme.syncedTextColor }}>Cover Size</span>
+                  <span style={{ minWidth: 40, textAlign: "right", fontSize: 11, fontWeight: 700, opacity: 0.85, color: currentTheme.syncedTextColor }}>
+                    {`${globalCoverScalePct}%`}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={70}
+                  max={130}
+                  step={1}
+                  value={globalCoverScalePct}
+                  onMouseDown={captureGlobalCoverScaleBase}
+                  onTouchStart={captureGlobalCoverScaleBase}
+                  onFocus={captureGlobalCoverScaleBase}
+                  onChange={(e) => updateGlobalCoverScale(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div
+                style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -8061,8 +8210,7 @@ export default function Page() {
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {shelfTheme === DEFAULT_SHELF_IMAGE ? (
-                <div
+              <div
                   style={{
                     position: "sticky",
                     top: topSafeInset,
@@ -8280,7 +8428,6 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-              ) : null}
               {shelfRenderWindow.padTop > 0 ? (
                 <div style={{ height: shelfRenderWindow.padTop }} />
               ) : null}
