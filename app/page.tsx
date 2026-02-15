@@ -2150,6 +2150,7 @@ export default function Page() {
 
     setSyncState("ok");
     setSyncMsg(`Saved ${successCount} setting${successCount === 1 ? "" : "s"}`);
+    setLastSyncAt(Date.now());
     setTimeout(() => {
       setSyncMsg("Synced");
     }, 1200);
@@ -2669,6 +2670,7 @@ export default function Page() {
       } else {
         setSyncState("ok");
         setSyncMsg(`All settings saved (${sentCount}/${settings.length})`);
+        setLastSyncAt(Date.now());
         setTimeout(() => {
           setSyncMsg("Synced");
         }, 2000);
@@ -7953,6 +7955,23 @@ export default function Page() {
                 >
                   📥 Load Settings from Sheet
                 </button>
+                {syncMsg ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color:
+                        syncState === "error"
+                          ? "#8b0000"
+                          : syncState === "ok"
+                            ? "#0d6b3c"
+                            : "#754738",
+                    }}
+                  >
+                    {syncMsg}
+                  </div>
+                ) : null}
 
               </div>
             ) : null}
@@ -8037,10 +8056,15 @@ export default function Page() {
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
-                    {syncState === "error" && syncMsg ? (
+                    {syncMsg ? (
                       <div
                         style={{
-                          color: "#8b0000",
+                          color:
+                            syncState === "error"
+                              ? "#8b0000"
+                              : syncState === "ok"
+                                ? "#0d6b3c"
+                                : "#754738",
                           fontSize: 11,
                           fontWeight: 800,
                           marginTop: 4,
