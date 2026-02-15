@@ -251,8 +251,20 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "4.5.0";
+const APP_VERSION = "4.6.0";
 const VERSION_HISTORY = [
+  {
+    version: "4.6.0",
+    date: "2026-02-15",
+    notes: [
+      "Reworked shelf spacing to use visible cover/overlay bounds so mixed cover types have consistent edge-to-edge gaps.",
+      "Added Cover Gap Size setting in popup Cover Size controls.",
+      "Improved settings save feedback with explicit save/sync status messaging.",
+      "Fixed Save All settings boolean persistence and verification for show inset guide/status indicators.",
+      "Forced consistent blue slider styling in standalone app mode.",
+      "Updated settings load precedence to prefer local cached values over stale sheet reads on reopen.",
+    ],
+  },
   {
     version: "4.5.0",
     date: "2026-02-13",
