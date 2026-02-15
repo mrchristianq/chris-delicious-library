@@ -953,6 +953,7 @@ export default function Page() {
   const [posterSizeMovies, setPosterSizeMovies] = useState<number>(108);
   const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
   const [bookHeightMultiplier, setBookHeightMultiplier] = useState<number>(1.5);
+  const [coverGapSize, setCoverGapSize] = useState<number>(24);
   const [tight, setTight] = useState<boolean>(true);
   const [watchFilter, setWatchFilter] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<string | null>(null);
@@ -1138,7 +1139,7 @@ export default function Page() {
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
-  const gap = tight ? 6 : 12;
+  const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
 
   // DVD case: poster inset inside the frame
@@ -2118,10 +2119,13 @@ export default function Page() {
     const entries = Object.entries(pending);
     if (!entries.length) return;
 
+    setSyncState("saving");
+    setSyncMsg(`Saving ${entries.length} setting${entries.length === 1 ? "" : "s"}...`);
+
     // Clear queue first so new writes can continue while this batch is in flight.
     pendingSettingsSheetWritesRef.current = {};
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       entries.map(([key, entry]) =>
         postSheetWrite(
           settingsWriteUrl,
@@ -2135,6 +2139,20 @@ export default function Page() {
         )
       )
     );
+
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failedCount = results.length - successCount;
+    if (failedCount > 0) {
+      setSyncState("error");
+      setSyncMsg(`Saved ${successCount}/${results.length} settings`);
+      return;
+    }
+
+    setSyncState("ok");
+    setSyncMsg(`Saved ${successCount} setting${successCount === 1 ? "" : "s"}`);
+    setTimeout(() => {
+      setSyncMsg("Synced");
+    }, 1200);
   }, [postSheetWrite, settingsWriteUrl]);
 
   const queueSettingSheetWrite = useCallback(
@@ -2371,6 +2389,7 @@ export default function Page() {
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
+    setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
     
     setCaseInsetTopPx(getSetting("caseInsetTopPx", 156));
@@ -2549,6 +2568,7 @@ export default function Page() {
       { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
       { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
       { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
+      { key: "coverGapSize", value: coverGapSize, category: "Cover Sizes", description: "Cover Gap Size (px)" },
       { key: "tight", value: tight, category: "Cover Sizes", description: "Tight spacing between items" },
       { key: "logoSize", value: logoSize, category: "Logo Settings", description: "Logo Size (px)" },
       { key: "logoTop", value: logoTop, category: "Logo Settings", description: "Logo Top Position" },
@@ -2572,6 +2592,7 @@ export default function Page() {
     
     try {
       let sentCount = 0;
+      const failedKeys: string[] = [];
       // Send settings sequentially (one at a time) so they arrive in order on the sheet
       for (const setting of settings) {
         // Skip any settings containing "#REF!" error
@@ -2588,6 +2609,7 @@ export default function Page() {
           sentCount++;
         } catch (fetchError) {
           console.warn(`Failed to send ${setting.key}, continuing:`, fetchError);
+          failedKeys.push(setting.key);
           // Continue with next setting even if one fails
         }
       }
@@ -2595,16 +2617,26 @@ export default function Page() {
       console.log(`Sent ${sentCount}/${settings.length} settings to Google Sheet`);
       
       clearTimeout(safetyTimeoutId);
-      setSyncState("ok");
-      setSyncMsg("Settings saved!");
-      setTimeout(() => {
-        setSyncMsg("Synced");
-      }, 2000);
+      if (failedKeys.length > 0) {
+        setSyncState("error");
+        setSyncMsg(`Save completed with errors (${sentCount}/${settings.length})`);
+        alert(
+          `Save completed with errors.\nSaved ${sentCount}/${settings.length} settings.\nFailed: ${failedKeys.join(", ")}`
+        );
+      } else {
+        setSyncState("ok");
+        setSyncMsg(`All settings saved (${sentCount}/${settings.length})`);
+        setTimeout(() => {
+          setSyncMsg("Synced");
+        }, 2000);
+        alert(`All settings saved successfully (${sentCount}/${settings.length}).`);
+      }
     } catch (e) {
       console.error("Failed to save settings:", e);
       clearTimeout(safetyTimeoutId);
       setSyncState("error");
       setSyncMsg("Save failed");
+      alert("Save failed. Check sync status and console logs.");
     }
   };
 
@@ -2646,6 +2678,7 @@ export default function Page() {
         setPosterSizeMovies(getNum("posterSizeMovies", 108));
         setPosterSizeBooks(getNum("posterSizeBooks", 115));
         setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
+        setCoverGapSize(getNum("coverGapSize", 24));
         setTight(getBool("tight", true));
         
         setCaseInsetTopPx(getNum("caseInsetTopPx", 156));
@@ -2746,6 +2779,15 @@ export default function Page() {
   const updateTight = (value: boolean) => {
     setTight(value);
     saveSetting("tight", value, "Spacing", "Tight spacing between items");
+  };
+  const updateShowInsetGuide = (value: boolean) => {
+    setShowInsetGuide(value);
+    saveSetting("showInsetGuide", value, "Cover Sizes", "Show inset frame guide");
+  };
+  const updateCoverGapSize = (value: number) => {
+    const next = Math.max(0, Math.min(60, Math.round(value)));
+    setCoverGapSize(next);
+    saveSetting("coverGapSize", next, "Cover Sizes", "Cover Gap Size (px)");
   };
   const updateShowStatusIndicators = (value: boolean) => {
     setShowStatusIndicators(value);
@@ -4657,11 +4699,106 @@ export default function Page() {
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
+  const getItemVisualLayout = useCallback((item: any) => {
+    const isBook = item.__type === "book";
+    const isMovie = item.__type === "movie";
+    const isGame = item.__type === "game";
+    const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
+    const caseWidth = itemSize;
+    const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
+
+    const gamePlatformRaw = isGame ? safeStr(item?.__renderPlatform || item?.platform) : undefined;
+    const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
+    const gameFrameSource = isGame ? getGameFrameSourceDimensions(gamePlatform) : DEFAULT_GAME_FRAME_SIZE;
+    const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? gameFrameSource.width : CASE_SRC_W;
+    const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? gameFrameSource.height : CASE_SRC_H;
+
+    let insetTopVal: number;
+    let insetRightVal: number;
+    let insetBottomVal: number;
+    let insetLeftVal: number;
+    if (isBook) {
+      insetTopVal = bookInsetTopPx;
+      insetRightVal = bookInsetRightPx;
+      insetBottomVal = bookInsetBottomPx;
+      insetLeftVal = bookInsetLeftPx;
+    } else if (isMovie) {
+      insetTopVal = movieInsetTopPx;
+      insetRightVal = movieInsetRightPx;
+      insetBottomVal = movieInsetBottomPx;
+      insetLeftVal = movieInsetLeftPx;
+    } else if (isGame) {
+      const platformKey = gamePlatform || "Default";
+      const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+      const platformInset = platformInsets[platformKey];
+      const insets = platformKey !== "Default" && platformInset ? platformInset : defaultInsets;
+      insetTopVal = insets.top;
+      insetRightVal = insets.right;
+      insetBottomVal = insets.bottom;
+      insetLeftVal = insets.left;
+    } else {
+      insetTopVal = caseInsetTopPx;
+      insetRightVal = caseInsetRightPx;
+      insetBottomVal = caseInsetBottomPx;
+      insetLeftVal = caseInsetLeftPx;
+    }
+
+    const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
+    const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
+    const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
+    const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
+    const insetWidth = Math.max(1, caseWidth - insetLeft - insetRight);
+
+    if (!isGame) {
+      const visualLeft = insetLeft;
+      const visualWidth = insetWidth;
+      return { itemSize, visualLeft, visualWidth };
+    }
+
+    const platformKey = gamePlatform || "Default";
+    const coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+    const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
+    const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
+    const coverScaleX = coverScale.x / 100;
+    const coverTranslateX = platformCoverOffsetSettings.x * 0.35;
+    const coverTranslateXPx = (coverTranslateX / 100) * insetWidth;
+    const coverVisualWidth = insetWidth * coverScaleX;
+    const rawCoverLeft = insetLeft + (insetWidth - coverVisualWidth) / 2 + coverTranslateXPx;
+    const rawCoverRight = rawCoverLeft + coverVisualWidth;
+    const visualLeft = Math.max(0, rawCoverLeft);
+    const visualRight = Math.min(caseWidth, rawCoverRight);
+    const visualWidth = Math.max(1, visualRight - visualLeft);
+    return { itemSize, visualLeft, visualWidth };
+  }, [
+    bookHeightMultiplier,
+    posterSizeBooks,
+    posterSizeGames,
+    posterSizeMovies,
+    posterSizeTv,
+    getRenderPlatform,
+    getGameFrameSourceDimensions,
+    bookInsetTopPx,
+    bookInsetRightPx,
+    bookInsetBottomPx,
+    bookInsetLeftPx,
+    movieInsetTopPx,
+    movieInsetRightPx,
+    movieInsetBottomPx,
+    movieInsetLeftPx,
+    caseInsetTopPx,
+    caseInsetRightPx,
+    caseInsetBottomPx,
+    caseInsetLeftPx,
+    platformInsets,
+    platformCoverScale,
+    platformCoverOffset,
+  ]);
+
   const shelves = useMemo(() => {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     const out: any[][] = [];
-    
-    // For mixed-item views, calculate shelf distribution based on actual item sizes
+
+    // Mixed-content views: pack each shelf by actual item widths so row counts can vary naturally.
     if (
       nav === "home" ||
       nav === "wishlist" ||
@@ -4672,34 +4809,25 @@ export default function Page() {
     ) {
       let currentShelf: any[] = [];
       let currentWidth = 0;
-      
+
       for (let i = 0; i < shows.length; i++) {
         const show = shows[i];
-        const isBook = show.__type === "book";
-        const isMovie = show.__type === "movie";
-        const isGame = show.__type === "game";
-        const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
-        const itemWidth = itemSize + (currentShelf.length > 0 ? gap : 0);
-        
-        // Check if adding this item would exceed the usable width
+        const { visualWidth } = getItemVisualLayout(show);
+        const itemWidth = visualWidth + (currentShelf.length > 0 ? gap : 0);
+
         if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
-          // Start a new shelf
           out.push(currentShelf);
           currentShelf = [show];
-          currentWidth = itemSize;
+          currentWidth = visualWidth;
         } else {
-          // Add to current shelf
           currentShelf.push(show);
           currentWidth += itemWidth;
         }
       }
-      
-      // Push the last shelf if it has items
-      if (currentShelf.length > 0) {
-        out.push(currentShelf);
-      }
+
+      if (currentShelf.length > 0) out.push(currentShelf);
     } else {
-      // For single-type views (books, movies, games, tv), use the simple fixed-size calculation
+      // Single-content views: fixed count per shelf.
       for (let i = 0; i < shows.length; i += postersPerShelf) {
         out.push(shows.slice(i, i + postersPerShelf));
       }
@@ -4710,7 +4838,7 @@ export default function Page() {
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, posterSizeBooks, posterSizeMovies, posterSizeGames, posterSizeTv, gap]);
+  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, gap, getItemVisualLayout]);
 
   const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
 
@@ -6941,97 +7069,89 @@ export default function Page() {
                   </>
                 ) : null}
                 {/* Cover Size */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, coverSize: !settingsOpen.coverSize })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                  }}
-                >
-                  <span>COVER SIZE</span>
-                  <span>{settingsOpen.coverSize ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.coverSize ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      TV Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeTv}
-                        onChange={(e) => updatePosterSizeTv(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Movies Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeMovies}
-                        onChange={(e) => updatePosterSizeMovies(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeMovies}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Books Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeBooks}
-                        onChange={(e) => updatePosterSizeBooks(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Games Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeGames}
-                        onChange={(e) => updatePosterSizeGames(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeGames}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
-                      Tight
-                    </label>
-                    <div style={{ fontSize: 11, opacity: 0.6 }}>
-                      Frame: {CASE_SRC_W}×{CASE_SRC_H}
-                    </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
-                      <input
-                        type="checkbox"
-                        checked={showInsetGuide}
-                        onChange={(e) => setShowInsetGuide(e.target.checked)}
-                      />
-                      Frame
-                    </label>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>COVER SIZE</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    TV Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeTv}
+                      onChange={(e) => updatePosterSizeTv(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Movies Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeMovies}
+                      onChange={(e) => updatePosterSizeMovies(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeMovies}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Books Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeBooks}
+                      onChange={(e) => updatePosterSizeBooks(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Games Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeGames}
+                      onChange={(e) => updatePosterSizeGames(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeGames}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Cover Gap Size
+                    <input
+                      type="range"
+                      min={0}
+                      max={60}
+                      step={1}
+                      value={coverGapSize}
+                      onChange={(e) => updateCoverGapSize(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{coverGapSize}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
+                    Tight
+                  </label>
+                  <div style={{ fontSize: 11, opacity: 0.6 }}>
+                    Frame: {CASE_SRC_W}×{CASE_SRC_H}
                   </div>
-                ) : null}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
+                    <input
+                      type="checkbox"
+                      checked={showInsetGuide}
+                      onChange={(e) => updateShowInsetGuide(e.target.checked)}
+                    />
+                    Frame
+                  </label>
+                </div>
 
                 {/* COVER INSETS Parent Menu */}
                 <button
@@ -7800,11 +7920,7 @@ export default function Page() {
               <div
                 style={{
                   marginBottom: 8,
-                  padding: "8px 10px",
-                  borderRadius: 9,
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                  border: "1px solid rgba(92, 60, 56, 0.2)",
-                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.18), inset 0 1px 2px rgba(255, 255, 255, 0.35)",
+                  padding: "0 2px",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
@@ -8458,7 +8574,7 @@ export default function Page() {
                     }}
                   >
                     {(() => {
-                      let runningX = 0;
+                      let runningVisualX = 0;
                       return shelfShows.map((show, i) => {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
@@ -8466,9 +8582,9 @@ export default function Page() {
                       const gamePlatformRaw = isGame ? safeStr((show as any).__renderPlatform || show.platform) : undefined;
                       // Determine primary platform from the row to keep shelf rendering deterministic.
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
-                      const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
-                      const x = runningX;
-                      runningX += itemSize + gap;
+                      const { itemSize, visualLeft, visualWidth } = getItemVisualLayout(show);
+                      const x = Math.round(runningVisualX - visualLeft);
+                      runningVisualX += visualWidth + gap;
                       const caseWidth = itemSize;
                       const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
