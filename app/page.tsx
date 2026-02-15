@@ -2593,6 +2593,17 @@ export default function Page() {
     try {
       let sentCount = 0;
       const failedKeys: string[] = [];
+      const valuesMatch = (expectedRaw: unknown, actualRaw: unknown) => {
+        const expected = String(expectedRaw ?? "").trim();
+        const actual = String(actualRaw ?? "").trim();
+        if (expected === actual) return true;
+        const expectedNum = Number(expected);
+        const actualNum = Number(actual);
+        if (!Number.isNaN(expectedNum) && !Number.isNaN(actualNum)) {
+          return Math.abs(expectedNum - actualNum) < 1e-9;
+        }
+        return false;
+      };
       // Send settings sequentially (one at a time) so they arrive in order on the sheet
       for (const setting of settings) {
         // Skip any settings containing "#REF!" error
@@ -2615,13 +2626,45 @@ export default function Page() {
       }
       
       console.log(`Sent ${sentCount}/${settings.length} settings to Google Sheet`);
+
+      const verificationFailedKeys: string[] = [];
+      if (settingsCsvUrl && sentCount > 0) {
+        try {
+          // Give the Apps Script write endpoint a moment to commit before read-back verification.
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          const verifyRes = await fetch(settingsCsvUrl, { cache: "no-store" });
+          if (!verifyRes.ok) {
+            throw new Error(`Settings verify fetch failed: ${verifyRes.status}`);
+          }
+          const verifyCsv = await verifyRes.text();
+          const parsedVerify = Papa.parse<Row>(verifyCsv, { header: true, skipEmptyLines: true });
+          const verifyRows = (parsedVerify.data || []).map((r) => r as Row);
+          const settingsMap = new Map<string, string>();
+          for (const row of verifyRows) {
+            const key = safeStr(row["Key"]).toLowerCase();
+            if (!key) continue;
+            settingsMap.set(key, safeStr(row["Value"]));
+          }
+          for (const setting of settings) {
+            if (failedKeys.includes(setting.key)) continue;
+            const actual = settingsMap.get(String(setting.key).toLowerCase());
+            if (!valuesMatch(setting.value, actual)) {
+              verificationFailedKeys.push(setting.key);
+            }
+          }
+        } catch (verifyError) {
+          console.warn("Settings save verification failed:", verifyError);
+          verificationFailedKeys.push("verification");
+        }
+      }
       
       clearTimeout(safetyTimeoutId);
-      if (failedKeys.length > 0) {
+      const combinedFailedKeys = [...failedKeys, ...verificationFailedKeys];
+      if (combinedFailedKeys.length > 0) {
         setSyncState("error");
         setSyncMsg(`Save completed with errors (${sentCount}/${settings.length})`);
         alert(
-          `Save completed with errors.\nSaved ${sentCount}/${settings.length} settings.\nFailed: ${failedKeys.join(", ")}`
+          `Save completed with errors.\nSaved ${sentCount}/${settings.length} settings.\nFailed: ${combinedFailedKeys.join(", ")}`
         );
       } else {
         setSyncState("ok");
