@@ -2073,41 +2073,24 @@ export default function Page() {
       return str;
     };
 
-    // For this UI toggle, prefer local cache so header button state survives refresh
-    // even when sheet values are stale.
-    if (key === "showStatusIndicators") {
-      try {
-        if (settingsCacheRef.current === null) {
-          settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
-        }
-        const settingsCache = settingsCacheRef.current;
-        if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
-          return parseStoredValue(settingsCache[key]);
-        }
-      } catch (e) {
-        console.warn("Failed to read from localStorage:", e);
-      }
-    }
-
-    // First, try to get from settingsRows (from the sheet)
-    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
-    if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
-      return parseStoredValue(setting["Value"]);
-    }
-    
-    // Fallback to localStorage
+    // Prefer local cache first so recently changed values persist across app restarts
+    // even if the published sheet CSV lags behind writes.
     try {
-      // Use in-memory cache if available, otherwise load from localStorage
       if (settingsCacheRef.current === null) {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
       }
-      
       const settingsCache = settingsCacheRef.current;
       if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
         return parseStoredValue(settingsCache[key]);
       }
     } catch (e) {
       console.warn("Failed to read from localStorage:", e);
+    }
+
+    // Fallback to settingsRows (sheet values)
+    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
+    if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
+      return parseStoredValue(setting["Value"]);
     }
     
     return defaultValue;
