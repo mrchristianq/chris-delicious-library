@@ -107,6 +107,7 @@
 "use client";
 
 import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
@@ -7792,7 +7793,7 @@ export default function Page() {
               </div>
             ) : null}
 
-            {settingsPopupOpen ? (
+            {settingsPopupOpen && typeof document !== "undefined" ? createPortal(
               <div
                 ref={settingsWindowRef}
                 onPointerDown={handleSettingsWindowPointerDown}
@@ -8789,7 +8790,8 @@ export default function Page() {
                   </div>
                 ) : null}
 
-              </div>
+              </div>,
+              document.body
             ) : null}
             </div>
 
