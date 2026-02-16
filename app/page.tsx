@@ -1277,7 +1277,6 @@ export default function Page() {
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const caseTiltRafRef = useRef<number | null>(null);
   const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
-  const settingsCogPointerHandledRef = useRef<boolean>(false);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -9467,30 +9466,9 @@ export default function Page() {
                     </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
-                        onPointerDown={(event) => {
+                        onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
-                          settingsCogPointerHandledRef.current = true;
-                          setSortPopupOpen(false);
-                          setShowVersionNotes(false);
-                          setSettingsPopupOpen((prev) => !prev);
-                        }}
-                        onClick={(event) => {
-                          // Keep keyboard activation working while avoiding double-toggle
-                          // after pointer-based presses. Fallback to click toggle if
-                          // pointerdown was missed by the browser/event path.
-                          if (event.detail !== 0) {
-                            if (settingsCogPointerHandledRef.current) {
-                              settingsCogPointerHandledRef.current = false;
-                              event.preventDefault();
-                              event.stopPropagation();
-                              return;
-                            }
-                            setSortPopupOpen(false);
-                            setShowVersionNotes(false);
-                            setSettingsPopupOpen((prev) => !prev);
-                            return;
-                          }
                           setSortPopupOpen(false);
                           setShowVersionNotes(false);
                           setSettingsPopupOpen((prev) => !prev);
