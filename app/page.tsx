@@ -1462,6 +1462,17 @@ export default function Page() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [settingsPopupOpen, sortPopupOpen, faqPopupOpen]);
 
+  const openSettingsPopup = useCallback((event?: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    setSortPopupOpen(false);
+    setShowVersionNotes(false);
+    // Always open (not toggle) to avoid double-event close races after submenu interactions.
+    setSettingsPopupOpen(true);
+  }, []);
+
   useEffect(() => {
     if (!SHOW_HEADER_DEBUG_CONTROLS) return;
     applyDebugHeaderOffset();
@@ -9466,13 +9477,7 @@ export default function Page() {
                     </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setSortPopupOpen(false);
-                          setShowVersionNotes(false);
-                          setSettingsPopupOpen((prev) => !prev);
-                        }}
+                        onClick={openSettingsPopup}
                         title="Open settings"
                         aria-label="Open settings"
                         style={{
