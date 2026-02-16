@@ -554,9 +554,9 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
     return [
       { label: "Date Completed", value: firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate"]) || DASH },
       { label: "First Air Date", value: firstNonEmpty(item, ["firstAirDate"]) || DASH },
-      { label: "Last Air Date", value: firstNonEmpty(item, ["lastAirDate"]) || DASH },
       { label: "TMDB Rating", value: renderRating(firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]) || "") },
       { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]) || "") },
+      { label: "Last Air Date", value: firstNonEmpty(item, ["lastAirDate"]) || DASH },
       { label: "Seasons", value: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]) || DASH },
       { label: "Episodes", value: firstNonEmpty(item, ["numberOfEpisodes", "NumberOfEpisodes"]) || DASH },
       { label: "Show Status", value: firstNonEmpty(item, ["showStatus", "Status"]) || DASH },
