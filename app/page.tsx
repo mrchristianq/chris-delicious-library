@@ -8926,7 +8926,9 @@ export default function Page() {
           {settingsPopupOpen || sortPopupOpen || faqPopupOpen ? (
             <button
               aria-label="Close popup"
-              onClick={() => {
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
                 setFaqPopupOpen(false);
@@ -9460,10 +9462,16 @@ export default function Page() {
                     </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
-                        onClick={() => {
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
                           setSortPopupOpen(false);
                           setShowVersionNotes(false);
                           setSettingsPopupOpen((prev) => !prev);
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
                         }}
                         title="Open settings"
                         aria-label="Open settings"
