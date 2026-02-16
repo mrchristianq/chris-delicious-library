@@ -72,6 +72,7 @@ const BOOK_EDIT_FIELDS: BookEditField[] = [
 ];
 
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
+const BOOK_OWNERSHIP_OPTIONS = ["Owned", "Ripped", "Wishlist", "Borrowed"];
 const SHOW_WATCH_STATUS_OPTIONS = [
   "Watching",
   "Completed",
@@ -1239,6 +1240,22 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                         </datalist>
                         <span className="editHelp">Use commas to separate tags</span>
                       </>
+                    ) : field.key === "ownership" ? (
+                      <select
+                        value={bookEditValues[field.key] || ""}
+                        onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
+                        className="editSelect"
+                      >
+                        <option value="">Select ownership</option>
+                        {BOOK_OWNERSHIP_OPTIONS.map((ownership) => (
+                          <option key={ownership} value={ownership}>
+                            {ownership}
+                          </option>
+                        ))}
+                        {bookEditValues[field.key] && !BOOK_OWNERSHIP_OPTIONS.includes(bookEditValues[field.key]) ? (
+                          <option value={bookEditValues[field.key]}>{bookEditValues[field.key]}</option>
+                        ) : null}
+                      </select>
                     ) : (
                       <input
                         type="text"
