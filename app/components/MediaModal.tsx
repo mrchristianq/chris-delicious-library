@@ -9,6 +9,7 @@ interface MediaModalProps {
   onSaveShowEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
   onSaveMovieEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
   onSaveGameEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
+  onDeleteItem?: (item: Record<string, any>) => Promise<void> | void;
   gamePlatformOptions?: string[];
   gameStatusOptions?: string[];
   gameOwnershipOptions?: string[];
@@ -82,6 +83,9 @@ const SHOW_WATCH_STATUS_OPTIONS = [
 ];
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"];
 const SHOW_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
+const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Abandoned"];
+const MOVIE_STATUS_OPTIONS = ["Released", "Upcoming", "In Production", "Canceled"];
+const MOVIE_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
 const GAME_STATUS_FALLBACK_OPTIONS = ["Backlog", "Playing", "Completed", "Paused", "Dropped", "Wishlist"];
 const GAME_PLATFORM_FALLBACK_OPTIONS = ["PC", "PlayStation 5", "Xbox Series X|S", "Nintendo Switch", "Steam Deck", "Mobile"];
 const GAME_OWNERSHIP_FALLBACK_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
@@ -109,12 +113,12 @@ const SHOW_EDIT_FIELDS: ShowEditField[] = [
 ];
 const MOVIE_EDIT_FIELDS: MovieEditField[] = [
   { key: "year", label: "Year" },
-  { key: "poster", label: "Poster" },
   { key: "myRating", label: "My Rating" },
   { key: "tmdbRating", label: "TMDB Rating" },
   { key: "tmdbId", label: "TMDB ID" },
-  { key: "watched", label: "Watched" },
+  { key: "watchStatus", label: "Watch Status" },
   { key: "watchDate", label: "Watch Date" },
+  { key: "ownership", label: "Ownership" },
   { key: "tags", label: "Tags" },
   { key: "releaseDate", label: "Release Date" },
   { key: "runtime", label: "Runtime" },
@@ -305,12 +309,12 @@ function buildMovieEditValues(item: Record<string, any>): Record<string, string>
   return {
     title: firstNonEmpty(item, ["title", "Title"]),
     year: firstNonEmpty(item, ["year", "Year"]),
-    poster: firstNonEmpty(item, ["poster", "Poster"]),
     myRating: firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]),
     tmdbRating: firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]),
     tmdbId: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]),
-    watched: firstNonEmpty(item, ["watched", "Watched", "watchStatus", "WatchStatus"]),
+    watchStatus: firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]),
     watchDate: firstNonEmpty(item, ["watchDate", "WatchDate"]),
+    ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
     tags: firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     releaseDate: firstNonEmpty(item, ["releaseDate", "ReleaseDate"]),
     runtime: firstNonEmpty(item, ["runtime", "Runtime"]),
@@ -470,6 +474,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   onSaveShowEdits,
   onSaveMovieEdits,
   onSaveGameEdits,
+  onDeleteItem,
   gamePlatformOptions = [],
   gameStatusOptions = [],
   gameOwnershipOptions = [],
@@ -500,6 +505,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [gameSaveError, setGameSaveError] = React.useState<string | null>(null);
   const [gameSaveSuccess, setGameSaveSuccess] = React.useState<string | null>(null);
   const [gameEditValues, setGameEditValues] = React.useState<Record<string, string>>({});
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
   const coverDragDepthRef = React.useRef(0);
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -613,6 +620,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setGameSaveError(null);
     setGameSaveSuccess(null);
     setGameEditValues(buildGameEditValues(item));
+    setIsDeleting(false);
+    setDeleteError(null);
   }, [open, item]);
 
   const autoSizeDescriptionTextarea = React.useCallback((el?: HTMLTextAreaElement | null) => {
@@ -642,16 +651,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     itemType === "tv"
       ? firstNonEmpty(sourceItem, ["watchStatus", "WatchStatus", "watched", "Watched"]) || DASH
       : itemType === "movie"
-        ? (() => {
-            const watchedRaw = firstNonEmpty(sourceItem, ["watched", "Watched", "watchStatus", "WatchStatus"]);
-            const watchedNormalized = watchedRaw.toLowerCase();
-            const isWatched =
-              watchedNormalized === "true" ||
-              watchedNormalized === "yes" ||
-              watchedNormalized === "1" ||
-              watchedNormalized === "watched";
-            return isWatched ? "Watched" : "Backlog";
-          })()
+        ? firstNonEmpty(sourceItem, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]) || DASH
       : firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
         firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
         DASH;
@@ -794,6 +794,20 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       setIsSavingGame(false);
     }
   };
+  const handleDeleteItem = async () => {
+    if (!item || !onDeleteItem || isDeleting) return;
+    const confirmed = window.confirm(`Delete "${title}" from library? This will remove it from the app and spreadsheet.`);
+    if (!confirmed) return;
+    setDeleteError(null);
+    setIsDeleting(true);
+    try {
+      await onDeleteItem(item);
+    } catch (e: any) {
+      setDeleteError(e?.message || "Failed to delete item");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const activeSaveError =
     itemType === "book"
@@ -827,12 +841,12 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   setIsEditingBook((prev) => !prev);
                   if (isEditingBook) setBookEditValues(buildBookEditValues(sourceItem));
                 }}
-                disabled={isSavingBook}
+                disabled={isSavingBook || isDeleting}
               >
                 {isEditingBook ? "Cancel" : "Edit"}
               </button>
               {isEditingBook ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveBook} disabled={isSavingBook}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveBook} disabled={isSavingBook || isDeleting}>
                   {isSavingBook ? "Saving..." : "Save"}
                 </button>
               ) : null}
@@ -849,12 +863,12 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   setIsEditingShow((prev) => !prev);
                   if (isEditingShow) setShowEditValues(buildShowEditValues(sourceItem));
                 }}
-                disabled={isSavingShow}
+                disabled={isSavingShow || isDeleting}
               >
                 {isEditingShow ? "Cancel" : "Edit"}
               </button>
               {isEditingShow ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveShow} disabled={isSavingShow}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveShow} disabled={isSavingShow || isDeleting}>
                   {isSavingShow ? "Saving..." : "Save"}
                 </button>
               ) : null}
@@ -871,12 +885,12 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   setIsEditingMovie((prev) => !prev);
                   if (isEditingMovie) setMovieEditValues(buildMovieEditValues(sourceItem));
                 }}
-                disabled={isSavingMovie}
+                disabled={isSavingMovie || isDeleting}
               >
                 {isEditingMovie ? "Cancel" : "Edit"}
               </button>
               {isEditingMovie ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveMovie} disabled={isSavingMovie}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveMovie} disabled={isSavingMovie || isDeleting}>
                   {isSavingMovie ? "Saving..." : "Save"}
                 </button>
               ) : null}
@@ -893,16 +907,21 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   setIsEditingGame((prev) => !prev);
                   if (isEditingGame) setGameEditValues(buildGameEditValues(sourceItem));
                 }}
-                disabled={isSavingGame}
+                disabled={isSavingGame || isDeleting}
               >
                 {isEditingGame ? "Cancel" : "Edit"}
               </button>
               {isEditingGame ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveGame} disabled={isSavingGame}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveGame} disabled={isSavingGame || isDeleting}>
                   {isSavingGame ? "Saving..." : "Save"}
                 </button>
               ) : null}
             </>
+          ) : null}
+          {onDeleteItem ? (
+            <button type="button" className="deleteButton topActionButton" onClick={handleDeleteItem} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </button>
           ) : null}
           <button type="button" className="closeButton" aria-label="Close details" onClick={onClose}>
             ×
@@ -910,6 +929,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         </div>
         {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
         {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
+        {deleteError ? <div className="bookSaveError">{deleteError}</div> : null}
 
         <div className="contentLayout">
           <aside className="leftPane">
@@ -1325,6 +1345,54 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                           className={`editTextarea${field.key === "overview" ? " editDescriptionTextarea" : ""}`}
                           rows={field.key === "overview" ? 8 : 4}
                         />
+                      ) : field.key === "watchStatus" ? (
+                        <select
+                          value={movieEditValues[field.key] || ""}
+                          onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
+                          className="editSelect"
+                        >
+                          <option value="">Select watch status</option>
+                          {MOVIE_WATCH_STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                          {movieEditValues[field.key] && !MOVIE_WATCH_STATUS_OPTIONS.includes(movieEditValues[field.key]) ? (
+                            <option value={movieEditValues[field.key]}>{movieEditValues[field.key]}</option>
+                          ) : null}
+                        </select>
+                      ) : field.key === "status" ? (
+                        <select
+                          value={movieEditValues[field.key] || ""}
+                          onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
+                          className="editSelect"
+                        >
+                          <option value="">Select release status</option>
+                          {MOVIE_STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                          {movieEditValues[field.key] && !MOVIE_STATUS_OPTIONS.includes(movieEditValues[field.key]) ? (
+                            <option value={movieEditValues[field.key]}>{movieEditValues[field.key]}</option>
+                          ) : null}
+                        </select>
+                      ) : field.key === "ownership" ? (
+                        <select
+                          value={movieEditValues[field.key] || ""}
+                          onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
+                          className="editSelect"
+                        >
+                          <option value="">Select ownership</option>
+                          {MOVIE_OWNERSHIP_OPTIONS.map((ownership) => (
+                            <option key={ownership} value={ownership}>
+                              {ownership}
+                            </option>
+                          ))}
+                          {movieEditValues[field.key] && !MOVIE_OWNERSHIP_OPTIONS.includes(movieEditValues[field.key]) ? (
+                            <option value={movieEditValues[field.key]}>{movieEditValues[field.key]}</option>
+                          ) : null}
+                        </select>
                       ) : (
                         <input
                           type="text"
@@ -1808,7 +1876,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .editButton,
-        .saveButton {
+        .saveButton,
+        .deleteButton {
           border: 1px solid rgba(95, 122, 177, 0.6);
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
@@ -1826,8 +1895,15 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           font-size: 10px;
         }
 
+        .deleteButton {
+          border-color: rgba(205, 93, 93, 0.72);
+          background: rgba(68, 20, 20, 0.92);
+          color: #ffdede;
+        }
+
         .editButton:disabled,
-        .saveButton:disabled {
+        .saveButton:disabled,
+        .deleteButton:disabled {
           opacity: 0.7;
           cursor: default;
         }

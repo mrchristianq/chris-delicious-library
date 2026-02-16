@@ -110,6 +110,7 @@ import { type MouseEvent as ReactMouseEvent, useCallback, useDeferredValue, useE
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
+import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -252,8 +253,19 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "4.6.0";
+const APP_VERSION = "5.0.0";
 const VERSION_HISTORY = [
+  {
+    version: "5.0.0",
+    date: "2026-02-15",
+    notes: [
+      "Added a full in-app Add Item flow with a new + icon in the top header.",
+      "New add modal supports Book, TV Show, Movie, and Game.",
+      "Search integration now pulls candidates from Google Books, TMDB, and IGDB.",
+      "Selected search results can be edited before saving to library and spreadsheet.",
+      "Added manual-entry fallback for cases with no API match.",
+    ],
+  },
   {
     version: "4.6.0",
     date: "2026-02-15",
@@ -741,12 +753,12 @@ function rowToMovie(r: Row): Movie | null {
     myRating: safeStr(r["MyRating"]) || safeStr(r["My Rating"]) || undefined,
     tmdbRating: safeStr(r["TMDB_Rating"]) || undefined,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
-    watched: safeStr(r["Watched"]) || undefined,
+    watched: safeStr(r["Watch Status"]) || safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     watchDate: safeStr(r["WatchDate"]) || undefined,
     tags: safeStr(r["Tags"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
     runtime: safeStr(r["Runtime"]) || undefined,
-    watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
+    watchStatus: safeStr(r["Watch Status"]) || safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     status: safeStr(r["Status"]) || undefined,
     movieStatus: safeStr(r["Status"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
@@ -921,6 +933,7 @@ export default function Page() {
   const [nav, setNav] = useState<NavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
+  const [faqPopupOpen, setFaqPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
   const [smartListsOpen, setSmartListsOpen] = useState<boolean>(false);
@@ -1250,6 +1263,9 @@ export default function Page() {
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addingItem, setAddingItem] = useState(false);
+  const [addSaveError, setAddSaveError] = useState<string | null>(null);
   const [uploadingOverlayForKey, setUploadingOverlayForKey] = useState<string | null>(null);
   const [overlayUploadError, setOverlayUploadError] = useState<string | null>(null);
   const overlayFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1431,16 +1447,17 @@ export default function Page() {
   }, [measureStageTop, nav, viewportH, refreshNonce]);
 
   useEffect(() => {
-    if (!settingsPopupOpen && !sortPopupOpen) return;
+    if (!settingsPopupOpen && !sortPopupOpen && !faqPopupOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSettingsPopupOpen(false);
         setSortPopupOpen(false);
+        setFaqPopupOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [settingsPopupOpen, sortPopupOpen]);
+  }, [settingsPopupOpen, sortPopupOpen, faqPopupOpen]);
 
   useEffect(() => {
     if (!SHOW_HEADER_DEBUG_CONTROLS) return;
@@ -1818,11 +1835,10 @@ export default function Page() {
       updates: {
         Title: safeStr(updates.title),
         Year: safeStr(updates.year),
-        Poster: safeStr(updates.poster),
         MyRating: safeStr(updates.myRating),
         TMDB_Rating: safeStr(updates.tmdbRating),
         TMDB_ID: safeStr(updates.tmdbId),
-        Watched: safeStr(updates.watched),
+        "Watch Status": safeStr(updates.watchStatus),
         WatchDate: safeStr(updates.watchDate),
         Tags: safeStr(updates.tags),
         ReleaseDate: safeStr(updates.releaseDate),
@@ -1832,6 +1848,7 @@ export default function Page() {
         Overview: safeStr(updates.overview),
         PosterURL: safeStr(updates.posterUrl),
         BackdropURL: safeStr(updates.backdropUrl),
+        Ownership: safeStr(updates.ownership),
       },
     };
 
@@ -1847,11 +1864,11 @@ export default function Page() {
         ...prev,
         title: safeStr(updates.title) || prev.title,
         year: safeStr(updates.year),
-        poster: safeStr(updates.poster),
         myRating: safeStr(updates.myRating),
         tmdbRating: safeStr(updates.tmdbRating),
         tmdbId: safeStr(updates.tmdbId),
-        watched: safeStr(updates.watched),
+        watched: safeStr(updates.watchStatus),
+        watchStatus: safeStr(updates.watchStatus),
         watchDate: safeStr(updates.watchDate),
         tags: safeStr(updates.tags),
         tag: safeStr(updates.tags),
@@ -1859,6 +1876,7 @@ export default function Page() {
         runtime: safeStr(updates.runtime),
         status: safeStr(updates.status),
         movieStatus: safeStr(updates.status),
+        ownership: safeStr(updates.ownership),
         genres: safeStr(updates.genres),
         overview: safeStr(updates.overview),
         posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
@@ -1970,6 +1988,444 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
   };
+
+  const handleDeleteLibraryItem = async (item: any) => {
+    const mediaType = getMediaType(item);
+    const title = safeStr(item?.title);
+
+    const rowValue = (row: Row, keys: string[]): string => {
+      for (const key of keys) {
+        const value = safeStr(row[key]);
+        if (value) return value;
+      }
+      return "";
+    };
+
+    if (mediaType === "book") {
+      if (!booksWriteUrl) {
+        throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
+      }
+      const matchGoogleBooksVolumeId = safeStr(item?.googleBooksVolumeId);
+      const matchOpenLibraryWorkKey = safeStr(item?.openLibraryWorkKey);
+      const matchIsbn = safeStr(item?.isbn);
+      if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !title) {
+        throw new Error("Unable to identify this book row to delete.");
+      }
+
+      await postSheetWrite(
+        booksWriteUrl,
+        {
+          action: "deleteBook",
+          match: {
+            googleBooksVolumeId: matchGoogleBooksVolumeId,
+            openLibraryWorkKey: matchOpenLibraryWorkKey,
+            isbn: matchIsbn,
+            title,
+          },
+        },
+        "Failed to delete book"
+      );
+
+      setBookRows((prev) =>
+        prev.filter((row) => {
+          const rowGoogleBooksVolumeId = rowValue(row, ["GoogleBooksVolumeId", "googleBooksVolumeId"]);
+          const rowOpenLibraryWorkKey = rowValue(row, ["OpenLibraryWorkKey", "openLibraryWorkKey"]);
+          const rowIsbn = rowValue(row, ["isbn", "ISBN"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchGoogleBooksVolumeId && rowGoogleBooksVolumeId === matchGoogleBooksVolumeId) return false;
+          if (matchOpenLibraryWorkKey && rowOpenLibraryWorkKey === matchOpenLibraryWorkKey) return false;
+          if (matchIsbn && rowIsbn === matchIsbn) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    } else if (mediaType === "tv") {
+      if (!showsWriteUrl) {
+        throw new Error(
+          "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
+        );
+      }
+      const matchTmdbId = safeStr(item?.tmdbId);
+      if (!matchTmdbId && !title) {
+        throw new Error("Unable to identify this show row to delete.");
+      }
+
+      await postSheetWrite(
+        showsWriteUrl,
+        {
+          action: "deleteShow",
+          match: {
+            tmdbId: matchTmdbId,
+            title,
+          },
+        },
+        "Failed to delete show"
+      );
+
+      setTvRows((prev) =>
+        prev.filter((row) => {
+          const rowTmdbId = rowValue(row, ["TMDB_ID", "tmdbId"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchTmdbId && rowTmdbId === matchTmdbId) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    } else if (mediaType === "movie") {
+      if (!moviesWriteUrl) {
+        throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
+      }
+      const matchTmdbId = safeStr(item?.tmdbId);
+      if (!matchTmdbId && !title) {
+        throw new Error("Unable to identify this movie row to delete.");
+      }
+
+      await postSheetWrite(
+        moviesWriteUrl,
+        {
+          action: "deleteMovie",
+          match: {
+            tmdbId: matchTmdbId,
+            title,
+          },
+        },
+        "Failed to delete movie"
+      );
+
+      setMovieRows((prev) =>
+        prev.filter((row) => {
+          const rowTmdbId = rowValue(row, ["TMDB_ID", "tmdbId"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchTmdbId && rowTmdbId === matchTmdbId) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    } else {
+      if (!gamesWriteUrl) {
+        throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
+      }
+      const matchIgdbId = safeStr(item?.igdbId);
+      if (!matchIgdbId && !title) {
+        throw new Error("Unable to identify this game row to delete.");
+      }
+
+      await postSheetWrite(
+        gamesWriteUrl,
+        {
+          action: "deleteGame",
+          match: {
+            igdbId: matchIgdbId,
+            title,
+          },
+        },
+        "Failed to delete game"
+      );
+
+      setGameRows((prev) =>
+        prev.filter((row) => {
+          const rowIgdbId = rowValue(row, ["IGDB_ID", "igdbId"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchIgdbId && rowIgdbId === matchIgdbId) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    }
+
+    if (typeof window !== "undefined") {
+      window.alert(`Deleted "${title || "item"}" successfully.`);
+    }
+    setModalOpen(false);
+    setModalItem(null);
+    setCoverUploadError(null);
+    setRefreshNonce((n) => n + 1);
+  };
+
+  const handleAddLibraryItem = useCallback(
+    async (payload: AddItemPayload) => {
+      const { type, values } = payload;
+      const title = safeStr(values.title);
+      if (!title) {
+        throw new Error("Title is required.");
+      }
+
+      setAddingItem(true);
+      setAddSaveError(null);
+
+      try {
+        if (type === "book") {
+          if (!booksWriteUrl) {
+            throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
+          }
+          await postSheetWrite(
+            booksWriteUrl,
+            {
+              action: "addBook",
+              values: {
+                Title: title,
+                Subtitle: safeStr(values.subtitle),
+                Series: safeStr(values.series),
+                Author: safeStr(values.author),
+                Ownership: safeStr(values.ownership),
+                Type: safeStr(values.type),
+                Status: safeStr(values.status),
+                CompletedDate: safeStr(values.completedDate),
+                isbn: safeStr(values.isbn),
+                ReleaseDate: safeStr(values.releaseDate),
+                description: safeStr(values.description),
+                ImageURL: safeStr(values.imageUrl),
+                userRating: safeStr(values.userRating),
+                "My Rating": safeStr(values.myRating),
+                pages: safeStr(values.pages),
+                audiobookDuration: safeStr(values.audiobookDuration),
+                genre: safeStr(values.genre),
+                tags: safeStr(values.tags),
+                OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
+                GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
+              },
+            },
+            "Failed to add book"
+          );
+          setBookRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Subtitle: safeStr(values.subtitle),
+              Series: safeStr(values.series),
+              Author: safeStr(values.author),
+              Ownership: safeStr(values.ownership),
+              Type: safeStr(values.type),
+              Status: safeStr(values.status),
+              CompletedDate: safeStr(values.completedDate),
+              isbn: safeStr(values.isbn),
+              ReleaseDate: safeStr(values.releaseDate),
+              description: safeStr(values.description),
+              ImageURL: safeStr(values.imageUrl),
+              userRating: safeStr(values.userRating),
+              "My Rating": safeStr(values.myRating),
+              pages: safeStr(values.pages),
+              audiobookDuration: safeStr(values.audiobookDuration),
+              genre: safeStr(values.genre),
+              tags: safeStr(values.tags),
+              OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
+              GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
+            },
+          ]);
+          setNav("books");
+        } else if (type === "tv") {
+          if (!showsWriteUrl) {
+            throw new Error(
+              "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
+            );
+          }
+          const normalizedWatchStatus = normalizeShowWatchStatusForSheet(values.watchStatus);
+          await postSheetWrite(
+            showsWriteUrl,
+            {
+              action: "addShow",
+              values: {
+                Title: title,
+                Year: safeStr(values.year),
+                TMDB_ID: safeStr(values.tmdbId),
+                FirstAirDate: safeStr(values.firstAirDate),
+                LastAirDate: safeStr(values.lastAirDate),
+                "Date Completed": safeStr(values.dateCompleted),
+                CompletedDate: safeStr(values.dateCompleted),
+                NumberOfSeasons: safeStr(values.numberOfSeasons),
+                NumberOfEpisodes: safeStr(values.numberOfEpisodes),
+                WatchStatus: normalizedWatchStatus,
+                Status: safeStr(values.showStatus),
+                Networks: safeStr(values.networks),
+                StreamingUS: safeStr(values.streamingUS),
+                Genres: safeStr(values.genres),
+                TMDB_Rating: safeStr(values.tmdbRating),
+                MyRating: safeStr(values.myRating),
+                BackdropURL: safeStr(values.backdropUrl),
+                Overview: safeStr(values.overview),
+                Ownership: safeStr(values.ownership),
+                Tags: safeStr(values.tags),
+                Tag: safeStr(values.tags),
+                PosterURL: safeStr(values.posterUrl),
+              },
+            },
+            "Failed to add show"
+          );
+          setTvRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Year: safeStr(values.year),
+              TMDB_ID: safeStr(values.tmdbId),
+              FirstAirDate: safeStr(values.firstAirDate),
+              LastAirDate: safeStr(values.lastAirDate),
+              "Date Completed": safeStr(values.dateCompleted),
+              CompletedDate: safeStr(values.dateCompleted),
+              NumberOfSeasons: safeStr(values.numberOfSeasons),
+              NumberOfEpisodes: safeStr(values.numberOfEpisodes),
+              WatchStatus: normalizedWatchStatus,
+              Status: safeStr(values.showStatus),
+              Networks: safeStr(values.networks),
+              StreamingUS: safeStr(values.streamingUS),
+              Genres: safeStr(values.genres),
+              TMDB_Rating: safeStr(values.tmdbRating),
+              MyRating: safeStr(values.myRating),
+              BackdropURL: safeStr(values.backdropUrl),
+              Overview: safeStr(values.overview),
+              Ownership: safeStr(values.ownership),
+              Tags: safeStr(values.tags),
+              Tag: safeStr(values.tags),
+              PosterURL: safeStr(values.posterUrl),
+            },
+          ]);
+          setNav("tv");
+        } else if (type === "movie") {
+          if (!moviesWriteUrl) {
+            throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
+          }
+          await postSheetWrite(
+            moviesWriteUrl,
+            {
+              action: "addMovie",
+              values: {
+                Title: title,
+                Year: safeStr(values.year),
+                MyRating: safeStr(values.myRating),
+                TMDB_Rating: safeStr(values.tmdbRating),
+                TMDB_ID: safeStr(values.tmdbId),
+                "Watch Status": safeStr(values.watchStatus),
+                WatchDate: safeStr(values.watchDate),
+                Tags: safeStr(values.tags),
+                ReleaseDate: safeStr(values.releaseDate),
+                Runtime: safeStr(values.runtime),
+                Status: safeStr(values.status),
+                Genres: safeStr(values.genres),
+                Overview: safeStr(values.overview),
+                PosterURL: safeStr(values.posterUrl),
+                BackdropURL: safeStr(values.backdropUrl),
+              },
+            },
+            "Failed to add movie"
+          );
+          setMovieRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Year: safeStr(values.year),
+              MyRating: safeStr(values.myRating),
+              TMDB_Rating: safeStr(values.tmdbRating),
+              TMDB_ID: safeStr(values.tmdbId),
+              "Watch Status": safeStr(values.watchStatus),
+              WatchDate: safeStr(values.watchDate),
+              Tags: safeStr(values.tags),
+              ReleaseDate: safeStr(values.releaseDate),
+              Runtime: safeStr(values.runtime),
+              Status: safeStr(values.status),
+              Genres: safeStr(values.genres),
+              Overview: safeStr(values.overview),
+              PosterURL: safeStr(values.posterUrl),
+              BackdropURL: safeStr(values.backdropUrl),
+            },
+          ]);
+          setNav("movies");
+        } else {
+          if (!gamesWriteUrl) {
+            throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
+          }
+          const dateAdded = safeStr(values.dateAdded) || new Date().toISOString().slice(0, 10);
+          const releaseDatePrimary = safeStr(values.releaseDate) || safeStr(values.releaseDateAlt);
+          const releaseDateAlt = safeStr(values.releaseDateAlt) || releaseDatePrimary;
+          await postSheetWrite(
+            gamesWriteUrl,
+            {
+              action: "addGame",
+              values: {
+                Title: title,
+                Cover: safeStr(values.cover),
+                Platform: safeStr(values.platform),
+                Status: safeStr(values.status),
+                Name: safeStr(values.name) || title,
+                ReleaseDate: releaseDatePrimary,
+                "Release Date": releaseDateAlt,
+                Platforms: safeStr(values.platforms),
+                CoverURL: safeStr(values.coverUrl),
+                Rating: safeStr(values.rating),
+                "IGDB Rating": safeStr(values.igdbRating),
+                "My Rating": safeStr(values.myRating),
+                Ownership: safeStr(values.ownership),
+                Format: safeStr(values.format),
+                Backlog: safeStr(values.backlog),
+                Completed: safeStr(values.completed),
+                "Date Completed": safeStr(values.dateCompleted),
+                "Year Played": safeStr(values.yearPlayed),
+                "Date Added": dateAdded,
+                Description: safeStr(values.description),
+                Genres: safeStr(values.genres),
+                "Hours Played": safeStr(values.hoursPlayed),
+                CoverCachedAt: safeStr(values.coverCachedAt),
+                Developer: safeStr(values.developer),
+                ScreensotsURL: safeStr(values.screensotsUrl),
+                WishlistOrder: safeStr(values.wishlistOrder),
+                QueuedOrder: safeStr(values.queuedOrder),
+                IGDB_ID: safeStr(values.igdbId),
+                IGDB_ID_Override: safeStr(values.igdbIdOverride),
+                LocalCoverURL: safeStr(values.localCoverUrl),
+                Tag: safeStr(values.tags),
+              },
+            },
+            "Failed to add game"
+          );
+          setGameRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Cover: safeStr(values.cover),
+              Platform: safeStr(values.platform),
+              Status: safeStr(values.status),
+              Name: safeStr(values.name) || title,
+              ReleaseDate: releaseDatePrimary,
+              "Release Date": releaseDateAlt,
+              Platforms: safeStr(values.platforms),
+              CoverURL: safeStr(values.coverUrl),
+              Rating: safeStr(values.rating),
+              "IGDB Rating": safeStr(values.igdbRating),
+              "My Rating": safeStr(values.myRating),
+              Ownership: safeStr(values.ownership),
+              Format: safeStr(values.format),
+              Backlog: safeStr(values.backlog),
+              Completed: safeStr(values.completed),
+              "Date Completed": safeStr(values.dateCompleted),
+              "Year Played": safeStr(values.yearPlayed),
+              "Date Added": dateAdded,
+              Description: safeStr(values.description),
+              Genres: safeStr(values.genres),
+              "Hours Played": safeStr(values.hoursPlayed),
+              CoverCachedAt: safeStr(values.coverCachedAt),
+              Developer: safeStr(values.developer),
+              ScreensotsURL: safeStr(values.screensotsUrl),
+              WishlistOrder: safeStr(values.wishlistOrder),
+              QueuedOrder: safeStr(values.queuedOrder),
+              IGDB_ID: safeStr(values.igdbId),
+              IGDB_ID_Override: safeStr(values.igdbIdOverride),
+              LocalCoverURL: safeStr(values.localCoverUrl),
+              Tag: safeStr(values.tags),
+            },
+          ]);
+          setNav("games");
+        }
+
+        setAddModalOpen(false);
+        setAddSaveError(null);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Failed to add item";
+        setAddSaveError(message);
+        throw error;
+      } finally {
+        setAddingItem(false);
+      }
+    },
+    [booksWriteUrl, gamesWriteUrl, moviesWriteUrl, postSheetWrite, showsWriteUrl]
+  );
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
@@ -4081,10 +4537,9 @@ export default function Page() {
   const hasOwnedOwnership = useCallback((value?: string) => normalizeOwnership(value) === "owned", []);
 
   const isMovieWatched = useCallback((movie: Movie) => {
-    const status = normalizeStatus(movie.movieStatus || movie.status);
     const watched = normalizeStatus(movie.watchStatus || movie.watched);
     const watchedValues = new Set(["watched", "completed", "true", "yes", "1"]);
-    return watchedValues.has(watched) || watchedValues.has(status);
+    return watchedValues.has(watched);
   }, [normalizeStatus]);
 
   const getStatusIndicator = useCallback((item: any): StatusIndicator | null => {
@@ -4118,9 +4573,12 @@ export default function Page() {
     }
 
     if (mediaType === "movie") {
-      const status = normalizeStatus(item?.movieStatus || item?.status || item?.watchStatus || item?.watched);
+      const status = normalizeStatus(item?.watchStatus || item?.watched);
       if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
       if (isMovieWatched(item as Movie)) return { color: STATUS_COLOR_GREEN, label: "Watched" };
+      if (status === "watching" || status === "currently watching" || status === "in progress" || status === "paused") {
+        return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+      }
       return { color: STATUS_COLOR_RED, label: "Not Watched" };
     }
 
@@ -4318,27 +4776,28 @@ export default function Page() {
     return counts;
   }, [allShows, tvTags]);
 
-  // Movie watch status counts (Watched vs Unwatched)
+  // Movie watch status counts
   const movieWatchCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      "Watched": 0,
-      "Unwatched": 0
+      Watched: 0,
+      Watching: 0,
+      Backlog: 0,
+      Abandoned: 0,
     };
     for (const movie of allMovies) {
-      // Check if watchStatus is truthy (checkbox marked) or has a value like "TRUE", "true", "Yes", etc.
-      const watched = movie.watchStatus && 
-        (movie.watchStatus.toLowerCase() === "true" || 
-         movie.watchStatus.toLowerCase() === "yes" || 
-         movie.watchStatus === "1" ||
-         movie.watchStatus.toLowerCase() === "watched");
-      if (watched) {
-        counts["Watched"] += 1;
+      const watchStatus = normalizeStatus(movie.watchStatus || movie.watched);
+      if (watchStatus === "abandoned" || watchStatus === "dropped" || watchStatus === "drop" || watchStatus === "quit" || watchStatus === "dnf") {
+        counts.Abandoned += 1;
+      } else if (watchStatus === "watching" || watchStatus === "currently watching" || watchStatus === "in progress" || watchStatus === "paused") {
+        counts.Watching += 1;
+      } else if (isMovieWatched(movie)) {
+        counts.Watched += 1;
       } else {
-        counts["Unwatched"] += 1;
+        counts.Backlog += 1;
       }
     }
     return counts;
-  }, [allMovies]);
+  }, [allMovies, isMovieWatched, normalizeStatus]);
 
   // Extract unique movie genres from comma-separated genres
   const movieGenres = useMemo(() => {
@@ -4642,8 +5101,7 @@ export default function Page() {
       const qs = indexedShows.filter((s) => isAbandonedToken(s.item.watchStatus) || isAbandonedToken(s.item.showStatus));
       const qm = indexedMovies.filter((m) =>
         isAbandonedToken(m.item.watchStatus) ||
-        isAbandonedToken(m.item.status) ||
-        isAbandonedToken(m.item.movieStatus)
+        isAbandonedToken(m.item.watched)
       );
       const qg = indexedGames.filter((g) =>
         isAbandonedToken(g.item.status) ||
@@ -4669,10 +5127,41 @@ export default function Page() {
       
       // Apply watch status filter if set
       if (movieWatchFilter) {
-        filtered = filtered.filter((m) => (movieWatchFilter === "Watched" ? isMovieWatched(m.item) : !isMovieWatched(m.item)));
+        filtered = filtered.filter((m) => {
+          const watchStatus = normalizeStatus(m.item.watchStatus || m.item.watched);
+          const isAbandoned =
+            watchStatus === "abandoned" ||
+            watchStatus === "dropped" ||
+            watchStatus === "drop" ||
+            watchStatus === "quit" ||
+            watchStatus === "dnf";
+          const isWatching =
+            watchStatus === "watching" ||
+            watchStatus === "currently watching" ||
+            watchStatus === "in progress" ||
+            watchStatus === "paused";
+          if (movieWatchFilter === "Watched") return isMovieWatched(m.item);
+          if (movieWatchFilter === "Watching") return isWatching;
+          if (movieWatchFilter === "Abandoned") return isAbandoned;
+          return !isMovieWatched(m.item) && !isWatching && !isAbandoned;
+        });
       } else {
-        // Default Movies view: watched-only. Unwatched items live in Watchlist unless specifically filtered.
-        filtered = filtered.filter((m) => isMovieWatched(m.item));
+        // Default Movies view: include watched, watching, and abandoned.
+        filtered = filtered.filter((m) => {
+          const watchStatus = normalizeStatus(m.item.watchStatus || m.item.watched);
+          const isAbandoned =
+            watchStatus === "abandoned" ||
+            watchStatus === "dropped" ||
+            watchStatus === "drop" ||
+            watchStatus === "quit" ||
+            watchStatus === "dnf";
+          const isWatching =
+            watchStatus === "watching" ||
+            watchStatus === "currently watching" ||
+            watchStatus === "in progress" ||
+            watchStatus === "paused";
+          return isMovieWatched(m.item) || isWatching || isAbandoned;
+        });
       }
       
       // Apply genre filter if set
@@ -5707,7 +6196,7 @@ export default function Page() {
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {["Watched", "Unwatched"].map((status) => {
+                        {["Watched", "Watching", "Backlog", "Abandoned"].map((status) => {
                           const active = movieWatchFilter === status;
                           return (
                             <button
@@ -8095,6 +8584,31 @@ export default function Page() {
                   </div>
                 ) : null}
 
+                {/* Chris' Delicious Library FAQ */}
+                <button
+                  onClick={() => setFaqPopupOpen(true)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "1px solid rgba(38, 62, 91, 0.28)",
+                    background: "linear-gradient(180deg, rgba(84, 118, 160, 0.92) 0%, rgba(58, 89, 126, 0.92) 100%)",
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#fff",
+                    marginTop: 8,
+                    borderRadius: 8,
+                    boxShadow: "0 2px 7px rgba(0, 0, 0, 0.22)",
+                  }}
+                >
+                  <span>CHRIS&apos; DELICIOUS LIBRARY FAQ</span>
+                  <span>Open</span>
+                </button>
+
                 {/* Save All Settings Button */}
                 <button
                   onClick={saveAllSettings}
@@ -8425,12 +8939,13 @@ export default function Page() {
             </div>
           ) : null}
 
-          {settingsPopupOpen || sortPopupOpen ? (
+          {settingsPopupOpen || sortPopupOpen || faqPopupOpen ? (
             <button
               aria-label="Close popup"
               onClick={() => {
                 setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
+                setFaqPopupOpen(false);
                 setShowVersionNotes(false);
               }}
               style={{
@@ -8574,6 +9089,169 @@ export default function Page() {
                   <option value="Desc">Desc</option>
                 </select>
               </label>
+            </div>
+          ) : null}
+
+          {faqPopupOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: "calc(env(safe-area-inset-top, 0px) + 14px) 14px 14px 14px",
+                zIndex: 6500,
+                background: "linear-gradient(180deg, rgba(248, 244, 236, 0.99) 0%, rgba(241, 234, 222, 0.99) 100%)",
+                border: "1px solid rgba(58, 37, 24, 0.4)",
+                borderRadius: 16,
+                boxShadow: "0 24px 70px rgba(0, 0, 0, 0.42)",
+                padding: 18,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  paddingBottom: 10,
+                  marginBottom: 2,
+                  background: "rgba(248, 244, 236, 0.98)",
+                  borderBottom: "1px solid rgba(0, 0, 0, 0.14)",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 18, fontWeight: 900, color: "#5c3c38", letterSpacing: "0.02em" }}>Chris&apos; Delicious Library FAQ</span>
+                  <span style={{ fontSize: 12, color: "#6d5a4e", fontWeight: 600 }}>
+                    Maintainer guide for updates, deployments, and troubleshooting
+                  </span>
+                </div>
+                <button
+                  onClick={() => setFaqPopupOpen(false)}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.25)",
+                    background: "rgba(255,255,255,0.86)",
+                    color: "#5c3c38",
+                    borderRadius: 9,
+                    padding: "7px 12px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Close FAQ
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+                <div style={{ padding: 12, borderRadius: 10, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(255,255,255,0.62)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#5c3c38", marginBottom: 6 }}>System Overview</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#3f3732" }}>
+                    This app is a Next.js frontend hosted on Vercel, backed by Google Sheets CSV feeds for reading data and Google Apps Script web app endpoints for write/update/delete actions.
+                    GitHub is the source of truth for code and static assets.
+                  </div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 10, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(255,255,255,0.62)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#5c3c38", marginBottom: 6 }}>Where Data Lives</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#3f3732" }}>
+                    Library rows live in Google Sheets tabs (Books, Shows, Movies, Games). App settings live in Settings tab and local browser cache.
+                    App writes go through Apps Script <code>doPost</code> action routing.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>1) First-Time Orientation</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Clone/open the project in VS Code.</div>
+                <div>2. Ensure Node modules are installed with <code>npm install</code>.</div>
+                <div>3. Run locally using <code>npm run dev</code> and test at <code>http://localhost:3000</code>.</div>
+                <div>4. Confirm env vars are set in local <code>.env.local</code> and Vercel project settings.</div>
+                <div>5. Confirm Apps Script web app URLs are valid and deployed to latest version.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>2) Required Services and Their Jobs</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div><strong>GitHub:</strong> stores source code, history, and poster/frame assets used by the app.</div>
+                <div><strong>Vercel:</strong> builds and serves production from the GitHub repo.</div>
+                <div><strong>Google Sheets:</strong> is the database for your media rows + settings rows.</div>
+                <div><strong>Google Apps Script:</strong> exposes an HTTP web app endpoint for add/update/delete operations.</div>
+                <div><strong>ChatGPT in VS Code:</strong> speeds up coding changes, refactors, and debugging in this repo.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>3) Typical Change Workflow (Safe Path)</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Create/checkout your branch.</div>
+                <div>2. Make requested UI/logic changes in VS Code (with or without ChatGPT assistance).</div>
+                <div>3. Test local behavior for all affected media types.</div>
+                <div>4. Commit + push to GitHub.</div>
+                <div>5. Verify Vercel preview deployment.</div>
+                <div>6. Merge to production branch and verify live site.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>4) How to Update Apps Script Correctly</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Paste updated <code>GOOGLE_APPS_SCRIPT.gs</code> code in Apps Script editor.</div>
+                <div>2. Verify <code>doPost</code> has routes for every action used by frontend (add/update/delete per media type).</div>
+                <div>3. Verify handler functions exist (example: <code>deleteBookRow_</code>).</div>
+                <div>4. Deploy Web App as a <strong>new version</strong> (old versions continue serving old code).</div>
+                <div>5. Confirm frontend env var points to correct Apps Script <code>/exec</code> URL.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>5) Environment Variables You Should Know</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div><code>NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL</code> and similar CSV URLs: read data into app.</div>
+                <div><code>NEXT_PUBLIC_SETTINGS_WRITE_URL</code>, <code>NEXT_PUBLIC_BOOKS_WRITE_URL</code>, <code>NEXT_PUBLIC_SHOWS_WRITE_URL</code>, <code>NEXT_PUBLIC_MOVIES_WRITE_URL</code>, <code>NEXT_PUBLIC_GAMES_WRITE_URL</code>: write endpoints.</div>
+                <div>If read works but edits do not persist, check write URL variables first.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>6) Updating Covers, Frames, and Visual Assets</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Add/replace assets in repo <code>public/</code> (or configured storage path).</div>
+                <div>2. Commit and push to GitHub.</div>
+                <div>3. Wait for Vercel deploy and hard refresh browser cache.</div>
+                <div>4. If URLs are generated from sheet titles, verify naming conventions still match.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>7) Settings Persistence Behavior</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>Settings are cached locally for fast load, and can sync to Google Sheets.</div>
+                <div>Use <strong>Save All Settings to Sheet</strong> after major tuning.</div>
+                <div>If values look stale, use <strong>Load Settings from Sheet</strong> and re-open settings.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>8) Troubleshooting Cheatsheet</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div><strong>Error: function X is not defined:</strong> deployed Apps Script version is outdated or missing that function.</div>
+                <div><strong>Menu missing in Sheets:</strong> menu builder function missing or wrong function name in <code>onOpen</code>.</div>
+                <div><strong>Can view data but cannot edit:</strong> write URL env var missing/wrong or Apps Script permissions/deployment issue.</div>
+                <div><strong>Vercel not showing latest:</strong> check branch deployed, latest commit, and deployment logs.</div>
+                <div><strong>Unexpected UI behavior:</strong> test in local dev, check browser console, then compare with production build.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>9) Using ChatGPT in VS Code (Your Workflow)</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Describe exact change request in plain language and include file names when possible.</div>
+                <div>2. Ask ChatGPT to implement directly and run checks.</div>
+                <div>3. Review the patch and test key user paths.</div>
+                <div>4. Commit only what you intend to ship.</div>
+                <div>5. Keep Apps Script changes synchronized with frontend expectations.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>10) Monthly Maintenance Checklist</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732", paddingBottom: 8 }}>
+                <div>1. Confirm all write URLs are valid and not revoked.</div>
+                <div>2. Verify add/update/delete for Books, Shows, Movies, Games.</div>
+                <div>3. Verify Google Sheet top menus are present and correct.</div>
+                <div>4. Verify settings save/load and sync status messaging.</div>
+                <div>5. Verify sidebar filters, overlays, and popups on desktop + mobile width.</div>
+                <div>6. Check latest Vercel deployment health and runtime errors.</div>
+                <div>7. Export/backup critical Sheets tabs before major schema changes.</div>
+              </div>
             </div>
           ) : null}
 
@@ -8764,6 +9442,36 @@ export default function Page() {
                         <line x1="4" y1="18" x2="11" y2="18"></line>
                         <circle cx="14" cy="18" r="2"></circle>
                         <line x1="17" y1="18" x2="21" y2="18"></line>
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSortPopupOpen(false);
+                        setSettingsPopupOpen(false);
+                        setShowVersionNotes(false);
+                        setAddSaveError(null);
+                        setAddModalOpen(true);
+                      }}
+                      title="Add new item"
+                      aria-label="Add new item"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: 24,
+                        minWidth: 18,
+                        padding: "3px 5px",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 9,
+                        color: "rgba(250, 242, 230, 0.68)",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
                       </svg>
                     </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -9334,6 +10042,23 @@ export default function Page() {
       </div>
 
       {/* MediaModal for cover/info popup - overlays app */}
+      <AddItemModal
+        open={addModalOpen}
+        onClose={() => {
+          if (addingItem) return;
+          setAddModalOpen(false);
+          setAddSaveError(null);
+        }}
+        onSave={handleAddLibraryItem}
+        isSaving={addingItem}
+        saveError={addSaveError}
+        gamePlatformOptions={gamePlatformOptions}
+        gameOwnershipOptions={gameOwnershipOptions}
+        gameFormatOptions={gameFormatOptions}
+        gameStatusOptions={gameStatusOptions}
+      />
+
+      {/* MediaModal for cover/info popup - overlays app */}
       <MediaModal
         item={modalItem}
         open={modalOpen}
@@ -9346,6 +10071,7 @@ export default function Page() {
         onSaveShowEdits={handleSaveShowEdits}
         onSaveMovieEdits={handleSaveMovieEdits}
         onSaveGameEdits={handleSaveGameEdits}
+        onDeleteItem={handleDeleteLibraryItem}
         gamePlatformOptions={gamePlatformOptions}
         gameOwnershipOptions={gameOwnershipOptions}
         gameFormatOptions={gameFormatOptions}

@@ -86,10 +86,18 @@ export async function POST(req: NextRequest) {
       lowerText.includes("error:");
     if (upstreamStatus < 200 || upstreamStatus >= 300 || looksLikeError) {
       const normalizedError = looksLikeHtml ? stripHtml(responseText) : responseText;
+      const action = normalizedPayload && typeof normalizedPayload === "object"
+        ? String((normalizedPayload as Record<string, unknown>).action || "").trim()
+        : "";
+      const isAddAction = /^add[A-Z]/.test(action);
+      const errorWithHint =
+        isAddAction && /key is required/i.test(normalizedError)
+          ? `${normalizedError} (Apps Script deployment is missing add* handlers. Re-deploy the latest GOOGLE_APPS_SCRIPT.gs web app and update NEXT_PUBLIC_*_WRITE_URL if the /exec URL changed.)`
+          : normalizedError;
       return NextResponse.json(
         {
           ok: false,
-          error: normalizedError || `Apps Script returned HTTP ${upstreamStatus}`,
+          error: errorWithHint || `Apps Script returned HTTP ${upstreamStatus}`,
           upstreamStatus,
         },
         { status: 502 }

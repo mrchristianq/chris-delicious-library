@@ -19,6 +19,16 @@ function safeStr(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function normalizeTmdbMovieStatus(value: string): string {
+  const normalized = safeStr(value).toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "released") return "Released";
+  if (normalized === "in production" || normalized === "post production") return "In Production";
+  if (normalized === "canceled" || normalized === "cancelled") return "Canceled";
+  if (normalized === "planned" || normalized === "rumored") return "Upcoming";
+  return safeStr(value);
+}
+
 function pickEnv(keys: string[]): string {
   for (const key of keys) {
     const value = safeStr(process.env[key]);
@@ -116,7 +126,11 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
   const list = Array.isArray(payload.results) ? payload.results : [];
   const topResults = list.slice(0, 8);
 
-  let tvDetailsById: Record<string, { lastAirDate: string; numberOfSeasons: string; numberOfEpisodes: string }> = {};
+  let tvDetailsById: Record<
+    string,
+    { lastAirDate: string; numberOfSeasons: string; numberOfEpisodes: string; showStatus: string; genres: string }
+  > = {};
+  let movieDetailsById: Record<string, { runtime: string; status: string; genres: string }> = {};
   if (type === "tv") {
     const detailPairs = await Promise.all(
       topResults.map(async (item) => {
@@ -143,6 +157,8 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
           last_air_date?: string;
           number_of_seasons?: number;
           number_of_episodes?: number;
+          status?: string;
+          genres?: Array<{ id?: number; name?: string }>;
         };
 
         return [
@@ -153,13 +169,64 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
               detailPayload.number_of_seasons != null ? String(detailPayload.number_of_seasons) : "",
             numberOfEpisodes:
               detailPayload.number_of_episodes != null ? String(detailPayload.number_of_episodes) : "",
+            showStatus: safeStr(detailPayload.status),
+            genres: Array.isArray(detailPayload.genres)
+              ? detailPayload.genres.map((genre) => safeStr(genre?.name)).filter(Boolean).join(", ")
+              : "",
           },
         ] as const;
       })
     );
 
     tvDetailsById = Object.fromEntries(detailPairs.filter(Boolean) as Array<
-      readonly [string, { lastAirDate: string; numberOfSeasons: string; numberOfEpisodes: string }]
+      readonly [
+        string,
+        { lastAirDate: string; numberOfSeasons: string; numberOfEpisodes: string; showStatus: string; genres: string }
+      ]
+    >);
+  } else if (type === "movie") {
+    const detailPairs = await Promise.all(
+      topResults.map(async (item) => {
+        const tmdbId = String(item.id || "");
+        if (!tmdbId) return null;
+
+        const detailParams = new URLSearchParams({ language: "en-US" });
+        if (!bearerToken) {
+          detailParams.set("api_key", apiKey);
+        }
+
+        const detailRes = await fetch(
+          `https://api.themoviedb.org/3/movie/${tmdbId}?${detailParams.toString()}`,
+          {
+            method: "GET",
+            headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : undefined,
+            cache: "no-store",
+          }
+        );
+
+        if (!detailRes.ok) return null;
+
+        const detailPayload = (await detailRes.json().catch(() => ({}))) as {
+          runtime?: number;
+          status?: string;
+          genres?: Array<{ id?: number; name?: string }>;
+        };
+
+        return [
+          tmdbId,
+          {
+            runtime: detailPayload.runtime != null ? String(detailPayload.runtime) : "",
+            status: normalizeTmdbMovieStatus(safeStr(detailPayload.status)),
+            genres: Array.isArray(detailPayload.genres)
+              ? detailPayload.genres.map((genre) => safeStr(genre?.name)).filter(Boolean).join(", ")
+              : "",
+          },
+        ] as const;
+      })
+    );
+
+    movieDetailsById = Object.fromEntries(detailPairs.filter(Boolean) as Array<
+      readonly [string, { runtime: string; status: string; genres: string }]
     >);
   }
 
@@ -169,6 +236,7 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
     const year = date ? date.slice(0, 4) : "";
     const tmdbId = String(item.id || "");
     const tvDetails = type === "tv" ? tvDetailsById[tmdbId] : null;
+    const movieDetails = type === "movie" ? movieDetailsById[tmdbId] : null;
     const data: Record<string, string> = {
       title,
       year,
@@ -183,8 +251,13 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
       data.lastAirDate = tvDetails?.lastAirDate || "";
       data.numberOfSeasons = tvDetails?.numberOfSeasons || "";
       data.numberOfEpisodes = tvDetails?.numberOfEpisodes || "";
+      data.showStatus = tvDetails?.showStatus || "";
+      data.genres = tvDetails?.genres || "";
     } else {
       data.releaseDate = safeStr(item.release_date);
+      data.runtime = movieDetails?.runtime || "";
+      data.status = movieDetails?.status || "";
+      data.genres = movieDetails?.genres || "";
     }
 
     return {

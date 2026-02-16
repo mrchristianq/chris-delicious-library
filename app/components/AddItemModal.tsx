@@ -42,7 +42,7 @@ const BOOK_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Kin
 const BOOK_TYPE_OPTIONS = ["Physical", "eBook", "Audiobook", "Graphic Novel"];
 const SHOW_WATCH_STATUS_OPTIONS = ["Watching", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return"];
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"];
-const MOVIE_WATCH_STATUS_OPTIONS = ["No", "Yes"];
+const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Abandoned"];
 const MOVIE_STATUS_OPTIONS = ["Released", "Upcoming", "In Production", "Canceled"];
 
 function safeStr(value: unknown): string {
@@ -51,6 +51,18 @@ function safeStr(value: unknown): string {
 
 function currentDateIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function splitCommaValues(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function isTruthyOption(value: string): boolean {
+  const normalized = safeStr(value).toLowerCase();
+  return normalized === "yes" || normalized === "true" || normalized === "1";
 }
 
 function getDefaultValues(type: AddMediaType): Record<string, string> {
@@ -107,13 +119,12 @@ function getDefaultValues(type: AddMediaType): Record<string, string> {
       year: "",
       releaseDate: "",
       runtime: "",
-      watched: "No",
+      watchStatus: "Backlog",
       watchDate: "",
       status: "Released",
       genres: "",
       tmdbRating: "",
       myRating: "",
-      poster: "",
       overview: "",
       posterUrl: "",
       backdropUrl: "",
@@ -140,8 +151,8 @@ function getDefaultValues(type: AddMediaType): Record<string, string> {
       igdbId: "",
       igdbIdOverride: "",
       dateAdded: currentDateIso(),
-      backlog: "",
-      completed: "",
+      backlog: "No",
+      completed: "No",
       dateCompleted: "",
       yearPlayed: "",
       hoursPlayed: "",
@@ -196,6 +207,13 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
     () => TYPE_OPTIONS.find((entry) => entry.type === type) || TYPE_OPTIONS[0],
     [type]
   );
+  const gamePlatformChoices = useMemo(() => {
+    const values = gamePlatformOptions
+      .flatMap((option) => splitCommaValues(safeStr(option)))
+      .map((option) => option.trim())
+      .filter(Boolean);
+    return Array.from(new Set(values));
+  }, [gamePlatformOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -294,9 +312,9 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
       }
     }
     if (type === "movie") {
-      const missing = ["watched", "status", "ownership"].filter((key) => !safeStr(values[key]));
+      const missing = ["watchStatus"].filter((key) => !safeStr(values[key]));
       if (missing.length) {
-        setValidationError("Watched, Status, and Ownership are required for movies.");
+        setValidationError("Watch Status is required for movies.");
         return;
       }
     }
@@ -398,12 +416,15 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               {type === "book" ? (
                 <>
                   <div className="bookCoverDescriptionRow">
-                    <div className="bookCoverPane">
-                      {safeStr(values.imageUrl) ? (
-                        <img src={safeStr(values.imageUrl)} alt="Book cover preview" className="bookCoverPreview" />
-                      ) : (
-                        <div className="bookCoverPlaceholder">Cover Preview</div>
-                      )}
+                    <div className="addFieldRow bookCoverFieldRow">
+                      <div className="addFieldLabel">Cover</div>
+                      <div className="bookCoverPane">
+                        {safeStr(values.imageUrl) ? (
+                          <img src={safeStr(values.imageUrl)} alt="Book cover preview" className="bookCoverPreview" />
+                        ) : (
+                          <div className="bookCoverPlaceholder">Cover Preview</div>
+                        )}
+                      </div>
                     </div>
                     <FieldRow label="Description">
                       <textarea value={values.description || ""} onChange={(event) => handleChange("description", event.target.value)} className="addFieldTextarea bookDescriptionTextarea" />
@@ -412,12 +433,6 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   <FieldRow label="Subtitle"><input value={values.subtitle || ""} onChange={(event) => handleChange("subtitle", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Series (Optional)"><input value={values.series || ""} onChange={(event) => handleChange("series", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Author"><input value={values.author || ""} onChange={(event) => handleChange("author", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Release Date"><input value={values.releaseDate || ""} onChange={(event) => handleChange("releaseDate", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Completed Date"><input value={values.completedDate || ""} onChange={(event) => handleChange("completedDate", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="ISBN"><input value={values.isbn || ""} onChange={(event) => handleChange("isbn", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Pages"><input value={values.pages || ""} onChange={(event) => handleChange("pages", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Audiobook Duration (Optional)"><input value={values.audiobookDuration || ""} onChange={(event) => handleChange("audiobookDuration", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Genre"><input value={values.genre || ""} onChange={(event) => handleChange("genre", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Status">
                     <select value={values.status || ""} onChange={(event) => handleChange("status", event.target.value)} className="addFieldInput requiredField">
                       {BOOK_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -433,6 +448,12 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                       {BOOK_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   </FieldRow>
+                  <FieldRow label="Release Date"><input value={values.releaseDate || ""} onChange={(event) => handleChange("releaseDate", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="Completed Date"><input value={values.completedDate || ""} onChange={(event) => handleChange("completedDate", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="ISBN"><input value={values.isbn || ""} onChange={(event) => handleChange("isbn", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="Pages"><input value={values.pages || ""} onChange={(event) => handleChange("pages", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="Audiobook Duration (Optional)"><input value={values.audiobookDuration || ""} onChange={(event) => handleChange("audiobookDuration", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="Genre"><input value={values.genre || ""} onChange={(event) => handleChange("genre", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Image URL"><input value={values.imageUrl || ""} onChange={(event) => handleChange("imageUrl", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Google Books ID"><input value={values.googleBooksVolumeId || ""} onChange={(event) => handleChange("googleBooksVolumeId", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="OpenLibrary Work Key"><input value={values.openLibraryWorkKey || ""} onChange={(event) => handleChange("openLibraryWorkKey", event.target.value)} className="addFieldInput" /></FieldRow>
@@ -445,12 +466,15 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               {type === "tv" ? (
                 <>
                   <div className="bookCoverDescriptionRow">
-                    <div className="bookCoverPane">
-                      {safeStr(values.posterUrl) ? (
-                        <img src={safeStr(values.posterUrl)} alt="TV show poster preview" className="bookCoverPreview" />
-                      ) : (
-                        <div className="bookCoverPlaceholder">Poster Preview</div>
-                      )}
+                    <div className="addFieldRow bookCoverFieldRow">
+                      <div className="addFieldLabel">Poster</div>
+                      <div className="bookCoverPane">
+                        {safeStr(values.posterUrl) ? (
+                          <img src={safeStr(values.posterUrl)} alt="TV show poster preview" className="bookCoverPreview" />
+                        ) : (
+                          <div className="bookCoverPlaceholder">Poster Preview</div>
+                        )}
+                      </div>
                     </div>
                     <FieldRow label="Overview">
                       <textarea value={values.overview || ""} onChange={(event) => handleChange("overview", event.target.value)} className="addFieldTextarea bookDescriptionTextarea" />
@@ -488,12 +512,15 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               {type === "movie" ? (
                 <>
                   <div className="bookCoverDescriptionRow">
-                    <div className="bookCoverPane">
-                      {safeStr(values.posterUrl) || safeStr(values.poster) ? (
-                        <img src={safeStr(values.posterUrl) || safeStr(values.poster)} alt="Movie poster preview" className="bookCoverPreview" />
-                      ) : (
-                        <div className="bookCoverPlaceholder">Poster Preview</div>
-                      )}
+                    <div className="addFieldRow bookCoverFieldRow">
+                      <div className="addFieldLabel">Poster</div>
+                      <div className="bookCoverPane">
+                        {safeStr(values.posterUrl) || safeStr(values.poster) ? (
+                          <img src={safeStr(values.posterUrl) || safeStr(values.poster)} alt="Movie poster preview" className="bookCoverPreview" />
+                        ) : (
+                          <div className="bookCoverPlaceholder">Poster Preview</div>
+                        )}
+                      </div>
                     </div>
                     <FieldRow label="Overview">
                       <textarea value={values.overview || ""} onChange={(event) => handleChange("overview", event.target.value)} className="addFieldTextarea bookDescriptionTextarea" />
@@ -502,15 +529,18 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   <FieldRow label="Year"><input value={values.year || ""} onChange={(event) => handleChange("year", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Release Date"><input value={values.releaseDate || ""} onChange={(event) => handleChange("releaseDate", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Runtime"><input value={values.runtime || ""} onChange={(event) => handleChange("runtime", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Poster"><input value={values.poster || ""} onChange={(event) => handleChange("poster", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Watched">
-                    <select value={values.watched || ""} onChange={(event) => handleChange("watched", event.target.value)} className="addFieldInput requiredField">
+                  <FieldRow label="Watch Status">
+                    <select value={values.watchStatus || ""} onChange={(event) => handleChange("watchStatus", event.target.value)} className="addFieldInput requiredField">
                       {MOVIE_WATCH_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   </FieldRow>
-                  <FieldRow label="Status">
-                    <select value={values.status || ""} onChange={(event) => handleChange("status", event.target.value)} className="addFieldInput requiredField">
+                  <FieldRow label="Release Status">
+                    <select value={values.status || ""} onChange={(event) => handleChange("status", event.target.value)} className="addFieldInput">
+                      <option value="">(none)</option>
                       {MOVIE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                      {values.status && !MOVIE_STATUS_OPTIONS.includes(values.status) ? (
+                        <option value={values.status}>{values.status}</option>
+                      ) : null}
                     </select>
                   </FieldRow>
                   <FieldRow label="Genres"><input value={values.genres || ""} onChange={(event) => handleChange("genres", event.target.value)} className="addFieldInput" /></FieldRow>
@@ -520,7 +550,6 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   <FieldRow label="TMDB Rating"><input value={values.tmdbRating || ""} onChange={(event) => handleChange("tmdbRating", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="My Rating"><input value={values.myRating || ""} onChange={(event) => handleChange("myRating", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Watch Date"><input value={values.watchDate || ""} onChange={(event) => handleChange("watchDate", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Ownership"><input value={values.ownership || ""} onChange={(event) => handleChange("ownership", event.target.value)} className="addFieldInput requiredField" /></FieldRow>
                   <FieldRow label="Tags"><input value={values.tags || ""} onChange={(event) => handleChange("tags", event.target.value)} className="addFieldInput" /></FieldRow>
                 </>
               ) : null}
@@ -528,24 +557,36 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               {type === "game" ? (
                 <>
                   <div className="bookCoverDescriptionRow">
-                    <div className="bookCoverPane">
-                      {safeStr(values.coverUrl) || safeStr(values.cover) ? (
-                        <img src={safeStr(values.coverUrl) || safeStr(values.cover)} alt="Game cover preview" className="bookCoverPreview" />
-                      ) : (
-                        <div className="bookCoverPlaceholder">Cover Preview</div>
-                      )}
+                    <div className="addFieldRow bookCoverFieldRow">
+                      <div className="addFieldLabel">Cover</div>
+                      <div className="bookCoverPane">
+                        {safeStr(values.coverUrl) || safeStr(values.cover) ? (
+                          <img src={safeStr(values.coverUrl) || safeStr(values.cover)} alt="Game cover preview" className="bookCoverPreview" />
+                        ) : (
+                          <div className="bookCoverPlaceholder">Cover Preview</div>
+                        )}
+                      </div>
                     </div>
                     <FieldRow label="Description">
                       <textarea value={values.description || ""} onChange={(event) => handleChange("description", event.target.value)} className="addFieldTextarea bookDescriptionTextarea" />
                     </FieldRow>
                   </div>
                   <FieldRow label="Platform">
-                    <input list="add-game-platforms" value={values.platform || ""} onChange={(event) => handleChange("platform", event.target.value)} className="addFieldInput requiredField" />
-                    <datalist id="add-game-platforms">
-                      {gamePlatformOptions.map((option) => <option key={option} value={option} />)}
-                    </datalist>
+                    <select value={values.platform || ""} onChange={(event) => handleChange("platform", event.target.value)} className="addFieldInput requiredField">
+                      <option value="">(select platform)</option>
+                      {gamePlatformChoices.map((option) => <option key={option} value={option}>{option}</option>)}
+                      {values.platform && !gamePlatformChoices.includes(values.platform) ? (
+                        <option value={values.platform}>{values.platform}</option>
+                      ) : null}
+                    </select>
                   </FieldRow>
-                  <FieldRow label="Platforms"><input value={values.platforms || ""} onChange={(event) => handleChange("platforms", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="Available Platforms">
+                    <input
+                      value={values.platforms || ""}
+                      onChange={(event) => handleChange("platforms", event.target.value)}
+                      className="addFieldInput"
+                    />
+                  </FieldRow>
                   <FieldRow label="Release Date"><input value={values.releaseDateAlt || values.releaseDate || ""} onChange={(event) => handleChange("releaseDateAlt", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Status">
                     <select value={values.status || ""} onChange={(event) => handleChange("status", event.target.value)} className="addFieldInput requiredField">
@@ -570,14 +611,51 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   <FieldRow label="IGDB ID Override"><input value={values.igdbIdOverride || ""} onChange={(event) => handleChange("igdbIdOverride", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="IGDB Rating"><input value={values.igdbRating || ""} onChange={(event) => handleChange("igdbRating", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="My Rating"><input value={values.myRating || ""} onChange={(event) => handleChange("myRating", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Backlog"><input value={values.backlog || ""} onChange={(event) => handleChange("backlog", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Completed"><input value={values.completed || ""} onChange={(event) => handleChange("completed", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Date Completed"><input value={values.dateCompleted || ""} onChange={(event) => handleChange("dateCompleted", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Date Added"><input value={values.dateAdded || ""} onChange={(event) => handleChange("dateAdded", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Year Played"><input value={values.yearPlayed || ""} onChange={(event) => handleChange("yearPlayed", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Hours Played"><input value={values.hoursPlayed || ""} onChange={(event) => handleChange("hoursPlayed", event.target.value)} className="addFieldInput" /></FieldRow>
                   <FieldRow label="Screensots URL"><input value={values.screensotsUrl || ""} onChange={(event) => handleChange("screensotsUrl", event.target.value)} className="addFieldInput" /></FieldRow>
-                  <FieldRow label="Tags"><input value={values.tags || ""} onChange={(event) => handleChange("tags", event.target.value)} className="addFieldInput" /></FieldRow>
+                  <FieldRow label="Backlog">
+                    <div className="addBooleanChoiceGroup">
+                      <label className="addBooleanOption">
+                        <input
+                          type="checkbox"
+                          checked={isTruthyOption(values.backlog || "")}
+                          onChange={() => handleChange("backlog", "Yes")}
+                        />
+                        <span>Yes</span>
+                      </label>
+                      <label className="addBooleanOption">
+                        <input
+                          type="checkbox"
+                          checked={!isTruthyOption(values.backlog || "")}
+                          onChange={() => handleChange("backlog", "No")}
+                        />
+                        <span>No</span>
+                      </label>
+                    </div>
+                  </FieldRow>
+                  <FieldRow label="Completed">
+                    <div className="addBooleanChoiceGroup">
+                      <label className="addBooleanOption">
+                        <input
+                          type="checkbox"
+                          checked={isTruthyOption(values.completed || "")}
+                          onChange={() => handleChange("completed", "Yes")}
+                        />
+                        <span>Yes</span>
+                      </label>
+                      <label className="addBooleanOption">
+                        <input
+                          type="checkbox"
+                          checked={!isTruthyOption(values.completed || "")}
+                          onChange={() => handleChange("completed", "No")}
+                        />
+                        <span>No</span>
+                      </label>
+                    </div>
+                  </FieldRow>
                 </>
               ) : null}
             </div>
@@ -799,6 +877,9 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
           overflow: hidden;
           min-height: 250px;
         }
+        .bookCoverFieldRow {
+          height: 100%;
+        }
         .bookCoverPreview {
           display: block;
           width: 100%;
@@ -829,6 +910,25 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
           font-size: 11px;
           font-weight: 700;
           color: rgba(203, 223, 255, 0.82);
+        }
+        .addBooleanChoiceGroup {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          min-height: 36px;
+          padding: 0 2px;
+        }
+        .addBooleanOption {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: rgba(227, 238, 255, 0.9);
+        }
+        .addBooleanOption input {
+          accent-color: rgba(255, 119, 198, 0.95);
+          width: 14px;
+          height: 14px;
         }
         .addFooterActions {
           margin-top: 12px;
