@@ -11,6 +11,36 @@ type SearchResult = {
   data: Record<string, string>;
 };
 
+type GoogleBooksVolume = {
+  id?: string;
+  volumeInfo?: {
+    title?: string;
+    subtitle?: string;
+    authors?: string[];
+    publishedDate?: string;
+    description?: string;
+    categories?: string[];
+    pageCount?: number;
+    imageLinks?: {
+      thumbnail?: string;
+      smallThumbnail?: string;
+    };
+    industryIdentifiers?: Array<{ type?: string; identifier?: string }>;
+  };
+};
+
+type IgdbGame = {
+  id?: number;
+  name?: string;
+  first_release_date?: number;
+  rating?: number;
+  summary?: string;
+  cover?: { url?: string };
+  genres?: Array<{ name?: string }>;
+  platforms?: Array<{ name?: string }>;
+  involved_companies?: Array<{ company?: { name?: string } }>;
+};
+
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
 
 let igdbTokenCache: { token: string; expiresAt: number } | null = null;
@@ -271,6 +301,128 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
   });
 }
 
+async function lookupTmdbById(type: "tv" | "movie", id: string): Promise<SearchResult | null> {
+  const tmdbId = safeStr(id);
+  if (!tmdbId) return null;
+
+  const bearerToken = pickEnv(["TMDB_BEARER_TOKEN", "TMDB_API_READ_ACCESS_TOKEN"]);
+  const apiKey = pickEnv(["TMDB_API_KEY"]);
+  if (!bearerToken && !apiKey) {
+    throw new Error("TMDB credentials are not configured (TMDB_BEARER_TOKEN or TMDB_API_KEY).");
+  }
+
+  const params = new URLSearchParams({ language: "en-US" });
+  if (!bearerToken) {
+    params.set("api_key", apiKey);
+  }
+
+  const res = await fetch(`https://api.themoviedb.org/3/${type}/${encodeURIComponent(tmdbId)}?${params.toString()}`, {
+    method: "GET",
+    headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : undefined,
+    cache: "no-store",
+  });
+
+  if (res.status === 404) return null;
+
+  const payload = (await res.json().catch(() => ({}))) as {
+    id?: number;
+    name?: string;
+    title?: string;
+    first_air_date?: string;
+    release_date?: string;
+    last_air_date?: string;
+    number_of_seasons?: number;
+    number_of_episodes?: number;
+    status?: string;
+    genres?: Array<{ id?: number; name?: string }>;
+    poster_path?: string;
+    backdrop_path?: string;
+    vote_average?: number;
+    overview?: string;
+    runtime?: number;
+    status_message?: string;
+  };
+
+  if (!res.ok) {
+    throw new Error(payload.status_message || "TMDB lookup failed.");
+  }
+
+  const title = safeStr(payload.name) || safeStr(payload.title);
+  const date = safeStr(payload.first_air_date) || safeStr(payload.release_date);
+  const year = date ? date.slice(0, 4) : "";
+  const genres = Array.isArray(payload.genres)
+    ? payload.genres.map((genre) => safeStr(genre?.name)).filter(Boolean).join(", ")
+    : "";
+
+  const data: Record<string, string> = {
+    title,
+    year,
+    tmdbId: tmdbId,
+    posterUrl: safeStr(payload.poster_path) ? `${TMDB_IMAGE_BASE}${safeStr(payload.poster_path)}` : "",
+    backdropUrl: safeStr(payload.backdrop_path) ? `${TMDB_IMAGE_BASE}${safeStr(payload.backdrop_path)}` : "",
+    tmdbRating: payload.vote_average != null ? String(payload.vote_average) : "",
+    overview: safeStr(payload.overview),
+  };
+
+  if (type === "tv") {
+    data.firstAirDate = safeStr(payload.first_air_date);
+    data.lastAirDate = safeStr(payload.last_air_date);
+    data.numberOfSeasons = payload.number_of_seasons != null ? String(payload.number_of_seasons) : "";
+    data.numberOfEpisodes = payload.number_of_episodes != null ? String(payload.number_of_episodes) : "";
+    data.showStatus = safeStr(payload.status);
+    data.genres = genres;
+  } else {
+    data.releaseDate = safeStr(payload.release_date);
+    data.runtime = payload.runtime != null ? String(payload.runtime) : "";
+    data.status = normalizeTmdbMovieStatus(safeStr(payload.status));
+    data.genres = genres;
+  }
+
+  return {
+    id: `${type}:${tmdbId}`,
+    title,
+    subtitle: date || undefined,
+    year: year || undefined,
+    imageUrl: data.posterUrl || undefined,
+    data,
+  };
+}
+
+function mapGoogleBookVolumeToResult(item: GoogleBooksVolume): SearchResult {
+  const info = item.volumeInfo || {};
+  const title = safeStr(info.title);
+  const subtitle = safeStr(info.subtitle);
+  const authors = Array.isArray(info.authors) ? info.authors.filter(Boolean).join(", ") : "";
+  const publishedDate = safeStr(info.publishedDate);
+  const year = publishedDate ? publishedDate.slice(0, 4) : "";
+  const categories = Array.isArray(info.categories) ? info.categories.filter(Boolean).join(", ") : "";
+  const image = safeStr(info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail).replace("http://", "https://");
+  const identifiers = Array.isArray(info.industryIdentifiers) ? info.industryIdentifiers : [];
+  const isbn13 = safeStr(identifiers.find((entry) => safeStr(entry.type) === "ISBN_13")?.identifier);
+  const isbn10 = safeStr(identifiers.find((entry) => safeStr(entry.type) === "ISBN_10")?.identifier);
+  const isbn = isbn13 || isbn10;
+
+  return {
+    id: `book:${safeStr(item.id) || title}`,
+    title,
+    subtitle: authors || subtitle || undefined,
+    year: year || undefined,
+    imageUrl: image || undefined,
+    data: {
+      title,
+      subtitle,
+      author: authors,
+      releaseDate: publishedDate,
+      description: safeStr(info.description),
+      genre: categories,
+      pages: info.pageCount != null ? String(info.pageCount) : "",
+      imageUrl: image,
+      isbn,
+      googleBooksVolumeId: safeStr(item.id),
+    },
+  };
+}
+
 async function searchGoogleBooks(query: string): Promise<SearchResult[]> {
   const apiKey = pickEnv(["GOOGLE_BOOKS_API_KEY"]);
   const params = new URLSearchParams({
@@ -288,23 +440,7 @@ async function searchGoogleBooks(query: string): Promise<SearchResult[]> {
   });
 
   const payload = (await res.json().catch(() => ({}))) as {
-    items?: Array<{
-      id?: string;
-      volumeInfo?: {
-        title?: string;
-        subtitle?: string;
-        authors?: string[];
-        publishedDate?: string;
-        description?: string;
-        categories?: string[];
-        pageCount?: number;
-        imageLinks?: {
-          thumbnail?: string;
-          smallThumbnail?: string;
-        };
-        industryIdentifiers?: Array<{ type?: string; identifier?: string }>;
-      };
-    }>;
+    items?: GoogleBooksVolume[];
     error?: { message?: string };
   };
 
@@ -313,40 +449,36 @@ async function searchGoogleBooks(query: string): Promise<SearchResult[]> {
   }
 
   const list = Array.isArray(payload.items) ? payload.items : [];
-  return list.map((item) => {
-    const info = item.volumeInfo || {};
-    const title = safeStr(info.title);
-    const subtitle = safeStr(info.subtitle);
-    const authors = Array.isArray(info.authors) ? info.authors.filter(Boolean).join(", ") : "";
-    const publishedDate = safeStr(info.publishedDate);
-    const year = publishedDate ? publishedDate.slice(0, 4) : "";
-    const categories = Array.isArray(info.categories) ? info.categories.filter(Boolean).join(", ") : "";
-    const image = safeStr(info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail).replace("http://", "https://");
-    const identifiers = Array.isArray(info.industryIdentifiers) ? info.industryIdentifiers : [];
-    const isbn13 = safeStr(identifiers.find((entry) => safeStr(entry.type) === "ISBN_13")?.identifier);
-    const isbn10 = safeStr(identifiers.find((entry) => safeStr(entry.type) === "ISBN_10")?.identifier);
-    const isbn = isbn13 || isbn10;
+  return list.map((item) => mapGoogleBookVolumeToResult(item));
+}
 
-    return {
-      id: `book:${safeStr(item.id) || title}`,
-      title,
-      subtitle: authors || subtitle || undefined,
-      year: year || undefined,
-      imageUrl: image || undefined,
-      data: {
-        title,
-        subtitle,
-        author: authors,
-        releaseDate: publishedDate,
-        description: safeStr(info.description),
-        genre: categories,
-        pages: info.pageCount != null ? String(info.pageCount) : "",
-        imageUrl: image,
-        isbn,
-        googleBooksVolumeId: safeStr(item.id),
-      },
-    };
+async function lookupGoogleBookById(volumeId: string): Promise<SearchResult | null> {
+  const id = safeStr(volumeId);
+  if (!id) return null;
+
+  const apiKey = pickEnv(["GOOGLE_BOOKS_API_KEY"]);
+  const params = new URLSearchParams();
+  if (apiKey) {
+    params.set("key", apiKey);
+  }
+
+  const endpoint = `https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(id)}${params.size ? `?${params.toString()}` : ""}`;
+  const res = await fetch(endpoint, {
+    method: "GET",
+    cache: "no-store",
   });
+
+  if (res.status === 404) return null;
+
+  const payload = (await res.json().catch(() => ({}))) as GoogleBooksVolume & {
+    error?: { message?: string };
+  };
+
+  if (!res.ok) {
+    throw new Error(payload.error?.message || "Google Books lookup failed.");
+  }
+
+  return mapGoogleBookVolumeToResult(payload);
 }
 
 function normalizeIgdbCoverUrl(url: string): string {
@@ -354,6 +486,44 @@ function normalizeIgdbCoverUrl(url: string): string {
   if (!normalized) return "";
   const https = normalized.startsWith("//") ? `https:${normalized}` : normalized;
   return https.replace("/t_thumb/", "/t_cover_big/");
+}
+
+function mapIgdbGameToResult(item: IgdbGame): SearchResult {
+  const title = safeStr(item.name);
+  const date = item.first_release_date ? new Date(item.first_release_date * 1000).toISOString().slice(0, 10) : "";
+  const year = date ? date.slice(0, 4) : "";
+  const platforms = Array.isArray(item.platforms)
+    ? item.platforms.map((entry) => safeStr(entry.name)).filter(Boolean)
+    : [];
+  const genres = Array.isArray(item.genres)
+    ? item.genres.map((entry) => safeStr(entry.name)).filter(Boolean)
+    : [];
+  const developers = Array.isArray(item.involved_companies)
+    ? item.involved_companies
+        .map((entry) => safeStr(entry.company?.name))
+        .filter(Boolean)
+    : [];
+  const coverUrl = normalizeIgdbCoverUrl(safeStr(item.cover?.url));
+
+  return {
+    id: `game:${String(item.id || title)}`,
+    title,
+    subtitle: platforms.join(", ") || undefined,
+    year: year || undefined,
+    imageUrl: coverUrl || undefined,
+    data: {
+      title,
+      releaseDate: date,
+      platform: platforms[0] || "",
+      platforms: platforms.join(", "),
+      igdbId: item.id != null ? String(item.id) : "",
+      igdbRating: item.rating != null ? String(item.rating) : "",
+      genres: genres.join(", "),
+      developer: developers[0] || "",
+      description: safeStr(item.summary),
+      coverUrl,
+    },
+  };
 }
 
 async function searchIgdb(query: string): Promise<SearchResult[]> {
@@ -376,68 +546,58 @@ async function searchIgdb(query: string): Promise<SearchResult[]> {
     cache: "no-store",
   });
 
-  const payload = (await res.json().catch(() => [])) as Array<{
-    id?: number;
-    name?: string;
-    first_release_date?: number;
-    rating?: number;
-    summary?: string;
-    cover?: { url?: string };
-    genres?: Array<{ name?: string }>;
-    platforms?: Array<{ name?: string }>;
-    involved_companies?: Array<{ company?: { name?: string } }>;
-  }>;
+  const payload = (await res.json().catch(() => [])) as IgdbGame[];
 
   if (!res.ok || !Array.isArray(payload)) {
     throw new Error("IGDB search failed.");
   }
 
-  return payload.map((item) => {
-    const title = safeStr(item.name);
-    const date = item.first_release_date ? new Date(item.first_release_date * 1000).toISOString().slice(0, 10) : "";
-    const year = date ? date.slice(0, 4) : "";
-    const platforms = Array.isArray(item.platforms)
-      ? item.platforms.map((entry) => safeStr(entry.name)).filter(Boolean)
-      : [];
-    const genres = Array.isArray(item.genres)
-      ? item.genres.map((entry) => safeStr(entry.name)).filter(Boolean)
-      : [];
-    const developers = Array.isArray(item.involved_companies)
-      ? item.involved_companies
-          .map((entry) => safeStr(entry.company?.name))
-          .filter(Boolean)
-      : [];
-    const coverUrl = normalizeIgdbCoverUrl(safeStr(item.cover?.url));
+  return payload.map((item) => mapIgdbGameToResult(item));
+}
 
-    return {
-      id: `game:${String(item.id || title)}`,
-      title,
-      subtitle: platforms.join(", ") || undefined,
-      year: year || undefined,
-      imageUrl: coverUrl || undefined,
-      data: {
-        title,
-        releaseDate: date,
-        platform: platforms[0] || "",
-        platforms: platforms.join(", "),
-        igdbId: item.id != null ? String(item.id) : "",
-        igdbRating: item.rating != null ? String(item.rating) : "",
-        genres: genres.join(", "),
-        developer: developers[0] || "",
-        description: safeStr(item.summary),
-        coverUrl,
-      },
-    };
+async function lookupIgdbById(id: string): Promise<SearchResult | null> {
+  const normalizedId = safeStr(id);
+  if (!normalizedId || !/^\d+$/.test(normalizedId)) return null;
+
+  const clientId = pickEnv(["IGDB_CLIENT_ID", "TWITCH_CLIENT_ID"]);
+  if (!clientId) {
+    throw new Error("IGDB client id is not configured (IGDB_CLIENT_ID or TWITCH_CLIENT_ID).");
+  }
+  const token = await getIgdbAccessToken();
+  const body =
+    `where id = ${normalizedId}; ` +
+    "fields id,name,first_release_date,rating,summary,cover.url,genres.name,platforms.name,involved_companies.company.name; " +
+    "limit 1;";
+
+  const res = await fetch("https://api.igdb.com/v4/games", {
+    method: "POST",
+    headers: {
+      "Client-ID": clientId,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "text/plain",
+    },
+    body,
+    cache: "no-store",
   });
+
+  const payload = (await res.json().catch(() => [])) as IgdbGame[];
+  if (!res.ok || !Array.isArray(payload)) {
+    throw new Error("IGDB lookup failed.");
+  }
+
+  const first = payload[0];
+  if (!first) return null;
+  return mapIgdbGameToResult(first);
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const type = safeStr(searchParams.get("type")) as SearchType;
   const query = safeStr(searchParams.get("query"));
+  const lookupId = safeStr(searchParams.get("lookupId"));
 
-  if (!query) {
-    return NextResponse.json({ ok: false, error: "Missing query." }, { status: 400 });
+  if (!query && !lookupId) {
+    return NextResponse.json({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
   }
 
   if (!["book", "tv", "movie", "game"].includes(type)) {
@@ -445,6 +605,24 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    if (lookupId) {
+      const lookupResult =
+        type === "book"
+          ? await lookupGoogleBookById(lookupId)
+          : type === "tv"
+            ? await lookupTmdbById("tv", lookupId)
+            : type === "movie"
+              ? await lookupTmdbById("movie", lookupId)
+              : await lookupIgdbById(lookupId);
+
+      if (lookupResult) {
+        return NextResponse.json({ ok: true, results: [lookupResult] });
+      }
+      if (!query) {
+        return NextResponse.json({ ok: true, results: [] });
+      }
+    }
+
     const results =
       type === "book"
         ? await searchGoogleBooks(query)

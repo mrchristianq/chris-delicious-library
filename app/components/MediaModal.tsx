@@ -154,6 +154,86 @@ const GAME_EDIT_FIELDS: GameEditField[] = [
 ];
 
 const DASH = "—";
+type MediaItemType = "game" | "book" | "tv" | "movie";
+type ResyncDiffRow = {
+  key: string;
+  label: string;
+  before: string;
+  after: string;
+  selected: boolean;
+};
+type ResyncPreview = {
+  sourceLabel: string;
+  baseValues: Record<string, string>;
+  updates: Record<string, string>;
+  changes: ResyncDiffRow[];
+};
+
+const RESYNC_SOURCE_LABELS: Record<MediaItemType, string> = {
+  book: "Google Books",
+  tv: "TMDB",
+  movie: "TMDB",
+  game: "IGDB",
+};
+
+const RESYNC_FIELDS: Record<MediaItemType, string[]> = {
+  book: [
+    "title",
+    "subtitle",
+    "author",
+    "releaseDate",
+    "description",
+    "genre",
+    "pages",
+    "imageUrl",
+    "isbn",
+    "googleBooksVolumeId",
+  ],
+  tv: [
+    "title",
+    "year",
+    "tmdbId",
+    "firstAirDate",
+    "lastAirDate",
+    "numberOfSeasons",
+    "numberOfEpisodes",
+    "showStatus",
+    "genres",
+    "tmdbRating",
+    "overview",
+    "posterUrl",
+    "backdropUrl",
+  ],
+  movie: [
+    "title",
+    "year",
+    "tmdbId",
+    "releaseDate",
+    "runtime",
+    "status",
+    "genres",
+    "tmdbRating",
+    "overview",
+    "posterUrl",
+    "backdropUrl",
+  ],
+  game: [
+    "title",
+    "releaseDate",
+    "releaseDateAlt",
+    "platforms",
+    "igdbId",
+    "igdbRating",
+    "genres",
+    "developer",
+    "description",
+    "coverUrl",
+  ],
+};
+
+function safeStr(value: unknown): string {
+  return String(value ?? "").trim();
+}
 
 function firstNonEmpty(item: Record<string, any>, keys: string[]): string {
   for (const key of keys) {
@@ -184,6 +264,35 @@ function splitCommaValues(value: string): string[] {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function humanizeFieldKey(key: string): string {
+  if (!key) return key;
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
+function getFieldLabelForType(itemType: MediaItemType, key: string): string {
+  if (key === "title") return "Title";
+  if (key === "subtitle") return "Subtitle";
+  if (key === "releaseDateAlt") return "Release Date";
+  if (key === "coverUrl") return "Cover URL";
+  if (key === "imageUrl") return "Image URL";
+
+  const field =
+    itemType === "book"
+      ? BOOK_EDIT_FIELDS.find((entry) => entry.key === key)
+      : itemType === "tv"
+        ? SHOW_EDIT_FIELDS.find((entry) => entry.key === key)
+        : itemType === "movie"
+          ? MOVIE_EDIT_FIELDS.find((entry) => entry.key === key)
+          : GAME_EDIT_FIELDS.find((entry) => entry.key === key);
+
+  return field?.label || humanizeFieldKey(key);
 }
 
 function isTruthyValue(value: string): boolean {
@@ -508,6 +617,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [gameEditValues, setGameEditValues] = React.useState<Record<string, string>>({});
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [isResyncing, setIsResyncing] = React.useState(false);
+  const [isApplyingResync, setIsApplyingResync] = React.useState(false);
+  const [resyncError, setResyncError] = React.useState<string | null>(null);
+  const [resyncNotice, setResyncNotice] = React.useState<string | null>(null);
+  const [resyncPreview, setResyncPreview] = React.useState<ResyncPreview | null>(null);
   const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
   const coverDragDepthRef = React.useRef(0);
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -623,6 +737,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setGameEditValues(buildGameEditValues(item));
     setIsDeleting(false);
     setDeleteError(null);
+    setIsResyncing(false);
+    setIsApplyingResync(false);
+    setResyncError(null);
+    setResyncNotice(null);
+    setResyncPreview(null);
   }, [open, item]);
 
   const autoSizeDescriptionTextarea = React.useCallback((el?: HTMLTextAreaElement | null) => {
@@ -810,6 +929,246 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     }
   };
 
+  const isAnyEditing = isEditingBook || isEditingShow || isEditingMovie || isEditingGame;
+  const isAnySaving = isSavingBook || isSavingShow || isSavingMovie || isSavingGame;
+  const canResync =
+    itemType === "book"
+      ? Boolean(onSaveBookEdits)
+      : itemType === "tv"
+        ? Boolean(onSaveShowEdits)
+        : itemType === "movie"
+          ? Boolean(onSaveMovieEdits)
+          : Boolean(onSaveGameEdits);
+
+  const buildCurrentValues = (): Record<string, string> => {
+    if (itemType === "book") return buildBookEditValues(sourceItem);
+    if (itemType === "tv") return buildShowEditValues(sourceItem);
+    if (itemType === "movie") return buildMovieEditValues(sourceItem);
+    return buildGameEditValues(sourceItem);
+  };
+
+  const applyIncomingValue = (target: Record<string, string>, key: string, value: unknown) => {
+    const incoming = safeStr(value);
+    if (!incoming) return;
+    target[key] = incoming;
+  };
+
+  const buildResyncUpdates = (currentValues: Record<string, string>, incoming: Record<string, string>) => {
+    const next = { ...currentValues };
+    if (itemType === "book") {
+      applyIncomingValue(next, "title", incoming.title);
+      applyIncomingValue(next, "subtitle", incoming.subtitle);
+      applyIncomingValue(next, "author", incoming.author);
+      applyIncomingValue(next, "releaseDate", incoming.releaseDate);
+      applyIncomingValue(next, "description", incoming.description);
+      applyIncomingValue(next, "genre", incoming.genre);
+      applyIncomingValue(next, "pages", incoming.pages);
+      applyIncomingValue(next, "imageUrl", incoming.imageUrl);
+      applyIncomingValue(next, "isbn", incoming.isbn);
+      applyIncomingValue(next, "googleBooksVolumeId", incoming.googleBooksVolumeId);
+      return next;
+    }
+
+    if (itemType === "tv") {
+      applyIncomingValue(next, "title", incoming.title);
+      applyIncomingValue(next, "year", incoming.year);
+      applyIncomingValue(next, "tmdbId", incoming.tmdbId);
+      applyIncomingValue(next, "firstAirDate", incoming.firstAirDate);
+      applyIncomingValue(next, "lastAirDate", incoming.lastAirDate);
+      applyIncomingValue(next, "numberOfSeasons", incoming.numberOfSeasons);
+      applyIncomingValue(next, "numberOfEpisodes", incoming.numberOfEpisodes);
+      applyIncomingValue(next, "showStatus", incoming.showStatus);
+      applyIncomingValue(next, "genres", incoming.genres);
+      applyIncomingValue(next, "tmdbRating", incoming.tmdbRating);
+      applyIncomingValue(next, "overview", incoming.overview);
+      applyIncomingValue(next, "posterUrl", incoming.posterUrl);
+      applyIncomingValue(next, "backdropUrl", incoming.backdropUrl);
+      return next;
+    }
+
+    if (itemType === "movie") {
+      applyIncomingValue(next, "title", incoming.title);
+      applyIncomingValue(next, "year", incoming.year);
+      applyIncomingValue(next, "tmdbId", incoming.tmdbId);
+      applyIncomingValue(next, "releaseDate", incoming.releaseDate);
+      applyIncomingValue(next, "runtime", incoming.runtime);
+      applyIncomingValue(next, "status", incoming.status);
+      applyIncomingValue(next, "genres", incoming.genres);
+      applyIncomingValue(next, "tmdbRating", incoming.tmdbRating);
+      applyIncomingValue(next, "overview", incoming.overview);
+      applyIncomingValue(next, "posterUrl", incoming.posterUrl);
+      applyIncomingValue(next, "backdropUrl", incoming.backdropUrl);
+      return next;
+    }
+
+    applyIncomingValue(next, "title", incoming.title);
+    applyIncomingValue(next, "releaseDate", incoming.releaseDate);
+    applyIncomingValue(next, "releaseDateAlt", incoming.releaseDate);
+    applyIncomingValue(next, "platforms", incoming.platforms);
+    applyIncomingValue(next, "igdbId", incoming.igdbId);
+    applyIncomingValue(next, "igdbRating", incoming.igdbRating);
+    applyIncomingValue(next, "genres", incoming.genres);
+    applyIncomingValue(next, "developer", incoming.developer);
+    applyIncomingValue(next, "description", incoming.description);
+    applyIncomingValue(next, "coverUrl", incoming.coverUrl);
+    return next;
+  };
+
+  const handleResyncMetadata = async () => {
+    if (!item || !canResync || isResyncing || isApplyingResync || isDeleting || isAnySaving) return;
+    setResyncError(null);
+    setResyncNotice(null);
+    setResyncPreview(null);
+
+    if (isAnyEditing) {
+      setResyncError("Save or cancel current edits before running metadata resync.");
+      return;
+    }
+
+    const queryTitle = safeStr(sourceItem.title);
+    const bookIsbn = safeStr(sourceItem.isbn);
+    const lookupId =
+      itemType === "book"
+        ? safeStr(sourceItem.googleBooksVolumeId)
+        : itemType === "tv" || itemType === "movie"
+          ? safeStr(sourceItem.tmdbId)
+          : safeStr(sourceItem.igdbIdOverride || sourceItem.igdbId);
+    const fallbackQuery = itemType === "book" ? queryTitle || (bookIsbn ? `isbn:${bookIsbn}` : "") : queryTitle;
+
+    if (!lookupId && !fallbackQuery) {
+      setResyncError("Unable to resync: missing metadata identifier and title.");
+      return;
+    }
+
+    setIsResyncing(true);
+    try {
+      const params = new URLSearchParams({ type: itemType });
+      if (lookupId) params.set("lookupId", lookupId);
+      if (fallbackQuery) params.set("query", fallbackQuery);
+      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const payload = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        results?: Array<{ data?: Record<string, string> }>;
+      };
+      if (!res.ok || !payload.ok) {
+        throw new Error(payload.error || "Metadata resync failed.");
+      }
+      const matched = Array.isArray(payload.results) ? payload.results[0] : null;
+      const incomingData = matched?.data || {};
+      if (!matched || !incomingData || typeof incomingData !== "object") {
+        setResyncNotice(`No metadata result found from ${RESYNC_SOURCE_LABELS[itemType]}.`);
+        return;
+      }
+
+      const currentValues = buildCurrentValues();
+      const nextValues = buildResyncUpdates(currentValues, incomingData);
+      const changes = RESYNC_FIELDS[itemType]
+        .map((key) => {
+          const before = safeStr(currentValues[key]);
+          const after = safeStr(nextValues[key]);
+          if (before === after) return null;
+          return {
+            key,
+            label: getFieldLabelForType(itemType, key),
+            before: before || DASH,
+            after: after || DASH,
+            selected: true,
+          } as ResyncDiffRow;
+        })
+        .filter(Boolean) as ResyncDiffRow[];
+
+      if (changes.length === 0) {
+        setResyncNotice(`No metadata changes found from ${RESYNC_SOURCE_LABELS[itemType]}.`);
+        return;
+      }
+
+      setResyncPreview({
+        sourceLabel: RESYNC_SOURCE_LABELS[itemType],
+        baseValues: currentValues,
+        updates: nextValues,
+        changes,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Metadata resync failed.";
+      setResyncError(message);
+    } finally {
+      setIsResyncing(false);
+    }
+  };
+
+  const handleApplyResync = async () => {
+    if (!item || !resyncPreview || isApplyingResync || isDeleting || isAnySaving) return;
+    const selectedChanges = resyncPreview.changes.filter((change) => change.selected);
+    if (selectedChanges.length === 0) {
+      setResyncError("Select at least one changed field to apply.");
+      return;
+    }
+    const selectedKeys = new Set(selectedChanges.map((change) => change.key));
+    const finalUpdates = { ...resyncPreview.baseValues };
+    Object.keys(resyncPreview.updates).forEach((key) => {
+      if (selectedKeys.has(key)) {
+        finalUpdates[key] = resyncPreview.updates[key];
+      }
+    });
+
+    setIsApplyingResync(true);
+    setResyncError(null);
+    try {
+      if (itemType === "book") {
+        if (!onSaveBookEdits) throw new Error("Book save handler is unavailable.");
+        await onSaveBookEdits(item, finalUpdates);
+      } else if (itemType === "tv") {
+        if (!onSaveShowEdits) throw new Error("TV save handler is unavailable.");
+        await onSaveShowEdits(item, finalUpdates);
+      } else if (itemType === "movie") {
+        if (!onSaveMovieEdits) throw new Error("Movie save handler is unavailable.");
+        await onSaveMovieEdits(item, finalUpdates);
+      } else {
+        if (!onSaveGameEdits) throw new Error("Game save handler is unavailable.");
+        await onSaveGameEdits(item, finalUpdates);
+      }
+
+      setResyncNotice(
+        `Metadata updated from ${resyncPreview.sourceLabel}. Applied ${selectedChanges.length} change${
+          selectedChanges.length === 1 ? "" : "s"
+        }.`
+      );
+      setResyncPreview(null);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to apply metadata changes.";
+      setResyncError(message);
+    } finally {
+      setIsApplyingResync(false);
+    }
+  };
+
+  const selectedResyncCount = resyncPreview
+    ? resyncPreview.changes.filter((change) => change.selected).length
+    : 0;
+
+  const setAllResyncSelections = (selected: boolean) => {
+    setResyncPreview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        changes: prev.changes.map((change) => ({ ...change, selected })),
+      };
+    });
+  };
+
+  const toggleResyncSelection = (key: string) => {
+    setResyncPreview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        changes: prev.changes.map((change) =>
+          change.key === key ? { ...change, selected: !change.selected } : change
+        ),
+      };
+    });
+  };
+
   const activeSaveError =
     itemType === "book"
       ? bookSaveError
@@ -919,6 +1278,17 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               ) : null}
             </>
           ) : null}
+          {canResync ? (
+            <button
+              type="button"
+              className="resyncButton topActionButton"
+              onClick={() => void handleResyncMetadata()}
+              disabled={isResyncing || isApplyingResync || isDeleting || isAnySaving || isAnyEditing}
+              title={isAnyEditing ? "Save or cancel current edits first" : "Fetch latest metadata and preview changes"}
+            >
+              {isResyncing ? "Resyncing..." : "Resync"}
+            </button>
+          ) : null}
           {onDeleteItem ? (
             <button type="button" className="deleteButton topActionButton" onClick={handleDeleteItem} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete"}
@@ -931,6 +1301,72 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
         {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
         {deleteError ? <div className="bookSaveError">{deleteError}</div> : null}
+        {resyncNotice ? <div className="bookSaveSuccess">{resyncNotice}</div> : null}
+        {resyncError ? <div className="bookSaveError">{resyncError}</div> : null}
+        {resyncPreview ? (
+          <div className="metadataDiffCard">
+            <div className="metadataDiffHeader">
+              <div className="metadataDiffTitle">Metadata updates available from {resyncPreview.sourceLabel}</div>
+              <div className="metadataDiffCount">
+                {selectedResyncCount}/{resyncPreview.changes.length} selected
+              </div>
+            </div>
+            <div className="metadataDiffSelectionActions">
+              <button
+                type="button"
+                className="metadataDiffSelectButton"
+                onClick={() => setAllResyncSelections(true)}
+                disabled={isApplyingResync}
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                className="metadataDiffSelectButton"
+                onClick={() => setAllResyncSelections(false)}
+                disabled={isApplyingResync}
+              >
+                Select None
+              </button>
+            </div>
+            <div className="metadataDiffGrid">
+              {resyncPreview.changes.map((change) => (
+                <div key={change.key} className="metadataDiffRow">
+                  <label className="metadataDiffToggle">
+                    <input
+                      type="checkbox"
+                      checked={change.selected}
+                      onChange={() => toggleResyncSelection(change.key)}
+                      disabled={isApplyingResync}
+                    />
+                  </label>
+                  <div className="metadataDiffLabel">{change.label}</div>
+                  <div className="metadataDiffBefore">{change.before}</div>
+                  <div className="metadataDiffArrow">→</div>
+                  <div className="metadataDiffAfter">{change.after}</div>
+                </div>
+              ))}
+            </div>
+            <div className="metadataDiffActions">
+              <button
+                type="button"
+                className="saveButton topActionButton"
+                onClick={() => void handleApplyResync()}
+                disabled={isApplyingResync || isResyncing || isDeleting || isAnySaving || selectedResyncCount === 0}
+              >
+                {isApplyingResync ? "Applying..." : `Apply ${selectedResyncCount} Change${selectedResyncCount === 1 ? "" : "s"}`}
+              </button>
+              <button
+                type="button"
+                className="editButton topActionButton"
+                onClick={() => setResyncPreview(null)}
+                disabled={isApplyingResync}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="contentLayout">
           <aside className="leftPane">
@@ -1143,7 +1579,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
           <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}${isEditingBook || isEditingShow || isEditingMovie || isEditingGame ? " bookEditRightPane" : ""}`}>
             {itemType !== "book" ? (
-              heroUrl ? <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" /> : null
+              heroUrl ? <img src={heroUrl} alt={`${title} screenshot`} className={`heroImage${itemType === "tv" ? " heroImageFullArt" : ""}`} /> : null
             ) : null}
 
             {description && itemType !== "book" && !(itemType === "tv" && isEditingShow) && !(itemType === "movie" && isEditingMovie) && !(itemType === "game" && isEditingGame) ? (
@@ -1596,8 +2032,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .contentLayout {
+          --posterColumnWidth: 270px;
           display: grid;
-          grid-template-columns: 270px minmax(0, 1fr);
+          grid-template-columns: var(--posterColumnWidth) minmax(0, 1fr);
           gap: 12px;
           align-items: start;
         }
@@ -1894,7 +2331,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .editButton,
         .saveButton,
-        .deleteButton {
+        .deleteButton,
+        .resyncButton {
           border: 1px solid rgba(95, 122, 177, 0.6);
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
@@ -1918,9 +2356,16 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           color: #ffdede;
         }
 
+        .resyncButton {
+          border-color: rgba(84, 174, 134, 0.78);
+          background: rgba(17, 56, 38, 0.92);
+          color: #d9ffed;
+        }
+
         .editButton:disabled,
         .saveButton:disabled,
-        .deleteButton:disabled {
+        .deleteButton:disabled,
+        .resyncButton:disabled {
           opacity: 0.7;
           cursor: default;
         }
@@ -2004,6 +2449,137 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           line-height: 1.35;
         }
 
+        .metadataDiffCard {
+          margin: 8px 0 10px;
+          border: 1px solid rgba(94, 160, 224, 0.45);
+          border-radius: 12px;
+          background: rgba(10, 25, 46, 0.72);
+          padding: 10px;
+        }
+
+        .metadataDiffHeader {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+          flex-wrap: wrap;
+        }
+
+        .metadataDiffTitle {
+          color: #e5f1ff;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.02em;
+        }
+
+        .metadataDiffCount {
+          color: rgba(190, 214, 246, 0.9);
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .metadataDiffSelectionActions {
+          display: flex;
+          gap: 6px;
+          margin-bottom: 8px;
+        }
+
+        .metadataDiffSelectButton {
+          border: 1px solid rgba(94, 139, 200, 0.62);
+          border-radius: 8px;
+          background: rgba(14, 32, 57, 0.86);
+          color: rgba(214, 231, 255, 0.95);
+          padding: 4px 8px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .metadataDiffSelectButton:disabled {
+          opacity: 0.7;
+          cursor: default;
+        }
+
+        .metadataDiffGrid {
+          display: grid;
+          grid-template-columns: 26px minmax(0, 160px) minmax(0, 1fr) 18px minmax(0, 1fr);
+          gap: 6px 8px;
+          max-height: 220px;
+          overflow: auto;
+          padding-right: 2px;
+        }
+
+        .metadataDiffRow {
+          display: contents;
+        }
+
+        .metadataDiffLabel {
+          color: rgba(180, 200, 232, 0.94);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          align-self: center;
+        }
+
+        .metadataDiffToggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          align-self: center;
+        }
+
+        .metadataDiffToggle input {
+          width: 14px;
+          height: 14px;
+          accent-color: #53b581;
+          cursor: pointer;
+        }
+
+        .metadataDiffBefore,
+        .metadataDiffAfter {
+          border: 1px solid rgba(80, 107, 158, 0.5);
+          border-radius: 8px;
+          padding: 6px 8px;
+          font-size: 11px;
+          line-height: 1.35;
+          white-space: pre-wrap;
+          word-break: break-word;
+          min-height: 32px;
+          display: flex;
+          align-items: center;
+        }
+
+        .metadataDiffBefore {
+          background: rgba(24, 36, 63, 0.64);
+          color: rgba(211, 223, 244, 0.92);
+        }
+
+        .metadataDiffAfter {
+          background: rgba(16, 50, 35, 0.66);
+          border-color: rgba(79, 179, 133, 0.62);
+          color: #d6ffe9;
+        }
+
+        .metadataDiffArrow {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: rgba(170, 201, 236, 0.95);
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .metadataDiffActions {
+          margin-top: 10px;
+          display: flex;
+          gap: 6px;
+          justify-content: flex-end;
+        }
+
         .rightPane {
           min-width: 0;
           display: flex;
@@ -2034,6 +2610,17 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         .heroImage {
           object-fit: cover;
           display: block;
+        }
+
+        .heroImageFullArt {
+          object-fit: contain;
+          min-height: 0;
+          max-height: none;
+          width: 100%;
+          max-width: none;
+          height: auto;
+          align-self: stretch;
+          background: rgba(7, 18, 36, 0.58);
         }
 
         .infoGrid {
@@ -2119,6 +2706,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         @media (max-width: 1024px) {
           .contentLayout {
+            --posterColumnWidth: 320px;
             grid-template-columns: minmax(0, 1fr);
           }
 
