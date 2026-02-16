@@ -106,10 +106,11 @@
 
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
+import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -131,6 +132,7 @@ type Show = {
   numberOfEpisodes?: string;
   watchStatus?: string;
   watched?: string;
+  dateCompleted?: string;
   caughtUp?: string;
   showStatus?: string;
   networks?: string;
@@ -251,8 +253,19 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "4.6.0";
+const APP_VERSION = "5.0.0";
 const VERSION_HISTORY = [
+  {
+    version: "5.0.0",
+    date: "2026-02-15",
+    notes: [
+      "Added a full in-app Add Item flow with a new + icon in the top header.",
+      "New add modal supports Book, TV Show, Movie, and Game.",
+      "Search integration now pulls candidates from Google Books, TMDB, and IGDB.",
+      "Selected search results can be edited before saving to library and spreadsheet.",
+      "Added manual-entry fallback for cases with no API match.",
+    ],
+  },
   {
     version: "4.6.0",
     date: "2026-02-15",
@@ -321,11 +334,26 @@ const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
 const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
-const SETTINGS_ENV_KEY = "NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL";
 
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
 const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
+const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
+const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
+const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
+  "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
+  "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
+  "/shelf-weathered-oak.png": "/wood_beam_header_weathered_oak.png",
+  "/shelf-weathered-gray-oak.png": "/wood_beam_header_weathered_oak.png",
+  "/shelf-honey-oak.png": "/wood_beam_header_honey_oak.png",
+  "/shelf-teak.png": "/wood_beam_header_teak.png",
+  "/shelf_white_oak.png": "/wood_beam_header_white_oak.png",
+  "/shelf-reclaimed-oak.png": "/wood_beam_header_reclaimed_oak.png",
+};
+const normalizeShelfTheme = (theme: string): string => {
+  if (theme === "/shelf-weathered-oak.png") return WEATHERED_OAK_SHELF_IMAGE;
+  return theme;
+};
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -333,22 +361,82 @@ const GAME_FRAME_IMAGE = "/game-frame.png";
 const APP_ICON = "/logo4.png";
 const SHOW_HEADER_DEBUG_CONTROLS = false;
 
+const COMPACT_GAME_FRAME_SIZE = { width: 646, height: 800 } as const;
+const DEFAULT_GAME_FRAME_SIZE = { width: 1024, height: 1536 } as const;
+const COMPACT_GAME_FRAME_FILES = new Set([
+  "/dreamcast-frame.png",
+  "/playstation-frame.png",
+  "/playstation-2-frame.png",
+  "/playstation-3-frame.png",
+  "/playstation-4-frame.png",
+  "/playstation-5-frame.png",
+  "/switch-frame.png",
+  "/switch-2-frame.png",
+  "/xbox-360-frame.png",
+  "/xbox-one-frame.png",
+  "/xbox-series-x-frame.png",
+]);
+const KNOWN_GAME_FRAME_FILES = new Set([
+  ...Array.from(COMPACT_GAME_FRAME_FILES),
+  "/epic-games-store-frame.png",
+  "/nes-frame.png",
+  "/steam-frame.png",
+  "/windows-11-frame.png",
+]);
+
 // Helper function to convert platform name to frame filename
 function getPlatformFrameFilename(platform?: string): string {
   if (!platform || platform === "Default") {
     return GAME_FRAME_IMAGE;
   }
   const canonicalLabel = canonicalizePlatformLabel(platform);
+  const normalizedCanonical = normalizePlatformToken(canonicalLabel);
+  const frameOverrideByPlatform: Record<string, string> = {
+    nintendoswitch: "/switch-frame.png",
+    switch: "/switch-frame.png",
+    nintendoswitch2: "/switch-2-frame.png",
+    switch2: "/switch-2-frame.png",
+  };
+  const explicitFrame = frameOverrideByPlatform[normalizedCanonical];
+  if (explicitFrame) return explicitFrame;
   const slug = safeStr(canonicalLabel)
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `/${slug || "game"}-frame.png`;
+  const guessedFramePath = `/${slug || "game"}-frame.png`;
+  return KNOWN_GAME_FRAME_FILES.has(guessedFramePath) ? guessedFramePath : GAME_FRAME_IMAGE;
+}
+
+function getGameFrameSourceDimensions(platform?: string): { width: number; height: number } {
+  const framePath = getPlatformFrameFilename(platform).toLowerCase();
+  if (COMPACT_GAME_FRAME_FILES.has(framePath)) {
+    return { width: COMPACT_GAME_FRAME_SIZE.width, height: COMPACT_GAME_FRAME_SIZE.height };
+  }
+  return { width: DEFAULT_GAME_FRAME_SIZE.width, height: DEFAULT_GAME_FRAME_SIZE.height };
 }
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
+}
+
+function normalizeStatusToken(value?: string): string {
+  return safeStr(value)
+    .toLowerCase()
+    .replace("cancelled", "canceled");
+}
+
+function normalizeOwnership(value?: string): string {
+  const normalized = normalizeStatusToken(value);
+  if (normalized === "ripped") return "owned";
+  return normalized;
+}
+
+function normalizeShowWatchStatusForSheet(value?: string): string {
+  const raw = safeStr(value);
+  if (!raw) return "";
+  if (normalizeStatusToken(raw) === "currently watching") return "Watching";
+  return raw;
 }
 
 // Helper function to generate cover URL from title (served from /public/covers/)
@@ -427,6 +515,10 @@ function getGameCoverFit(platform?: string): "cover" | "contain" {
   if (!normalized) return "cover";
 
   const isPlayStation = normalized.startsWith("playstation") || normalized.startsWith("ps");
+  const isXboxOne =
+    normalized === "xboxone" ||
+    normalized === "xboxonex" ||
+    normalized === "xboxones";
   const isNintendoDs =
     normalized === "nintendods" ||
     normalized === "nds" ||
@@ -439,7 +531,7 @@ function getGameCoverFit(platform?: string): "cover" | "contain" {
     normalized === "n64";
 
   // Square platforms should avoid side-cropping; N64 art is rectangular and should also keep full artwork.
-  if (isPlayStation || isNintendoDs || isDreamcast || isNintendo64) {
+  if (isPlayStation || isXboxOne || isNintendoDs || isDreamcast || isNintendo64) {
     return "contain";
   }
 
@@ -459,32 +551,32 @@ function getMediaType(item: any): MediaType {
 
 function getMediaItemKey(item: any): string {
   const type = getMediaType(item);
-  return `${type}:${normalizeTitleKey(item?.title || "")}`;
+  const normalizedTitle = normalizeTitleKey(item?.title || "");
+  if (type === "game") {
+    const normalizedPlatform = normalizePlatformToken(
+      safeStr(item?.__renderPlatform || item?.platform)
+    );
+    return `${type}:${normalizedTitle}:${normalizedPlatform || "default"}`;
+  }
+  return `${type}:${normalizedTitle}`;
 }
 
-const BOOK_GENRE_CANONICAL = [
-  "Mystery",
-  "Thriller / Suspense",
-  "Horror",
-  "Science Fiction",
-  "Fantasy",
-  "Romance",
-  "Historical Fiction",
-  "Literary / Contemporary Fiction",
-  "Humor / Comedy",
-  "Adventure / Action",
-  "Young Adult (YA)",
-  "Children's",
-  "Biography / Memoir",
-  "History",
-  "Self-Help",
-  "Science / Popular Science",
-  "Business",
-  "True Crime",
-  "Strategy Guide",
-] as const;
+type StatusIndicator = {
+  color: string;
+  label: string;
+};
 
-function mapBookGenre(input: string): (typeof BOOK_GENRE_CANONICAL)[number] | null {
+const STATUS_COLOR_GREEN = "#54bf3f";
+const STATUS_COLOR_YELLOW = "#e6b52e";
+const STATUS_COLOR_RED = "#c54848";
+const STATUS_COLOR_ORANGE = "#d97a2a";
+const STATUS_DOT_SIZE_RATIO = 0.16;
+const STATUS_DOT_MIN_SIZE = 14;
+const STATUS_DOT_MAX_SIZE = 24;
+const STATUS_DOT_NUDGE_LEFT_PX = 7;
+const STATUS_DOT_NUDGE_UP_PX = 7;
+
+function mapBookGenre(input: string): string | null {
   const g = safeStr(input).toLowerCase();
   if (!g) return null;
 
@@ -548,6 +640,7 @@ function rowToShow(r: Row): Show | null {
     numberOfEpisodes: safeStr(r["NumberOfEpisodes"]) || undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
     watched: safeStr(r["Watched"]) || undefined,
+    dateCompleted: safeStr(r["Date Completed"]) || safeStr(r["CompletedDate"]) || undefined,
     caughtUp: safeStr(r["CaughtUp"]) || undefined,
     showStatus: safeStr(r["Status"]) || undefined,
     networks: safeStr(r["Networks"]) || undefined,
@@ -660,12 +753,12 @@ function rowToMovie(r: Row): Movie | null {
     myRating: safeStr(r["MyRating"]) || safeStr(r["My Rating"]) || undefined,
     tmdbRating: safeStr(r["TMDB_Rating"]) || undefined,
     tmdbId: safeStr(r["TMDB_ID"]) || undefined,
-    watched: safeStr(r["Watched"]) || undefined,
+    watched: safeStr(r["Watch Status"]) || safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     watchDate: safeStr(r["WatchDate"]) || undefined,
     tags: safeStr(r["Tags"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
     runtime: safeStr(r["Runtime"]) || undefined,
-    watchStatus: safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
+    watchStatus: safeStr(r["Watch Status"]) || safeStr(r["WatchStatus"]) || safeStr(r["Watched"]) || undefined,
     status: safeStr(r["Status"]) || undefined,
     movieStatus: safeStr(r["Status"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
@@ -756,7 +849,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -771,11 +864,55 @@ export default function Page() {
     process.env.NEXT_PUBLIC_TV_WRITE_URL;
   const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
   const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
+  const writeConfigChecks = useMemo(
+    () => [
+      {
+        key: "settings",
+        label: "Settings + overlays persistence",
+        configured: Boolean(settingsWriteUrl),
+        env: "NEXT_PUBLIC_SETTINGS_WRITE_URL",
+      },
+      {
+        key: "books",
+        label: "Book edits",
+        configured: Boolean(booksWriteUrl),
+        env: "NEXT_PUBLIC_BOOKS_WRITE_URL",
+      },
+      {
+        key: "shows",
+        label: "TV/show edits",
+        configured: Boolean(showsWriteUrl),
+        env: "NEXT_PUBLIC_SHOWS_WRITE_URL or NEXT_PUBLIC_TV_WRITE_URL",
+      },
+      {
+        key: "movies",
+        label: "Movie edits",
+        configured: Boolean(moviesWriteUrl),
+        env: "NEXT_PUBLIC_MOVIES_WRITE_URL",
+      },
+      {
+        key: "games",
+        label: "Game edits",
+        configured: Boolean(gamesWriteUrl),
+        env: "NEXT_PUBLIC_GAMES_WRITE_URL",
+      },
+    ],
+    [booksWriteUrl, gamesWriteUrl, moviesWriteUrl, settingsWriteUrl, showsWriteUrl]
+  );
+  const missingWriteConfigChecks = useMemo(
+    () => writeConfigChecks.filter((entry) => !entry.configured),
+    [writeConfigChecks]
+  );
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
+  const settingsPersistTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSettingsSheetWritesRef = useRef<
+    Record<string, { value: string; category: string; description: string }>
+  >({});
+  const settingsSheetFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Debounce timers for inset adjustments to prevent render lag
+  // Debounce timers for settings persistence
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const [loading, setLoading] = useState(false);
@@ -790,15 +927,17 @@ export default function Page() {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
-  const [showSettings, setShowSettings] = useState<boolean>(false);
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
+  const [faqPopupOpen, setFaqPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
-  const [yearMenuOpen, setYearMenuOpen] = useState<boolean>(false);
   const [otherMenuOpen, setOtherMenuOpen] = useState<boolean>(false);
+  const [smartListsOpen, setSmartListsOpen] = useState<boolean>(false);
+  const [discoverOpen, setDiscoverOpen] = useState<boolean>(true);
   const [selectedPreviousYear, setSelectedPreviousYear] = useState<number>(2025);
 
   // Settings submenus
@@ -814,6 +953,7 @@ export default function Page() {
     gameInsetsCollapsed: boolean;
     logoSize: boolean;
     syncIcon: boolean;
+    statusIcon: boolean;
     icons: boolean;
     sidebar: boolean;
     counter: boolean;
@@ -829,6 +969,7 @@ export default function Page() {
     gameInsetsCollapsed: false,
     logoSize: false,
     syncIcon: false,
+    statusIcon: false,
     icons: false,
     sidebar: false,
     counter: false,
@@ -841,6 +982,7 @@ export default function Page() {
   const [posterSizeMovies, setPosterSizeMovies] = useState<number>(108);
   const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
   const [bookHeightMultiplier, setBookHeightMultiplier] = useState<number>(1.5);
+  const [coverGapSize, setCoverGapSize] = useState<number>(24);
   const [tight, setTight] = useState<boolean>(true);
   const [watchFilter, setWatchFilter] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<string | null>(null);
@@ -876,7 +1018,10 @@ export default function Page() {
   const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
+  const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
   const [viewportH, setViewportH] = useState(0);
+  const [windowScrollY, setWindowScrollY] = useState(0);
+  const [stageTopAbs, setStageTopAbs] = useState(0);
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -907,6 +1052,11 @@ export default function Page() {
   const [syncIconSize, setSyncIconSize] = useState<number>(12);
   const [syncIconTop, setSyncIconTop] = useState<number>(8);
 
+  // Status icon sizing and position tuning
+  const [statusIconScale, setStatusIconScale] = useState<number>(100);
+  const [statusIconOffsetX, setStatusIconOffsetX] = useState<number>(0);
+  const [statusIconOffsetY, setStatusIconOffsetY] = useState<number>(0);
+
   // Sidebar icon size
   const [iconSize, setIconSize] = useState<number>(16);
 
@@ -930,9 +1080,10 @@ export default function Page() {
 
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
+  const currentTopHeaderImage = SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
   
   // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>("winterGray");
+  const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
   
   // Theme configurations
   const sidebarThemes = {
@@ -979,10 +1130,10 @@ export default function Page() {
       secondaryColor: "#d7e4ff",
       textColor: "rgba(233, 240, 255, 0.9)",
       arrowColor: "rgba(210, 226, 255, 0.65)",
-      rolodexColor: "#b7c9ef",
-      rolodexDigitColor: "#d7e4ff",
-      rolodexLabelColor: "#dbe7ff",
-      rolodexTileBg: "linear-gradient(180deg, rgba(30, 49, 82, 0.92) 0%, rgba(22, 36, 63, 0.92) 100%)",
+      rolodexColor: "#4f74b8",
+      rolodexDigitColor: "#2f5fae",
+      rolodexLabelColor: "#dbe8ff",
+      rolodexTileBg: "linear-gradient(180deg, #eef4ff 0%, #dde9ff 100%)",
       rolodexTileBorder: "rgba(148,177,228,.35)",
       countBubbleColor: "#5a78b8",
       syncedTextColor: "#cfe0ff",
@@ -994,13 +1145,43 @@ export default function Page() {
   };
   
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
+  const syncStatusTextColor =
+    sidebarTheme === "darkBlue"
+      ? syncState === "error"
+        ? "#ffd4d4"
+        : syncState === "ok"
+          ? "#d6f5e3"
+          : "#dbe8ff"
+      : syncState === "error"
+        ? "#8b0000"
+        : syncState === "ok"
+          ? "#0d6b3c"
+          : "#754738";
+
+  // Apply cached theme settings immediately on mount so we don't flash the default theme
+  // while waiting for CSV/settings sync.
+  useLayoutEffect(() => {
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      const cache = settingsCacheRef.current || {};
+      const cachedSidebarTheme = safeStr(cache["sidebarTheme"]);
+      const cachedShelfTheme = safeStr(cache["shelfTheme"]);
+      if (cachedSidebarTheme) setSidebarTheme(cachedSidebarTheme);
+      if (cachedShelfTheme) setShelfTheme(normalizeShelfTheme(cachedShelfTheme));
+    } catch (e) {
+      console.warn("Failed to apply cached theme settings on mount:", e);
+    }
+  }, []);
 
   // Layout tuning
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
-  const gap = tight ? 6 : 12;
+  const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
+  const topSafeInset = "env(safe-area-inset-top, 0px)";
 
   // DVD case: poster inset inside the frame
   const CASE_SRC_W = 1024;
@@ -1025,10 +1206,6 @@ export default function Page() {
   const [movieInsetRightPx, setMovieInsetRightPx] = useState(100);
   const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
   const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
-  
-  // Game frame: platform-based insets for game covers
-  const GAME_SRC_W = 1024;
-  const GAME_SRC_H = 1536;
   
   // Platform-specific insets (stored as a single object)
   const [platformInsets, setPlatformInsets] = useState<Record<string, { top: number; right: number; bottom: number; left: number }>>({
@@ -1064,6 +1241,14 @@ export default function Page() {
   const [showVersionNotes, setShowVersionNotes] = useState(false);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
+  const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
+  const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
+    tv: 100,
+    movies: 108,
+    books: 115,
+    games: 108,
+  });
+  const globalCoverScaleSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const [showInsetGuide, setShowInsetGuide] = useState(false);
 
@@ -1072,17 +1257,23 @@ export default function Page() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
+  const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
   const [overlayFrameOverrides, setOverlayFrameOverrides] = useState<Record<string, string>>({});
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addingItem, setAddingItem] = useState(false);
+  const [addSaveError, setAddSaveError] = useState<string | null>(null);
   const [uploadingOverlayForKey, setUploadingOverlayForKey] = useState<string | null>(null);
   const [overlayUploadError, setOverlayUploadError] = useState<string | null>(null);
   const overlayFileInputRef = useRef<HTMLInputElement | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const caseTiltRafRef = useRef<number | null>(null);
+  const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -1186,16 +1377,87 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (!settingsPopupOpen && !sortPopupOpen) return;
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setWindowScrollY(window.scrollY || window.pageYOffset || 0);
+      });
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  const flushCaseTilt = useCallback(() => {
+    caseTiltRafRef.current = null;
+    const pending = caseTiltPendingRef.current;
+    if (!pending) return;
+    pending.el.style.setProperty("--tiltY", `${pending.tiltY}deg`);
+    pending.el.style.setProperty("--tiltX", `${pending.tiltX}deg`);
+    caseTiltPendingRef.current = null;
+  }, []);
+
+  const handleCaseMouseMove = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const xRel = (e.clientX - rect.left) / rect.width - 0.5;
+      const yRel = (e.clientY - rect.top) / rect.height - 0.5;
+      const maxTilt = 20;
+      const tiltY = Math.max(-maxTilt, Math.min(maxTilt, xRel * maxTilt * 2));
+      const tiltX = Math.max(-10, Math.min(10, -yRel * 16));
+      caseTiltPendingRef.current = { el: e.currentTarget, tiltY, tiltX };
+      if (caseTiltRafRef.current === null) {
+        caseTiltRafRef.current = window.requestAnimationFrame(flushCaseTilt);
+      }
+    },
+    [flushCaseTilt]
+  );
+
+  const handleCaseMouseLeave = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (caseTiltPendingRef.current?.el === el) {
+      caseTiltPendingRef.current = null;
+    }
+    el.style.setProperty("--tiltY", "0deg");
+    el.style.setProperty("--tiltX", "0deg");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (caseTiltRafRef.current !== null) {
+        window.cancelAnimationFrame(caseTiltRafRef.current);
+      }
+    };
+  }, []);
+
+  const measureStageTop = useCallback(() => {
+    const node = stageRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setStageTopAbs(rect.top + (window.scrollY || window.pageYOffset || 0));
+  }, [stageRef]);
+
+  useEffect(() => {
+    measureStageTop();
+  }, [measureStageTop, nav, viewportH, refreshNonce]);
+
+  useEffect(() => {
+    if (!settingsPopupOpen && !sortPopupOpen && !faqPopupOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSettingsPopupOpen(false);
         setSortPopupOpen(false);
+        setFaqPopupOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [settingsPopupOpen, sortPopupOpen]);
+  }, [settingsPopupOpen, sortPopupOpen, faqPopupOpen]);
 
   useEffect(() => {
     if (!SHOW_HEADER_DEBUG_CONTROLS) return;
@@ -1217,6 +1479,25 @@ export default function Page() {
 
   useEffect(() => {
     try {
+      const raw = localStorage.getItem("cdlPopupCoverModes");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        const normalized: Record<string, "custom" | "default"> = {};
+        Object.entries(parsed as Record<string, unknown>).forEach(([key, value]) => {
+          if (value === "custom" || value === "default") {
+            normalized[key] = value;
+          }
+        });
+        setPopupCoverModes(normalized);
+      }
+    } catch (e) {
+      console.warn("Failed to load popup cover modes from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       const raw = localStorage.getItem("cdlOverlayFrameOverrides");
       if (!raw) return;
       const parsed = JSON.parse(raw);
@@ -1231,6 +1512,7 @@ export default function Page() {
   useEffect(() => {
     if (!settingsRows.length) return;
     const fromSheet: Record<string, string> = {};
+    const popupModesFromSheet: Record<string, "custom" | "default"> = {};
     const overlayFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
@@ -1247,9 +1529,18 @@ export default function Page() {
           overlayFromSheet[overlayKey] = value;
         }
       }
+      if (key.startsWith("popupCoverMode:")) {
+        const mediaKey = key.slice("popupCoverMode:".length);
+        if (mediaKey && (value === "custom" || value === "default")) {
+          popupModesFromSheet[mediaKey] = value;
+        }
+      }
     });
     if (Object.keys(fromSheet).length) {
       setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+    }
+    if (Object.keys(popupModesFromSheet).length) {
+      setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
     }
     if (Object.keys(overlayFromSheet).length) {
       setOverlayFrameOverrides((prev) => ({ ...overlayFromSheet, ...prev }));
@@ -1315,7 +1606,29 @@ export default function Page() {
     }
   };
 
-  const postSheetWrite = async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+  const handlePopupCoverModeChange = (item: any, mode: "custom" | "default") => {
+    const itemKey = getMediaItemKey(item);
+    const mediaType = getMediaType(item);
+    setPopupCoverModes((prev) => {
+      const next = { ...prev, [itemKey]: mode };
+      try {
+        localStorage.setItem("cdlPopupCoverModes", JSON.stringify(next));
+      } catch (e) {
+        console.warn("Failed to persist popup cover modes locally:", e);
+      }
+      return next;
+    });
+    if (settingsWriteUrl) {
+      saveSettingToSheet(
+        `popupCoverMode:${itemKey}`,
+        mode,
+        "Popup Cover Modes",
+        `${mediaType} popup cover mode for ${safeStr(item?.title)}`
+      );
+    }
+  };
+
+  const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
     const res = await fetch("/api/sheets-write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1330,7 +1643,7 @@ export default function Page() {
         fallbackMessage;
       throw new Error(errorMessage);
     }
-  };
+  }, []);
 
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
     if (!booksWriteUrl) {
@@ -1443,9 +1756,11 @@ export default function Page() {
         TMDB_ID: safeStr(updates.tmdbId),
         FirstAirDate: safeStr(updates.firstAirDate),
         LastAirDate: safeStr(updates.lastAirDate),
+        "Date Completed": safeStr(updates.dateCompleted),
+        CompletedDate: safeStr(updates.dateCompleted),
         NumberOfSeasons: safeStr(updates.numberOfSeasons),
         NumberOfEpisodes: safeStr(updates.numberOfEpisodes),
-        WatchStatus: safeStr(updates.watchStatus),
+        WatchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
         Status: safeStr(updates.showStatus),
         Networks: safeStr(updates.networks),
         StreamingUS: safeStr(updates.streamingUS),
@@ -1476,9 +1791,10 @@ export default function Page() {
         tmdbId: safeStr(updates.tmdbId),
         firstAirDate: safeStr(updates.firstAirDate),
         lastAirDate: safeStr(updates.lastAirDate),
+        dateCompleted: safeStr(updates.dateCompleted),
         numberOfSeasons: safeStr(updates.numberOfSeasons),
         numberOfEpisodes: safeStr(updates.numberOfEpisodes),
-        watchStatus: safeStr(updates.watchStatus),
+        watchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
         showStatus: safeStr(updates.showStatus),
         networks: safeStr(updates.networks),
         streamingUS: safeStr(updates.streamingUS),
@@ -1519,11 +1835,10 @@ export default function Page() {
       updates: {
         Title: safeStr(updates.title),
         Year: safeStr(updates.year),
-        Poster: safeStr(updates.poster),
         MyRating: safeStr(updates.myRating),
         TMDB_Rating: safeStr(updates.tmdbRating),
         TMDB_ID: safeStr(updates.tmdbId),
-        Watched: safeStr(updates.watched),
+        "Watch Status": safeStr(updates.watchStatus),
         WatchDate: safeStr(updates.watchDate),
         Tags: safeStr(updates.tags),
         ReleaseDate: safeStr(updates.releaseDate),
@@ -1533,6 +1848,7 @@ export default function Page() {
         Overview: safeStr(updates.overview),
         PosterURL: safeStr(updates.posterUrl),
         BackdropURL: safeStr(updates.backdropUrl),
+        Ownership: safeStr(updates.ownership),
       },
     };
 
@@ -1548,11 +1864,11 @@ export default function Page() {
         ...prev,
         title: safeStr(updates.title) || prev.title,
         year: safeStr(updates.year),
-        poster: safeStr(updates.poster),
         myRating: safeStr(updates.myRating),
         tmdbRating: safeStr(updates.tmdbRating),
         tmdbId: safeStr(updates.tmdbId),
-        watched: safeStr(updates.watched),
+        watched: safeStr(updates.watchStatus),
+        watchStatus: safeStr(updates.watchStatus),
         watchDate: safeStr(updates.watchDate),
         tags: safeStr(updates.tags),
         tag: safeStr(updates.tags),
@@ -1560,6 +1876,7 @@ export default function Page() {
         runtime: safeStr(updates.runtime),
         status: safeStr(updates.status),
         movieStatus: safeStr(updates.status),
+        ownership: safeStr(updates.ownership),
         genres: safeStr(updates.genres),
         overview: safeStr(updates.overview),
         posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
@@ -1672,6 +1989,444 @@ export default function Page() {
     setRefreshNonce((n) => n + 1);
   };
 
+  const handleDeleteLibraryItem = async (item: any) => {
+    const mediaType = getMediaType(item);
+    const title = safeStr(item?.title);
+
+    const rowValue = (row: Row, keys: string[]): string => {
+      for (const key of keys) {
+        const value = safeStr(row[key]);
+        if (value) return value;
+      }
+      return "";
+    };
+
+    if (mediaType === "book") {
+      if (!booksWriteUrl) {
+        throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
+      }
+      const matchGoogleBooksVolumeId = safeStr(item?.googleBooksVolumeId);
+      const matchOpenLibraryWorkKey = safeStr(item?.openLibraryWorkKey);
+      const matchIsbn = safeStr(item?.isbn);
+      if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !title) {
+        throw new Error("Unable to identify this book row to delete.");
+      }
+
+      await postSheetWrite(
+        booksWriteUrl,
+        {
+          action: "deleteBook",
+          match: {
+            googleBooksVolumeId: matchGoogleBooksVolumeId,
+            openLibraryWorkKey: matchOpenLibraryWorkKey,
+            isbn: matchIsbn,
+            title,
+          },
+        },
+        "Failed to delete book"
+      );
+
+      setBookRows((prev) =>
+        prev.filter((row) => {
+          const rowGoogleBooksVolumeId = rowValue(row, ["GoogleBooksVolumeId", "googleBooksVolumeId"]);
+          const rowOpenLibraryWorkKey = rowValue(row, ["OpenLibraryWorkKey", "openLibraryWorkKey"]);
+          const rowIsbn = rowValue(row, ["isbn", "ISBN"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchGoogleBooksVolumeId && rowGoogleBooksVolumeId === matchGoogleBooksVolumeId) return false;
+          if (matchOpenLibraryWorkKey && rowOpenLibraryWorkKey === matchOpenLibraryWorkKey) return false;
+          if (matchIsbn && rowIsbn === matchIsbn) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    } else if (mediaType === "tv") {
+      if (!showsWriteUrl) {
+        throw new Error(
+          "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
+        );
+      }
+      const matchTmdbId = safeStr(item?.tmdbId);
+      if (!matchTmdbId && !title) {
+        throw new Error("Unable to identify this show row to delete.");
+      }
+
+      await postSheetWrite(
+        showsWriteUrl,
+        {
+          action: "deleteShow",
+          match: {
+            tmdbId: matchTmdbId,
+            title,
+          },
+        },
+        "Failed to delete show"
+      );
+
+      setTvRows((prev) =>
+        prev.filter((row) => {
+          const rowTmdbId = rowValue(row, ["TMDB_ID", "tmdbId"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchTmdbId && rowTmdbId === matchTmdbId) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    } else if (mediaType === "movie") {
+      if (!moviesWriteUrl) {
+        throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
+      }
+      const matchTmdbId = safeStr(item?.tmdbId);
+      if (!matchTmdbId && !title) {
+        throw new Error("Unable to identify this movie row to delete.");
+      }
+
+      await postSheetWrite(
+        moviesWriteUrl,
+        {
+          action: "deleteMovie",
+          match: {
+            tmdbId: matchTmdbId,
+            title,
+          },
+        },
+        "Failed to delete movie"
+      );
+
+      setMovieRows((prev) =>
+        prev.filter((row) => {
+          const rowTmdbId = rowValue(row, ["TMDB_ID", "tmdbId"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchTmdbId && rowTmdbId === matchTmdbId) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    } else {
+      if (!gamesWriteUrl) {
+        throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
+      }
+      const matchIgdbId = safeStr(item?.igdbId);
+      if (!matchIgdbId && !title) {
+        throw new Error("Unable to identify this game row to delete.");
+      }
+
+      await postSheetWrite(
+        gamesWriteUrl,
+        {
+          action: "deleteGame",
+          match: {
+            igdbId: matchIgdbId,
+            title,
+          },
+        },
+        "Failed to delete game"
+      );
+
+      setGameRows((prev) =>
+        prev.filter((row) => {
+          const rowIgdbId = rowValue(row, ["IGDB_ID", "igdbId"]);
+          const rowTitle = rowValue(row, ["Title"]);
+          if (matchIgdbId && rowIgdbId === matchIgdbId) return false;
+          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          return true;
+        })
+      );
+    }
+
+    if (typeof window !== "undefined") {
+      window.alert(`Deleted "${title || "item"}" successfully.`);
+    }
+    setModalOpen(false);
+    setModalItem(null);
+    setCoverUploadError(null);
+    setRefreshNonce((n) => n + 1);
+  };
+
+  const handleAddLibraryItem = useCallback(
+    async (payload: AddItemPayload) => {
+      const { type, values } = payload;
+      const title = safeStr(values.title);
+      if (!title) {
+        throw new Error("Title is required.");
+      }
+
+      setAddingItem(true);
+      setAddSaveError(null);
+
+      try {
+        if (type === "book") {
+          if (!booksWriteUrl) {
+            throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
+          }
+          await postSheetWrite(
+            booksWriteUrl,
+            {
+              action: "addBook",
+              values: {
+                Title: title,
+                Subtitle: safeStr(values.subtitle),
+                Series: safeStr(values.series),
+                Author: safeStr(values.author),
+                Ownership: safeStr(values.ownership),
+                Type: safeStr(values.type),
+                Status: safeStr(values.status),
+                CompletedDate: safeStr(values.completedDate),
+                isbn: safeStr(values.isbn),
+                ReleaseDate: safeStr(values.releaseDate),
+                description: safeStr(values.description),
+                ImageURL: safeStr(values.imageUrl),
+                userRating: safeStr(values.userRating),
+                "My Rating": safeStr(values.myRating),
+                pages: safeStr(values.pages),
+                audiobookDuration: safeStr(values.audiobookDuration),
+                genre: safeStr(values.genre),
+                tags: safeStr(values.tags),
+                OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
+                GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
+              },
+            },
+            "Failed to add book"
+          );
+          setBookRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Subtitle: safeStr(values.subtitle),
+              Series: safeStr(values.series),
+              Author: safeStr(values.author),
+              Ownership: safeStr(values.ownership),
+              Type: safeStr(values.type),
+              Status: safeStr(values.status),
+              CompletedDate: safeStr(values.completedDate),
+              isbn: safeStr(values.isbn),
+              ReleaseDate: safeStr(values.releaseDate),
+              description: safeStr(values.description),
+              ImageURL: safeStr(values.imageUrl),
+              userRating: safeStr(values.userRating),
+              "My Rating": safeStr(values.myRating),
+              pages: safeStr(values.pages),
+              audiobookDuration: safeStr(values.audiobookDuration),
+              genre: safeStr(values.genre),
+              tags: safeStr(values.tags),
+              OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
+              GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
+            },
+          ]);
+          setNav("books");
+        } else if (type === "tv") {
+          if (!showsWriteUrl) {
+            throw new Error(
+              "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
+            );
+          }
+          const normalizedWatchStatus = normalizeShowWatchStatusForSheet(values.watchStatus);
+          await postSheetWrite(
+            showsWriteUrl,
+            {
+              action: "addShow",
+              values: {
+                Title: title,
+                Year: safeStr(values.year),
+                TMDB_ID: safeStr(values.tmdbId),
+                FirstAirDate: safeStr(values.firstAirDate),
+                LastAirDate: safeStr(values.lastAirDate),
+                "Date Completed": safeStr(values.dateCompleted),
+                CompletedDate: safeStr(values.dateCompleted),
+                NumberOfSeasons: safeStr(values.numberOfSeasons),
+                NumberOfEpisodes: safeStr(values.numberOfEpisodes),
+                WatchStatus: normalizedWatchStatus,
+                Status: safeStr(values.showStatus),
+                Networks: safeStr(values.networks),
+                StreamingUS: safeStr(values.streamingUS),
+                Genres: safeStr(values.genres),
+                TMDB_Rating: safeStr(values.tmdbRating),
+                MyRating: safeStr(values.myRating),
+                BackdropURL: safeStr(values.backdropUrl),
+                Overview: safeStr(values.overview),
+                Ownership: safeStr(values.ownership),
+                Tags: safeStr(values.tags),
+                Tag: safeStr(values.tags),
+                PosterURL: safeStr(values.posterUrl),
+              },
+            },
+            "Failed to add show"
+          );
+          setTvRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Year: safeStr(values.year),
+              TMDB_ID: safeStr(values.tmdbId),
+              FirstAirDate: safeStr(values.firstAirDate),
+              LastAirDate: safeStr(values.lastAirDate),
+              "Date Completed": safeStr(values.dateCompleted),
+              CompletedDate: safeStr(values.dateCompleted),
+              NumberOfSeasons: safeStr(values.numberOfSeasons),
+              NumberOfEpisodes: safeStr(values.numberOfEpisodes),
+              WatchStatus: normalizedWatchStatus,
+              Status: safeStr(values.showStatus),
+              Networks: safeStr(values.networks),
+              StreamingUS: safeStr(values.streamingUS),
+              Genres: safeStr(values.genres),
+              TMDB_Rating: safeStr(values.tmdbRating),
+              MyRating: safeStr(values.myRating),
+              BackdropURL: safeStr(values.backdropUrl),
+              Overview: safeStr(values.overview),
+              Ownership: safeStr(values.ownership),
+              Tags: safeStr(values.tags),
+              Tag: safeStr(values.tags),
+              PosterURL: safeStr(values.posterUrl),
+            },
+          ]);
+          setNav("tv");
+        } else if (type === "movie") {
+          if (!moviesWriteUrl) {
+            throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
+          }
+          await postSheetWrite(
+            moviesWriteUrl,
+            {
+              action: "addMovie",
+              values: {
+                Title: title,
+                Year: safeStr(values.year),
+                MyRating: safeStr(values.myRating),
+                TMDB_Rating: safeStr(values.tmdbRating),
+                TMDB_ID: safeStr(values.tmdbId),
+                "Watch Status": safeStr(values.watchStatus),
+                WatchDate: safeStr(values.watchDate),
+                Tags: safeStr(values.tags),
+                ReleaseDate: safeStr(values.releaseDate),
+                Runtime: safeStr(values.runtime),
+                Status: safeStr(values.status),
+                Genres: safeStr(values.genres),
+                Overview: safeStr(values.overview),
+                PosterURL: safeStr(values.posterUrl),
+                BackdropURL: safeStr(values.backdropUrl),
+              },
+            },
+            "Failed to add movie"
+          );
+          setMovieRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Year: safeStr(values.year),
+              MyRating: safeStr(values.myRating),
+              TMDB_Rating: safeStr(values.tmdbRating),
+              TMDB_ID: safeStr(values.tmdbId),
+              "Watch Status": safeStr(values.watchStatus),
+              WatchDate: safeStr(values.watchDate),
+              Tags: safeStr(values.tags),
+              ReleaseDate: safeStr(values.releaseDate),
+              Runtime: safeStr(values.runtime),
+              Status: safeStr(values.status),
+              Genres: safeStr(values.genres),
+              Overview: safeStr(values.overview),
+              PosterURL: safeStr(values.posterUrl),
+              BackdropURL: safeStr(values.backdropUrl),
+            },
+          ]);
+          setNav("movies");
+        } else {
+          if (!gamesWriteUrl) {
+            throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
+          }
+          const dateAdded = safeStr(values.dateAdded) || new Date().toISOString().slice(0, 10);
+          const releaseDatePrimary = safeStr(values.releaseDate) || safeStr(values.releaseDateAlt);
+          const releaseDateAlt = safeStr(values.releaseDateAlt) || releaseDatePrimary;
+          await postSheetWrite(
+            gamesWriteUrl,
+            {
+              action: "addGame",
+              values: {
+                Title: title,
+                Cover: safeStr(values.cover),
+                Platform: safeStr(values.platform),
+                Status: safeStr(values.status),
+                Name: safeStr(values.name) || title,
+                ReleaseDate: releaseDatePrimary,
+                "Release Date": releaseDateAlt,
+                Platforms: safeStr(values.platforms),
+                CoverURL: safeStr(values.coverUrl),
+                Rating: safeStr(values.rating),
+                "IGDB Rating": safeStr(values.igdbRating),
+                "My Rating": safeStr(values.myRating),
+                Ownership: safeStr(values.ownership),
+                Format: safeStr(values.format),
+                Backlog: safeStr(values.backlog),
+                Completed: safeStr(values.completed),
+                "Date Completed": safeStr(values.dateCompleted),
+                "Year Played": safeStr(values.yearPlayed),
+                "Date Added": dateAdded,
+                Description: safeStr(values.description),
+                Genres: safeStr(values.genres),
+                "Hours Played": safeStr(values.hoursPlayed),
+                CoverCachedAt: safeStr(values.coverCachedAt),
+                Developer: safeStr(values.developer),
+                ScreensotsURL: safeStr(values.screensotsUrl),
+                WishlistOrder: safeStr(values.wishlistOrder),
+                QueuedOrder: safeStr(values.queuedOrder),
+                IGDB_ID: safeStr(values.igdbId),
+                IGDB_ID_Override: safeStr(values.igdbIdOverride),
+                LocalCoverURL: safeStr(values.localCoverUrl),
+                Tag: safeStr(values.tags),
+              },
+            },
+            "Failed to add game"
+          );
+          setGameRows((prev) => [
+            ...prev,
+            {
+              Title: title,
+              Cover: safeStr(values.cover),
+              Platform: safeStr(values.platform),
+              Status: safeStr(values.status),
+              Name: safeStr(values.name) || title,
+              ReleaseDate: releaseDatePrimary,
+              "Release Date": releaseDateAlt,
+              Platforms: safeStr(values.platforms),
+              CoverURL: safeStr(values.coverUrl),
+              Rating: safeStr(values.rating),
+              "IGDB Rating": safeStr(values.igdbRating),
+              "My Rating": safeStr(values.myRating),
+              Ownership: safeStr(values.ownership),
+              Format: safeStr(values.format),
+              Backlog: safeStr(values.backlog),
+              Completed: safeStr(values.completed),
+              "Date Completed": safeStr(values.dateCompleted),
+              "Year Played": safeStr(values.yearPlayed),
+              "Date Added": dateAdded,
+              Description: safeStr(values.description),
+              Genres: safeStr(values.genres),
+              "Hours Played": safeStr(values.hoursPlayed),
+              CoverCachedAt: safeStr(values.coverCachedAt),
+              Developer: safeStr(values.developer),
+              ScreensotsURL: safeStr(values.screensotsUrl),
+              WishlistOrder: safeStr(values.wishlistOrder),
+              QueuedOrder: safeStr(values.queuedOrder),
+              IGDB_ID: safeStr(values.igdbId),
+              IGDB_ID_Override: safeStr(values.igdbIdOverride),
+              LocalCoverURL: safeStr(values.localCoverUrl),
+              Tag: safeStr(values.tags),
+            },
+          ]);
+          setNav("games");
+        }
+
+        setAddModalOpen(false);
+        setAddSaveError(null);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Failed to add item";
+        setAddSaveError(message);
+        throw error;
+      } finally {
+        setAddingItem(false);
+      }
+    },
+    [booksWriteUrl, gamesWriteUrl, moviesWriteUrl, postSheetWrite, showsWriteUrl]
+  );
+
   useEffect(() => {
     // Need at least one CSV URL to proceed
     if (!tvCsvUrl && !booksCsvUrl && !moviesCsvUrl && !gamesCsvUrl) {
@@ -1768,7 +2523,13 @@ export default function Page() {
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
     try {
-      return new Date(ts).toLocaleString();
+      return new Intl.DateTimeFormat(undefined, {
+        year: "2-digit",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(ts));
     } catch {
       return "—";
     }
@@ -1789,48 +2550,110 @@ export default function Page() {
   //   - Logs success/failure to console for debugging
   //   - Even if Google Sheet is down, data is protected in localStorage
   //
-  const getSetting = (key: string, defaultValue: any) => {
-    // First, try to get from settingsRows (from the sheet)
-    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
-    if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
-      const value = setting["Value"];
-      const numValue = Number(value);
-      // Try to parse as number if it looks like one and is not NaN
-      if (!isNaN(numValue)) return numValue;
-      // Try to parse as boolean
-      if (value === "true") return true;
-      if (value === "false") return false;
-      return value;
-    }
-    
-    // Fallback to localStorage
+  const getSetting = useCallback((key: string, defaultValue: any) => {
+    const parseStoredValue = (value: unknown) => {
+      const str = String(value ?? "");
+      const numValue = Number(str);
+      if (!isNaN(numValue) && str !== "") return numValue;
+      if (str === "true") return true;
+      if (str === "false") return false;
+      return str;
+    };
+
+    // Prefer local cache first so recently changed values persist across app restarts
+    // even if the published sheet CSV lags behind writes.
     try {
-      // Use in-memory cache if available, otherwise load from localStorage
       if (settingsCacheRef.current === null) {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
       }
-      
       const settingsCache = settingsCacheRef.current;
       if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
-        const value = settingsCache[key];
-        const numValue = Number(value);
-        // Try to parse as number if it looks like one and is not NaN
-        if (!isNaN(numValue)) return numValue;
-        // Try to parse as boolean
-        if (value === "true") return true;
-        if (value === "false") return false;
-        return value;
+        return parseStoredValue(settingsCache[key]);
       }
     } catch (e) {
       console.warn("Failed to read from localStorage:", e);
     }
+
+    // Fallback to settingsRows (sheet values)
+    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
+    if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
+      return parseStoredValue(setting["Value"]);
+    }
     
     return defaultValue;
-  };
+  }, [settingsRows]);
 
-  const saveSetting = (key: string, value: any, category: string = "", description: string = "") => {
-    // Save to localStorage only - no auto-sync to Google Sheet
-    // Use saveSettingToSheet() for manual Google Sheet syncs
+  const flushPendingSettingsSheetWrites = useCallback(async () => {
+    if (!settingsWriteUrl) return;
+    const pending = pendingSettingsSheetWritesRef.current;
+    const entries = Object.entries(pending);
+    if (!entries.length) return;
+
+    setSyncState("saving");
+    setSyncMsg(`Saving ${entries.length} setting${entries.length === 1 ? "" : "s"}...`);
+
+    // Clear queue first so new writes can continue while this batch is in flight.
+    pendingSettingsSheetWritesRef.current = {};
+
+    const results = await Promise.allSettled(
+      entries.map(([key, entry]) =>
+        postSheetWrite(
+          settingsWriteUrl,
+          {
+            key,
+            value: entry.value,
+            category: entry.category,
+            description: entry.description,
+          },
+          `Failed to save setting: ${key}`
+        )
+      )
+    );
+
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failedCount = results.length - successCount;
+    if (failedCount > 0) {
+      setSyncState("error");
+      setSyncMsg(`Saved ${successCount}/${results.length} settings`);
+      return;
+    }
+
+    setSyncState("ok");
+    setSyncMsg(`Saved ${successCount} setting${successCount === 1 ? "" : "s"}`);
+    setLastSyncAt(Date.now());
+    setTimeout(() => {
+      setSyncMsg("Synced");
+    }, 1200);
+  }, [postSheetWrite, settingsWriteUrl]);
+
+  const queueSettingSheetWrite = useCallback(
+    (key: string, value: any, category: string = "", description: string = "") => {
+      if (!settingsWriteUrl) return;
+
+      const valueStr = String(value);
+      if (valueStr.includes("#REF!")) {
+        console.log(`Skipping: ${key} (contains #REF! error)`);
+        return;
+      }
+
+      pendingSettingsSheetWritesRef.current[key] = {
+        value: valueStr,
+        category,
+        description,
+      };
+
+      if (settingsSheetFlushTimerRef.current) {
+        clearTimeout(settingsSheetFlushTimerRef.current);
+      }
+      settingsSheetFlushTimerRef.current = setTimeout(() => {
+        settingsSheetFlushTimerRef.current = null;
+        void flushPendingSettingsSheetWrites();
+      }, 700);
+    },
+    [flushPendingSettingsSheetWrites, settingsWriteUrl]
+  );
+
+  const saveSetting = useCallback((key: string, value: any, category: string = "", description: string = "") => {
     try {
       // Initialize cache from localStorage if not already loaded
       if (settingsCacheRef.current === null) {
@@ -1840,17 +2663,102 @@ export default function Page() {
       // Update in-memory cache
       if (settingsCacheRef.current) {
         settingsCacheRef.current[key] = String(value);
-        
-        // Write to localStorage (this is the slow part, but only happens once per change)
-        localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+        // Batch localStorage writes so rapid nudge/slider updates stay responsive.
+        if (settingsPersistTimerRef.current) {
+          clearTimeout(settingsPersistTimerRef.current);
+        }
+        settingsPersistTimerRef.current = setTimeout(() => {
+          try {
+            if (settingsCacheRef.current) {
+              localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+            }
+          } catch (persistError) {
+            console.warn("Failed to persist settings cache:", persistError);
+          } finally {
+            settingsPersistTimerRef.current = null;
+          }
+        }, 120);
       }
     } catch (e) {
       console.warn("Failed to save to localStorage:", e);
     }
-  };
+    queueSettingSheetWrite(key, value, category, description);
+  }, [queueSettingSheetWrite]);
+
+  const removeSetting = useCallback((key: string) => {
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      if (!settingsCacheRef.current) return;
+      if (!(key in settingsCacheRef.current)) return;
+      delete settingsCacheRef.current[key];
+      if (settingsPersistTimerRef.current) {
+        clearTimeout(settingsPersistTimerRef.current);
+      }
+      settingsPersistTimerRef.current = setTimeout(() => {
+        try {
+          if (settingsCacheRef.current) {
+            localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+          }
+        } catch (persistError) {
+          console.warn("Failed to persist settings cache:", persistError);
+        } finally {
+          settingsPersistTimerRef.current = null;
+        }
+      }, 120);
+    } catch (e) {
+      console.warn("Failed to remove setting from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (settingsPersistTimerRef.current) {
+        clearTimeout(settingsPersistTimerRef.current);
+      }
+      if (settingsSheetFlushTimerRef.current) {
+        clearTimeout(settingsSheetFlushTimerRef.current);
+      }
+      // Best effort final flush on unmount/navigation.
+      try {
+        if (settingsCacheRef.current) {
+          localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+        }
+      } catch (persistError) {
+        console.warn("Failed to persist settings cache on cleanup:", persistError);
+      }
+      void flushPendingSettingsSheetWrites();
+    };
+  }, [flushPendingSettingsSheetWrites]);
+
+  useEffect(() => {
+    if (!settingsWriteUrl) return;
+
+    const flushNow = () => {
+      if (settingsSheetFlushTimerRef.current) {
+        clearTimeout(settingsSheetFlushTimerRef.current);
+        settingsSheetFlushTimerRef.current = null;
+      }
+      void flushPendingSettingsSheetWrites();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushNow();
+      }
+    };
+
+    window.addEventListener("beforeunload", flushNow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", flushNow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [flushPendingSettingsSheetWrites, settingsWriteUrl]);
 
   // Save a specific setting to Google Sheet
-  const saveSettingToSheet = async (key: string, value: any, category: string = "", description: string = "") => {
+  const saveSettingToSheet = useCallback(async (key: string, value: any, category: string = "", description: string = "") => {
     if (!settingsWriteUrl) {
       console.warn("No settings write URL configured");
       return;
@@ -1863,34 +2771,16 @@ export default function Page() {
     }
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      try {
-        await fetch(settingsWriteUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, value, category, description }),
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeoutId);
-        console.log(`✓ Saved to sheet: ${key} = ${value}`);
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        // Handle abort timeout gracefully
-        if (fetchError instanceof Error && fetchError.name === "AbortError") {
-          console.warn(`⏱ Timeout saving ${key} to sheet (5s timeout)`);
-          // Don't throw, just warn - the setting is already saved locally
-        } else {
-          console.warn(`✗ Failed to save ${key} to sheet:`, fetchError);
-        }
-      }
+      await postSheetWrite(
+        settingsWriteUrl,
+        { key, value: valueStr, category, description },
+        `Failed to save setting: ${key}`
+      );
+      console.log(`✓ Saved to sheet: ${key} = ${valueStr}`);
     } catch (e) {
       console.warn(`✗ Error in saveSettingToSheet:`, e);
     }
-  };
+  }, [postSheetWrite, settingsWriteUrl]);
 
   // Save all insets of a specific type to Google Sheet
   const saveInsetsToSheet = async (insetType: 'tv' | 'book' | 'movie' | 'game') => {
@@ -1970,6 +2860,7 @@ export default function Page() {
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
+    setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
     
     setCaseInsetTopPx(getSetting("caseInsetTopPx", 156));
@@ -2096,6 +2987,9 @@ export default function Page() {
     
     setSyncIconSize(getSetting("syncIconSize", 12));
     setSyncIconTop(getSetting("syncIconTop", 8));
+    setStatusIconScale(getSetting("statusIconScale", 100));
+    setStatusIconOffsetX(getSetting("statusIconOffsetX", 0));
+    setStatusIconOffsetY(getSetting("statusIconOffsetY", 0));
     
     setIconSize(getSetting("iconSize", 16));
     
@@ -2114,10 +3008,11 @@ export default function Page() {
     setCounterLabelLeft(getSetting("counterLabelLeft", 0));
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
+    setShowStatusIndicators(getSetting("showStatusIndicators", false));
     
-    setSidebarTheme(getSetting("sidebarTheme", "winterGray"));
-    setShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE));
-  }, [settingsRows]);
+    setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
+    setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
+  }, [getSetting, settingsRows]);
 
   // Function to save all current settings to spreadsheet
   const saveAllSettings = async () => {
@@ -2144,12 +3039,16 @@ export default function Page() {
       { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
       { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
       { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
+      { key: "coverGapSize", value: coverGapSize, category: "Cover Sizes", description: "Cover Gap Size (px)" },
       { key: "tight", value: tight, category: "Cover Sizes", description: "Tight spacing between items" },
       { key: "logoSize", value: logoSize, category: "Logo Settings", description: "Logo Size (px)" },
       { key: "logoTop", value: logoTop, category: "Logo Settings", description: "Logo Top Position" },
       { key: "logoLeft", value: logoLeft, category: "Logo Settings", description: "Logo Left Position" },
       { key: "syncIconSize", value: syncIconSize, category: "Sync Icon", description: "Sync Icon Size (px)" },
       { key: "syncIconTop", value: syncIconTop, category: "Sync Icon", description: "Sync Icon Top Position" },
+      { key: "statusIconScale", value: statusIconScale, category: "Status Icon", description: "Status Icon Size (%)" },
+      { key: "statusIconOffsetX", value: statusIconOffsetX, category: "Status Icon", description: "Status Icon Horizontal Offset (px)" },
+      { key: "statusIconOffsetY", value: statusIconOffsetY, category: "Status Icon", description: "Status Icon Vertical Offset (px)" },
       { key: "iconSize", value: iconSize, category: "Icons", description: "Sidebar Icon Size (px)" },
       { key: "sidebarFontSize", value: sidebarFontSize, category: "Sidebar", description: "Sidebar Font Size" },
       { key: "sidebarFontWeight", value: sidebarFontWeight, category: "Sidebar", description: "Sidebar Font Weight" },
@@ -2159,10 +3058,29 @@ export default function Page() {
       { key: "sidebarTheme", value: sidebarTheme, category: "Themes", description: "Sidebar Theme" },
       { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Wood Type" },
       { key: "showInsetGuide", value: showInsetGuide, category: "Cover Sizes", description: "Show inset frame guide" },
+      { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
     ];
     
     try {
       let sentCount = 0;
+      const failedKeys: string[] = [];
+      const valuesMatch = (expectedRaw: unknown, actualRaw: unknown) => {
+        const expected = String(expectedRaw ?? "").trim();
+        const actual = String(actualRaw ?? "").trim();
+        if (expected === actual) return true;
+        const expectedBool = expected.toLowerCase();
+        const actualBool = actual.toLowerCase();
+        if ((expectedBool === "true" || expectedBool === "false") && (actualBool === "true" || actualBool === "false" || actualBool === "")) {
+          const normalizedActualBool = actualBool === "" ? "false" : actualBool;
+          return expectedBool === normalizedActualBool;
+        }
+        const expectedNum = Number(expected);
+        const actualNum = Number(actual);
+        if (!Number.isNaN(expectedNum) && !Number.isNaN(actualNum)) {
+          return Math.abs(expectedNum - actualNum) < 1e-9;
+        }
+        return false;
+      };
       // Send settings sequentially (one at a time) so they arrive in order on the sheet
       for (const setting of settings) {
         // Skip any settings containing "#REF!" error
@@ -2175,39 +3093,75 @@ export default function Page() {
         // Log each setting being sent for debugging
         console.log(`Sending: ${setting.key} = ${setting.value}`);
         try {
-          // Add timeout to prevent hanging on a single request (5 second timeout)
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000);
-          
-          await fetch(settingsWriteUrl, {
-            method: "POST",
-            mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(setting),
-            signal: controller.signal,
-          });
-          
-          clearTimeout(timeoutId);
+          await postSheetWrite(
+            settingsWriteUrl,
+            { ...setting, value: valueStr },
+            `Failed to save setting: ${setting.key}`
+          );
           sentCount++;
         } catch (fetchError) {
           console.warn(`Failed to send ${setting.key}, continuing:`, fetchError);
+          failedKeys.push(setting.key);
           // Continue with next setting even if one fails
         }
       }
       
       console.log(`Sent ${sentCount}/${settings.length} settings to Google Sheet`);
+
+      const verificationFailedKeys: string[] = [];
+      if (settingsCsvUrl && sentCount > 0) {
+        try {
+          // Give the Apps Script write endpoint a moment to commit before read-back verification.
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          const verifyRes = await fetch(settingsCsvUrl, { cache: "no-store" });
+          if (!verifyRes.ok) {
+            throw new Error(`Settings verify fetch failed: ${verifyRes.status}`);
+          }
+          const verifyCsv = await verifyRes.text();
+          const parsedVerify = Papa.parse<Row>(verifyCsv, { header: true, skipEmptyLines: true });
+          const verifyRows = (parsedVerify.data || []).map((r) => r as Row);
+          const settingsMap = new Map<string, string>();
+          for (const row of verifyRows) {
+            const key = safeStr(row["Key"]).toLowerCase();
+            if (!key) continue;
+            settingsMap.set(key, safeStr(row["Value"]));
+          }
+          for (const setting of settings) {
+            if (failedKeys.includes(setting.key)) continue;
+            const actual = settingsMap.get(String(setting.key).toLowerCase());
+            if (!valuesMatch(setting.value, actual)) {
+              verificationFailedKeys.push(setting.key);
+            }
+          }
+        } catch (verifyError) {
+          console.warn("Settings save verification failed:", verifyError);
+          verificationFailedKeys.push("verification");
+        }
+      }
       
       clearTimeout(safetyTimeoutId);
-      setSyncState("ok");
-      setSyncMsg("Settings saved!");
-      setTimeout(() => {
-        setSyncMsg("Synced");
-      }, 2000);
+      const combinedFailedKeys = [...failedKeys, ...verificationFailedKeys];
+      if (combinedFailedKeys.length > 0) {
+        setSyncState("error");
+        setSyncMsg(`Save completed with errors (${sentCount}/${settings.length})`);
+        alert(
+          `Save completed with errors.\nSaved ${sentCount}/${settings.length} settings.\nFailed: ${combinedFailedKeys.join(", ")}`
+        );
+      } else {
+        setSyncState("ok");
+        setSyncMsg(`All settings saved (${sentCount}/${settings.length})`);
+        setLastSyncAt(Date.now());
+        setTimeout(() => {
+          setSyncMsg("Synced");
+        }, 2000);
+        alert(`All settings saved successfully (${sentCount}/${settings.length}).`);
+      }
     } catch (e) {
       console.error("Failed to save settings:", e);
       clearTimeout(safetyTimeoutId);
       setSyncState("error");
       setSyncMsg("Save failed");
+      alert("Save failed. Check sync status and console logs.");
     }
   };
 
@@ -2249,6 +3203,7 @@ export default function Page() {
         setPosterSizeMovies(getNum("posterSizeMovies", 108));
         setPosterSizeBooks(getNum("posterSizeBooks", 115));
         setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
+        setCoverGapSize(getNum("coverGapSize", 24));
         setTight(getBool("tight", true));
         
         setCaseInsetTopPx(getNum("caseInsetTopPx", 156));
@@ -2274,6 +3229,9 @@ export default function Page() {
         
         setSyncIconSize(getNum("syncIconSize", 12));
         setSyncIconTop(getNum("syncIconTop", 8));
+        setStatusIconScale(getNum("statusIconScale", 100));
+        setStatusIconOffsetX(getNum("statusIconOffsetX", 0));
+        setStatusIconOffsetY(getNum("statusIconOffsetY", 0));
         
         setIconSize(getNum("iconSize", 16));
         setSidebarFontSize(getNum("sidebarFontSize", 11));
@@ -2281,8 +3239,9 @@ export default function Page() {
         setSidebarGap(getNum("sidebarGap", 8));
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
-        setShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE));
-        setSidebarTheme(getStr("sidebarTheme", "winterGray"));
+        setShelfTheme(normalizeShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE)));
+        setSidebarTheme(getStr("sidebarTheme", "darkBlue"));
+        setShowStatusIndicators(getBool("showStatusIndicators", false));
       }, 100);
       
       setSyncState("ok");
@@ -2342,83 +3301,135 @@ export default function Page() {
     setPosterSizeBooks(value);
     saveSetting("posterSizeBooks", value, "Cover Sizes", "Book Cover Size");
   };
-  const updateBookHeightMultiplier = (value: number) => {
-    setBookHeightMultiplier(value);
-    saveSetting("bookHeightMultiplier", value, "Cover Sizes", "Book Height Multiplier");
-  };
   const updateTight = (value: boolean) => {
     setTight(value);
     saveSetting("tight", value, "Spacing", "Tight spacing between items");
   };
+  const updateShowInsetGuide = (value: boolean) => {
+    setShowInsetGuide(value);
+    saveSetting("showInsetGuide", value, "Cover Sizes", "Show inset frame guide");
+  };
+  const updateCoverGapSize = (value: number) => {
+    const next = Math.max(0, Math.min(60, Math.round(value)));
+    setCoverGapSize(next);
+    saveSetting("coverGapSize", next, "Cover Sizes", "Cover Gap Size (px)");
+  };
+  const updateShowStatusIndicators = (value: boolean) => {
+    setShowStatusIndicators(value);
+    saveSetting("showStatusIndicators", value, "Display", "Show status indicator dots on covers");
+  };
   
-  // Debounced update helper for number inputs (prevents render lag on rapid changes)
+  // Update UI immediately; debounce only persistence so controls remain responsive.
   const debouncedUpdate = useCallback((key: string, value: number, setter: (v: number) => void, category: string, description: string) => {
-    // Clear existing timer for this key
+    // Apply the visual/state update immediately.
+    setter(value);
+
+    // Debounce local persistence for this specific key.
     if (debounceTimers.current[key]) {
       clearTimeout(debounceTimers.current[key]);
     }
-    
-    // Save to localStorage immediately (fast)
-    saveSetting(key, value, category, description);
-    
-    // Debounce the state update (which triggers expensive re-renders)
+
     debounceTimers.current[key] = setTimeout(() => {
-      setter(value);
+      saveSetting(key, value, category, description);
       delete debounceTimers.current[key];
-    }, 150); // 150ms delay feels instant but batches rapid changes
-  }, []);
+    }, 150);
+  }, [saveSetting]);
   
-  const updateCaseInsetTopPx = (value: number) => {
+  const updateCaseInsetTopPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetTopPx", value, setCaseInsetTopPx, "TV Insets", "TV Case Top Inset (px)");
-  };
-  const updateCaseInsetRightPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateCaseInsetRightPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetRightPx", value, setCaseInsetRightPx, "TV Insets", "TV Case Right Inset (px)");
-  };
-  const updateCaseInsetBottomPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateCaseInsetBottomPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetBottomPx", value, setCaseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)");
-  };
-  const updateCaseInsetLeftPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateCaseInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("caseInsetLeftPx", value, setCaseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)");
-  };
-  const updateBookInsetTopPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetTopPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetTopPx", value, setBookInsetTopPx, "Book Insets", "Book Top Inset (px)");
-  };
-  const updateBookInsetRightPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetRightPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetRightPx", value, setBookInsetRightPx, "Book Insets", "Book Right Inset (px)");
-  };
-  const updateBookInsetBottomPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetBottomPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetBottomPx", value, setBookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)");
-  };
-  const updateBookInsetLeftPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateBookInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("bookInsetLeftPx", value, setBookInsetLeftPx, "Book Insets", "Book Left Inset (px)");
-  };
-  const updateMovieInsetTopPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetTopPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetTopPx", value, setMovieInsetTopPx, "Movie Insets", "Movie Top Inset (px)");
-  };
-  const updateMovieInsetRightPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetRightPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetRightPx", value, setMovieInsetRightPx, "Movie Insets", "Movie Right Inset (px)");
-  };
-  const updateMovieInsetBottomPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetBottomPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetBottomPx", value, setMovieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)");
-  };
-  const updateMovieInsetLeftPx = (value: number) => {
+  }, [debouncedUpdate]);
+  const updateMovieInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetLeftPx", value, setMovieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)");
-  };
+  }, [debouncedUpdate]);
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
   };
+  const clampUnifiedCoverSize = (value: number) => Math.max(70, Math.min(125, Math.round(value)));
+  const captureGlobalCoverScaleBase = useCallback(() => {
+    globalCoverScaleBaseRef.current = {
+      tv: posterSizeTv,
+      movies: posterSizeMovies,
+      books: posterSizeBooks,
+      games: posterSizeGames,
+    };
+  }, [posterSizeBooks, posterSizeGames, posterSizeMovies, posterSizeTv]);
+  const updateGlobalCoverScale = useCallback((value: number) => {
+    const scalePct = Math.max(70, Math.min(130, value));
+    const scaleFactor = scalePct / 100;
+    const base = globalCoverScaleBaseRef.current;
+    const nextSizes = {
+      tv: clampUnifiedCoverSize(base.tv * scaleFactor),
+      movies: clampUnifiedCoverSize(base.movies * scaleFactor),
+      books: clampUnifiedCoverSize(base.books * scaleFactor),
+      games: clampUnifiedCoverSize(base.games * scaleFactor),
+    };
+
+    setGlobalCoverScalePct(scalePct);
+    setPosterSizeTv(nextSizes.tv);
+    setPosterSizeMovies(nextSizes.movies);
+    setPosterSizeBooks(nextSizes.books);
+    setPosterSizeGames(nextSizes.games);
+
+    if (globalCoverScaleSaveTimerRef.current) {
+      clearTimeout(globalCoverScaleSaveTimerRef.current);
+    }
+
+    globalCoverScaleSaveTimerRef.current = setTimeout(() => {
+      saveSetting("posterSizeTv", nextSizes.tv, "Cover Sizes", "TV Show Cover Size");
+      saveSetting("posterSizeMovies", nextSizes.movies, "Cover Sizes", "Movie Cover Size");
+      saveSetting("posterSizeBooks", nextSizes.books, "Cover Sizes", "Book Cover Size");
+      saveSetting("posterSizeGames", nextSizes.games, "Cover Sizes", "Game Cover Size");
+      globalCoverScaleBaseRef.current = nextSizes;
+      setGlobalCoverScalePct(100);
+      globalCoverScaleSaveTimerRef.current = null;
+    }, 2500);
+  }, [saveSetting]);
   const updateShelfTheme = (value: string) => {
-    setShelfTheme(value);
-    saveSetting("shelfTheme", value, "Themes", "Shelf Wood Type");
+    const normalizedValue = normalizeShelfTheme(value);
+    setShelfTheme(normalizedValue);
+    saveSetting("shelfTheme", normalizedValue, "Themes", "Shelf Wood Type");
     const shelfThemeNames: Record<string, string> = {
       "/shelves-light-single2.png": "Default (Light Oak)",
       "/shelf-dark-walnut.png": "Dark Walnut",
       "/shelf-weathered-oak.png": "Weathered Oak",
+      "/shelf-weathered-gray-oak.png": "Weathered Oak",
       "/shelf-honey-oak.png": "Honey Oak",
       "/shelf-teak.png": "Teak",
+      "/shelf_white_oak.png": "White Oak",
+      "/shelf-reclaimed-oak.png": "Reclaimed Oak",
     };
-    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
+    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[normalizedValue] || shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
   };
   
   const updateSidebarTheme = (value: string) => {
@@ -2431,9 +3442,28 @@ export default function Page() {
     };
     setThemeSaveNotice(`Saved theme: ${sidebarThemeNames[value] || "Sidebar theme"}. This will be used next time.`);
   };
+
+  useEffect(() => {
+    if (globalCoverScalePct === 100 && !globalCoverScaleSaveTimerRef.current) {
+      globalCoverScaleBaseRef.current = {
+        tv: posterSizeTv,
+        movies: posterSizeMovies,
+        books: posterSizeBooks,
+        games: posterSizeGames,
+      };
+    }
+  }, [globalCoverScalePct, posterSizeBooks, posterSizeGames, posterSizeMovies, posterSizeTv]);
+
+  useEffect(() => {
+    return () => {
+      if (globalCoverScaleSaveTimerRef.current) {
+        clearTimeout(globalCoverScaleSaveTimerRef.current);
+      }
+    };
+  }, []);
   
   // Update platform-specific insets
-  const updatePlatformInset = (platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
+  const updatePlatformInset = useCallback((platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
     const settingKey = `${platformKey}Inset${edgeCapitalized}Px`;
@@ -2461,10 +3491,10 @@ export default function Page() {
       `${platformKey} Insets`,
       `${platformKey} ${edgeCapitalized} Inset (px)`
     );
-  };
+  }, [debouncedUpdate]);
   
   // Update platform-specific overlay settings
-  const updatePlatformOverlay = (platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
+  const updatePlatformOverlay = useCallback((platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
     const settingKey = `${platformKey}Overlay${propertyCapitalized}`;
@@ -2492,10 +3522,10 @@ export default function Page() {
       `${platformKey} Overlay`,
       `${platformKey} Overlay ${propertyCapitalized} (%)`
     );
-  };
+  }, [debouncedUpdate]);
   
   // Update platform-specific cover scale
-  const updatePlatformCoverScale = (platform: string, axis: "x" | "y", value: number) => {
+  const updatePlatformCoverScale = useCallback((platform: string, axis: "x" | "y", value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const axisLabel = axis.toUpperCase();
     setPlatformCoverScale(prev => ({
@@ -2512,10 +3542,10 @@ export default function Page() {
     }
     
     saveSetting(`${platformKey}CoverScale${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Scale ${axisLabel} (%)`);
-  };
+  }, [saveSetting]);
   
   // Update platform-specific cover offset (crop position inside inset)
-  const updatePlatformCoverOffset = (platform: string, axis: 'x' | 'y', value: number) => {
+  const updatePlatformCoverOffset = useCallback((platform: string, axis: 'x' | 'y', value: number) => {
     const platformKey = resolvePlatformAlias(platform);
     const axisLabel = axis.toUpperCase();
     setPlatformCoverOffset(prev => ({
@@ -2531,7 +3561,7 @@ export default function Page() {
     }
     
     saveSetting(`${platformKey}CoverOffset${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Offset ${axisLabel} (%)`);
-  };
+  }, [saveSetting]);
   
   const updateLogoSize = (value: number) => {
     setLogoSize(value);
@@ -2552,6 +3582,18 @@ export default function Page() {
   const updateSyncIconTop = (value: number) => {
     setSyncIconTop(value);
     saveSetting("syncIconTop", value, "Sync Icon", "Sync Icon Top Position");
+  };
+  const updateStatusIconScale = (value: number) => {
+    setStatusIconScale(value);
+    saveSetting("statusIconScale", value, "Status Icon", "Status Icon Size (%)");
+  };
+  const updateStatusIconOffsetX = (value: number) => {
+    setStatusIconOffsetX(value);
+    saveSetting("statusIconOffsetX", value, "Status Icon", "Status Icon Horizontal Offset (px)");
+  };
+  const updateStatusIconOffsetY = (value: number) => {
+    setStatusIconOffsetY(value);
+    saveSetting("statusIconOffsetY", value, "Status Icon", "Status Icon Vertical Offset (px)");
   };
   const updateIconSize = (value: number) => {
     setIconSize(value);
@@ -2658,6 +3700,82 @@ export default function Page() {
       return true;
     }) as Game[];
   }, [gameRows]);
+
+  const indexedBooks = useMemo(
+    () =>
+      allBooks.map((book) => ({
+        item: book,
+        titleLC: safeStr(book.title).toLowerCase(),
+        statusNorm: safeStr(book.status).toLowerCase().replace("cancelled", "canceled"),
+        ownershipNorm: normalizeOwnership(book.ownership),
+        types: safeStr(book.types)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+        categories: safeStr(book.categories)
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean),
+        completedYear: book.completedDate ? new Date(book.completedDate).getFullYear().toString() : "",
+      })),
+    [allBooks]
+  );
+
+  const indexedShows = useMemo(
+    () =>
+      allShows.map((show) => ({
+        item: show,
+        titleLC: safeStr(show.title).toLowerCase(),
+        watchStatusNorm: safeStr(show.watchStatus).toLowerCase().replace("cancelled", "canceled"),
+        showStatusNorm: safeStr(show.showStatus).toLowerCase().replace("cancelled", "canceled"),
+        tagValue: safeStr(show.tag),
+        tags: safeStr(show.tag)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      })),
+    [allShows]
+  );
+
+  const indexedMovies = useMemo(
+    () =>
+      allMovies.map((movie) => ({
+        item: movie,
+        titleLC: safeStr(movie.title).toLowerCase(),
+        watchStatusNorm: safeStr(movie.watchStatus).toLowerCase().replace("cancelled", "canceled"),
+        tagValue: safeStr(movie.tag),
+        genres: safeStr(movie.genres)
+          .split(",")
+          .map((g) => g.trim())
+          .filter(Boolean),
+      })),
+    [allMovies]
+  );
+
+  const indexedGames = useMemo(
+    () =>
+      allGames.map((game) => ({
+        item: game,
+        titleLC: safeStr(game.title).toLowerCase(),
+        ownershipNorm: normalizeOwnership(game.ownership),
+        statusValue: safeStr(game.status || game.playStatus || game.gameStatus),
+        ownershipValue: safeStr(game.ownership),
+        yearPlayedValue: safeStr(game.yearPlayed),
+        platformValues: safeStr(game.platform)
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+        formatValues: safeStr(game.format)
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+        genreValues: safeStr(game.genres)
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+      })),
+    [allGames]
+  );
 
   const gamePlatformOptions = useMemo(() => {
     const options = new Set<string>();
@@ -2855,7 +3973,7 @@ export default function Page() {
   };
 
   // Helper to deduplicate games by title - keeps only primary platform version
-  const deduplicateGames = (games: Game[]): Game[] => {
+  const deduplicateGames = useCallback((games: Game[]): Game[] => {
     const gamesByTitle = new Map<string, Game>();
     
     // Platform priority helper
@@ -2880,7 +3998,7 @@ export default function Page() {
     });
     
     return Array.from(gamesByTitle.values());
-  };
+  }, []);
 
   // Dynamically detect all unique platforms from games data
   // Parse comma-separated platform values to get individual platforms
@@ -2916,10 +4034,6 @@ export default function Page() {
   const platformAliasMap = useMemo(() => {
     const map = new Map<string, string>();
     const knownPlatforms = new Set<string>([
-      ...Object.keys(platformInsets),
-      ...Object.keys(platformOverlaySettings),
-      ...Object.keys(platformCoverScale),
-      ...Object.keys(platformCoverOffset),
       ...Array.from(customizedPlatforms),
       ...allGames.flatMap((g) =>
         safeStr(g.platform)
@@ -2937,7 +4051,7 @@ export default function Page() {
     });
 
     return map;
-  }, [allGames, customizedPlatforms, platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]);
+  }, [allGames, customizedPlatforms]);
 
   const resolvePlatformAlias = useCallback(
     (platform: string) => {
@@ -3051,7 +4165,7 @@ export default function Page() {
         setUploadingOverlayForKey(null);
       }
     },
-    [quickOverlayTargetKey, settingsWriteUrl]
+    [quickOverlayTargetKey, saveSettingToSheet, settingsWriteUrl]
   );
 
   const handleResetOverlayForQuickTarget = useCallback(() => {
@@ -3077,7 +4191,7 @@ export default function Page() {
         `Clear overlay frame override for ${targetKey}`
       );
     }
-  }, [quickOverlayTargetKey, settingsWriteUrl]);
+  }, [quickOverlayTargetKey, saveSettingToSheet, settingsWriteUrl]);
 
   const quickInsetSnapshot = useMemo(() => {
     const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
@@ -3087,21 +4201,20 @@ export default function Page() {
     const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
     const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
     const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+    const gameFrameSource = getGameFrameSourceDimensions(quickTargetPlatformKey);
     return {
       inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
       overlay: gameOverlay,
       coverOffset: gameCoverOffset,
       coverScale: gameCoverScale,
-      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : GAME_SRC_W,
-      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : GAME_SRC_H,
+      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : gameFrameSource.width,
+      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : gameFrameSource.height,
     };
   }, [
     BOOK_SRC_H,
     BOOK_SRC_W,
     CASE_SRC_H,
     CASE_SRC_W,
-    GAME_SRC_H,
-    GAME_SRC_W,
     MOVIE_SRC_H,
     MOVIE_SRC_W,
     bookInsetBottomPx,
@@ -3285,6 +4398,115 @@ export default function Page() {
           ? "Save Book Insets"
           : `Save ${quickTargetPlatform} Inset`;
 
+  const resetQuickInsetTarget = useCallback(() => {
+    setQuickInsetSaveStatus("idle");
+
+    if (quickTargetType === "tv") {
+      setCaseInsetTopPx(156);
+      setCaseInsetRightPx(121);
+      setCaseInsetBottomPx(136);
+      setCaseInsetLeftPx(74);
+      saveSetting("caseInsetTopPx", 156, "TV Insets", "TV Case Top Inset (px)");
+      saveSetting("caseInsetRightPx", 121, "TV Insets", "TV Case Right Inset (px)");
+      saveSetting("caseInsetBottomPx", 136, "TV Insets", "TV Case Bottom Inset (px)");
+      saveSetting("caseInsetLeftPx", 74, "TV Insets", "TV Case Left Inset (px)");
+      return;
+    }
+
+    if (quickTargetType === "movie") {
+      setMovieInsetTopPx(156);
+      setMovieInsetRightPx(100);
+      setMovieInsetBottomPx(136);
+      setMovieInsetLeftPx(120);
+      saveSetting("movieInsetTopPx", 156, "Movie Insets", "Movie Top Inset (px)");
+      saveSetting("movieInsetRightPx", 100, "Movie Insets", "Movie Right Inset (px)");
+      saveSetting("movieInsetBottomPx", 136, "Movie Insets", "Movie Bottom Inset (px)");
+      saveSetting("movieInsetLeftPx", 120, "Movie Insets", "Movie Left Inset (px)");
+      return;
+    }
+
+    if (quickTargetType === "book") {
+      setBookInsetTopPx(99);
+      setBookInsetRightPx(75);
+      setBookInsetBottomPx(104);
+      setBookInsetLeftPx(62);
+      saveSetting("bookInsetTopPx", 99, "Book Insets", "Book Top Inset (px)");
+      saveSetting("bookInsetRightPx", 75, "Book Insets", "Book Right Inset (px)");
+      saveSetting("bookInsetBottomPx", 104, "Book Insets", "Book Bottom Inset (px)");
+      saveSetting("bookInsetLeftPx", 62, "Book Insets", "Book Left Inset (px)");
+      return;
+    }
+
+    const platformKey = quickTargetPlatformKey || "Default";
+    const settingKeys = [
+      `${platformKey}InsetTopPx`,
+      `${platformKey}InsetRightPx`,
+      `${platformKey}InsetBottomPx`,
+      `${platformKey}InsetLeftPx`,
+      `${platformKey}OverlayWidth`,
+      `${platformKey}OverlayHeight`,
+      `${platformKey}OverlayTop`,
+      `${platformKey}OverlayLeft`,
+      `${platformKey}CoverScaleX`,
+      `${platformKey}CoverScaleY`,
+      `${platformKey}CoverOffsetX`,
+      `${platformKey}CoverOffsetY`,
+    ];
+
+    if (platformKey === "Default") {
+      setPlatformInsets((prev) => ({ ...prev, Default: { top: 5, right: 5, bottom: 5, left: 5 } }));
+      setPlatformOverlaySettings((prev) => ({ ...prev, Default: { width: 100, height: 100, top: 0, left: 0 } }));
+      setPlatformCoverScale((prev) => ({ ...prev, Default: { x: 100, y: 100 } }));
+      setPlatformCoverOffset((prev) => ({ ...prev, Default: { x: 0, y: 0 } }));
+      saveSetting("DefaultInsetTopPx", 5, "Default Insets", "Default Top Inset (px)");
+      saveSetting("DefaultInsetRightPx", 5, "Default Insets", "Default Right Inset (px)");
+      saveSetting("DefaultInsetBottomPx", 5, "Default Insets", "Default Bottom Inset (px)");
+      saveSetting("DefaultInsetLeftPx", 5, "Default Insets", "Default Left Inset (px)");
+      saveSetting("DefaultOverlayWidth", 100, "Default Overlay", "Default Overlay Width (%)");
+      saveSetting("DefaultOverlayHeight", 100, "Default Overlay", "Default Overlay Height (%)");
+      saveSetting("DefaultOverlayTop", 0, "Default Overlay", "Default Overlay Top (%)");
+      saveSetting("DefaultOverlayLeft", 0, "Default Overlay", "Default Overlay Left (%)");
+      saveSetting("DefaultCoverScaleX", 100, "Default Cover", "Default Cover Scale X (%)");
+      saveSetting("DefaultCoverScaleY", 100, "Default Cover", "Default Cover Scale Y (%)");
+      saveSetting("DefaultCoverOffsetX", 0, "Default Cover", "Default Cover Offset X (%)");
+      saveSetting("DefaultCoverOffsetY", 0, "Default Cover", "Default Cover Offset Y (%)");
+      return;
+    }
+
+    // For platform-specific game targets, clear overrides and fall back to Default.
+    setPlatformInsets((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setPlatformOverlaySettings((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setPlatformCoverScale((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setPlatformCoverOffset((prev) => {
+      const next = { ...prev };
+      delete next[platformKey];
+      return next;
+    });
+    setCustomizedPlatforms((prev) => {
+      const next = new Set(prev);
+      next.delete(platformKey);
+      return next;
+    });
+    settingKeys.forEach((key) => removeSetting(key));
+  }, [
+    quickTargetPlatformKey,
+    quickTargetType,
+    removeSetting,
+    saveSetting,
+  ]);
+
   // For rendering: use the first platform listed in the row as primary.
   // This keeps shelf rendering deterministic when a platform
   // (e.g. PlayStation 5) is selected.
@@ -3306,20 +4528,91 @@ export default function Page() {
   // Only platforms explicitly customized (or loaded from settings) get entries
   // This ensures uncustomized platforms always inherit from Default insets
 
-  const normalizeStatus = (value?: string) =>
-    safeStr(value)
-      .toLowerCase()
-      .replace("cancelled", "canceled");
+  const normalizeStatus = useCallback(
+    (value?: string) => normalizeStatusToken(value),
+    []
+  );
 
-  const hasWishlistOwnership = (value?: string) => normalizeStatus(value) === "wishlist";
-  const hasOwnedOwnership = (value?: string) => normalizeStatus(value) === "owned";
+  const hasWishlistOwnership = useCallback((value?: string) => normalizeOwnership(value) === "wishlist", []);
+  const hasOwnedOwnership = useCallback((value?: string) => normalizeOwnership(value) === "owned", []);
 
-  const isMovieWatched = (movie: Movie) => {
-    const status = normalizeStatus(movie.movieStatus || movie.status);
+  const isMovieWatched = useCallback((movie: Movie) => {
     const watched = normalizeStatus(movie.watchStatus || movie.watched);
     const watchedValues = new Set(["watched", "completed", "true", "yes", "1"]);
-    return watchedValues.has(watched) || watchedValues.has(status);
-  };
+    return watchedValues.has(watched);
+  }, [normalizeStatus]);
+
+  const getStatusIndicator = useCallback((item: any): StatusIndicator | null => {
+    const mediaType = getMediaType(item);
+    const isAbandonedStatus = (value: string) =>
+      value === "abandoned" || value === "dropped" || value === "drop" || value === "quit" || value === "dnf";
+
+    if (mediaType === "tv") {
+      const status = normalizeStatus(item?.watchStatus || item?.watched || item?.showStatus || item?.status);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (
+        status === "completed" ||
+        status === "watched" ||
+        status === "true" ||
+        status === "yes" ||
+        status === "1"
+      ) {
+        return { color: STATUS_COLOR_GREEN, label: "Watched / Completed" };
+      }
+      if (
+        status === "currently watching" ||
+        status === "watching" ||
+        status === "in progress" ||
+        status === "paused" ||
+        status === "watch next" ||
+        status === "pending return"
+      ) {
+        return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Watched" };
+    }
+
+    if (mediaType === "movie") {
+      const status = normalizeStatus(item?.watchStatus || item?.watched);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (isMovieWatched(item as Movie)) return { color: STATUS_COLOR_GREEN, label: "Watched" };
+      if (status === "watching" || status === "currently watching" || status === "in progress" || status === "paused") {
+        return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Watched" };
+    }
+
+    if (mediaType === "game") {
+      const status = normalizeStatus(item?.status || item?.playStatus || item?.gameStatus || item?.completed);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (status === "completed" || status === "done" || status === "beaten" || status === "finished") {
+        return { color: STATUS_COLOR_GREEN, label: "Completed" };
+      }
+      if (
+        status === "playing" ||
+        status === "currently playing" ||
+        status === "in progress" ||
+        status === "paused"
+      ) {
+        return { color: STATUS_COLOR_YELLOW, label: "Playing" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Played" };
+    }
+
+    if (mediaType === "book") {
+      const status = normalizeStatus(item?.status);
+      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (status === "completed" || status === "finished" || status === "read") {
+        return { color: STATUS_COLOR_GREEN, label: "Completed" };
+      }
+      if (status === "reading" || status === "currently reading" || status === "in progress" || status === "paused") {
+        return { color: STATUS_COLOR_YELLOW, label: "Reading" };
+      }
+      return { color: STATUS_COLOR_RED, label: "Not Read" };
+    }
+
+    return null;
+  }, [isMovieWatched, normalizeStatus]);
 
   const watchStatuses = useMemo(
     () => [
@@ -3350,7 +4643,7 @@ export default function Page() {
       if (match) counts[match] += 1;
     }
     return counts;
-  }, [allBooks, readingStatuses]);
+  }, [allBooks, normalizeStatus, readingStatuses]);
 
   // Extract unique book formats from comma-separated types
   const bookFormats = useMemo(() => {
@@ -3388,7 +4681,7 @@ export default function Page() {
       }
     });
     return Array.from(series).sort();
-  }, [allBooks]);
+  }, [allBooks, normalizeStatus]);
 
   const seriesCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -3430,8 +4723,8 @@ export default function Page() {
   }, [allBooks, bookGenres]);
 
   const wishlistCount = useMemo(() => {
-    return allBooks.filter(b => normalizeStatus(b.ownership) === 'wishlist').length;
-  }, [allBooks]);
+    return allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
+  }, [allBooks, hasWishlistOwnership]);
 
   const watchCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -3442,7 +4735,7 @@ export default function Page() {
       if (match) counts[match] += 1;
     }
     return counts;
-  }, [allShows, watchStatuses]);
+  }, [allShows, normalizeStatus, watchStatuses]);
 
   const showCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -3453,7 +4746,7 @@ export default function Page() {
       if (match) counts[match] += 1;
     }
     return counts;
-  }, [allShows, showStatuses]);
+  }, [allShows, normalizeStatus, showStatuses]);
 
   // Extract unique TV show tags
   const tvTags = useMemo(() => {
@@ -3483,27 +4776,28 @@ export default function Page() {
     return counts;
   }, [allShows, tvTags]);
 
-  // Movie watch status counts (Watched vs Unwatched)
+  // Movie watch status counts
   const movieWatchCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      "Watched": 0,
-      "Unwatched": 0
+      Watched: 0,
+      Watching: 0,
+      Backlog: 0,
+      Abandoned: 0,
     };
     for (const movie of allMovies) {
-      // Check if watchStatus is truthy (checkbox marked) or has a value like "TRUE", "true", "Yes", etc.
-      const watched = movie.watchStatus && 
-        (movie.watchStatus.toLowerCase() === "true" || 
-         movie.watchStatus.toLowerCase() === "yes" || 
-         movie.watchStatus === "1" ||
-         movie.watchStatus.toLowerCase() === "watched");
-      if (watched) {
-        counts["Watched"] += 1;
+      const watchStatus = normalizeStatus(movie.watchStatus || movie.watched);
+      if (watchStatus === "abandoned" || watchStatus === "dropped" || watchStatus === "drop" || watchStatus === "quit" || watchStatus === "dnf") {
+        counts.Abandoned += 1;
+      } else if (watchStatus === "watching" || watchStatus === "currently watching" || watchStatus === "in progress" || watchStatus === "paused") {
+        counts.Watching += 1;
+      } else if (isMovieWatched(movie)) {
+        counts.Watched += 1;
       } else {
-        counts["Unwatched"] += 1;
+        counts.Backlog += 1;
       }
     }
     return counts;
-  }, [allMovies]);
+  }, [allMovies, isMovieWatched, normalizeStatus]);
 
   // Extract unique movie genres from comma-separated genres
   const movieGenres = useMemo(() => {
@@ -3533,7 +4827,7 @@ export default function Page() {
   }, [allMovies, movieGenres]);
 
   // Generic sorting function
-  const applySorting = <T extends any>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
+  const applySorting = useCallback(<T,>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
     const ratingNumber = (raw: unknown): number => {
       const n = Number.parseFloat(safeStr(raw));
       return Number.isNaN(n) ? NaN : n;
@@ -3581,8 +4875,23 @@ export default function Page() {
         bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) : 
                (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
       } else if (field === "CompletedDate") {
-        aVal = (a as any).completedDate ? Date.parse((a as any).completedDate) : NaN;
-        bVal = (b as any).completedDate ? Date.parse((b as any).completedDate) : NaN;
+        const aCompleted = (a as any).completedDate ?? (a as any).dateCompleted;
+        const bCompleted = (b as any).completedDate ?? (b as any).dateCompleted;
+        aVal = aCompleted ? Date.parse(aCompleted) : NaN;
+        bVal = bCompleted ? Date.parse(bCompleted) : NaN;
+      } else if (field === "CompletedDateOrReleaseDate") {
+        const aCompleted = (a as any).completedDate ?? (a as any).dateCompleted;
+        const bCompleted = (b as any).completedDate ?? (b as any).dateCompleted;
+        const aType = (a as any).__type;
+        const bType = (b as any).__type;
+        const aRelease = aType === "tv"
+          ? (a as any).lastAirDate ?? (a as any).firstAirDate
+          : (a as any).releaseDate ?? (a as any).firstAirDate;
+        const bRelease = bType === "tv"
+          ? (b as any).lastAirDate ?? (b as any).firstAirDate
+          : (b as any).releaseDate ?? (b as any).firstAirDate;
+        aVal = aCompleted ? Date.parse(aCompleted) : aRelease ? Date.parse(aRelease) : NaN;
+        bVal = bCompleted ? Date.parse(bCompleted) : bRelease ? Date.parse(bRelease) : NaN;
       } else if (field === "LastAirDate") {
         aVal = (a as any).lastAirDate ? Date.parse((a as any).lastAirDate) : NaN;
         bVal = (b as any).lastAirDate ? Date.parse((b as any).lastAirDate) : NaN;
@@ -3603,64 +4912,59 @@ export default function Page() {
       // Apply sort order
       return order === "Asc" ? aVal - bVal : bVal - aVal;
     });
-  };
+  }, []);
 
   // (Placeholder logic) keep it simple for now
   const shows = useMemo(() => {
-    const q = safeStr(query).toLowerCase();
+    const q = safeStr(deferredQuery).toLowerCase();
     if (nav === "books") {
       const hasBookFilters = Boolean(readingStatusFilter || formatFilter || seriesFilter || genreFilter || wishlistFilter);
-      const bookBase = hasBookFilters ? allBooks : allBooks.filter((b) => hasOwnedOwnership(b.ownership));
-      let filtered = q ? bookBase.filter((b) => b.title.toLowerCase().includes(q)) : bookBase;
+      const bookBase = hasBookFilters ? indexedBooks : indexedBooks.filter((b) => b.ownershipNorm === "owned");
+      let filtered = q ? bookBase.filter((b) => b.titleLC.includes(q)) : bookBase;
       // Apply reading status filter if set
       if (readingStatusFilter) {
-        filtered = filtered.filter((b) => normalizeStatus(b.status) === normalizeStatus(readingStatusFilter));
+        const readingStatusNorm = normalizeStatus(readingStatusFilter);
+        filtered = filtered.filter((b) => b.statusNorm === readingStatusNorm);
       }
       // Apply format filter if set
       if (formatFilter) {
-        filtered = filtered.filter((b) => {
-          if (!b.types) return false;
-          const individualTypes = b.types.split(',').map(t => t.trim()).filter(Boolean);
-          return individualTypes.includes(formatFilter);
-        });
+        filtered = filtered.filter((b) => b.types.includes(formatFilter));
       }
       // Apply series filter if set
       if (seriesFilter) {
-        filtered = filtered.filter((b) => b.series === seriesFilter);
+        filtered = filtered.filter((b) => b.item.series === seriesFilter);
       }
       // Apply genre filter if set
       if (genreFilter) {
-        filtered = filtered.filter((b) => {
-          if (!b.categories) return false;
-          const individualCategories = b.categories.split(',').map(c => c.trim()).filter(Boolean);
-          return individualCategories.includes(genreFilter);
-        });
+        filtered = filtered.filter((b) => b.categories.includes(genreFilter));
       }
       // Apply wishlist filter if set
       if (wishlistFilter) {
-        filtered = filtered.filter((b) => normalizeStatus(b.ownership) === 'wishlist');
+        filtered = filtered.filter((b) => b.ownershipNorm === "wishlist");
       }
-      const sorted = applySorting(filtered, sortField, sortOrder);
+      const sorted = applySorting(filtered.map((b) => b.item), sortField, sortOrder);
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
     // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
     // Filter out Wishlist items - only show owned items
     if (nav === "home") {
-      const qbBase = allBooks.filter((b) => hasOwnedOwnership(b.ownership));
-      const qgBase = allGames.filter((g) => hasOwnedOwnership(g.ownership));
-      const qb = q ? qbBase.filter((b) => b.title.toLowerCase().includes(q)) : qbBase;
-      const qs = q ? allShows.filter((s) => s.title.toLowerCase().includes(q) && normalizeStatus(s.watchStatus) !== "wishlist") : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "wishlist");
-      const qm = q ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && normalizeStatus(m.watchStatus) !== "wishlist") : allMovies.filter((m) => normalizeStatus(m.watchStatus) !== "wishlist");
-      const qg = q ? qgBase.filter((g) => g.title.toLowerCase().includes(q)) : qgBase;
+      const qbBase = indexedBooks.filter((b) => b.ownershipNorm === "owned");
+      const qgBase = indexedGames.filter((g) => g.ownershipNorm === "owned");
+      const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
+      const qsBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist");
+      const qmBase = indexedMovies.filter((m) => m.watchStatusNorm !== "wishlist");
+      const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
+      const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
+      const qg = q ? qgBase.filter((g) => g.titleLC.includes(q)) : qgBase;
       
       // Deduplicate games by title - keep only primary platform version
-      const deduplicatedGames = deduplicateGames(qg);
+      const deduplicatedGames = deduplicateGames(qg.map((g) => g.item));
 
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
         ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
@@ -3670,15 +4974,15 @@ export default function Page() {
 
     // Wishlist: books and games only
     if (nav === "wishlist") {
-      const qb = allBooks.filter((b) => hasWishlistOwnership(b.ownership));
-      const qg = allGames.filter((g) => hasWishlistOwnership(g.ownership));
+      const qb = indexedBooks.filter((b) => b.ownershipNorm === "wishlist");
+      const qg = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
 
-      const queryFilteredBooks = q ? qb.filter((b) => b.title.toLowerCase().includes(q)) : qb;
-      const queryFilteredGames = q ? qg.filter((g) => g.title.toLowerCase().includes(q)) : qg;
+      const queryFilteredBooks = q ? qb.filter((b) => b.titleLC.includes(q)) : qb;
+      const queryFilteredGames = q ? qg.filter((g) => g.titleLC.includes(q)) : qg;
 
       const combined = [
-        ...queryFilteredBooks.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...queryFilteredGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...queryFilteredBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredGames.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -3687,47 +4991,186 @@ export default function Page() {
 
     // Watchlist: movies not watched + TV not completed/abandoned
     if (nav === "watchlist") {
-      const qs = allShows.filter((s) => {
-        const status = normalizeStatus(s.watchStatus);
+      const qs = indexedShows.filter((s) => {
+        const status = s.watchStatusNorm;
         return status !== "completed" && status !== "abandoned";
       });
-      const qm = allMovies.filter((m) => !isMovieWatched(m));
+      const qm = indexedMovies.filter((m) => !isMovieWatched(m.item));
 
-      const queryFilteredShows = q ? qs.filter((s) => s.title.toLowerCase().includes(q)) : qs;
-      const queryFilteredMovies = q ? qm.filter((m) => m.title.toLowerCase().includes(q)) : qm;
+      const queryFilteredShows = q ? qs.filter((s) => s.titleLC.includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.titleLC.includes(q)) : qm;
 
       const combined = [
-        ...queryFilteredShows.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...queryFilteredMovies.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
+        ...queryFilteredShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...queryFilteredMovies.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
       ] as Array<(Show & { __type: "tv" }) | (Movie & { __type: "movie" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
       return sorted as any[];
     }
 
+    const isCurrentToken = (value?: string) => {
+      const token = normalizeStatus(value);
+      return (
+        token === "currently watching" ||
+        token === "watching" ||
+        token === "watch next" ||
+        token === "pending return" ||
+        token === "now playing" ||
+        token === "playing" ||
+        token === "reading" ||
+        token === "currently reading" ||
+        token === "in progress" ||
+        token === "paused"
+      );
+    };
+    const isCompletedOrWatchedToken = (value?: string) => {
+      const token = normalizeStatus(value);
+      return token === "completed" || token === "watched";
+    };
+    const isAbandonedToken = (value?: string) => normalizeStatus(value) === "abandoned";
+
+    // Current: items actively in progress (watching / now playing / reading / etc.)
+    if (nav === "current") {
+      const qb = indexedBooks.filter((b) => isCurrentToken(b.item.status));
+      const qs = indexedShows.filter((s) => isCurrentToken(s.item.watchStatus));
+      const qm = indexedMovies.filter((m) =>
+        isCurrentToken(m.item.watchStatus) ||
+        isCurrentToken(m.item.status) ||
+        isCurrentToken(m.item.movieStatus)
+      );
+      const qg = indexedGames.filter((g) =>
+        isCurrentToken(g.item.status) ||
+        isCurrentToken(g.item.playStatus) ||
+        isCurrentToken(g.item.gameStatus)
+      );
+
+      const queryFilteredBooks = q ? qb.filter((b) => b.titleLC.includes(q)) : qb;
+      const queryFilteredShows = q ? qs.filter((s) => s.titleLC.includes(q)) : qs;
+      const queryFilteredMovies = q ? qm.filter((m) => m.titleLC.includes(q)) : qm;
+      const queryFilteredGames = q ? qg.filter((g) => g.titleLC.includes(q)) : qg;
+
+      const combined = [
+        ...queryFilteredBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...queryFilteredShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...queryFilteredMovies.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...queryFilteredGames.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const sorted = applySorting(combined, sortField, sortOrder);
+      return sorted as any[];
+    }
+
+    // Completed: completed/watched items across all media types
+    if (nav === "completed") {
+      const qb = indexedBooks.filter((b) => isCompletedOrWatchedToken(b.item.status));
+      const qs = indexedShows.filter((s) =>
+        Boolean(safeStr(s.item.dateCompleted)) ||
+        isCompletedOrWatchedToken(s.item.watchStatus) ||
+        isCompletedOrWatchedToken(s.item.showStatus) ||
+        normalizeStatus(s.item.watched) === "true"
+      );
+      const qm = indexedMovies.filter((m) =>
+        isMovieWatched(m.item) ||
+        isCompletedOrWatchedToken(m.item.watchStatus) ||
+        isCompletedOrWatchedToken(m.item.status) ||
+        isCompletedOrWatchedToken(m.item.movieStatus)
+      );
+      const qg = indexedGames.filter((g) =>
+        isCompletedOrWatchedToken(g.item.status) ||
+        isCompletedOrWatchedToken(g.item.playStatus) ||
+        isCompletedOrWatchedToken(g.item.gameStatus) ||
+        normalizeStatus(g.item.completed) === "true"
+      );
+
+      const combined = [
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const queryFiltered = q ? combined.filter((item) => safeStr((item as any).title).toLowerCase().includes(q)) : combined;
+      const sorted = applySorting(queryFiltered, "CompletedDateOrReleaseDate", sortOrder);
+      return sorted as any[];
+    }
+
+    // Abandoned: abandoned items across all media types
+    if (nav === "abandoned") {
+      const qb = indexedBooks.filter((b) => isAbandonedToken(b.item.status));
+      const qs = indexedShows.filter((s) => isAbandonedToken(s.item.watchStatus) || isAbandonedToken(s.item.showStatus));
+      const qm = indexedMovies.filter((m) =>
+        isAbandonedToken(m.item.watchStatus) ||
+        isAbandonedToken(m.item.watched)
+      );
+      const qg = indexedGames.filter((g) =>
+        isAbandonedToken(g.item.status) ||
+        isAbandonedToken(g.item.playStatus) ||
+        isAbandonedToken(g.item.gameStatus)
+      );
+
+      const combined = [
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      const queryFiltered = q ? combined.filter((item) => safeStr((item as any).title).toLowerCase().includes(q)) : combined;
+      const sorted = applySorting(queryFiltered, sortField, sortOrder);
+      return sorted as any[];
+    }
+
     // Movies path
     if (nav === "movies") {
-      let filtered = allMovies;
+      let filtered = indexedMovies;
       
       // Apply watch status filter if set
       if (movieWatchFilter) {
-        filtered = filtered.filter((m) => (movieWatchFilter === "Watched" ? isMovieWatched(m) : !isMovieWatched(m)));
+        filtered = filtered.filter((m) => {
+          const watchStatus = normalizeStatus(m.item.watchStatus || m.item.watched);
+          const isAbandoned =
+            watchStatus === "abandoned" ||
+            watchStatus === "dropped" ||
+            watchStatus === "drop" ||
+            watchStatus === "quit" ||
+            watchStatus === "dnf";
+          const isWatching =
+            watchStatus === "watching" ||
+            watchStatus === "currently watching" ||
+            watchStatus === "in progress" ||
+            watchStatus === "paused";
+          if (movieWatchFilter === "Watched") return isMovieWatched(m.item);
+          if (movieWatchFilter === "Watching") return isWatching;
+          if (movieWatchFilter === "Abandoned") return isAbandoned;
+          return !isMovieWatched(m.item) && !isWatching && !isAbandoned;
+        });
       } else {
-        // Default Movies view: watched-only. Unwatched items live in Watchlist unless specifically filtered.
-        filtered = filtered.filter((m) => isMovieWatched(m));
+        // Default Movies view: include watched, watching, and abandoned.
+        filtered = filtered.filter((m) => {
+          const watchStatus = normalizeStatus(m.item.watchStatus || m.item.watched);
+          const isAbandoned =
+            watchStatus === "abandoned" ||
+            watchStatus === "dropped" ||
+            watchStatus === "drop" ||
+            watchStatus === "quit" ||
+            watchStatus === "dnf";
+          const isWatching =
+            watchStatus === "watching" ||
+            watchStatus === "currently watching" ||
+            watchStatus === "in progress" ||
+            watchStatus === "paused";
+          return isMovieWatched(m.item) || isWatching || isAbandoned;
+        });
       }
       
       // Apply genre filter if set
       if (movieGenreFilter) {
-        filtered = filtered.filter((m) => {
-          if (!m.genres) return false;
-          const individualGenres = m.genres.split(',').map(g => g.trim()).filter(Boolean);
-          return individualGenres.includes(movieGenreFilter);
-        });
+        filtered = filtered.filter((m) => m.genres.includes(movieGenreFilter));
       }
       
-      const filteredByQuery = q ? filtered.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : filtered;
-      const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+      const filteredByQuery = q ? filtered.filter((m) => m.titleLC.includes(q)) : filtered;
+      const sorted = applySorting(filteredByQuery.map((m) => m.item), sortField, sortOrder);
       return sorted.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })) as any[];
     }
 
@@ -3736,53 +5179,39 @@ export default function Page() {
       const hasGameFilters = Boolean(
         gamePlatformFilter || gameStatusFilter || gameOwnershipFilter || gameFormatFilter || gameYearPlayedFilter || gameGenreFilter
       );
-      let filtered = hasGameFilters ? allGames : allGames.filter((g) => hasOwnedOwnership(g.ownership));
+      let filtered = hasGameFilters ? indexedGames : indexedGames.filter((g) => g.ownershipNorm === "owned");
 
       if (gamePlatformFilter) {
-        filtered = filtered.filter((g) => {
-          const values = safeStr(g.platform)
-            .split(",")
-            .map((part) => part.trim())
-            .filter(Boolean);
-          return values.includes(gamePlatformFilter);
-        });
+        filtered = filtered.filter((g) => g.platformValues.includes(gamePlatformFilter));
       }
 
       if (gameStatusFilter) {
-        filtered = filtered.filter((g) => safeStr(g.status || g.playStatus || g.gameStatus) === gameStatusFilter);
+        filtered = filtered.filter((g) => g.statusValue === gameStatusFilter);
       }
 
       if (gameOwnershipFilter) {
-        filtered = filtered.filter((g) => safeStr(g.ownership) === gameOwnershipFilter);
+        filtered = filtered.filter((g) => g.ownershipValue === gameOwnershipFilter);
       }
 
       if (gameFormatFilter) {
-        filtered = filtered.filter((g) => {
-          const values = safeStr(g.format)
-            .split(",")
-            .map((part) => part.trim())
-            .filter(Boolean);
-          return values.includes(gameFormatFilter);
-        });
+        filtered = filtered.filter((g) => g.formatValues.includes(gameFormatFilter));
       }
 
       if (gameYearPlayedFilter) {
-        filtered = filtered.filter((g) => safeStr(g.yearPlayed) === gameYearPlayedFilter);
+        filtered = filtered.filter((g) => g.yearPlayedValue === gameYearPlayedFilter);
       }
 
       if (gameGenreFilter) {
-        filtered = filtered.filter((g) => {
-          const values = safeStr(g.genres)
-            .split(",")
-            .map((part) => part.trim())
-            .filter(Boolean);
-          return values.includes(gameGenreFilter);
-        });
+        filtered = filtered.filter((g) => g.genreValues.includes(gameGenreFilter));
       }
 
-      const filteredByQuery = q ? filtered.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : filtered;
-      const sorted = applySorting(filteredByQuery, sortField, sortOrder);
-      return sorted.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })) as any[];
+      const filteredByQuery = q ? filtered.filter((g) => g.titleLC.includes(q)) : filtered;
+      const sorted = applySorting(filteredByQuery.map((g) => g.item), sortField, sortOrder);
+      return sorted.map((g) => ({
+        ...g,
+        __type: "game",
+        __renderPlatform: gamePlatformFilter ? resolvePlatformAlias(gamePlatformFilter) : undefined,
+      } as Game & { __type: "game"; __renderPlatform?: string })) as any[];
     }
 
     // Smart List: This Year - Filter all items with appropriate year field matching current year
@@ -3791,35 +5220,29 @@ export default function Page() {
       
       // Books: Use year from CompletedDate
       const qb = q 
-        ? allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return b.title.toLowerCase().includes(q) && year === currentYear;
-          })
-        : allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return year === currentYear;
-          });
+        ? indexedBooks.filter((b) => b.titleLC.includes(q) && b.completedYear === currentYear)
+        : indexedBooks.filter((b) => b.completedYear === currentYear);
       
       // TV Shows: Use Tags column
       const qs = q 
-        ? allShows.filter((s) => s.title.toLowerCase().includes(q) && safeStr(s.tag) === currentYear)
-        : allShows.filter((s) => safeStr(s.tag) === currentYear);
+        ? indexedShows.filter((s) => s.titleLC.includes(q) && s.tagValue === currentYear)
+        : indexedShows.filter((s) => s.tagValue === currentYear);
       
       // Movies: Use Tags column
       const qm = q 
-        ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && safeStr(m.tag) === currentYear)
-        : allMovies.filter((m) => safeStr(m.tag) === currentYear);
+        ? indexedMovies.filter((m) => m.titleLC.includes(q) && m.tagValue === currentYear)
+        : indexedMovies.filter((m) => m.tagValue === currentYear);
       
       // Games: Use Year Played column
       const qg = q 
-        ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === currentYear)
-        : allGames.filter((g) => safeStr(g.yearPlayed) === currentYear);
+        ? indexedGames.filter((g) => g.titleLC.includes(q) && g.yearPlayedValue === currentYear)
+        : indexedGames.filter((g) => g.yearPlayedValue === currentYear);
       
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -3832,35 +5255,29 @@ export default function Page() {
       
       // Books: Use year from CompletedDate
       const qb = q 
-        ? allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return b.title.toLowerCase().includes(q) && year === yearStr;
-          })
-        : allBooks.filter((b) => {
-            const year = b.completedDate ? new Date(b.completedDate).getFullYear().toString() : "";
-            return year === yearStr;
-          });
+        ? indexedBooks.filter((b) => b.titleLC.includes(q) && b.completedYear === yearStr)
+        : indexedBooks.filter((b) => b.completedYear === yearStr);
       
       // TV Shows: Use Tags column
       const qs = q 
-        ? allShows.filter((s) => s.title.toLowerCase().includes(q) && safeStr(s.tag) === yearStr)
-        : allShows.filter((s) => safeStr(s.tag) === yearStr);
+        ? indexedShows.filter((s) => s.titleLC.includes(q) && s.tagValue === yearStr)
+        : indexedShows.filter((s) => s.tagValue === yearStr);
       
       // Movies: Use Tags column
       const qm = q 
-        ? allMovies.filter((m) => m.title.toLowerCase().includes(q) && safeStr(m.tag) === yearStr)
-        : allMovies.filter((m) => safeStr(m.tag) === yearStr);
+        ? indexedMovies.filter((m) => m.titleLC.includes(q) && m.tagValue === yearStr)
+        : indexedMovies.filter((m) => m.tagValue === yearStr);
       
       // Games: Use Year Played column
       const qg = q 
-        ? allGames.filter((g) => g.title.toLowerCase().includes(q) && safeStr(g.yearPlayed) === yearStr)
-        : allGames.filter((g) => safeStr(g.yearPlayed) === yearStr);
+        ? indexedGames.filter((g) => g.titleLC.includes(q) && g.yearPlayedValue === yearStr)
+        : indexedGames.filter((g) => g.yearPlayedValue === yearStr);
       
       const combined = [
-        ...qb.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })),
-        ...qs.map((s) => ({ ...s, __type: "tv" } as Show & { __type: "tv" })),
-        ...qm.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })),
-        ...qg.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -3869,27 +5286,32 @@ export default function Page() {
 
     // TV default path
     const hasTvFilters = Boolean(watchFilter || showFilter || tagFilter);
-    const tvBase = hasTvFilters ? allShows : allShows.filter((s) => normalizeStatus(s.watchStatus) !== "backlog");
+    const tvBase = hasTvFilters ? indexedShows : indexedShows.filter((s) => s.watchStatusNorm !== "backlog");
+    const watchStatusNorm = watchFilter ? normalizeStatus(watchFilter) : "";
+    const showStatusNorm = showFilter ? normalizeStatus(showFilter) : "";
     const filteredByWatch = watchFilter
-      ? tvBase.filter((s) => normalizeStatus(s.watchStatus) === normalizeStatus(watchFilter))
+      ? tvBase.filter((s) => s.watchStatusNorm === watchStatusNorm)
       : tvBase;
     const filteredByShow = showFilter
-      ? filteredByWatch.filter((s) => normalizeStatus(s.showStatus) === normalizeStatus(showFilter))
+      ? filteredByWatch.filter((s) => s.showStatusNorm === showStatusNorm)
       : filteredByWatch;
     const filteredByTag = tagFilter
-      ? filteredByShow.filter((s) => {
-          if (!s.tag) return false;
-          const individualTags = s.tag.split(',').map(t => t.trim()).filter(Boolean);
-          return individualTags.includes(tagFilter);
-        })
+      ? filteredByShow.filter((s) => s.tags.includes(tagFilter))
       : filteredByShow;
-    const filteredByQuery = q ? filteredByTag.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : filteredByTag;
+    const filteredByQuery = q ? filteredByTag.filter((s) => s.titleLC.includes(q)) : filteredByTag;
 
-    if (nav !== "tv") return filteredByQuery as any[];
+    if (nav !== "tv") return filteredByQuery.map((s) => s.item) as any[];
 
-    const sorted = applySorting(filteredByQuery, sortField, sortOrder);
+    const sorted = applySorting(filteredByQuery.map((s) => s.item), sortField, sortOrder);
     return sorted as any[];
-  }, [allShows, allBooks, allMovies, allGames, watchFilter, showFilter, tagFilter, movieWatchFilter, movieGenreFilter, readingStatusFilter, formatFilter, seriesFilter, genreFilter, wishlistFilter, gamePlatformFilter, gameStatusFilter, gameOwnershipFilter, gameFormatFilter, gameYearPlayedFilter, gameGenreFilter, nav, query, sortField, sortOrder]);
+  }, [
+    indexedShows, indexedBooks, indexedMovies, indexedGames,
+    applySorting, deduplicateGames,
+    formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
+    genreFilter,
+    isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
+    deferredQuery, readingStatusFilter, selectedPreviousYear, seriesFilter, showFilter, sortField, sortOrder, tagFilter, watchFilter, wishlistFilter
+  ]);
 
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
@@ -3908,7 +5330,7 @@ export default function Page() {
       wishlist: wishlistBooks + wishlistGames,
       watchlist: watchlistShows + watchlistMovies,
     };
-  }, [allShows, allBooks, allMovies, allGames]);
+  }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
   const postersPerShelf = useMemo(() => {
     const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
@@ -3916,42 +5338,137 @@ export default function Page() {
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
 
+  const getItemVisualLayout = useCallback((item: any) => {
+    const isBook = item.__type === "book";
+    const isMovie = item.__type === "movie";
+    const isGame = item.__type === "game";
+    const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
+    const caseWidth = itemSize;
+    const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
+
+    const gamePlatformRaw = isGame ? safeStr(item?.__renderPlatform || item?.platform) : undefined;
+    const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
+    const gameFrameSource = isGame ? getGameFrameSourceDimensions(gamePlatform) : DEFAULT_GAME_FRAME_SIZE;
+    const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? gameFrameSource.width : CASE_SRC_W;
+    const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? gameFrameSource.height : CASE_SRC_H;
+
+    let insetTopVal: number;
+    let insetRightVal: number;
+    let insetBottomVal: number;
+    let insetLeftVal: number;
+    if (isBook) {
+      insetTopVal = bookInsetTopPx;
+      insetRightVal = bookInsetRightPx;
+      insetBottomVal = bookInsetBottomPx;
+      insetLeftVal = bookInsetLeftPx;
+    } else if (isMovie) {
+      insetTopVal = movieInsetTopPx;
+      insetRightVal = movieInsetRightPx;
+      insetBottomVal = movieInsetBottomPx;
+      insetLeftVal = movieInsetLeftPx;
+    } else if (isGame) {
+      const platformKey = gamePlatform || "Default";
+      const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
+      const platformInset = platformInsets[platformKey];
+      const insets = platformKey !== "Default" && platformInset ? platformInset : defaultInsets;
+      insetTopVal = insets.top;
+      insetRightVal = insets.right;
+      insetBottomVal = insets.bottom;
+      insetLeftVal = insets.left;
+    } else {
+      insetTopVal = caseInsetTopPx;
+      insetRightVal = caseInsetRightPx;
+      insetBottomVal = caseInsetBottomPx;
+      insetLeftVal = caseInsetLeftPx;
+    }
+
+    const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
+    const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
+    const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
+    const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
+    const insetWidth = Math.max(1, caseWidth - insetLeft - insetRight);
+
+    if (!isGame) {
+      const visualLeft = insetLeft;
+      const visualWidth = insetWidth;
+      return { itemSize, visualLeft, visualWidth };
+    }
+
+    const platformKey = gamePlatform || "Default";
+    const coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+    const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
+    const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
+    const coverScaleX = coverScale.x / 100;
+    const coverTranslateX = platformCoverOffsetSettings.x * 0.35;
+    const coverTranslateXPx = (coverTranslateX / 100) * insetWidth;
+    const coverVisualWidth = insetWidth * coverScaleX;
+    const rawCoverLeft = insetLeft + (insetWidth - coverVisualWidth) / 2 + coverTranslateXPx;
+    const rawCoverRight = rawCoverLeft + coverVisualWidth;
+    const visualLeft = Math.max(0, rawCoverLeft);
+    const visualRight = Math.min(caseWidth, rawCoverRight);
+    const visualWidth = Math.max(1, visualRight - visualLeft);
+    return { itemSize, visualLeft, visualWidth };
+  }, [
+    bookHeightMultiplier,
+    posterSizeBooks,
+    posterSizeGames,
+    posterSizeMovies,
+    posterSizeTv,
+    getRenderPlatform,
+    getGameFrameSourceDimensions,
+    bookInsetTopPx,
+    bookInsetRightPx,
+    bookInsetBottomPx,
+    bookInsetLeftPx,
+    movieInsetTopPx,
+    movieInsetRightPx,
+    movieInsetBottomPx,
+    movieInsetLeftPx,
+    caseInsetTopPx,
+    caseInsetRightPx,
+    caseInsetBottomPx,
+    caseInsetLeftPx,
+    platformInsets,
+    platformCoverScale,
+    platformCoverOffset,
+  ]);
+
   const shelves = useMemo(() => {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     const out: any[][] = [];
-    
-    // For mixed-item views, calculate shelf distribution based on actual item sizes
-    if (nav === "home" || nav === "wishlist" || nav === "watchlist") {
+
+    // Mixed-content views: pack each shelf by actual item widths so row counts can vary naturally.
+    if (
+      nav === "home" ||
+      nav === "wishlist" ||
+      nav === "watchlist" ||
+      nav === "current" ||
+      nav === "completed" ||
+      nav === "abandoned" ||
+      nav === "year-this" ||
+      nav === "year-previous"
+    ) {
       let currentShelf: any[] = [];
       let currentWidth = 0;
-      
+
       for (let i = 0; i < shows.length; i++) {
         const show = shows[i];
-        const isBook = show.__type === "book";
-        const isMovie = show.__type === "movie";
-        const isGame = show.__type === "game";
-        const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
-        const itemWidth = itemSize + (currentShelf.length > 0 ? gap : 0);
-        
-        // Check if adding this item would exceed the usable width
+        const { visualWidth } = getItemVisualLayout(show);
+        const itemWidth = visualWidth + (currentShelf.length > 0 ? gap : 0);
+
         if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
-          // Start a new shelf
           out.push(currentShelf);
           currentShelf = [show];
-          currentWidth = itemSize;
+          currentWidth = visualWidth;
         } else {
-          // Add to current shelf
           currentShelf.push(show);
           currentWidth += itemWidth;
         }
       }
-      
-      // Push the last shelf if it has items
-      if (currentShelf.length > 0) {
-        out.push(currentShelf);
-      }
+
+      if (currentShelf.length > 0) out.push(currentShelf);
     } else {
-      // For single-type views (books, movies, games, tv), use the simple fixed-size calculation
+      // Single-content views: fixed count per shelf.
       for (let i = 0; i < shows.length; i += postersPerShelf) {
         out.push(shows.slice(i, i + postersPerShelf));
       }
@@ -3962,7 +5479,27 @@ export default function Page() {
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, posterSizeBooks, posterSizeMovies, posterSizeGames, posterSizeTv, gap]);
+  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, gap, getItemVisualLayout]);
+
+  const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
+
+  const shelfRenderWindow = useMemo(() => {
+    const localScroll = Math.max(0, windowScrollY - stageTopAbs);
+    const viewH = Math.max(1, viewportH);
+    const start = Math.max(0, Math.floor(localScroll / SHELF_HEIGHT) - 2);
+    const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / SHELF_HEIGHT) + 2);
+    return {
+      start,
+      end,
+      padTop: start * SHELF_HEIGHT,
+      padBottom: Math.max(0, (shelves.length - end) * SHELF_HEIGHT),
+    };
+  }, [shelves.length, windowScrollY, stageTopAbs, viewportH, SHELF_HEIGHT]);
+
+  const visibleShelves = useMemo(
+    () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
+    [shelfRenderWindow.end, shelfRenderWindow.start, shelves]
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
@@ -3970,13 +5507,13 @@ export default function Page() {
         aria-hidden
         style={{
           position: "fixed",
-          top: 0,
+          top: topSafeInset,
           left: 0,
           right: 0,
           height: 45,
           zIndex: 1300,
           pointerEvents: "none",
-          backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+          backgroundImage: `url(${currentTopHeaderImage})`,
           backgroundRepeat: "repeat-x",
           backgroundPosition: "0 0",
           backgroundSize: "auto 45px",
@@ -4001,7 +5538,7 @@ export default function Page() {
           className="sidebar"
           style={{
             position: "sticky",
-            top: 0,
+            top: topSafeInset,
             zIndex: settingsPopupOpen ? 6000 : 1400,
             alignSelf: "start",
             height: "100vh",
@@ -4046,7 +5583,7 @@ export default function Page() {
               height: 45,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: `url(${DARK_WALNUT_TOP_HEADER_IMAGE})`,
+              backgroundImage: `url(${currentTopHeaderImage})`,
               backgroundRepeat: "repeat-x",
               backgroundPosition: "0 0",
               backgroundSize: "auto 45px",
@@ -4145,13 +5682,13 @@ export default function Page() {
             </div>
           )}
 
-          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 10, flex: 1, marginTop: 12 }}>
+          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 6, flex: 1, marginTop: 12 }}>
             {/* Library Module */}
             <div
               style={{
                 background: "rgba(255, 255, 255, 0.125)",
                 borderRadius: 16,
-                boxShadow: "0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
+                boxShadow: "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
                 border: "1px solid rgba(255, 255, 255, 0.5)",
                 borderBottom: "1px solid rgba(0, 0, 0, 0.15)",
                 padding: "12px",
@@ -4659,7 +6196,7 @@ export default function Page() {
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {["Watched", "Unwatched"].map((status) => {
+                        {["Watched", "Watching", "Backlog", "Abandoned"].map((status) => {
                           const active = movieWatchFilter === status;
                           return (
                             <button
@@ -5107,7 +6644,7 @@ export default function Page() {
                       <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", width: "fit-content", maxWidth: "100%" }}>
                         {gamePlatformOptions.map((option) => {
                           const active = gamePlatformFilter === option;
                           return (
@@ -5577,14 +7114,19 @@ export default function Page() {
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
-
-
               </div>
 
               {/* SMART LISTS section */}
               <div style={{ marginTop: "16px" }}>
-              <div
+              <button
+                type="button"
+                onClick={() => {
+                  if (smartListsOpen) setOtherMenuOpen(false);
+                  setSmartListsOpen(!smartListsOpen);
+                }}
                 style={{
+                  width: "100%",
+                  textAlign: "left",
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
@@ -5594,13 +7136,17 @@ export default function Page() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: "pointer",
                 }}
               >
                 <span>SMART LISTS</span>
-                <span />
-              </div>
+                <span style={{ color: "rgba(0,0,0,0.5)", fontSize: 16, fontWeight: 500 }}>{smartListsOpen ? "−" : "+"}</span>
+              </button>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {smartListsOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 {/* This Year - Primary clickable */}
                 <button
                   onClick={() => setNav("year-this")}
@@ -5633,6 +7179,108 @@ export default function Page() {
                       <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                     </span>
                     This Year
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+                <button
+                  onClick={() => setNav("current")}
+                  className={`sideItem ${nav === "current" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "current" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "current" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-current.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Current
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+                <button
+                  onClick={() => setNav("completed")}
+                  className={`sideItem ${nav === "completed" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "completed" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "completed" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-completed.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Completed
+                  </span>
+                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                </button>
+                <button
+                  onClick={() => setNav("abandoned")}
+                  className={`sideItem ${nav === "abandoned" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "abandoned" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "abandoned" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src="/icon-abaonded.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                    </span>
+                    Abandoned
                   </span>
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
@@ -5670,7 +7318,17 @@ export default function Page() {
                     </span>
                     Other
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>
+                  <span
+                    style={{
+                      width: 38,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "rgba(0,0,0,0.4)",
+                      fontSize: 15,
+                      fontWeight: 400,
+                    }}
+                  >
                     {otherMenuOpen ? "−" : "+"}
                   </span>
                 </button>
@@ -5718,7 +7376,7 @@ export default function Page() {
                     )}
                   </div>
                 )}
-              </div>
+              </div> : null}
             </div>
             </div>
             </div>
@@ -5728,15 +7386,22 @@ export default function Page() {
               style={{
                 background: "rgba(255, 255, 255, 0.125)",
                 borderRadius: 16,
-                boxShadow: "0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
+                boxShadow: "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
                 border: "1px solid rgba(255, 255, 255, 0.5)",
                 borderBottom: "1px solid rgba(0, 0, 0, 0.15)",
                 padding: "12px",
               }}
             >
               <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
-              <div
+              <button
+                type="button"
+                onClick={() => {
+                  if (discoverOpen) setShowThemes(false);
+                  setDiscoverOpen(!discoverOpen);
+                }}
                 style={{
+                  width: "100%",
+                  textAlign: "left",
                   fontSize: sidebarHeaderFontSize,
                   fontWeight: sidebarHeaderFontWeight,
                   letterSpacing: "0.04em",
@@ -5746,13 +7411,17 @@ export default function Page() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: "pointer",
                 }}
               >
                 <span>DISCOVER</span>
-                <span />
-              </div>
+                <span style={{ color: "rgba(0,0,0,0.5)", fontSize: 16, fontWeight: 500 }}>{discoverOpen ? "−" : "+"}</span>
+              </button>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {discoverOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
                   className="sideItem"
                   style={{
@@ -5823,49 +7492,11 @@ export default function Page() {
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    const nextOpen = !showSettings;
-                    setShowSettings(nextOpen);
-                    if (!nextOpen) setSettingsPopupOpen(false);
-                  }}
-                  className={`sideItem primary ${showSettings ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: showSettings ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: showSettings ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src="/icon-settings.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
-                    </span>
-                    Settings
-                  </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-              </div>
+              </div> : null}
             </div>
             </div>
 
-            {showThemes ? (
+            {discoverOpen && showThemes ? (
               <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
                 {themeSaveNotice ? (
                   <div
@@ -5973,17 +7604,17 @@ export default function Page() {
                     Dark Walnut
                   </button>
                   <button
-                    onClick={() => updateShelfTheme("/shelf-weathered-oak.png")}
+                    onClick={() => updateShelfTheme(WEATHERED_OAK_SHELF_IMAGE)}
                     style={{
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-weathered-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-weathered-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
                       cursor: "pointer",
                       fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf-weathered-oak.png" ? 600 : 400,
+                      fontWeight: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? 600 : 400,
                     }}
                   >
                     Weathered Oak
@@ -6020,20 +7651,52 @@ export default function Page() {
                   >
                     Teak
                   </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf_white_oak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf_white_oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf_white_oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: shelfTheme === "/shelf_white_oak.png" ? 600 : 400,
+                    }}
+                  >
+                    White Oak
+                  </button>
+                  <button
+                    onClick={() => updateShelfTheme("/shelf-reclaimed-oak.png")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === "/shelf-reclaimed-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === "/shelf-reclaimed-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: shelfTheme === "/shelf-reclaimed-oak.png" ? 600 : 400,
+                    }}
+                  >
+                    Reclaimed Oak
+                  </button>
                 </div>
               </div>
             ) : null}
 
-            {showSettings || settingsPopupOpen ? (
+            {settingsPopupOpen ? (
               <div
                 style={
                   settingsPopupOpen
                     ? {
                         position: "fixed",
-                        top: 84,
+                        top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                         right: 20,
                         width: "min(560px, calc(100vw - 40px))",
-                        maxHeight: "calc(100vh - 110px)",
+                        maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 110px)",
                         overflowY: "auto",
                         zIndex: 5000,
                         padding: 14,
@@ -6050,126 +7713,176 @@ export default function Page() {
                 }
               >
                 {settingsPopupOpen ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: 4,
-                      paddingBottom: 8,
-                      borderBottom: "1px solid rgba(0,0,0,0.12)",
-                    }}
-                  >
-                    <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
-                    <button
-                      onClick={() => setSettingsPopupOpen(false)}
+                  <>
+                    <div
                       style={{
-                        border: "1px solid rgba(0,0,0,0.2)",
-                        background: "rgba(255,255,255,0.85)",
-                        color: "#5c3c38",
-                        borderRadius: 8,
-                        padding: "4px 8px",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 4,
+                        paddingBottom: 8,
+                        borderBottom: "1px solid rgba(0,0,0,0.12)",
                       }}
                     >
-                      Close
-                    </button>
-                  </div>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <button
+                          onClick={() => setShowVersionNotes((prev) => !prev)}
+                          title="Show recent version notes"
+                          aria-label="Show recent version notes"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 54,
+                            padding: "4px 8px",
+                            background: "rgba(255,255,255,0.85)",
+                            border: "1px solid rgba(0,0,0,0.2)",
+                            borderRadius: 8,
+                            color: "#5c3c38",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            letterSpacing: "0.03em",
+                            lineHeight: 1,
+                          }}
+                        >
+                          v{APP_VERSION}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSettingsPopupOpen(false);
+                            setShowVersionNotes(false);
+                          }}
+                          style={{
+                            border: "1px solid rgba(0,0,0,0.2)",
+                            background: "rgba(255,255,255,0.85)",
+                            color: "#5c3c38",
+                            borderRadius: 8,
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                    {showVersionNotes ? (
+                      <div
+                        style={{
+                          marginTop: 2,
+                          marginBottom: 10,
+                          borderRadius: 9,
+                          border: "1px solid rgba(0,0,0,0.14)",
+                          background: "rgba(249, 245, 236, 0.97)",
+                          boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
+                          padding: 10,
+                          textAlign: "left",
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
+                        {VERSION_HISTORY.slice(0, 3).map((entry) => (
+                          <div key={entry.version} style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
+                              v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
+                            </div>
+                            <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
+                              {entry.notes.map((note) => (
+                                <li key={note}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
                 {/* Cover Size */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, coverSize: !settingsOpen.coverSize })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                  }}
-                >
-                  <span>COVER SIZE</span>
-                  <span>{settingsOpen.coverSize ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.coverSize ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      TV Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeTv}
-                        onChange={(e) => updatePosterSizeTv(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Movies Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeMovies}
-                        onChange={(e) => updatePosterSizeMovies(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeMovies}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Books Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeBooks}
-                        onChange={(e) => updatePosterSizeBooks(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Games Size
-                      <input
-                        type="range"
-                        min={70}
-                        max={125}
-                        step={5}
-                        value={posterSizeGames}
-                        onChange={(e) => updatePosterSizeGames(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{posterSizeGames}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
-                      Tight
-                    </label>
-                    <div style={{ fontSize: 11, opacity: 0.6 }}>
-                      Frame: {CASE_SRC_W}×{CASE_SRC_H}
-                    </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
-                      <input
-                        type="checkbox"
-                        checked={showInsetGuide}
-                        onChange={(e) => setShowInsetGuide(e.target.checked)}
-                      />
-                      Frame
-                    </label>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>COVER SIZE</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    TV Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeTv}
+                      onChange={(e) => updatePosterSizeTv(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Movies Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeMovies}
+                      onChange={(e) => updatePosterSizeMovies(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeMovies}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Books Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeBooks}
+                      onChange={(e) => updatePosterSizeBooks(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Games Size
+                    <input
+                      type="range"
+                      min={70}
+                      max={125}
+                      step={5}
+                      value={posterSizeGames}
+                      onChange={(e) => updatePosterSizeGames(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeGames}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    Cover Gap Size
+                    <input
+                      type="range"
+                      min={0}
+                      max={60}
+                      step={1}
+                      value={coverGapSize}
+                      onChange={(e) => updateCoverGapSize(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ width: 28, textAlign: "right" }}>{coverGapSize}</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                    <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
+                    Tight
+                  </label>
+                  <div style={{ fontSize: 11, opacity: 0.6 }}>
+                    Frame: {CASE_SRC_W}×{CASE_SRC_H}
                   </div>
-                ) : null}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
+                    <input
+                      type="checkbox"
+                      checked={showInsetGuide}
+                      onChange={(e) => updateShowInsetGuide(e.target.checked)}
+                    />
+                    Frame
+                  </label>
+                </div>
 
                 {/* COVER INSETS Parent Menu */}
                 <button
@@ -6393,6 +8106,21 @@ export default function Page() {
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <button
+                        onClick={resetQuickInsetTarget}
+                        style={{
+                          padding: "7px 10px",
+                          fontSize: 11,
+                          background: "#f2f2f2",
+                          color: "#222",
+                          border: "1px solid rgba(0,0,0,0.2)",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Reset {quickTargetType === "game" ? quickTargetPlatform : quickTargetType} Insets
+                      </button>
+                      <button
                         onClick={async () => {
                           setQuickInsetSaveStatus("saving");
                           const ok = await saveInsetsToSheet(quickInsetSaveType);
@@ -6533,6 +8261,72 @@ export default function Page() {
                         style={{ flex: 1 }}
                       />
                       <span style={{ width: 28, textAlign: "right" }}>{syncIconTop}</span>
+                    </label>
+                  </div>
+                ) : null}
+
+                {/* Status Icon */}
+                <button
+                  onClick={() => setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon })}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "transparent",
+                    padding: 0,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#8A8A8A",
+                    marginTop: 4,
+                  }}
+                >
+                  <span>STATUS ICON</span>
+                  <span>{settingsOpen.statusIcon ? "−" : "+"}</span>
+                </button>
+                {settingsOpen.statusIcon ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Size %
+                      <input
+                        type="range"
+                        min={50}
+                        max={220}
+                        step={5}
+                        value={statusIconScale}
+                        onChange={(e) => updateStatusIconScale(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 40, textAlign: "right" }}>{statusIconScale}%</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Offset X
+                      <input
+                        type="range"
+                        min={-30}
+                        max={30}
+                        step={1}
+                        value={statusIconOffsetX}
+                        onChange={(e) => updateStatusIconOffsetX(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 40, textAlign: "right" }}>{statusIconOffsetX}</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
+                      Offset Y
+                      <input
+                        type="range"
+                        min={-30}
+                        max={30}
+                        step={1}
+                        value={statusIconOffsetY}
+                        onChange={(e) => updateStatusIconOffsetY(Number(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ width: 40, textAlign: "right" }}>{statusIconOffsetY}</span>
                     </label>
                   </div>
                 ) : null}
@@ -6790,6 +8584,31 @@ export default function Page() {
                   </div>
                 ) : null}
 
+                {/* Chris' Delicious Library FAQ */}
+                <button
+                  onClick={() => setFaqPopupOpen(true)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "1px solid rgba(38, 62, 91, 0.28)",
+                    background: "linear-gradient(180deg, rgba(84, 118, 160, 0.92) 0%, rgba(58, 89, 126, 0.92) 100%)",
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#fff",
+                    marginTop: 8,
+                    borderRadius: 8,
+                    boxShadow: "0 2px 7px rgba(0, 0, 0, 0.22)",
+                  }}
+                >
+                  <span>CHRIS&apos; DELICIOUS LIBRARY FAQ</span>
+                  <span>Open</span>
+                </button>
+
                 {/* Save All Settings Button */}
                 <button
                   onClick={saveAllSettings}
@@ -6847,6 +8666,18 @@ export default function Page() {
                 >
                   📥 Load Settings from Sheet
                 </button>
+                {syncMsg ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: syncStatusTextColor,
+                    }}
+                  >
+                    {syncMsg}
+                  </div>
+                ) : null}
 
               </div>
             ) : null}
@@ -6854,6 +8685,31 @@ export default function Page() {
 
             {/* Synced Module at Bottom */}
             <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
+              <div
+                style={{
+                  marginBottom: 8,
+                  padding: "0 2px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: currentTheme.syncedTextColor }}>Cover Size</span>
+                  <span style={{ minWidth: 40, textAlign: "right", fontSize: 11, fontWeight: 700, opacity: 0.85, color: currentTheme.syncedTextColor }}>
+                    {`${globalCoverScalePct}%`}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={70}
+                  max={130}
+                  step={1}
+                  value={globalCoverScalePct}
+                  onMouseDown={captureGlobalCoverScaleBase}
+                  onTouchStart={captureGlobalCoverScaleBase}
+                  onFocus={captureGlobalCoverScaleBase}
+                  onChange={(e) => updateGlobalCoverScale(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+              </div>
               <div
                 style={{
                   display: "flex",
@@ -6890,9 +8746,9 @@ export default function Page() {
                     border: "1.5px solid rgba(255, 255, 255, 0.6)",
                   }}
                 />
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10, flex: "1 1 auto" }}>
                   <div style={{ minWidth: 0, position: "relative" }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                       <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
                         {syncState === "saving"
                           ? "Syncing"
@@ -6902,14 +8758,14 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: "rgba(0,0,0,0.6)", fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>
+                      <div style={{ color: sidebarTheme === "darkBlue" ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
-                    {syncState === "error" && syncMsg ? (
+                    {syncMsg ? (
                       <div
                         style={{
-                          color: "#8b0000",
+                          color: syncStatusTextColor,
                           fontSize: 11,
                           fontWeight: 800,
                           marginTop: 4,
@@ -6959,7 +8815,7 @@ export default function Page() {
             aria-hidden
             style={{
               position: "fixed",
-              top: 0,
+              top: topSafeInset,
               left: SIDEBAR_WIDTH - 1,
               right: 0,
               height: 45,
@@ -7040,6 +8896,34 @@ export default function Page() {
             </div>
           ) : null}
 
+          {missingWriteConfigChecks.length > 0 ? (
+            <div
+              style={{
+                background: "#fff7e6",
+                border: "1px solid #d9981e",
+                borderRadius: 9,
+                padding: 12,
+                marginBottom: 14,
+                color: "#5f3a00",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                Persistence Warning
+              </div>
+              <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.35 }}>
+                Some live edits will not persist across deployments until these write URLs are configured:
+              </div>
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                {missingWriteConfigChecks.map((entry) => (
+                  <div key={entry.key} style={{ fontSize: 11, lineHeight: 1.3 }}>
+                    <strong>{entry.label}:</strong> <code>{entry.env}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {loading ? (
             <div
               style={{
@@ -7055,12 +8939,13 @@ export default function Page() {
             </div>
           ) : null}
 
-          {settingsPopupOpen || sortPopupOpen ? (
+          {settingsPopupOpen || sortPopupOpen || faqPopupOpen ? (
             <button
               aria-label="Close popup"
               onClick={() => {
                 setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
+                setFaqPopupOpen(false);
                 setShowVersionNotes(false);
               }}
               style={{
@@ -7080,7 +8965,7 @@ export default function Page() {
             <div
               style={{
                 position: "fixed",
-                top: 84,
+                top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                 right: 74,
                 width: "min(320px, calc(100vw - 40px))",
                 zIndex: 5000,
@@ -7159,6 +9044,7 @@ export default function Page() {
                   {nav === "tv" && (
                     <>
                       <option value="Title">Title</option>
+                      <option value="CompletedDate">Date Completed</option>
                       <option value="LastAirDate">Last Air Date</option>
                       <option value="FirstAirDate">First Air Date</option>
                       <option value="MyRatingSort">My Rating</option>
@@ -7173,7 +9059,7 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
@@ -7206,15 +9092,177 @@ export default function Page() {
             </div>
           ) : null}
 
+          {faqPopupOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: "calc(env(safe-area-inset-top, 0px) + 14px) 14px 14px 14px",
+                zIndex: 6500,
+                background: "linear-gradient(180deg, rgba(248, 244, 236, 0.99) 0%, rgba(241, 234, 222, 0.99) 100%)",
+                border: "1px solid rgba(58, 37, 24, 0.4)",
+                borderRadius: 16,
+                boxShadow: "0 24px 70px rgba(0, 0, 0, 0.42)",
+                padding: 18,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  paddingBottom: 10,
+                  marginBottom: 2,
+                  background: "rgba(248, 244, 236, 0.98)",
+                  borderBottom: "1px solid rgba(0, 0, 0, 0.14)",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 18, fontWeight: 900, color: "#5c3c38", letterSpacing: "0.02em" }}>Chris&apos; Delicious Library FAQ</span>
+                  <span style={{ fontSize: 12, color: "#6d5a4e", fontWeight: 600 }}>
+                    Maintainer guide for updates, deployments, and troubleshooting
+                  </span>
+                </div>
+                <button
+                  onClick={() => setFaqPopupOpen(false)}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.25)",
+                    background: "rgba(255,255,255,0.86)",
+                    color: "#5c3c38",
+                    borderRadius: 9,
+                    padding: "7px 12px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Close FAQ
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+                <div style={{ padding: 12, borderRadius: 10, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(255,255,255,0.62)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#5c3c38", marginBottom: 6 }}>System Overview</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#3f3732" }}>
+                    This app is a Next.js frontend hosted on Vercel, backed by Google Sheets CSV feeds for reading data and Google Apps Script web app endpoints for write/update/delete actions.
+                    GitHub is the source of truth for code and static assets.
+                  </div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 10, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(255,255,255,0.62)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#5c3c38", marginBottom: 6 }}>Where Data Lives</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#3f3732" }}>
+                    Library rows live in Google Sheets tabs (Books, Shows, Movies, Games). App settings live in Settings tab and local browser cache.
+                    App writes go through Apps Script <code>doPost</code> action routing.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>1) First-Time Orientation</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Clone/open the project in VS Code.</div>
+                <div>2. Ensure Node modules are installed with <code>npm install</code>.</div>
+                <div>3. Run locally using <code>npm run dev</code> and test at <code>http://localhost:3000</code>.</div>
+                <div>4. Confirm env vars are set in local <code>.env.local</code> and Vercel project settings.</div>
+                <div>5. Confirm Apps Script web app URLs are valid and deployed to latest version.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>2) Required Services and Their Jobs</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div><strong>GitHub:</strong> stores source code, history, and poster/frame assets used by the app.</div>
+                <div><strong>Vercel:</strong> builds and serves production from the GitHub repo.</div>
+                <div><strong>Google Sheets:</strong> is the database for your media rows + settings rows.</div>
+                <div><strong>Google Apps Script:</strong> exposes an HTTP web app endpoint for add/update/delete operations.</div>
+                <div><strong>ChatGPT in VS Code:</strong> speeds up coding changes, refactors, and debugging in this repo.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>3) Typical Change Workflow (Safe Path)</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Create/checkout your branch.</div>
+                <div>2. Make requested UI/logic changes in VS Code (with or without ChatGPT assistance).</div>
+                <div>3. Test local behavior for all affected media types.</div>
+                <div>4. Commit + push to GitHub.</div>
+                <div>5. Verify Vercel preview deployment.</div>
+                <div>6. Merge to production branch and verify live site.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>4) How to Update Apps Script Correctly</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Paste updated <code>GOOGLE_APPS_SCRIPT.gs</code> code in Apps Script editor.</div>
+                <div>2. Verify <code>doPost</code> has routes for every action used by frontend (add/update/delete per media type).</div>
+                <div>3. Verify handler functions exist (example: <code>deleteBookRow_</code>).</div>
+                <div>4. Deploy Web App as a <strong>new version</strong> (old versions continue serving old code).</div>
+                <div>5. Confirm frontend env var points to correct Apps Script <code>/exec</code> URL.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>5) Environment Variables You Should Know</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div><code>NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL</code> and similar CSV URLs: read data into app.</div>
+                <div><code>NEXT_PUBLIC_SETTINGS_WRITE_URL</code>, <code>NEXT_PUBLIC_BOOKS_WRITE_URL</code>, <code>NEXT_PUBLIC_SHOWS_WRITE_URL</code>, <code>NEXT_PUBLIC_MOVIES_WRITE_URL</code>, <code>NEXT_PUBLIC_GAMES_WRITE_URL</code>: write endpoints.</div>
+                <div>If read works but edits do not persist, check write URL variables first.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>6) Updating Covers, Frames, and Visual Assets</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Add/replace assets in repo <code>public/</code> (or configured storage path).</div>
+                <div>2. Commit and push to GitHub.</div>
+                <div>3. Wait for Vercel deploy and hard refresh browser cache.</div>
+                <div>4. If URLs are generated from sheet titles, verify naming conventions still match.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>7) Settings Persistence Behavior</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>Settings are cached locally for fast load, and can sync to Google Sheets.</div>
+                <div>Use <strong>Save All Settings to Sheet</strong> after major tuning.</div>
+                <div>If values look stale, use <strong>Load Settings from Sheet</strong> and re-open settings.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>8) Troubleshooting Cheatsheet</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div><strong>Error: function X is not defined:</strong> deployed Apps Script version is outdated or missing that function.</div>
+                <div><strong>Menu missing in Sheets:</strong> menu builder function missing or wrong function name in <code>onOpen</code>.</div>
+                <div><strong>Can view data but cannot edit:</strong> write URL env var missing/wrong or Apps Script permissions/deployment issue.</div>
+                <div><strong>Vercel not showing latest:</strong> check branch deployed, latest commit, and deployment logs.</div>
+                <div><strong>Unexpected UI behavior:</strong> test in local dev, check browser console, then compare with production build.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>9) Using ChatGPT in VS Code (Your Workflow)</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732" }}>
+                <div>1. Describe exact change request in plain language and include file names when possible.</div>
+                <div>2. Ask ChatGPT to implement directly and run checks.</div>
+                <div>3. Review the patch and test key user paths.</div>
+                <div>4. Commit only what you intend to ship.</div>
+                <div>5. Keep Apps Script changes synchronized with frontend expectations.</div>
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#5c3c38" }}>10) Monthly Maintenance Checklist</div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: "#3f3732", paddingBottom: 8 }}>
+                <div>1. Confirm all write URLs are valid and not revoked.</div>
+                <div>2. Verify add/update/delete for Books, Shows, Movies, Games.</div>
+                <div>3. Verify Google Sheet top menus are present and correct.</div>
+                <div>4. Verify settings save/load and sync status messaging.</div>
+                <div>5. Verify sidebar filters, overlays, and popups on desktop + mobile width.</div>
+                <div>6. Check latest Vercel deployment health and runtime errors.</div>
+                <div>7. Export/backup critical Sheets tabs before major schema changes.</div>
+              </div>
+            </div>
+          ) : null}
+
           {/* Stage measures width so shelves always align */}
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {shelfTheme === DEFAULT_SHELF_IMAGE ? (
-                <div
+              <div
                   style={{
                     position: "sticky",
-                    top: 0,
+                    top: topSafeInset,
                     height: 45,
                     overflow: "hidden",
                     background: "transparent",
@@ -7236,7 +9284,7 @@ export default function Page() {
                       transform: "translateY(-4.5px)",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(260px, calc(100% - 220px))" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(340px, calc(100% - 220px))" }}>
                       <div
                         style={{
                           display: "flex",
@@ -7297,6 +9345,51 @@ export default function Page() {
                       >
                         Clear
                       </button>
+                      <button
+                        onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
+                        title="Toggle status indicators"
+                        aria-label="Toggle status indicators"
+                        aria-pressed={showStatusIndicators}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          height: 24,
+                          minWidth: 68,
+                          padding: "3px 7px",
+                          background: showStatusIndicators
+                            ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
+                            : "rgba(28, 18, 10, 0.52)",
+                          border: showStatusIndicators
+                            ? "1px solid rgba(190, 221, 166, 0.75)"
+                            : "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          color: showStatusIndicators ? "rgba(242, 255, 228, 0.95)" : "rgba(250, 242, 230, 0.72)",
+                          boxShadow: showStatusIndicators
+                            ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
+                            : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: showStatusIndicators ? "rgba(194, 246, 166, 0.95)" : "rgba(250, 242, 230, 0.45)",
+                            boxShadow: showStatusIndicators
+                              ? "0 0 0 1px rgba(173, 237, 138, 0.8), 0 0 8px rgba(150, 223, 108, 0.55)"
+                              : "0 0 0 1px rgba(255, 255, 255, 0.2)",
+                          }}
+                        />
+                        Status
+                      </button>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span
@@ -7351,10 +9444,39 @@ export default function Page() {
                         <line x1="17" y1="18" x2="21" y2="18"></line>
                       </svg>
                     </button>
+                    <button
+                      onClick={() => {
+                        setSortPopupOpen(false);
+                        setSettingsPopupOpen(false);
+                        setShowVersionNotes(false);
+                        setAddSaveError(null);
+                        setAddModalOpen(true);
+                      }}
+                      title="Add new item"
+                      aria-label="Add new item"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: 24,
+                        minWidth: 18,
+                        padding: "3px 5px",
+                        background: "rgba(28, 18, 10, 0.52)",
+                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        borderRadius: 9,
+                        color: "rgba(250, 242, 230, 0.68)",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
                         onClick={() => {
-                          setShowSettings(true);
                           setSortPopupOpen(false);
                           setShowVersionNotes(false);
                           setSettingsPopupOpen((prev) => !prev);
@@ -7381,73 +9503,16 @@ export default function Page() {
                           <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
                         </svg>
                       </button>
-                      <button
-                        onClick={() => {
-                          setSettingsPopupOpen(false);
-                          setSortPopupOpen(false);
-                          setShowVersionNotes((prev) => !prev);
-                        }}
-                        title="Show recent version notes"
-                        aria-label="Show recent version notes"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          height: 24,
-                          minWidth: 54,
-                          padding: "3px 6px",
-                          background: "rgba(28, 18, 10, 0.52)",
-                          border: "1px solid rgba(10, 6, 3, 0.78)",
-                          borderRadius: 9,
-                          color: "rgba(250, 242, 230, 0.72)",
-                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 800,
-                          letterSpacing: "0.03em",
-                          lineHeight: 1,
-                        }}
-                      >
-                        v{APP_VERSION}
-                      </button>
-                      {showVersionNotes ? (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: "100%",
-                            right: 0,
-                            width: "min(280px, calc(100vw - 70px))",
-                            zIndex: 5001,
-                            marginTop: 6,
-                            borderRadius: 9,
-                            border: "1px solid rgba(0,0,0,0.14)",
-                            background: "rgba(249, 245, 236, 0.97)",
-                            boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
-                            padding: 10,
-                            textAlign: "left",
-                          }}
-                        >
-                          <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
-                          {VERSION_HISTORY.slice(0, 3).map((entry) => (
-                            <div key={entry.version} style={{ marginBottom: 8 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
-                                v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
-                              </div>
-                              <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
-                                {entry.notes.map((note) => (
-                                  <li key={note}>{note}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
                     </div>
                     </div>
                   </div>
                 </div>
+              {shelfRenderWindow.padTop > 0 ? (
+                <div style={{ height: shelfRenderWindow.padTop }} />
               ) : null}
-              {shelves.map((shelfShows, shelfIndex) => (
+              {visibleShelves.map((shelfShows, visibleShelfIndex) => {
+                const shelfIndex = shelfRenderWindow.start + visibleShelfIndex;
+                return (
                 <div
                   key={`shelf-${shelfIndex}`}
                   style={{
@@ -7471,25 +9536,18 @@ export default function Page() {
                       bottom: 0,
                     }}
                   >
-                    {shelfShows.map((show, i) => {
+                    {(() => {
+                      let runningVisualX = 0;
+                      return shelfShows.map((show, i) => {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
-                      const gamePlatformRaw = isGame && 'platform' in show ? show.platform : undefined;
-                      // Determine primary platform based on priority (Steam > Epic > Default)
+                      const gamePlatformRaw = isGame ? safeStr((show as any).__renderPlatform || show.platform) : undefined;
+                      // Determine primary platform from the row to keep shelf rendering deterministic.
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
-                      const isSteam = gamePlatform === "Steam";
-                      const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
-                      // Calculate x as cumulative sum of all previous items + gaps
-                      let x = 0;
-                      for (let j = 0; j < i; j++) {
-                        const prevShow = shelfShows[j];
-                        const prevIsBook = prevShow.__type === "book";
-                        const prevIsMovie = prevShow.__type === "movie";
-                        const prevIsGame = prevShow.__type === "game";
-                        const prevSize = prevIsBook ? posterSizeBooks : prevIsMovie ? posterSizeMovies : prevIsGame ? posterSizeGames : posterSizeTv;
-                        x += prevSize + gap;
-                      }
+                      const { itemSize, visualLeft, visualWidth } = getItemVisualLayout(show);
+                      const x = Math.round(runningVisualX - visualLeft);
+                      runningVisualX += visualWidth + gap;
                       const caseWidth = itemSize;
                       const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
@@ -7556,15 +9614,59 @@ export default function Page() {
                       const nonGameOverlayType: "tv" | "movie" | "book" = isBook ? "book" : isMovie ? "movie" : "tv";
                       const nonGameOverlaySrc = getOverlayFrameUrl(nonGameOverlayType);
                       const nonGameOverlayExpectedSrc = getOverlayFrameDefaultPath(nonGameOverlayType);
-                      
-                      const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? GAME_SRC_W : CASE_SRC_W;
-                      const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? GAME_SRC_H : CASE_SRC_H;
+
+                      const gameFrameSource = isGame ? getGameFrameSourceDimensions(gamePlatform) : DEFAULT_GAME_FRAME_SIZE;
+                      const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? gameFrameSource.width : CASE_SRC_W;
+                      const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? gameFrameSource.height : CASE_SRC_H;
 
                       const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
                       const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
                       const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
                       const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
+                      const coverTranslateX = coverOffsetX * 0.35;
+                      const coverTranslateY = coverOffsetY * 0.35;
+                      const insetWidthPx = Math.max(1, caseWidth - insetLeft - insetRight);
+                      const insetHeightPx = Math.max(1, caseHeight - insetTop - insetBottom);
+                      const coverScaleX = coverScale.x / 100;
+                      const coverScaleY = coverScale.y / 100;
+                      const coverTranslateXPx = (coverTranslateX / 100) * insetWidthPx;
+                      const coverTranslateYPx = (coverTranslateY / 100) * insetHeightPx;
+                      const coverVisualWidthPx = insetWidthPx * coverScaleX;
+                      const coverVisualHeightPx = insetHeightPx * coverScaleY;
+                      const coverVisualLeftPx =
+                        insetLeft + (insetWidthPx - coverVisualWidthPx) / 2 + coverTranslateXPx;
+                      const coverVisualTopPx =
+                        insetTop + (insetHeightPx - coverVisualHeightPx) / 2 + coverTranslateYPx;
                       const selectedCoverUrl = getDisplayCoverUrl(show);
+                      const statusIndicator = getStatusIndicator(show);
+                      const statusRegionLeftPx = isGame ? coverVisualLeftPx : insetLeft;
+                      const statusRegionTopPx = isGame ? coverVisualTopPx : insetTop;
+                      const statusRegionWidthPx = isGame ? coverVisualWidthPx : insetWidthPx;
+                      const statusRegionHeightPx = isGame ? coverVisualHeightPx : insetHeightPx;
+                      const statusDotBaseSizePx = Math.round(
+                        Math.max(
+                          STATUS_DOT_MIN_SIZE,
+                          Math.min(STATUS_DOT_MAX_SIZE, statusRegionWidthPx * STATUS_DOT_SIZE_RATIO)
+                        )
+                      );
+                      const statusDotSizePx = Math.max(
+                        8,
+                        Math.round(statusDotBaseSizePx * (statusIconScale / 100))
+                      );
+                      const statusDotLeftPx = Math.round(
+                        statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotSizePx + statusIconOffsetX
+                      );
+                      const statusDotTopPx = Math.round(
+                        statusRegionTopPx + statusRegionHeightPx - STATUS_DOT_NUDGE_UP_PX - statusDotSizePx + statusIconOffsetY
+                      );
+                      const statusDotLeftClampedPx = Math.max(
+                        insetLeft,
+                        Math.min(caseWidth - insetRight - statusDotSizePx, statusDotLeftPx)
+                      );
+                      const statusDotTopClampedPx = Math.max(
+                        insetTop,
+                        Math.min(caseHeight - insetBottom - statusDotSizePx, statusDotTopPx)
+                      );
 
                       return (
                         <div
@@ -7577,43 +9679,15 @@ export default function Page() {
                             bottom: LIP_FROM_BOTTOM,
                             width: caseWidth,
                             height: caseHeight,
+                            overflow: "hidden",
                           }}
                           onClick={() => {
                             setModalItem(buildItemWithCoverSelection(show, coverOverrides));
                             setModalOpen(true);
                           }}
-                          onMouseMove={(e) => {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const xRel = (e.clientX - rect.left) / rect.width - 0.5;
-                            const yRel = (e.clientY - rect.top) / rect.height - 0.5;
-                            const maxTilt = 20;
-                            const tiltY = Math.max(-maxTilt, Math.min(maxTilt, xRel * maxTilt * 2));
-                            const tiltX = Math.max(-10, Math.min(10, -yRel * 16));
-                            e.currentTarget.style.setProperty("--tiltY", `${tiltY}deg`);
-                            e.currentTarget.style.setProperty("--tiltX", `${tiltX}deg`);
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.setProperty("--tiltY", "0deg");
-                            e.currentTarget.style.setProperty("--tiltX", "0deg");
-                          }}
+                          onMouseMove={handleCaseMouseMove}
+                          onMouseLeave={handleCaseMouseLeave}
                         >
-                          {/* soft shelf shadow (ellipse) */}
-                          <div
-                            aria-hidden
-                            style={{
-                              position: "absolute",
-                              left: "6%",
-                              right: "6%",
-                              height: 12,
-                              bottom: -2,
-                              background:
-                                "radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.0) 70%)",
-                              filter: "blur(2px)",
-                              opacity: 0.7,
-                              pointerEvents: "none",
-                            }}
-                          />
-
                           {isGame ? (
                             <>
                               <div
@@ -7652,8 +9726,9 @@ export default function Page() {
                                       width: "100%",
                                       height: "100%",
                                       objectFit: gameCoverFit,
+                                      objectPosition: "center",
                                       display: "block",
-                                      transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
                                       transformOrigin: "center",
                                     }}
                                     onError={e => {
@@ -7700,22 +9775,23 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
+                                {selectedCoverUrl && gameCoverFit === "cover" ? (
+                                  <div
+                                    aria-hidden
+                                    className="case-reflection"
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      pointerEvents: "none",
+                                      zIndex: 2,
+                                      background:
+                                        "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
+                                    }}
+                                  />
+                                ) : null}
 
-                                <div
-                                  aria-hidden
-                                  className="case-reflection"
-                                  style={{
-                                    position: "absolute",
-                                    inset: 0,
-                                    pointerEvents: "none",
-                                    zIndex: 2,
-                                    background:
-                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
-                                    mixBlendMode: "screen",
-                                    transform: `translate(${coverOffsetX}%, ${coverOffsetY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
-                                    transformOrigin: "center",
-                                  }}
-                                />
                               </div>
 
                               <div
@@ -7839,20 +9915,21 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
+                                {selectedCoverUrl ? (
+                                  <div
+                                    aria-hidden
+                                    className="case-reflection"
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      pointerEvents: "none",
+                                      zIndex: 2,
+                                      background:
+                                        "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
+                                    }}
+                                  />
+                                ) : null}
 
-                                <div
-                                  aria-hidden
-                                  className="case-reflection"
-                                  style={{
-                                    position: "absolute",
-                                    inset: 0,
-                                    pointerEvents: "none",
-                                    zIndex: 2,
-                                    background:
-                                      "linear-gradient(165deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.22) 30%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0.0) 85%)",
-                                    mixBlendMode: "screen",
-                                  }}
-                                />
                               </div>
 
                               {/* Case frame overlay */}
@@ -7882,20 +9959,39 @@ export default function Page() {
                             </>
                           )}
 
-                          {/* Optional: extra spec highlight */}
-                          <div
-                            aria-hidden
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              borderRadius: 2,
-                              pointerEvents: "none",
-                              background:
-                                "linear-gradient(115deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 18%, rgba(255,255,255,0.00) 45%, rgba(0,0,0,0.06) 100%)",
-                              mixBlendMode: "screen",
-                              opacity: 0.25,
-                            }}
-                          />
+                          {showStatusIndicators && statusIndicator ? (
+                            <div
+                              aria-label={`Status: ${statusIndicator.label}`}
+                              title={statusIndicator.label}
+                              style={{
+                                position: "absolute",
+                                left: statusDotLeftClampedPx,
+                                top: statusDotTopClampedPx,
+                                width: statusDotSizePx,
+                                height: statusDotSizePx,
+                                borderRadius: "50%",
+                                border: `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
+                                background: statusIndicator.color,
+                                boxShadow:
+                                  "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
+                                zIndex: 26,
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <div
+                                aria-hidden
+                                style={{
+                                  position: "absolute",
+                                  left: 2,
+                                  top: 2,
+                                  width: "40%",
+                                  height: "40%",
+                                  borderRadius: "50%",
+                                  background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
+                                }}
+                              />
+                            </div>
+                          ) : null}
 
                           {showInsetGuide && isGame ? (
                             <div
@@ -7924,10 +10020,18 @@ export default function Page() {
                           ) : null}
                         </div>
                       );
-                    })}
+                    });
+                  })()}
                   </div>
                 </div>
-              ))}
+                  );
+                })}
+              {shelfRenderWindow.padBottom > 0 ? (
+                <div style={{ height: shelfRenderWindow.padBottom }} />
+              ) : null}
+              {insetEditorOpen && shelfRenderWindow.padBottom > 0 ? (
+                <div style={{ height: shelfRenderWindow.padBottom }} />
+              ) : null}
             </div>
 
             <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
@@ -7936,6 +10040,23 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      {/* MediaModal for cover/info popup - overlays app */}
+      <AddItemModal
+        open={addModalOpen}
+        onClose={() => {
+          if (addingItem) return;
+          setAddModalOpen(false);
+          setAddSaveError(null);
+        }}
+        onSave={handleAddLibraryItem}
+        isSaving={addingItem}
+        saveError={addSaveError}
+        gamePlatformOptions={gamePlatformOptions}
+        gameOwnershipOptions={gameOwnershipOptions}
+        gameFormatOptions={gameFormatOptions}
+        gameStatusOptions={gameStatusOptions}
+      />
 
       {/* MediaModal for cover/info popup - overlays app */}
       <MediaModal
@@ -7950,10 +10071,13 @@ export default function Page() {
         onSaveShowEdits={handleSaveShowEdits}
         onSaveMovieEdits={handleSaveMovieEdits}
         onSaveGameEdits={handleSaveGameEdits}
+        onDeleteItem={handleDeleteLibraryItem}
         gamePlatformOptions={gamePlatformOptions}
         gameOwnershipOptions={gameOwnershipOptions}
         gameFormatOptions={gameFormatOptions}
         gameStatusOptions={gameStatusOptions}
+        popupCoverMode={modalItem ? popupCoverModes[getMediaItemKey(modalItem)] : undefined}
+        onPopupCoverModeChange={handlePopupCoverModeChange}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
         replaceCoverError={coverUploadError}
       />
@@ -8039,91 +10163,19 @@ export default function Page() {
           font-weight: 700;
         }
         .case {
-          transition: transform 60ms ease, filter 120ms ease;
+          transition: transform 60ms ease;
           transform: perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg));
-          filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.22));
           transform-style: preserve-3d;
-        }
-        .case:hover {
-          filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.26));
+          filter: drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34));
         }
         .case-reflection {
-          transition: opacity 200ms ease, transform 200ms ease;
+          transition: opacity 180ms ease;
           opacity: 0;
-          transform: translateY(-6px);
         }
         .case:hover .case-reflection {
-          opacity: 0.85;
-          transform: translateY(0);
+          opacity: 0.82;
         }
       `}</style>
     </div>
-  );
-}
-
-function NavButton({
-  active,
-  onClick,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: "100%",
-        borderRadius: 9,
-        border: "1px solid rgba(0,0,0,0.16)",
-        background: active
-          ? "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(230,230,230,0.95))"
-          : "linear-gradient(180deg, rgba(255,255,255,0.85), rgba(235,235,235,0.85))",
-        boxShadow: active ? "0 10px 18px rgba(0,0,0,0.16)" : "0 6px 14px rgba(0,0,0,0.10)",
-        padding: "10px 10px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        cursor: "pointer",
-        fontWeight: 900,
-        color: "rgba(0,0,0,0.78)",
-      }}
-    >
-      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span
-          aria-hidden
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 999,
-            background: active ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.25)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-          }}
-        />
-        {label}
-      </span>
-
-      <span
-        style={{
-          minWidth: 34,
-          height: 22,
-          padding: "0 5px",
-          borderRadius: 999,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 11,
-          fontWeight: 900,
-          background: "rgba(0,0,0,0.08)",
-          border: "1px solid rgba(0,0,0,0.12)",
-          color: "rgba(0,0,0,0.72)",
-        }}
-      >
-        {count}
-      </span>
-    </button>
   );
 }

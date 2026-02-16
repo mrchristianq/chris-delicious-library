@@ -1,9 +1,10 @@
 {
   "name": "chris-delicious-library",
-  "version": "4.6.0",
+  "version": "5.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 3000",
+    "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
+    "dev:turbo": "next dev --turbopack -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

@@ -1,6 +1,49 @@
 // Google Apps Script - Save this in your Apps Script editor
 // This handles saving settings to the Google Sheet
 
+function onOpen() {
+  safeCall_("addTmdbMenu_", typeof addTmdbMenu_ === "function" ? addTmdbMenu_ : null);
+  safeCall_("addMoviesMenu_", typeof addMoviesMenu_ === "function" ? addMoviesMenu_ : null);
+  safeCall_("addIgdbMenu_", typeof addIgdbMenu_ === "function" ? addIgdbMenu_ : null);
+  safeCall_("addBooksMenu_", typeof addBooksMenu_ === "function" ? addBooksMenu_ : null);
+
+  // Fallback menu so it's obvious this web-app script is loaded if no known builders exist.
+  const hasAnyKnownBuilder =
+    typeof addTmdbMenu_ === "function" ||
+    typeof addMoviesMenu_ === "function" ||
+    typeof addIgdbMenu_ === "function" ||
+    typeof addBooksMenu_ === "function";
+  if (!hasAnyKnownBuilder) {
+    const ui = SpreadsheetApp.getUi();
+    ui.createMenu("Library Tools")
+      .addItem("Menu Setup Help", "showLibraryMenuSetupHelp_")
+      .addToUi();
+  }
+}
+
+function onInstall(e) {
+  onOpen(e);
+}
+
+function safeCall_(name, fn) {
+  try {
+    if (typeof fn === "function") {
+      fn();
+    } else {
+      console.log(name + " not found (function missing).");
+    }
+  } catch (err) {
+    console.log(name + " failed: " + (err && err.message ? err.message : err));
+  }
+}
+
+function showLibraryMenuSetupHelp_() {
+  SpreadsheetApp.getUi().alert(
+    "Library row/sheet processor menu functions were not found in this file.\n\n" +
+    "Re-add your previous menu builders (for example addTmdbMenu_, addMoviesMenu_, addIgdbMenu_, addBooksMenu_) or restore an earlier script version, then reload the sheet."
+  );
+}
+
 function doPost(e) {
   try {
     // Parse incoming JSON
@@ -19,6 +62,30 @@ function doPost(e) {
     }
     if (action === "updateGame") {
       return updateGameRow_(payload);
+    }
+    if (action === "deleteBook") {
+      return deleteBookRow_(payload);
+    }
+    if (action === "deleteShow") {
+      return deleteShowRow_(payload);
+    }
+    if (action === "deleteMovie") {
+      return deleteMovieRow_(payload);
+    }
+    if (action === "deleteGame") {
+      return deleteGameRow_(payload);
+    }
+    if (action === "addBook") {
+      return addBookRow_(payload);
+    }
+    if (action === "addShow") {
+      return addShowRow_(payload);
+    }
+    if (action === "addMovie") {
+      return addMovieRow_(payload);
+    }
+    if (action === "addGame") {
+      return addGameRow_(payload);
     }
 
     // Default mode: settings key/value write
@@ -91,9 +158,10 @@ function updateBookRow_(payload) {
 
   const matchGoogleBooksVolumeId = String(match.googleBooksVolumeId || "").trim();
   const matchOpenLibraryWorkKey = String(match.openLibraryWorkKey || "").trim();
+  const matchIsbn = String(match.isbn || "").trim();
   const matchTitle = String(match.title || "").trim();
 
-  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchTitle) {
+  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
     return createCORSResponse("Error: missing book match keys");
   }
 
@@ -122,6 +190,17 @@ function updateBookRow_(payload) {
     const values = sheet.getRange(2, headerIndex["OpenLibraryWorkKey"], lastRow - 1, 1).getValues();
     for (var r = 0; r < values.length; r++) {
       if (String(values[r][0] || "").trim() === matchOpenLibraryWorkKey) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  const isbnCol = headerIndex["isbn"] || headerIndex["ISBN"];
+  if (rowNum === -1 && isbnCol && matchIsbn) {
+    const values = sheet.getRange(2, isbnCol, lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchIsbn) {
         rowNum = r + 2;
         break;
       }
@@ -318,6 +397,267 @@ function updateGameRow_(payload) {
   }
 
   return createCORSResponse("Success");
+}
+
+function deleteBookRow_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Books");
+  if (!sheet) return createCORSResponse("Books sheet not found");
+
+  const match = payload.match || {};
+  const matchGoogleBooksVolumeId = String(match.googleBooksVolumeId || "").trim();
+  const matchOpenLibraryWorkKey = String(match.openLibraryWorkKey || "").trim();
+  const matchIsbn = String(match.isbn || "").trim();
+  const matchTitle = String(match.title || "").trim();
+
+  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
+    return createCORSResponse("Error: missing book match keys");
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Books sheet has no data rows");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+  const headerIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    headerIndex[headers[i]] = i + 1;
+  }
+
+  var rowNum = -1;
+  if (headerIndex["GoogleBooksVolumeId"] && matchGoogleBooksVolumeId) {
+    const values = sheet.getRange(2, headerIndex["GoogleBooksVolumeId"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchGoogleBooksVolumeId) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["OpenLibraryWorkKey"] && matchOpenLibraryWorkKey) {
+    const values = sheet.getRange(2, headerIndex["OpenLibraryWorkKey"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchOpenLibraryWorkKey) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["isbn"] && matchIsbn) {
+    const values = sheet.getRange(2, headerIndex["isbn"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchIsbn) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle) {
+    const values = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim().toLowerCase() === matchTitle.toLowerCase()) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1) return createCORSResponse("Error: matching book row not found");
+  sheet.deleteRow(rowNum);
+  return createCORSResponse("Success");
+}
+
+function deleteShowRow_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Shows");
+  if (!sheet) return createCORSResponse("Shows sheet not found");
+
+  const match = payload.match || {};
+  const matchTmdbId = String(match.tmdbId || "").trim();
+  const matchTitle = String(match.title || "").trim();
+
+  if (!matchTmdbId && !matchTitle) {
+    return createCORSResponse("Error: missing show match keys");
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Shows sheet has no data rows");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+  const headerIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    headerIndex[headers[i]] = i + 1;
+  }
+
+  var rowNum = -1;
+  if (headerIndex["TMDB_ID"] && matchTmdbId) {
+    const values = sheet.getRange(2, headerIndex["TMDB_ID"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchTmdbId) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle) {
+    const values = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim().toLowerCase() === matchTitle.toLowerCase()) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1) return createCORSResponse("Error: matching show row not found");
+  sheet.deleteRow(rowNum);
+  return createCORSResponse("Success");
+}
+
+function deleteMovieRow_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Movies");
+  if (!sheet) return createCORSResponse("Movies sheet not found");
+
+  const match = payload.match || {};
+  const matchTmdbId = String(match.tmdbId || "").trim();
+  const matchTitle = String(match.title || "").trim();
+
+  if (!matchTmdbId && !matchTitle) {
+    return createCORSResponse("Error: missing movie match keys");
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Movies sheet has no data rows");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+  const headerIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    headerIndex[headers[i]] = i + 1;
+  }
+
+  var rowNum = -1;
+  if (headerIndex["TMDB_ID"] && matchTmdbId) {
+    const values = sheet.getRange(2, headerIndex["TMDB_ID"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchTmdbId) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle) {
+    const values = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim().toLowerCase() === matchTitle.toLowerCase()) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1) return createCORSResponse("Error: matching movie row not found");
+  sheet.deleteRow(rowNum);
+  return createCORSResponse("Success");
+}
+
+function deleteGameRow_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Games");
+  if (!sheet) return createCORSResponse("Games sheet not found");
+
+  const match = payload.match || {};
+  const matchIgdbId = String(match.igdbId || "").trim();
+  const matchTitle = String(match.title || "").trim();
+
+  if (!matchIgdbId && !matchTitle) {
+    return createCORSResponse("Error: missing game match keys");
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Games sheet has no data rows");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+  const headerIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    headerIndex[headers[i]] = i + 1;
+  }
+
+  var rowNum = -1;
+  if (headerIndex["IGDB_ID"] && matchIgdbId) {
+    const values = sheet.getRange(2, headerIndex["IGDB_ID"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchIgdbId) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle) {
+    const values = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim().toLowerCase() === matchTitle.toLowerCase()) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1) return createCORSResponse("Error: matching game row not found");
+  sheet.deleteRow(rowNum);
+  return createCORSResponse("Success");
+}
+
+function appendRowByHeaders_(sheetName, values) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return createCORSResponse(sheetName + " sheet not found");
+
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return createCORSResponse("Error: " + sheetName + " sheet has no header row");
+
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || "").trim();
+  });
+  const row = headers.map(function(header) {
+    return String((values && values[header]) || "").trim();
+  });
+
+  sheet.appendRow(row);
+  return createCORSResponse("Success");
+}
+
+function addBookRow_(payload) {
+  const values = payload.values || payload.updates || {};
+  if (!String(values.Title || "").trim()) return createCORSResponse("Error: Title is required for addBook");
+  return appendRowByHeaders_("Books", values);
+}
+
+function addShowRow_(payload) {
+  const values = payload.values || payload.updates || {};
+  if (!String(values.Title || "").trim()) return createCORSResponse("Error: Title is required for addShow");
+  return appendRowByHeaders_("Shows", values);
+}
+
+function addMovieRow_(payload) {
+  const values = payload.values || payload.updates || {};
+  if (!String(values.Title || "").trim()) return createCORSResponse("Error: Title is required for addMovie");
+  return appendRowByHeaders_("Movies", values);
+}
+
+function addGameRow_(payload) {
+  const values = payload.values || payload.updates || {};
+  if (!String(values.Title || "").trim()) return createCORSResponse("Error: Title is required for addGame");
+  return appendRowByHeaders_("Games", values);
 }
 
 // Add CORS headers to the response
