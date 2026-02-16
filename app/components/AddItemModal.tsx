@@ -38,7 +38,7 @@ const TYPE_OPTIONS: Array<{ type: AddMediaType; label: string; source: string }>
 ];
 
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
-const BOOK_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Kindle Unlimited", "Gifted"];
+const BOOK_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Ripped", "Borrowed"];
 const BOOK_TYPE_OPTIONS = ["Physical", "eBook", "Audiobook", "Graphic Novel"];
 const SHOW_WATCH_STATUS_OPTIONS = ["Watching", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return"];
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"];
