@@ -254,6 +254,9 @@ type Game = {
 
 const APP_TITLE = "Chris’ Delicious Library";
 const APP_VERSION = "5.0.0";
+const POPUP_OVERLAY_Z_INDEX = 2147483000;
+const POPUP_PANEL_Z_INDEX = 2147483200;
+const POPUP_FAQ_Z_INDEX = 2147483300;
 const VERSION_HISTORY = [
   {
     version: "5.0.0",
@@ -1274,7 +1277,7 @@ export default function Page() {
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const caseTiltRafRef = useRef<number | null>(null);
   const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
-  const settingsCogToggleLastPressAtRef = useRef<number>(0);
+  const settingsCogPointerHandledRef = useRef<boolean>(false);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -5525,7 +5528,7 @@ export default function Page() {
           style={{
             position: "sticky",
             top: topSafeInset,
-            zIndex: settingsPopupOpen ? 6000 : 1400,
+            zIndex: settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 1 : 1400,
             alignSelf: "start",
             height: "100vh",
             minHeight: "100vh",
@@ -7684,7 +7687,7 @@ export default function Page() {
                         width: "min(560px, calc(100vw - 40px))",
                         maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 110px)",
                         overflowY: "auto",
-                        zIndex: 5000,
+                        zIndex: POPUP_PANEL_Z_INDEX,
                         padding: 14,
                         display: "flex",
                         flexDirection: "column",
@@ -8938,7 +8941,7 @@ export default function Page() {
               style={{
                 position: "fixed",
                 inset: 0,
-                zIndex: 4000,
+                zIndex: POPUP_OVERLAY_Z_INDEX,
                 border: "none",
                 margin: 0,
                 padding: 0,
@@ -8955,7 +8958,7 @@ export default function Page() {
                 top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                 right: 74,
                 width: "min(320px, calc(100vw - 40px))",
-                zIndex: 5000,
+                zIndex: POPUP_PANEL_Z_INDEX,
                 padding: 14,
                 display: "flex",
                 flexDirection: "column",
@@ -9084,7 +9087,7 @@ export default function Page() {
               style={{
                 position: "fixed",
                 inset: "calc(env(safe-area-inset-top, 0px) + 14px) 14px 14px 14px",
-                zIndex: 6500,
+                zIndex: POPUP_FAQ_Z_INDEX,
                 background: "linear-gradient(180deg, rgba(248, 244, 236, 0.99) 0%, rgba(241, 234, 222, 0.99) 100%)",
                 border: "1px solid rgba(58, 37, 24, 0.4)",
                 borderRadius: 16,
@@ -9466,7 +9469,7 @@ export default function Page() {
                         onPointerDown={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
-                          settingsCogToggleLastPressAtRef.current = Date.now();
+                          settingsCogPointerHandledRef.current = true;
                           setSortPopupOpen(false);
                           setShowVersionNotes(false);
                           setSettingsPopupOpen((prev) => !prev);
@@ -9476,15 +9479,15 @@ export default function Page() {
                           // after pointer-based presses. Fallback to click toggle if
                           // pointerdown was missed by the browser/event path.
                           if (event.detail !== 0) {
-                            const elapsed = Date.now() - settingsCogToggleLastPressAtRef.current;
-                            if (elapsed > 750) {
-                              setSortPopupOpen(false);
-                              setShowVersionNotes(false);
-                              setSettingsPopupOpen((prev) => !prev);
+                            if (settingsCogPointerHandledRef.current) {
+                              settingsCogPointerHandledRef.current = false;
+                              event.preventDefault();
+                              event.stopPropagation();
                               return;
                             }
-                            event.preventDefault();
-                            event.stopPropagation();
+                            setSortPopupOpen(false);
+                            setShowVersionNotes(false);
+                            setSettingsPopupOpen((prev) => !prev);
                             return;
                           }
                           setSortPopupOpen(false);
