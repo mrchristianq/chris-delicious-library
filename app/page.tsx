@@ -9462,7 +9462,7 @@ export default function Page() {
                     </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
-                        onMouseDown={(event) => {
+                        onPointerDown={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
                           setSortPopupOpen(false);
@@ -9470,8 +9470,16 @@ export default function Page() {
                           setSettingsPopupOpen((prev) => !prev);
                         }}
                         onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
+                          // Keep keyboard activation working while avoiding double-toggle
+                          // after pointer-based presses (which already run onPointerDown).
+                          if (event.detail !== 0) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                          }
+                          setSortPopupOpen(false);
+                          setShowVersionNotes(false);
+                          setSettingsPopupOpen((prev) => !prev);
                         }}
                         title="Open settings"
                         aria-label="Open settings"
