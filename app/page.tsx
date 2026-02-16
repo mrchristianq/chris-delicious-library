@@ -7683,7 +7683,8 @@ export default function Page() {
                     ? {
                         position: "fixed",
                         top: "calc(env(safe-area-inset-top, 0px) + 84px)",
-                        right: 20,
+                        left: "calc(100vw - min(560px, calc(100vw - 40px)) - 20px)",
+                        right: "auto",
                         width: "min(560px, calc(100vw - 40px))",
                         maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 110px)",
                         overflowY: "auto",
