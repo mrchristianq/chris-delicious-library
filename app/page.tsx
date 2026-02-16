@@ -1274,6 +1274,7 @@ export default function Page() {
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const caseTiltRafRef = useRef<number | null>(null);
   const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
+  const settingsCogToggleLastPressAtRef = useRef<number>(0);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -9465,14 +9466,23 @@ export default function Page() {
                         onPointerDown={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
+                          settingsCogToggleLastPressAtRef.current = Date.now();
                           setSortPopupOpen(false);
                           setShowVersionNotes(false);
                           setSettingsPopupOpen((prev) => !prev);
                         }}
                         onClick={(event) => {
                           // Keep keyboard activation working while avoiding double-toggle
-                          // after pointer-based presses (which already run onPointerDown).
+                          // after pointer-based presses. Fallback to click toggle if
+                          // pointerdown was missed by the browser/event path.
                           if (event.detail !== 0) {
+                            const elapsed = Date.now() - settingsCogToggleLastPressAtRef.current;
+                            if (elapsed > 750) {
+                              setSortPopupOpen(false);
+                              setShowVersionNotes(false);
+                              setSettingsPopupOpen((prev) => !prev);
+                              return;
+                            }
                             event.preventDefault();
                             event.stopPropagation();
                             return;
