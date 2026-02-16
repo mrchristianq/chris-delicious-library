@@ -106,7 +106,7 @@
 
 "use client";
 
-import { type MouseEvent as ReactMouseEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
@@ -334,6 +334,7 @@ const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
 const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
+const SETTINGS_WINDOW_DRAG_BLOCK_SELECTOR = "button, input, select, textarea, a, [role='button']";
 
 // ✅ Put these in /public
 const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
@@ -1180,6 +1181,10 @@ export default function Page() {
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
   const LIP_FROM_BOTTOM = 5;
+  const SETTINGS_WINDOW_DEFAULT_WIDTH = 560;
+  const SETTINGS_WINDOW_MARGIN = 20;
+  const SETTINGS_WINDOW_START_Y = 84;
+  const SETTINGS_WINDOW_Z_INDEX = 9000;
   const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
 
@@ -1239,6 +1244,15 @@ export default function Page() {
   const [themeSaveNotice, setThemeSaveNotice] = useState<string>("");
   const quickOverlayDragRef = useRef<{ x: number; y: number; top: number; left: number } | null>(null);
   const [showVersionNotes, setShowVersionNotes] = useState(false);
+  const [settingsWindowPosition, setSettingsWindowPosition] = useState<{ x: number; y: number } | null>(null);
+  const settingsWindowRef = useRef<HTMLDivElement | null>(null);
+  const settingsWindowDragRef = useRef<{
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    height: number;
+  } | null>(null);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
@@ -1445,6 +1459,97 @@ export default function Page() {
   useEffect(() => {
     measureStageTop();
   }, [measureStageTop, nav, viewportH, refreshNonce]);
+
+  const clampSettingsWindowPosition = useCallback((x: number, y: number, width: number, height: number) => {
+    const minX = SETTINGS_WINDOW_MARGIN;
+    const minY = SETTINGS_WINDOW_START_Y;
+    const maxX = Math.max(minX, window.innerWidth - width - SETTINGS_WINDOW_MARGIN);
+    const maxY = Math.max(minY, window.innerHeight - height - SETTINGS_WINDOW_MARGIN);
+    return {
+      x: Math.round(Math.min(Math.max(x, minX), maxX)),
+      y: Math.round(Math.min(Math.max(y, minY), maxY)),
+    };
+  }, [SETTINGS_WINDOW_MARGIN, SETTINGS_WINDOW_START_Y]);
+
+  const getSettingsWindowSize = useCallback(() => {
+    const width = Math.min(
+      SETTINGS_WINDOW_DEFAULT_WIDTH,
+      Math.max(320, window.innerWidth - SETTINGS_WINDOW_MARGIN * 2)
+    );
+    const maxHeight = Math.max(320, window.innerHeight - SETTINGS_WINDOW_START_Y - SETTINGS_WINDOW_MARGIN);
+    const measuredHeight = settingsWindowRef.current?.getBoundingClientRect().height;
+    return {
+      width,
+      height: measuredHeight ?? Math.min(680, maxHeight),
+    };
+  }, [SETTINGS_WINDOW_DEFAULT_WIDTH, SETTINGS_WINDOW_MARGIN, SETTINGS_WINDOW_START_Y]);
+
+  useEffect(() => {
+    if (!settingsPopupOpen) return;
+    const syncSettingsWindowPosition = () => {
+      const { width, height } = getSettingsWindowSize();
+      setSettingsWindowPosition((prev) => {
+        const fallbackX = window.innerWidth - width - SETTINGS_WINDOW_MARGIN;
+        const fallbackY = SETTINGS_WINDOW_START_Y;
+        const source = prev ?? { x: fallbackX, y: fallbackY };
+        return clampSettingsWindowPosition(source.x, source.y, width, height);
+      });
+    };
+    syncSettingsWindowPosition();
+    window.addEventListener("resize", syncSettingsWindowPosition);
+    return () => window.removeEventListener("resize", syncSettingsWindowPosition);
+  }, [
+    clampSettingsWindowPosition,
+    getSettingsWindowSize,
+    settingsPopupOpen,
+    SETTINGS_WINDOW_MARGIN,
+    SETTINGS_WINDOW_START_Y,
+  ]);
+
+  useEffect(() => {
+    if (settingsPopupOpen) return;
+    settingsWindowDragRef.current = null;
+  }, [settingsPopupOpen]);
+
+  const handleSettingsWindowPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest("[data-settings-window-drag-handle='true']")) return;
+    if (target.closest(SETTINGS_WINDOW_DRAG_BLOCK_SELECTOR)) return;
+    const node = settingsWindowRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    settingsWindowDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }, []);
+
+  const handleSettingsWindowPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = settingsWindowDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const next = clampSettingsWindowPosition(
+      event.clientX - dragState.offsetX,
+      event.clientY - dragState.offsetY,
+      dragState.width,
+      dragState.height
+    );
+    setSettingsWindowPosition(next);
+  }, [clampSettingsWindowPosition]);
+
+  const handleSettingsWindowPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = settingsWindowDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    settingsWindowDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
 
   useEffect(() => {
     if (!settingsPopupOpen && !sortPopupOpen && !faqPopupOpen) return;
@@ -7689,32 +7794,34 @@ export default function Page() {
 
             {settingsPopupOpen ? (
               <div
-                style={
-                  settingsPopupOpen
-                    ? {
-                        position: "fixed",
-                        top: "calc(env(safe-area-inset-top, 0px) + 84px)",
-                        right: 20,
-                        width: "min(560px, calc(100vw - 40px))",
-                        maxHeight: "calc(100vh - env(safe-area-inset-top, 0px) - 110px)",
-                        overflowY: "auto",
-                        zIndex: 5000,
-                        padding: 14,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                        background: "rgba(248, 244, 236, 0.98)",
-                        border: "1px solid rgba(58, 37, 24, 0.38)",
-                        borderRadius: 14,
-                        boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
-                        backdropFilter: "blur(2px)",
-                      }
-                    : { padding: 12, display: "flex", flexDirection: "column", gap: 6 }
-                }
+                ref={settingsWindowRef}
+                onPointerDown={handleSettingsWindowPointerDown}
+                onPointerMove={handleSettingsWindowPointerMove}
+                onPointerUp={handleSettingsWindowPointerUp}
+                onPointerCancel={handleSettingsWindowPointerUp}
+                style={{
+                  position: "fixed",
+                  top: settingsWindowPosition?.y ?? SETTINGS_WINDOW_START_Y,
+                  ...(settingsWindowPosition ? { left: settingsWindowPosition.x } : { right: SETTINGS_WINDOW_MARGIN }),
+                  width: `min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
+                  maxHeight: `calc(100vh - ${SETTINGS_WINDOW_START_Y + SETTINGS_WINDOW_MARGIN}px)`,
+                  overflowY: "auto",
+                  zIndex: SETTINGS_WINDOW_Z_INDEX,
+                  padding: 14,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  background: "rgba(248, 244, 236, 0.98)",
+                  border: "1px solid rgba(58, 37, 24, 0.38)",
+                  borderRadius: 14,
+                  boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+                  backdropFilter: "blur(2px)",
+                }}
               >
                 {settingsPopupOpen ? (
                   <>
                     <div
+                      data-settings-window-drag-handle="true"
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -7722,6 +7829,9 @@ export default function Page() {
                         marginBottom: 4,
                         paddingBottom: 8,
                         borderBottom: "1px solid rgba(0,0,0,0.12)",
+                        cursor: "grab",
+                        userSelect: "none",
+                        touchAction: "none",
                       }}
                     >
                       <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
@@ -8939,11 +9049,10 @@ export default function Page() {
             </div>
           ) : null}
 
-          {settingsPopupOpen || sortPopupOpen || faqPopupOpen ? (
+          {sortPopupOpen || faqPopupOpen ? (
             <button
               aria-label="Close popup"
               onClick={() => {
-                setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
                 setFaqPopupOpen(false);
                 setShowVersionNotes(false);
