@@ -9,12 +9,15 @@ interface MediaModalProps {
   onSaveShowEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
   onSaveMovieEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
   onSaveGameEdits?: (item: Record<string, any>, updates: Record<string, string>) => Promise<void> | void;
+  onDeleteItem?: (item: Record<string, any>) => Promise<void> | void;
   gamePlatformOptions?: string[];
   gameStatusOptions?: string[];
   gameOwnershipOptions?: string[];
   gameFormatOptions?: string[];
   isReplacingCover?: boolean;
   replaceCoverError?: string | null;
+  popupCoverMode?: "custom" | "default";
+  onPopupCoverModeChange?: (item: Record<string, any>, mode: "custom" | "default") => void;
 }
 
 type InfoRow = {
@@ -70,7 +73,7 @@ const BOOK_EDIT_FIELDS: BookEditField[] = [
 
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
 const SHOW_WATCH_STATUS_OPTIONS = [
-  "Currently Watching",
+  "Watching",
   "Completed",
   "Backlog",
   "Abandoned",
@@ -80,6 +83,9 @@ const SHOW_WATCH_STATUS_OPTIONS = [
 ];
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"];
 const SHOW_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
+const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Abandoned"];
+const MOVIE_STATUS_OPTIONS = ["Released", "Upcoming", "In Production", "Canceled"];
+const MOVIE_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
 const GAME_STATUS_FALLBACK_OPTIONS = ["Backlog", "Playing", "Completed", "Paused", "Dropped", "Wishlist"];
 const GAME_PLATFORM_FALLBACK_OPTIONS = ["PC", "PlayStation 5", "Xbox Series X|S", "Nintendo Switch", "Steam Deck", "Mobile"];
 const GAME_OWNERSHIP_FALLBACK_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
@@ -87,6 +93,7 @@ const GAME_FORMAT_FALLBACK_OPTIONS = ["Digital", "Physical", "Cloud", "Subscript
 const SHOW_EDIT_FIELDS: ShowEditField[] = [
   { key: "watchStatus", label: "Watch Status" },
   { key: "showStatus", label: "Show Status" },
+  { key: "dateCompleted", label: "Date Completed" },
   { key: "year", label: "Year" },
   { key: "tmdbId", label: "TMDB ID" },
   { key: "firstAirDate", label: "First Air Date" },
@@ -106,12 +113,12 @@ const SHOW_EDIT_FIELDS: ShowEditField[] = [
 ];
 const MOVIE_EDIT_FIELDS: MovieEditField[] = [
   { key: "year", label: "Year" },
-  { key: "poster", label: "Poster" },
   { key: "myRating", label: "My Rating" },
   { key: "tmdbRating", label: "TMDB Rating" },
   { key: "tmdbId", label: "TMDB ID" },
-  { key: "watched", label: "Watched" },
+  { key: "watchStatus", label: "Watch Status" },
   { key: "watchDate", label: "Watch Date" },
+  { key: "ownership", label: "Ownership" },
   { key: "tags", label: "Tags" },
   { key: "releaseDate", label: "Release Date" },
   { key: "runtime", label: "Runtime" },
@@ -191,6 +198,44 @@ function isTruthyValue(value: string): boolean {
   );
 }
 
+function normalizeStatusToken(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getStatusTone(value: string): "positive" | "warning" | "active" | "neutral" | "" {
+  const normalized = normalizeStatusToken(value);
+  if (!normalized || normalized === DASH.toLowerCase()) return "";
+
+  if (
+    normalized.includes("completed") ||
+    normalized.includes("watched") ||
+    normalized.includes("finished")
+  ) {
+    return "positive";
+  }
+
+  if (
+    normalized.includes("abandoned") ||
+    normalized.includes("dropped") ||
+    normalized.includes("canceled") ||
+    normalized.includes("cancelled") ||
+    normalized.includes("quit") ||
+    normalized.includes("dnf")
+  ) {
+    return "warning";
+  }
+
+  if (
+    normalized.includes("now playing") ||
+    normalized.includes("playing") ||
+    normalized.includes("currently watching")
+  ) {
+    return "active";
+  }
+
+  return "neutral";
+}
+
 function renderTwoStateToggle(isOn: boolean, onText: string, offText: string) {
   return (
     <span
@@ -240,6 +285,7 @@ function buildShowEditValues(item: Record<string, any>): Record<string, string> 
     title: firstNonEmpty(item, ["title", "Title"]),
     year: firstNonEmpty(item, ["year", "Year"]),
     tmdbId: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]),
+    dateCompleted: firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate"]),
     firstAirDate: firstNonEmpty(item, ["firstAirDate", "FirstAirDate"]),
     lastAirDate: firstNonEmpty(item, ["lastAirDate", "LastAirDate"]),
     numberOfSeasons: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]),
@@ -263,12 +309,12 @@ function buildMovieEditValues(item: Record<string, any>): Record<string, string>
   return {
     title: firstNonEmpty(item, ["title", "Title"]),
     year: firstNonEmpty(item, ["year", "Year"]),
-    poster: firstNonEmpty(item, ["poster", "Poster"]),
     myRating: firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]),
     tmdbRating: firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]),
     tmdbId: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]),
-    watched: firstNonEmpty(item, ["watched", "Watched", "watchStatus", "WatchStatus"]),
+    watchStatus: firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]),
     watchDate: firstNonEmpty(item, ["watchDate", "WatchDate"]),
+    ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
     tags: firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     releaseDate: firstNonEmpty(item, ["releaseDate", "ReleaseDate"]),
     runtime: firstNonEmpty(item, ["runtime", "Runtime"]),
@@ -396,6 +442,7 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
 
   if (itemType === "tv") {
     return [
+      { label: "Date Completed", value: firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate"]) || DASH },
       { label: "First Air Date", value: firstNonEmpty(item, ["firstAirDate"]) || DASH },
       { label: "Last Air Date", value: firstNonEmpty(item, ["lastAirDate"]) || DASH },
       { label: "TMDB Rating", value: renderRating(firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]) || "") },
@@ -411,6 +458,7 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
 
   return [
     { label: "Release Date", value: firstNonEmpty(item, ["releaseDate"]) || DASH },
+    { label: "Watched Date", value: firstNonEmpty(item, ["watchDate", "WatchDate"]) || DASH },
     { label: "Release Status", value: firstNonEmpty(item, ["movieStatus", "status"]) || DASH },
     { label: "Genres", value: firstNonEmpty(item, ["genres"]) || DASH },
     { label: "TMDB ID", value: firstNonEmpty(item, ["tmdbId"]) || DASH },
@@ -426,30 +474,41 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   onSaveShowEdits,
   onSaveMovieEdits,
   onSaveGameEdits,
+  onDeleteItem,
   gamePlatformOptions = [],
   gameStatusOptions = [],
   gameOwnershipOptions = [],
   gameFormatOptions = [],
   isReplacingCover = false,
   replaceCoverError,
+  popupCoverMode,
+  onPopupCoverModeChange,
 }) => {
   const [posterIndex, setPosterIndex] = React.useState(0);
   const [isEditingBook, setIsEditingBook] = React.useState(false);
   const [isSavingBook, setIsSavingBook] = React.useState(false);
   const [bookSaveError, setBookSaveError] = React.useState<string | null>(null);
+  const [bookSaveSuccess, setBookSaveSuccess] = React.useState<string | null>(null);
   const [bookEditValues, setBookEditValues] = React.useState<Record<string, string>>({});
   const [isEditingShow, setIsEditingShow] = React.useState(false);
   const [isSavingShow, setIsSavingShow] = React.useState(false);
   const [showSaveError, setShowSaveError] = React.useState<string | null>(null);
+  const [showSaveSuccess, setShowSaveSuccess] = React.useState<string | null>(null);
   const [showEditValues, setShowEditValues] = React.useState<Record<string, string>>({});
   const [isEditingMovie, setIsEditingMovie] = React.useState(false);
   const [isSavingMovie, setIsSavingMovie] = React.useState(false);
   const [movieSaveError, setMovieSaveError] = React.useState<string | null>(null);
+  const [movieSaveSuccess, setMovieSaveSuccess] = React.useState<string | null>(null);
   const [movieEditValues, setMovieEditValues] = React.useState<Record<string, string>>({});
   const [isEditingGame, setIsEditingGame] = React.useState(false);
   const [isSavingGame, setIsSavingGame] = React.useState(false);
   const [gameSaveError, setGameSaveError] = React.useState<string | null>(null);
+  const [gameSaveSuccess, setGameSaveSuccess] = React.useState<string | null>(null);
   const [gameEditValues, setGameEditValues] = React.useState<Record<string, string>>({});
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
+  const coverDragDepthRef = React.useRef(0);
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -503,6 +562,30 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     ? sourceItem.coverCandidates.filter((c: any) => c && typeof c.url === "string" && c.url.trim())
     : [];
   const candidateUrls = coverCandidates.map((c: any) => String(c.url).trim()).filter(Boolean);
+  const customCoverCandidateUrl = (() => {
+    for (const candidate of coverCandidates) {
+      const label = String(candidate?.label || "").toLowerCase();
+      const url = String(candidate?.url || "").trim();
+      if (!url) continue;
+      if (label.includes("override") || label.includes("custom")) return url;
+    }
+    return "";
+  })();
+  const defaultCoverCandidateUrl = (() => {
+    for (const candidate of coverCandidates) {
+      const label = String(candidate?.label || "").toLowerCase();
+      const url = String(candidate?.url || "").trim();
+      if (!url) continue;
+      if (label.includes("metadata") || label.includes("default")) return url;
+    }
+    return "";
+  })();
+  const canChooseCustomCover = Boolean(customCoverCandidateUrl);
+  const canChooseDefaultCover = Boolean(defaultCoverCandidateUrl);
+  const preferredPosterUrl =
+    popupCoverMode === "default"
+      ? defaultCoverCandidateUrl || customCoverCandidateUrl || posterUrl
+      : customCoverCandidateUrl || defaultCoverCandidateUrl || posterUrl;
   const heroUrl =
     itemType === "game"
       ? firstNonEmpty(sourceItem, ["screensotsUrl", "ScreensotsURL", "screenshotUrl", "backgroundUrl", "heroUrl"])
@@ -511,28 +594,34 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
   React.useEffect(() => {
     if (!open || !item) return;
-    const preferredIdx = candidateUrls.findIndex((url) => url === posterUrl);
+    const preferredIdx = candidateUrls.findIndex((url) => url === preferredPosterUrl);
     setPosterIndex(preferredIdx >= 0 ? preferredIdx : 0);
-  }, [open, item, posterUrl, candidateUrls.join("|")]);
+  }, [open, item, preferredPosterUrl, candidateUrls.join("|")]);
 
   React.useEffect(() => {
     if (!open || !item) return;
     setIsEditingBook(false);
     setIsSavingBook(false);
     setBookSaveError(null);
+    setBookSaveSuccess(null);
     setBookEditValues(buildBookEditValues(item));
     setIsEditingShow(false);
     setIsSavingShow(false);
     setShowSaveError(null);
+    setShowSaveSuccess(null);
     setShowEditValues(buildShowEditValues(item));
     setIsEditingMovie(false);
     setIsSavingMovie(false);
     setMovieSaveError(null);
+    setMovieSaveSuccess(null);
     setMovieEditValues(buildMovieEditValues(item));
     setIsEditingGame(false);
     setIsSavingGame(false);
     setGameSaveError(null);
+    setGameSaveSuccess(null);
     setGameEditValues(buildGameEditValues(item));
+    setIsDeleting(false);
+    setDeleteError(null);
   }, [open, item]);
 
   const autoSizeDescriptionTextarea = React.useCallback((el?: HTMLTextAreaElement | null) => {
@@ -554,6 +643,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     if (label.includes("override") || label.includes("custom")) return "Custom Cover";
     return "Metadata Cover";
   })();
+  const shouldContainPoster = coverLocation === "Custom Cover";
 
   if (!open || !item) return null;
 
@@ -561,19 +651,12 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     itemType === "tv"
       ? firstNonEmpty(sourceItem, ["watchStatus", "WatchStatus", "watched", "Watched"]) || DASH
       : itemType === "movie"
-        ? (() => {
-            const watchedRaw = firstNonEmpty(sourceItem, ["watched", "Watched", "watchStatus", "WatchStatus"]);
-            const watchedNormalized = watchedRaw.toLowerCase();
-            const isWatched =
-              watchedNormalized === "true" ||
-              watchedNormalized === "yes" ||
-              watchedNormalized === "1" ||
-              watchedNormalized === "watched";
-            return isWatched ? "Watched" : "Backlog";
-          })()
+        ? firstNonEmpty(sourceItem, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]) || DASH
       : firstNonEmpty(sourceItem, ["status", "gameStatus", "movieStatus", "showStatus"]) ||
         firstNonEmpty(sourceItem, ["watchStatus", "playStatus"]) ||
         DASH;
+  const statusTone = getStatusTone(String(statusValue || ""));
+  const statusDisplayText = statusValue && statusValue !== DASH ? String(statusValue).toUpperCase() : statusValue;
   const categoryChips = Array.from(
     new Set(
       itemType === "book"
@@ -636,12 +719,29 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       .filter(Boolean)
       .join(", ");
 
+  const uploadReplacementCover = async (file: File | null | undefined) => {
+    if (!file || !item || !onReplaceCover || isReplacingCover) return;
+    await Promise.resolve(onReplaceCover(item, file));
+  };
+
+  const handleCoverDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    coverDragDepthRef.current = 0;
+    setIsCoverDropActive(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    await uploadReplacementCover(file);
+  };
+
   const handleSaveBook = async () => {
     if (!item || !onSaveBookEdits) return;
     setBookSaveError(null);
+    setBookSaveSuccess(null);
     setIsSavingBook(true);
     try {
       await onSaveBookEdits(item, bookEditValues);
+      setBookSaveSuccess("Saved to Google Sheet.");
       setIsEditingBook(false);
     } catch (e: any) {
       setBookSaveError(e?.message || "Failed to save book changes");
@@ -652,9 +752,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const handleSaveShow = async () => {
     if (!item || !onSaveShowEdits) return;
     setShowSaveError(null);
+    setShowSaveSuccess(null);
     setIsSavingShow(true);
     try {
       await onSaveShowEdits(item, showEditValues);
+      setShowSaveSuccess("Saved to Google Sheet.");
       setIsEditingShow(false);
     } catch (e: any) {
       setShowSaveError(e?.message || "Failed to save show changes");
@@ -665,9 +767,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const handleSaveMovie = async () => {
     if (!item || !onSaveMovieEdits) return;
     setMovieSaveError(null);
+    setMovieSaveSuccess(null);
     setIsSavingMovie(true);
     try {
       await onSaveMovieEdits(item, movieEditValues);
+      setMovieSaveSuccess("Saved to Google Sheet.");
       setIsEditingMovie(false);
     } catch (e: any) {
       setMovieSaveError(e?.message || "Failed to save movie changes");
@@ -678,9 +782,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const handleSaveGame = async () => {
     if (!item || !onSaveGameEdits) return;
     setGameSaveError(null);
+    setGameSaveSuccess(null);
     setIsSavingGame(true);
     try {
       await onSaveGameEdits(item, gameEditValues);
+      setGameSaveSuccess("Saved to Google Sheet.");
       setIsEditingGame(false);
     } catch (e: any) {
       setGameSaveError(e?.message || "Failed to save game changes");
@@ -688,6 +794,37 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       setIsSavingGame(false);
     }
   };
+  const handleDeleteItem = async () => {
+    if (!item || !onDeleteItem || isDeleting) return;
+    const confirmed = window.confirm(`Delete "${title}" from library? This will remove it from the app and spreadsheet.`);
+    if (!confirmed) return;
+    setDeleteError(null);
+    setIsDeleting(true);
+    try {
+      await onDeleteItem(item);
+    } catch (e: any) {
+      setDeleteError(e?.message || "Failed to delete item");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const activeSaveError =
+    itemType === "book"
+      ? bookSaveError
+      : itemType === "tv"
+        ? showSaveError
+        : itemType === "movie"
+          ? movieSaveError
+          : gameSaveError;
+  const activeSaveSuccess =
+    itemType === "book"
+      ? bookSaveSuccess
+      : itemType === "tv"
+        ? showSaveSuccess
+        : itemType === "movie"
+          ? movieSaveSuccess
+          : gameSaveSuccess;
 
   return (
     <div className="mediaModalOverlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -700,15 +837,16 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setBookSaveError(null);
+                  setBookSaveSuccess(null);
                   setIsEditingBook((prev) => !prev);
                   if (isEditingBook) setBookEditValues(buildBookEditValues(sourceItem));
                 }}
-                disabled={isSavingBook}
+                disabled={isSavingBook || isDeleting}
               >
                 {isEditingBook ? "Cancel" : "Edit"}
               </button>
               {isEditingBook ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveBook} disabled={isSavingBook}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveBook} disabled={isSavingBook || isDeleting}>
                   {isSavingBook ? "Saving..." : "Save"}
                 </button>
               ) : null}
@@ -721,15 +859,16 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setShowSaveError(null);
+                  setShowSaveSuccess(null);
                   setIsEditingShow((prev) => !prev);
                   if (isEditingShow) setShowEditValues(buildShowEditValues(sourceItem));
                 }}
-                disabled={isSavingShow}
+                disabled={isSavingShow || isDeleting}
               >
                 {isEditingShow ? "Cancel" : "Edit"}
               </button>
               {isEditingShow ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveShow} disabled={isSavingShow}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveShow} disabled={isSavingShow || isDeleting}>
                   {isSavingShow ? "Saving..." : "Save"}
                 </button>
               ) : null}
@@ -742,15 +881,16 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setMovieSaveError(null);
+                  setMovieSaveSuccess(null);
                   setIsEditingMovie((prev) => !prev);
                   if (isEditingMovie) setMovieEditValues(buildMovieEditValues(sourceItem));
                 }}
-                disabled={isSavingMovie}
+                disabled={isSavingMovie || isDeleting}
               >
                 {isEditingMovie ? "Cancel" : "Edit"}
               </button>
               {isEditingMovie ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveMovie} disabled={isSavingMovie}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveMovie} disabled={isSavingMovie || isDeleting}>
                   {isSavingMovie ? "Saving..." : "Save"}
                 </button>
               ) : null}
@@ -763,37 +903,75 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 className="editButton topActionButton"
                 onClick={() => {
                   setGameSaveError(null);
+                  setGameSaveSuccess(null);
                   setIsEditingGame((prev) => !prev);
                   if (isEditingGame) setGameEditValues(buildGameEditValues(sourceItem));
                 }}
-                disabled={isSavingGame}
+                disabled={isSavingGame || isDeleting}
               >
                 {isEditingGame ? "Cancel" : "Edit"}
               </button>
               {isEditingGame ? (
-                <button type="button" className="saveButton topActionButton" onClick={handleSaveGame} disabled={isSavingGame}>
+                <button type="button" className="saveButton topActionButton" onClick={handleSaveGame} disabled={isSavingGame || isDeleting}>
                   {isSavingGame ? "Saving..." : "Save"}
                 </button>
               ) : null}
             </>
           ) : null}
+          {onDeleteItem ? (
+            <button type="button" className="deleteButton topActionButton" onClick={handleDeleteItem} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </button>
+          ) : null}
           <button type="button" className="closeButton" aria-label="Close details" onClick={onClose}>
             ×
           </button>
         </div>
+        {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
+        {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
+        {deleteError ? <div className="bookSaveError">{deleteError}</div> : null}
 
         <div className="contentLayout">
           <aside className="leftPane">
             {posterUrl ? (
-              <div className="posterWrap">
+              <div
+                className={`posterWrap${onReplaceCover ? " posterWrapDroppable" : ""}${isCoverDropActive ? " posterWrapDropActive" : ""}`}
+                onDragEnter={(e) => {
+                  if (!onReplaceCover || isReplacingCover) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  coverDragDepthRef.current += 1;
+                  setIsCoverDropActive(true);
+                }}
+                onDragOver={(e) => {
+                  if (!onReplaceCover || isReplacingCover) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "copy";
+                }}
+                onDragLeave={(e) => {
+                  if (!onReplaceCover || isReplacingCover) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  coverDragDepthRef.current = Math.max(0, coverDragDepthRef.current - 1);
+                  if (coverDragDepthRef.current === 0) setIsCoverDropActive(false);
+                }}
+                onDrop={handleCoverDrop}
+              >
                 <img
                   src={resolvedPosterUrl}
                   alt={title}
                   className="poster"
+                  style={{ objectFit: shouldContainPoster ? "contain" : "cover" }}
                   onError={() => {
                     setPosterIndex((idx) => (idx < candidateUrls.length - 1 ? idx + 1 : idx));
                   }}
                 />
+                {onReplaceCover ? (
+                  <div className={`posterDropOverlay${isCoverDropActive ? " visible" : ""}`}>
+                    {isReplacingCover ? "Uploading..." : "Drop image to replace cover"}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="posterFallback">No Cover</div>
@@ -805,9 +983,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               style={{ display: "none" }}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file && item && onReplaceCover) {
-                  onReplaceCover(item, file);
-                }
+                uploadReplacementCover(file);
                 e.currentTarget.value = "";
               }}
             />
@@ -890,6 +1066,28 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   )}
                 </div>
               </div>
+              {onPopupCoverModeChange && item && (canChooseCustomCover || canChooseDefaultCover) ? (
+                <div className="coverModeRow">
+                  {canChooseCustomCover ? (
+                    <button
+                      type="button"
+                      className={`coverModeButton${popupCoverMode !== "default" ? " active" : ""}`}
+                      onClick={() => onPopupCoverModeChange(item, "custom")}
+                    >
+                      Use Custom
+                    </button>
+                  ) : null}
+                  {canChooseDefaultCover ? (
+                    <button
+                      type="button"
+                      className={`coverModeButton${popupCoverMode === "default" ? " active" : ""}`}
+                      onClick={() => onPopupCoverModeChange(item, "default")}
+                    >
+                      Use Default
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {onReplaceCover ? (
                 <button
                   type="button"
@@ -904,7 +1102,9 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             </div>
             <div className="chipSection">
               <div className="chipSectionLabel">{itemType === "tv" || itemType === "movie" ? "Watch Status" : "Status"}</div>
-              <div className="statusValue">{statusValue}</div>
+              <div className={`statusValue statusValueProminent${statusTone ? ` statusTone-${statusTone}` : ""}`}>
+                {statusDisplayText}
+              </div>
             </div>
             {itemType === "game" ? (
               <div className="chipSection">
@@ -942,11 +1142,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
           <section className={`rightPane${itemType === "book" ? " bookRightPane" : ""}${isEditingBook || isEditingShow || isEditingMovie || isEditingGame ? " bookEditRightPane" : ""}`}>
             {itemType !== "book" ? (
-              heroUrl ? (
-                <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" />
-              ) : (
-                <div className="heroFallback" />
-              )
+              heroUrl ? <img src={heroUrl} alt={`${title} screenshot`} className="heroImage" /> : null
             ) : null}
 
             {description && itemType !== "book" && !(itemType === "tv" && isEditingShow) && !(itemType === "movie" && isEditingMovie) && !(itemType === "game" && isEditingGame) ? (
@@ -1053,7 +1249,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                     )}
                   </label>
                 ))}
-                {bookSaveError ? <div className="bookSaveError">{bookSaveError}</div> : null}
               </div>
             ) : itemType === "tv" && isEditingShow ? (
               <div className="editGrid">
@@ -1131,7 +1326,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       )}
                     </label>
                   ))}
-                {showSaveError ? <div className="bookSaveError">{showSaveError}</div> : null}
               </div>
             ) : itemType === "movie" && isEditingMovie ? (
               <div className="editGrid">
@@ -1151,6 +1345,54 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                           className={`editTextarea${field.key === "overview" ? " editDescriptionTextarea" : ""}`}
                           rows={field.key === "overview" ? 8 : 4}
                         />
+                      ) : field.key === "watchStatus" ? (
+                        <select
+                          value={movieEditValues[field.key] || ""}
+                          onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
+                          className="editSelect"
+                        >
+                          <option value="">Select watch status</option>
+                          {MOVIE_WATCH_STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                          {movieEditValues[field.key] && !MOVIE_WATCH_STATUS_OPTIONS.includes(movieEditValues[field.key]) ? (
+                            <option value={movieEditValues[field.key]}>{movieEditValues[field.key]}</option>
+                          ) : null}
+                        </select>
+                      ) : field.key === "status" ? (
+                        <select
+                          value={movieEditValues[field.key] || ""}
+                          onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
+                          className="editSelect"
+                        >
+                          <option value="">Select release status</option>
+                          {MOVIE_STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                          {movieEditValues[field.key] && !MOVIE_STATUS_OPTIONS.includes(movieEditValues[field.key]) ? (
+                            <option value={movieEditValues[field.key]}>{movieEditValues[field.key]}</option>
+                          ) : null}
+                        </select>
+                      ) : field.key === "ownership" ? (
+                        <select
+                          value={movieEditValues[field.key] || ""}
+                          onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
+                          className="editSelect"
+                        >
+                          <option value="">Select ownership</option>
+                          {MOVIE_OWNERSHIP_OPTIONS.map((ownership) => (
+                            <option key={ownership} value={ownership}>
+                              {ownership}
+                            </option>
+                          ))}
+                          {movieEditValues[field.key] && !MOVIE_OWNERSHIP_OPTIONS.includes(movieEditValues[field.key]) ? (
+                            <option value={movieEditValues[field.key]}>{movieEditValues[field.key]}</option>
+                          ) : null}
+                        </select>
                       ) : (
                         <input
                           type="text"
@@ -1161,7 +1403,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       )}
                     </label>
                   ))}
-                {movieSaveError ? <div className="bookSaveError">{movieSaveError}</div> : null}
               </div>
             ) : itemType === "game" && isEditingGame ? (
               <div className="editGrid">
@@ -1267,7 +1508,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       )}
                     </label>
                   ))}
-                {gameSaveError ? <div className="bookSaveError">{gameSaveError}</div> : null}
               </div>
             ) : (
               <div className="infoGrid">
@@ -1292,8 +1532,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: grid;
           place-items: center;
           padding: 22px;
-          background: rgba(6, 11, 22, 0.72);
-          backdrop-filter: blur(5px);
+          background: rgba(0, 0, 0, 0.02);
         }
 
         .mediaModalCard {
@@ -1301,39 +1540,48 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           width: min(1320px, 96vw);
           max-height: min(92vh, 1100px);
           overflow: auto;
-          padding: 14px 16px 16px;
+          padding: 10px 12px 12px;
           border-radius: 22px;
-          border: 1px solid rgba(70, 98, 152, 0.35);
-          background: linear-gradient(180deg, rgba(7, 14, 32, 0.97) 0%, rgba(8, 12, 25, 0.97) 100%);
-          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+          border: 1px solid rgba(108, 146, 214, 0.35);
+          background: linear-gradient(180deg, rgba(18, 34, 61, 0.78) 0%, rgba(12, 24, 44, 0.74) 100%);
+          box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(2px);
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .mediaModalCard::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
         }
 
         .closeButton {
-          width: 34px;
-          height: 34px;
-          border: 1px solid rgba(86, 110, 160, 0.5);
+          width: 30px;
+          height: 30px;
+          border: 1px solid rgba(120, 153, 220, 0.5);
           border-radius: 10px;
-          background: rgba(10, 22, 49, 0.9);
-          color: #d6deef;
-          font-size: 22px;
+          background: rgba(14, 30, 58, 0.72);
+          color: #dbe6fa;
+          font-size: 19px;
           line-height: 1;
           cursor: pointer;
         }
 
         .topRightActions {
           position: absolute;
-          top: 10px;
-          right: 10px;
+          top: 8px;
+          right: 8px;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
           z-index: 2;
         }
 
         .contentLayout {
           display: grid;
-          grid-template-columns: 300px minmax(0, 1fr);
-          gap: 18px;
+          grid-template-columns: 270px minmax(0, 1fr);
+          gap: 12px;
           align-items: start;
         }
 
@@ -1360,6 +1608,39 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .posterWrap {
           width: 100%;
+          position: relative;
+        }
+
+        .posterWrapDroppable {
+          cursor: copy;
+        }
+
+        .posterWrapDropActive .poster {
+          border-color: rgba(157, 205, 255, 0.95);
+          box-shadow: 0 0 0 2px rgba(157, 205, 255, 0.35), 0 18px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .posterDropOverlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          text-align: center;
+          border-radius: 16px;
+          background: rgba(6, 16, 35, 0.82);
+          color: #dff0ff;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 120ms ease;
+        }
+
+        .posterDropOverlay.visible {
+          opacity: 1;
         }
 
         .replaceCoverButton {
@@ -1367,8 +1648,8 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
           color: #d6e2ff;
-          padding: 7px 10px;
-          font-size: 12px;
+          padding: 6px 8px;
+          font-size: 11px;
           font-weight: 700;
           cursor: pointer;
           width: 100%;
@@ -1384,7 +1665,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .replaceCoverError {
           color: #ffb6b6;
-          font-size: 12px;
+          font-size: 11px;
           margin-top: 8px;
           line-height: 1.35;
         }
@@ -1398,18 +1679,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .title {
-          margin: 14px 0 10px;
+          margin: 10px 0 7px;
           color: #f4f7ff;
-          font-size: 36px;
+          font-size: 28px;
           line-height: 1.05;
           letter-spacing: 0.01em;
           font-weight: 800;
         }
 
         .subtitle {
-          margin: -4px 0 10px;
+          margin: -2px 0 7px;
           color: #d7e1f8;
-          font-size: 20px;
+          font-size: 16px;
           line-height: 1.2;
           font-weight: 600;
         }
@@ -1425,28 +1706,28 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .titleInput {
-          margin: 14px 0 8px;
-          font-size: 28px;
+          margin: 10px 0 6px;
+          font-size: 22px;
           line-height: 1.1;
           font-weight: 800;
-          padding: 8px 10px;
+          padding: 6px 8px;
         }
 
         .subtitleInput {
-          margin: 0 0 10px;
-          font-size: 18px;
+          margin: 0 0 7px;
+          font-size: 15px;
           line-height: 1.2;
           font-weight: 600;
-          padding: 8px 10px;
+          padding: 6px 8px;
         }
 
         .coverActionsPanel {
           width: 100%;
           margin: 2px 0 2px;
           border: 1px solid rgba(73, 102, 154, 0.35);
-          border-radius: 14px;
+          border-radius: 12px;
           background: rgba(15, 24, 44, 0.62);
-          padding: 10px;
+          padding: 8px;
         }
 
         .coverSourceRow {
@@ -1455,11 +1736,36 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           gap: 8px;
         }
 
+        .coverModeRow {
+          display: flex;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .coverModeButton {
+          border: 1px solid rgba(95, 122, 177, 0.5);
+          border-radius: 8px;
+          background: rgba(14, 28, 52, 0.8);
+          color: #cfdcff;
+          padding: 5px 8px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .coverModeButton.active {
+          border-color: rgba(153, 203, 255, 0.92);
+          background: rgba(46, 92, 146, 0.65);
+          color: #ecf5ff;
+        }
+
         .chipWrap {
           display: flex;
           flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 6px;
+          gap: 6px;
+          margin-top: 4px;
         }
 
         .chip {
@@ -1467,20 +1773,20 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border: 1px solid rgba(90, 116, 170, 0.45);
           background: rgba(28, 42, 70, 0.65);
           color: #d6deef;
-          font-size: 15px;
+          font-size: 12px;
           font-weight: 700;
           line-height: 1;
-          padding: 10px 16px;
+          padding: 6px 10px;
         }
 
         .chipSection {
           width: 100%;
-          margin-top: 10px;
+          margin-top: 7px;
         }
 
         .chipSectionLabel {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.06em;
           text-transform: uppercase;
@@ -1488,13 +1794,39 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .statusValue {
           color: #f0f4ff;
-          font-size: 20px;
+          font-size: 15px;
           font-weight: 600;
-          margin-top: 6px;
+          margin-top: 4px;
+        }
+
+        .statusValueProminent {
+          font-size: 20px;
+          line-height: 1.05;
+          font-weight: 900;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          margin-top: 5px;
+          text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+        }
+
+        .statusTone-positive {
+          color: #5cd364;
+        }
+
+        .statusTone-warning {
+          color: #f3a34e;
+        }
+
+        .statusTone-active {
+          color: #58b8ff;
+        }
+
+        .statusTone-neutral {
+          color: #d9e6ff;
         }
 
         .twoStateTextOnly {
-          font-size: 20px;
+          font-size: 15px;
           font-weight: 800;
           line-height: 1.2;
         }
@@ -1513,7 +1845,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .coverSourceHeading {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.06em;
           text-transform: uppercase;
@@ -1522,7 +1854,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .activeSource {
           color: #f0f4ff;
-          font-size: 13px;
+          font-size: 11px;
           font-weight: 700;
           margin-top: 0;
           line-height: 1.35;
@@ -1539,18 +1871,19 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .bookEditToolbar {
           display: flex;
-          gap: 8px;
+          gap: 6px;
           align-items: center;
         }
 
         .editButton,
-        .saveButton {
+        .saveButton,
+        .deleteButton {
           border: 1px solid rgba(95, 122, 177, 0.6);
           border-radius: 10px;
           background: rgba(9, 19, 40, 0.92);
           color: #d6e2ff;
-          padding: 8px 12px;
-          font-size: 12px;
+          padding: 6px 9px;
+          font-size: 11px;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.05em;
@@ -1558,12 +1891,19 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         }
 
         .topActionButton {
-          padding: 6px 9px;
-          font-size: 11px;
+          padding: 5px 8px;
+          font-size: 10px;
+        }
+
+        .deleteButton {
+          border-color: rgba(205, 93, 93, 0.72);
+          background: rgba(68, 20, 20, 0.92);
+          color: #ffdede;
         }
 
         .editButton:disabled,
-        .saveButton:disabled {
+        .saveButton:disabled,
+        .deleteButton:disabled {
           opacity: 0.7;
           cursor: default;
         }
@@ -1571,17 +1911,17 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         .editGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
+          gap: 8px;
         }
 
         .editField {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          border-radius: 14px;
+          gap: 4px;
+          border-radius: 10px;
           border: 1px solid rgba(73, 102, 154, 0.35);
           background: rgba(15, 24, 44, 0.72);
-          padding: 10px 12px;
+          padding: 7px 8px;
         }
 
         .editFieldFullWidth {
@@ -1590,7 +1930,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .editLabel {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 12px;
+          font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.04em;
           text-transform: uppercase;
@@ -1598,7 +1938,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .editHelp {
           color: rgba(178, 193, 224, 0.75);
-          font-size: 11px;
+          font-size: 10px;
           line-height: 1.2;
         }
 
@@ -1610,32 +1950,40 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           border-radius: 8px;
           background: rgba(8, 14, 30, 0.8);
           color: #eff5ff;
-          padding: 8px 10px;
-          font-size: 14px;
+          padding: 6px 8px;
+          font-size: 12px;
           line-height: 1.3;
           outline: none;
         }
 
         .editTextarea {
           resize: vertical;
-          min-height: 96px;
+          min-height: 76px;
         }
 
         .multiSelectInput {
-          min-height: 120px;
-          padding-top: 8px;
-          padding-bottom: 8px;
+          min-height: 94px;
+          padding-top: 6px;
+          padding-bottom: 6px;
         }
 
         .editDescriptionTextarea {
-          min-height: 220px;
-          line-height: 1.45;
+          min-height: 170px;
+          line-height: 1.35;
         }
 
         .bookSaveError {
+          margin: 6px 0 2px;
           grid-column: 1 / -1;
           color: #ffb6b6;
-          font-size: 13px;
+          font-size: 11px;
+          line-height: 1.35;
+        }
+
+        .bookSaveSuccess {
+          margin: 6px 0 2px;
+          color: #b9f5d0;
+          font-size: 11px;
           line-height: 1.35;
         }
 
@@ -1643,7 +1991,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           min-width: 0;
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          gap: 10px;
         }
 
         .bookRightPane {
@@ -1658,12 +2006,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           margin-top: 8px;
         }
 
-        .heroImage,
-        .heroFallback {
+        .heroImage {
           width: 100%;
-          min-height: 280px;
-          max-height: 420px;
-          border-radius: 24px;
+          min-height: 220px;
+          max-height: 320px;
+          border-radius: 16px;
           border: 1px solid rgba(83, 111, 167, 0.32);
         }
 
@@ -1672,24 +2019,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: block;
         }
 
-        .heroFallback {
-          background:
-            radial-gradient(circle at 70% 18%, rgba(59, 82, 128, 0.42), transparent 52%),
-            linear-gradient(160deg, rgba(16, 30, 58, 0.85) 0%, rgba(9, 17, 35, 0.95) 100%);
-        }
-
         .infoGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
+          gap: 9px;
         }
 
         .infoCard,
         .descriptionCard {
-          border-radius: 20px;
+          border-radius: 14px;
           border: 1px solid rgba(73, 102, 154, 0.35);
           background: rgba(15, 24, 44, 0.72);
-          padding: 14px 16px;
+          padding: 10px 11px;
         }
 
         .infoCardFullWidth {
@@ -1698,27 +2039,27 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         .label {
           color: rgba(178, 193, 224, 0.9);
-          font-size: 15px;
+          font-size: 12px;
           font-weight: 700;
           letter-spacing: 0.04em;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
 
         .value {
           color: #f0f4ff;
-          font-size: 20px;
+          font-size: 15px;
           line-height: 1.25;
           font-weight: 700;
-          min-height: 26px;
+          min-height: 20px;
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 7px;
         }
 
         :global(.ratingValue) {
           display: inline-flex;
           align-items: center;
-          gap: 10px;
+          gap: 6px;
         }
 
         :global(.stars) {
@@ -1748,14 +2089,14 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
         :global(.score) {
           color: #edf4ff;
-          font-size: 20px;
+          font-size: 15px;
           font-weight: 800;
         }
 
         .description {
           color: #e2e9fb;
-          font-size: 16px;
-          line-height: 1.4;
+          font-size: 13px;
+          line-height: 1.3;
           white-space: pre-wrap;
         }
 
@@ -1818,8 +2159,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             padding: 8px;
           }
 
-          .heroImage,
-          .heroFallback {
+          .heroImage {
             min-height: 180px;
             border-radius: 14px;
           }
