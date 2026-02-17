@@ -253,11 +253,19 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "5.0.0";
+const APP_VERSION = "5.0.1";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
 const VERSION_HISTORY = [
+  {
+    version: "5.0.1",
+    date: "2026-02-17",
+    notes: [
+      "Fixed game status indicator mapping so \"Now Playing\" shows yellow (active) instead of red.",
+      "Updated shelf row packing so Books, Movies, TV Shows, and Games fill shelf width consistently without extra right-side gaps.",
+    ],
+  },
   {
     version: "5.0.0",
     date: "2026-02-15",
