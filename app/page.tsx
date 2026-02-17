@@ -116,6 +116,10 @@ type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
 type MediaType = "book" | "movie" | "tv" | "game";
 type QuickInsetMode = "insetPosition" | "overlayPosition" | "overlayScale" | "coverPosition" | "coverScale";
+type InsetEditableMediaType = "tv" | "movie" | "book";
+type OverlaySettings = { width: number; height: number; top: number; left: number };
+type CoverScaleSettings = { x: number; y: number };
+type CoverOffsetSettings = { x: number; y: number };
 
 type Show = {
   title: string;
@@ -369,6 +373,9 @@ const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const GAME_FRAME_IMAGE = "/game-frame.png";
+const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = { width: 100, height: 100, top: 0, left: 0 };
+const DEFAULT_COVER_SCALE: CoverScaleSettings = { x: 100, y: 100 };
+const DEFAULT_COVER_OFFSET: CoverOffsetSettings = { x: 0, y: 0 };
 const APP_ICON = "/logo4.png";
 const SHOW_HEADER_DEBUG_CONTROLS = false;
 
@@ -1209,6 +1216,9 @@ export default function Page() {
   const [bookInsetRightPx, setBookInsetRightPx] = useState(75);
   const [bookInsetBottomPx, setBookInsetBottomPx] = useState(104);
   const [bookInsetLeftPx, setBookInsetLeftPx] = useState(62);
+  const [bookOverlaySettings, setBookOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
+  const [bookCoverScale, setBookCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
+  const [bookCoverOffset, setBookCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
   
   // Movie frame: separate insets for movie covers
   const MOVIE_SRC_W = 1024;
@@ -1217,6 +1227,12 @@ export default function Page() {
   const [movieInsetRightPx, setMovieInsetRightPx] = useState(100);
   const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
   const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
+  const [movieOverlaySettings, setMovieOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
+  const [movieCoverScale, setMovieCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
+  const [movieCoverOffset, setMovieCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
+  const [tvOverlaySettings, setTvOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
+  const [tvCoverScale, setTvCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
+  const [tvCoverOffset, setTvCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
   
   // Platform-specific insets (stored as a single object)
   const [platformInsets, setPlatformInsets] = useState<Record<string, { top: number; right: number; bottom: number; left: number }>>({
@@ -2818,6 +2834,14 @@ export default function Page() {
           saveSettingToSheet("caseInsetRightPx", caseInsetRightPx, "TV Insets", "TV Case Right Inset (px)"),
           saveSettingToSheet("caseInsetBottomPx", caseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)"),
           saveSettingToSheet("caseInsetLeftPx", caseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)"),
+          saveSettingToSheet("tvOverlayWidth", tvOverlaySettings.width, "TV Overlay", "TV Overlay Width (%)"),
+          saveSettingToSheet("tvOverlayHeight", tvOverlaySettings.height, "TV Overlay", "TV Overlay Height (%)"),
+          saveSettingToSheet("tvOverlayTop", tvOverlaySettings.top, "TV Overlay", "TV Overlay Top (%)"),
+          saveSettingToSheet("tvOverlayLeft", tvOverlaySettings.left, "TV Overlay", "TV Overlay Left (%)"),
+          saveSettingToSheet("tvCoverScaleX", tvCoverScale.x, "TV Cover", "TV Cover Scale X (%)"),
+          saveSettingToSheet("tvCoverScaleY", tvCoverScale.y, "TV Cover", "TV Cover Scale Y (%)"),
+          saveSettingToSheet("tvCoverOffsetX", tvCoverOffset.x, "TV Cover", "TV Cover Offset X (%)"),
+          saveSettingToSheet("tvCoverOffsetY", tvCoverOffset.y, "TV Cover", "TV Cover Offset Y (%)"),
         ];
       } else if (insetType === 'book') {
         savePromises = [
@@ -2825,6 +2849,14 @@ export default function Page() {
           saveSettingToSheet("bookInsetRightPx", bookInsetRightPx, "Book Insets", "Book Right Inset (px)"),
           saveSettingToSheet("bookInsetBottomPx", bookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)"),
           saveSettingToSheet("bookInsetLeftPx", bookInsetLeftPx, "Book Insets", "Book Left Inset (px)"),
+          saveSettingToSheet("bookOverlayWidth", bookOverlaySettings.width, "Book Overlay", "Book Overlay Width (%)"),
+          saveSettingToSheet("bookOverlayHeight", bookOverlaySettings.height, "Book Overlay", "Book Overlay Height (%)"),
+          saveSettingToSheet("bookOverlayTop", bookOverlaySettings.top, "Book Overlay", "Book Overlay Top (%)"),
+          saveSettingToSheet("bookOverlayLeft", bookOverlaySettings.left, "Book Overlay", "Book Overlay Left (%)"),
+          saveSettingToSheet("bookCoverScaleX", bookCoverScale.x, "Book Cover", "Book Cover Scale X (%)"),
+          saveSettingToSheet("bookCoverScaleY", bookCoverScale.y, "Book Cover", "Book Cover Scale Y (%)"),
+          saveSettingToSheet("bookCoverOffsetX", bookCoverOffset.x, "Book Cover", "Book Cover Offset X (%)"),
+          saveSettingToSheet("bookCoverOffsetY", bookCoverOffset.y, "Book Cover", "Book Cover Offset Y (%)"),
         ];
       } else if (insetType === 'movie') {
         savePromises = [
@@ -2832,6 +2864,14 @@ export default function Page() {
           saveSettingToSheet("movieInsetRightPx", movieInsetRightPx, "Movie Insets", "Movie Right Inset (px)"),
           saveSettingToSheet("movieInsetBottomPx", movieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)"),
           saveSettingToSheet("movieInsetLeftPx", movieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)"),
+          saveSettingToSheet("movieOverlayWidth", movieOverlaySettings.width, "Movie Overlay", "Movie Overlay Width (%)"),
+          saveSettingToSheet("movieOverlayHeight", movieOverlaySettings.height, "Movie Overlay", "Movie Overlay Height (%)"),
+          saveSettingToSheet("movieOverlayTop", movieOverlaySettings.top, "Movie Overlay", "Movie Overlay Top (%)"),
+          saveSettingToSheet("movieOverlayLeft", movieOverlaySettings.left, "Movie Overlay", "Movie Overlay Left (%)"),
+          saveSettingToSheet("movieCoverScaleX", movieCoverScale.x, "Movie Cover", "Movie Cover Scale X (%)"),
+          saveSettingToSheet("movieCoverScaleY", movieCoverScale.y, "Movie Cover", "Movie Cover Scale Y (%)"),
+          saveSettingToSheet("movieCoverOffsetX", movieCoverOffset.x, "Movie Cover", "Movie Cover Offset X (%)"),
+          saveSettingToSheet("movieCoverOffsetY", movieCoverOffset.y, "Movie Cover", "Movie Cover Offset Y (%)"),
         ];
       } else if (insetType === 'game') {
         // Save only the currently selected platform's insets, overlay settings, and cover scale
@@ -2889,16 +2929,61 @@ export default function Page() {
     setCaseInsetRightPx(getSetting("caseInsetRightPx", 121));
     setCaseInsetBottomPx(getSetting("caseInsetBottomPx", 136));
     setCaseInsetLeftPx(getSetting("caseInsetLeftPx", 74));
+    setTvOverlaySettings({
+      width: getSetting("tvOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
+      height: getSetting("tvOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
+      top: getSetting("tvOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
+      left: getSetting("tvOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
+    });
+    const tvLegacyCoverScale = getSetting("tvCoverScale", DEFAULT_COVER_SCALE.x);
+    setTvCoverScale({
+      x: getSetting("tvCoverScaleX", tvLegacyCoverScale),
+      y: getSetting("tvCoverScaleY", tvLegacyCoverScale),
+    });
+    setTvCoverOffset({
+      x: getSetting("tvCoverOffsetX", DEFAULT_COVER_OFFSET.x),
+      y: getSetting("tvCoverOffsetY", DEFAULT_COVER_OFFSET.y),
+    });
     
     setBookInsetTopPx(getSetting("bookInsetTopPx", 99));
     setBookInsetRightPx(getSetting("bookInsetRightPx", 75));
     setBookInsetBottomPx(getSetting("bookInsetBottomPx", 104));
     setBookInsetLeftPx(getSetting("bookInsetLeftPx", 62));
+    setBookOverlaySettings({
+      width: getSetting("bookOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
+      height: getSetting("bookOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
+      top: getSetting("bookOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
+      left: getSetting("bookOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
+    });
+    const bookLegacyCoverScale = getSetting("bookCoverScale", DEFAULT_COVER_SCALE.x);
+    setBookCoverScale({
+      x: getSetting("bookCoverScaleX", bookLegacyCoverScale),
+      y: getSetting("bookCoverScaleY", bookLegacyCoverScale),
+    });
+    setBookCoverOffset({
+      x: getSetting("bookCoverOffsetX", DEFAULT_COVER_OFFSET.x),
+      y: getSetting("bookCoverOffsetY", DEFAULT_COVER_OFFSET.y),
+    });
     
     setMovieInsetTopPx(getSetting("movieInsetTopPx", 156));
     setMovieInsetRightPx(getSetting("movieInsetRightPx", 100));
     setMovieInsetBottomPx(getSetting("movieInsetBottomPx", 136));
     setMovieInsetLeftPx(getSetting("movieInsetLeftPx", 120));
+    setMovieOverlaySettings({
+      width: getSetting("movieOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
+      height: getSetting("movieOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
+      top: getSetting("movieOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
+      left: getSetting("movieOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
+    });
+    const movieLegacyCoverScale = getSetting("movieCoverScale", DEFAULT_COVER_SCALE.x);
+    setMovieCoverScale({
+      x: getSetting("movieCoverScaleX", movieLegacyCoverScale),
+      y: getSetting("movieCoverScaleY", movieLegacyCoverScale),
+    });
+    setMovieCoverOffset({
+      x: getSetting("movieCoverOffsetX", DEFAULT_COVER_OFFSET.x),
+      y: getSetting("movieCoverOffsetY", DEFAULT_COVER_OFFSET.y),
+    });
     
     setPosterSizeGames(getSetting("posterSizeGames", 108));
     
@@ -2940,12 +3025,15 @@ export default function Page() {
         y: getSetting("DefaultCoverOffsetY", 0),
       },
     };
+    const nonGameInsetPrefixes = new Set(["case", "tv", "movie", "book"]);
+    const nonGameOverlayPrefixes = new Set(["tv", "movie", "book"]);
+    const nonGameCoverPrefixes = new Set(["tv", "movie", "book"]);
     
     // Load settings for any platforms found in settings
     settingsRows.forEach(row => {
       const key = safeStr(row["Key"]);
       const match = key.match(/^(.+)InsetTopPx$/);
-      if (match && match[1] !== "Default") {
+      if (match && match[1] !== "Default" && !nonGameInsetPrefixes.has(match[1])) {
         const rawPlatform = match[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformInsets[platform] = {
@@ -2960,7 +3048,7 @@ export default function Page() {
       
       // Also check for overlay settings
       const overlayMatch = key.match(/^(.+)OverlayWidth$/);
-      if (overlayMatch && overlayMatch[1] !== "Default") {
+      if (overlayMatch && overlayMatch[1] !== "Default" && !nonGameOverlayPrefixes.has(overlayMatch[1])) {
         const rawPlatform = overlayMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformOverlaySettings[platform] = {
@@ -2974,7 +3062,7 @@ export default function Page() {
       
       // Also check for cover scale settings
       const coverScaleMatch = key.match(/^(.+)CoverScale(?:X|Y)?$/);
-      if (coverScaleMatch && coverScaleMatch[1] !== "Default") {
+      if (coverScaleMatch && coverScaleMatch[1] !== "Default" && !nonGameCoverPrefixes.has(coverScaleMatch[1])) {
         const rawPlatform = coverScaleMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         const legacyScale = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
@@ -2986,7 +3074,7 @@ export default function Page() {
       }
       
       const coverOffsetMatch = key.match(/^(.+)CoverOffsetX$/);
-      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default") {
+      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default" && !nonGameCoverPrefixes.has(coverOffsetMatch[1])) {
         const rawPlatform = coverOffsetMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformCoverOffset[platform] = {
@@ -3393,6 +3481,81 @@ export default function Page() {
   const updateMovieInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetLeftPx", value, setMovieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)");
   }, [debouncedUpdate]);
+  const updateNonGameOverlay = useCallback(
+    (mediaType: InsetEditableMediaType, property: "width" | "height" | "top" | "left", value: number) => {
+      const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
+      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
+      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
+
+      debouncedUpdate(
+        `${settingPrefix}Overlay${propertyCapitalized}`,
+        value,
+        () => {
+          const applyUpdate = (prev: OverlaySettings): OverlaySettings => ({ ...prev, [property]: value });
+          if (mediaType === "tv") {
+            setTvOverlaySettings(applyUpdate);
+            return;
+          }
+          if (mediaType === "movie") {
+            setMovieOverlaySettings(applyUpdate);
+            return;
+          }
+          setBookOverlaySettings(applyUpdate);
+        },
+        `${settingLabel} Overlay`,
+        `${settingLabel} Overlay ${propertyCapitalized} (%)`
+      );
+    },
+    [debouncedUpdate]
+  );
+  const updateNonGameCoverScale = useCallback(
+    (mediaType: InsetEditableMediaType, axis: "x" | "y", value: number) => {
+      const axisLabel = axis.toUpperCase();
+      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
+      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
+      const applyUpdate = (prev: CoverScaleSettings): CoverScaleSettings => ({ ...prev, [axis]: value });
+
+      if (mediaType === "tv") {
+        setTvCoverScale(applyUpdate);
+      } else if (mediaType === "movie") {
+        setMovieCoverScale(applyUpdate);
+      } else {
+        setBookCoverScale(applyUpdate);
+      }
+
+      saveSetting(
+        `${settingPrefix}CoverScale${axisLabel}`,
+        value,
+        `${settingLabel} Cover`,
+        `${settingLabel} Cover Scale ${axisLabel} (%)`
+      );
+    },
+    [saveSetting]
+  );
+  const updateNonGameCoverOffset = useCallback(
+    (mediaType: InsetEditableMediaType, axis: "x" | "y", value: number) => {
+      const axisLabel = axis.toUpperCase();
+      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
+      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
+      const applyUpdate = (prev: CoverOffsetSettings): CoverOffsetSettings => ({ ...prev, [axis]: value });
+
+      if (mediaType === "tv") {
+        setTvCoverOffset(applyUpdate);
+      } else if (mediaType === "movie") {
+        setMovieCoverOffset(applyUpdate);
+      } else {
+        setBookCoverOffset(applyUpdate);
+      }
+
+      saveSetting(
+        `${settingPrefix}CoverOffset${axisLabel}`,
+        value,
+        `${settingLabel} Cover`,
+        `${settingLabel} Cover Offset ${axisLabel} (%)`
+      );
+    },
+    [saveSetting]
+  );
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
@@ -4219,6 +4382,15 @@ export default function Page() {
     const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
     const movieInset = { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx };
     const bookInset = { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx };
+    const tvOverlay = tvOverlaySettings;
+    const movieOverlay = movieOverlaySettings;
+    const bookOverlay = bookOverlaySettings;
+    const tvCoverOffsetSettings = tvCoverOffset;
+    const movieCoverOffsetSettings = movieCoverOffset;
+    const bookCoverOffsetSettings = bookCoverOffset;
+    const tvCoverScaleSettings = tvCoverScale;
+    const movieCoverScaleSettings = movieCoverScale;
+    const bookCoverScaleSettings = bookCoverScale;
     const gameInset = platformInsets[quickTargetPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
     const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
     const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
@@ -4226,9 +4398,23 @@ export default function Page() {
     const gameFrameSource = getGameFrameSourceDimensions(quickTargetPlatformKey);
     return {
       inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
-      overlay: gameOverlay,
-      coverOffset: gameCoverOffset,
-      coverScale: gameCoverScale,
+      overlay: quickTargetType === "tv" ? tvOverlay : quickTargetType === "movie" ? movieOverlay : quickTargetType === "book" ? bookOverlay : gameOverlay,
+      coverOffset:
+        quickTargetType === "tv"
+          ? tvCoverOffsetSettings
+          : quickTargetType === "movie"
+            ? movieCoverOffsetSettings
+            : quickTargetType === "book"
+              ? bookCoverOffsetSettings
+              : gameCoverOffset,
+      coverScale:
+        quickTargetType === "tv"
+          ? tvCoverScaleSettings
+          : quickTargetType === "movie"
+            ? movieCoverScaleSettings
+            : quickTargetType === "book"
+              ? bookCoverScaleSettings
+              : gameCoverScale,
       sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : gameFrameSource.width,
       sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : gameFrameSource.height,
     };
@@ -4243,14 +4429,23 @@ export default function Page() {
     bookInsetLeftPx,
     bookInsetRightPx,
     bookInsetTopPx,
+    bookOverlaySettings,
+    bookCoverOffset,
+    bookCoverScale,
     caseInsetBottomPx,
     caseInsetLeftPx,
     caseInsetRightPx,
     caseInsetTopPx,
+    tvOverlaySettings,
+    tvCoverOffset,
+    tvCoverScale,
     movieInsetBottomPx,
     movieInsetLeftPx,
     movieInsetRightPx,
     movieInsetTopPx,
+    movieOverlaySettings,
+    movieCoverOffset,
+    movieCoverScale,
     platformCoverOffset,
     platformCoverScale,
     platformInsets,
@@ -4260,13 +4455,10 @@ export default function Page() {
   ]);
 
   useEffect(() => {
-    if (quickTargetType !== "game" && quickInsetMode !== "insetPosition") {
-      setQuickInsetMode("insetPosition");
-    }
     if (quickTargetType === "game") {
       setSelectedPlatformForInsets(quickTargetPlatform);
     }
-  }, [quickInsetMode, quickTargetPlatform, quickTargetType]);
+  }, [quickTargetPlatform, quickTargetType]);
 
   const applyQuickInsetNudge = useCallback(
     (direction: "up" | "down" | "left" | "right") => {
@@ -4308,36 +4500,82 @@ export default function Page() {
         return;
       }
 
-      if (quickTargetType !== "game") return;
-
       if (quickInsetMode === "overlayPosition") {
-        if (isUp) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
-        if (isDown) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
-        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
-        if (isRight) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
+        if (isUp) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
+          else updateNonGameOverlay(quickTargetType, "top", overlay.top - step);
+        }
+        if (isDown) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
+          else updateNonGameOverlay(quickTargetType, "top", overlay.top + step);
+        }
+        if (isLeft) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
+          else updateNonGameOverlay(quickTargetType, "left", overlay.left - step);
+        }
+        if (isRight) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
+          else updateNonGameOverlay(quickTargetType, "left", overlay.left + step);
+        }
         return;
       }
 
       if (quickInsetMode === "overlayScale") {
-        if (isUp) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
-        if (isDown) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
-        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
-        if (isRight) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
+        if (isUp) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
+          else updateNonGameOverlay(quickTargetType, "height", overlay.height + step);
+        }
+        if (isDown) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
+          else updateNonGameOverlay(quickTargetType, "height", overlay.height - step);
+        }
+        if (isLeft) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
+          else updateNonGameOverlay(quickTargetType, "width", overlay.width - step);
+        }
+        if (isRight) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
+          else updateNonGameOverlay(quickTargetType, "width", overlay.width + step);
+        }
         return;
       }
 
       if (quickInsetMode === "coverPosition") {
-        if (isUp) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
-        if (isDown) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
-        if (isLeft) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
-        if (isRight) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
+        if (isUp) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
+          else updateNonGameCoverOffset(quickTargetType, "y", cover.y - step);
+        }
+        if (isDown) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
+          else updateNonGameCoverOffset(quickTargetType, "y", cover.y + step);
+        }
+        if (isLeft) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
+          else updateNonGameCoverOffset(quickTargetType, "x", cover.x - step);
+        }
+        if (isRight) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
+          else updateNonGameCoverOffset(quickTargetType, "x", cover.x + step);
+        }
         return;
       }
 
-      if (isLeft) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
-      if (isRight) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
-      if (isUp) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
-      if (isDown) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
+      if (isLeft) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
+        else updateNonGameCoverScale(quickTargetType, "x", quickInsetSnapshot.coverScale.x - step);
+      }
+      if (isRight) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
+        else updateNonGameCoverScale(quickTargetType, "x", quickInsetSnapshot.coverScale.x + step);
+      }
+      if (isUp) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
+        else updateNonGameCoverScale(quickTargetType, "y", quickInsetSnapshot.coverScale.y + step);
+      }
+      if (isDown) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
+        else updateNonGameCoverScale(quickTargetType, "y", quickInsetSnapshot.coverScale.y - step);
+      }
     },
     [
       quickInsetMode,
@@ -4361,6 +4599,9 @@ export default function Page() {
       updatePlatformCoverScale,
       updatePlatformInset,
       updatePlatformOverlay,
+      updateNonGameCoverOffset,
+      updateNonGameCoverScale,
+      updateNonGameOverlay,
     ]
   );
 
@@ -4428,10 +4669,21 @@ export default function Page() {
       setCaseInsetRightPx(121);
       setCaseInsetBottomPx(136);
       setCaseInsetLeftPx(74);
+      setTvOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
+      setTvCoverScale({ ...DEFAULT_COVER_SCALE });
+      setTvCoverOffset({ ...DEFAULT_COVER_OFFSET });
       saveSetting("caseInsetTopPx", 156, "TV Insets", "TV Case Top Inset (px)");
       saveSetting("caseInsetRightPx", 121, "TV Insets", "TV Case Right Inset (px)");
       saveSetting("caseInsetBottomPx", 136, "TV Insets", "TV Case Bottom Inset (px)");
       saveSetting("caseInsetLeftPx", 74, "TV Insets", "TV Case Left Inset (px)");
+      saveSetting("tvOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "TV Overlay", "TV Overlay Width (%)");
+      saveSetting("tvOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "TV Overlay", "TV Overlay Height (%)");
+      saveSetting("tvOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "TV Overlay", "TV Overlay Top (%)");
+      saveSetting("tvOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "TV Overlay", "TV Overlay Left (%)");
+      saveSetting("tvCoverScaleX", DEFAULT_COVER_SCALE.x, "TV Cover", "TV Cover Scale X (%)");
+      saveSetting("tvCoverScaleY", DEFAULT_COVER_SCALE.y, "TV Cover", "TV Cover Scale Y (%)");
+      saveSetting("tvCoverOffsetX", DEFAULT_COVER_OFFSET.x, "TV Cover", "TV Cover Offset X (%)");
+      saveSetting("tvCoverOffsetY", DEFAULT_COVER_OFFSET.y, "TV Cover", "TV Cover Offset Y (%)");
       return;
     }
 
@@ -4440,10 +4692,21 @@ export default function Page() {
       setMovieInsetRightPx(100);
       setMovieInsetBottomPx(136);
       setMovieInsetLeftPx(120);
+      setMovieOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
+      setMovieCoverScale({ ...DEFAULT_COVER_SCALE });
+      setMovieCoverOffset({ ...DEFAULT_COVER_OFFSET });
       saveSetting("movieInsetTopPx", 156, "Movie Insets", "Movie Top Inset (px)");
       saveSetting("movieInsetRightPx", 100, "Movie Insets", "Movie Right Inset (px)");
       saveSetting("movieInsetBottomPx", 136, "Movie Insets", "Movie Bottom Inset (px)");
       saveSetting("movieInsetLeftPx", 120, "Movie Insets", "Movie Left Inset (px)");
+      saveSetting("movieOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "Movie Overlay", "Movie Overlay Width (%)");
+      saveSetting("movieOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "Movie Overlay", "Movie Overlay Height (%)");
+      saveSetting("movieOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "Movie Overlay", "Movie Overlay Top (%)");
+      saveSetting("movieOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "Movie Overlay", "Movie Overlay Left (%)");
+      saveSetting("movieCoverScaleX", DEFAULT_COVER_SCALE.x, "Movie Cover", "Movie Cover Scale X (%)");
+      saveSetting("movieCoverScaleY", DEFAULT_COVER_SCALE.y, "Movie Cover", "Movie Cover Scale Y (%)");
+      saveSetting("movieCoverOffsetX", DEFAULT_COVER_OFFSET.x, "Movie Cover", "Movie Cover Offset X (%)");
+      saveSetting("movieCoverOffsetY", DEFAULT_COVER_OFFSET.y, "Movie Cover", "Movie Cover Offset Y (%)");
       return;
     }
 
@@ -4452,10 +4715,21 @@ export default function Page() {
       setBookInsetRightPx(75);
       setBookInsetBottomPx(104);
       setBookInsetLeftPx(62);
+      setBookOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
+      setBookCoverScale({ ...DEFAULT_COVER_SCALE });
+      setBookCoverOffset({ ...DEFAULT_COVER_OFFSET });
       saveSetting("bookInsetTopPx", 99, "Book Insets", "Book Top Inset (px)");
       saveSetting("bookInsetRightPx", 75, "Book Insets", "Book Right Inset (px)");
       saveSetting("bookInsetBottomPx", 104, "Book Insets", "Book Bottom Inset (px)");
       saveSetting("bookInsetLeftPx", 62, "Book Insets", "Book Left Inset (px)");
+      saveSetting("bookOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "Book Overlay", "Book Overlay Width (%)");
+      saveSetting("bookOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "Book Overlay", "Book Overlay Height (%)");
+      saveSetting("bookOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "Book Overlay", "Book Overlay Top (%)");
+      saveSetting("bookOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "Book Overlay", "Book Overlay Left (%)");
+      saveSetting("bookCoverScaleX", DEFAULT_COVER_SCALE.x, "Book Cover", "Book Cover Scale X (%)");
+      saveSetting("bookCoverScaleY", DEFAULT_COVER_SCALE.y, "Book Cover", "Book Cover Scale Y (%)");
+      saveSetting("bookCoverOffsetX", DEFAULT_COVER_OFFSET.x, "Book Cover", "Book Cover Offset X (%)");
+      saveSetting("bookCoverOffsetY", DEFAULT_COVER_OFFSET.y, "Book Cover", "Book Cover Offset Y (%)");
       return;
     }
 
@@ -7936,16 +8210,13 @@ export default function Page() {
                           onChange={(e) => setQuickInsetMode(e.target.value as QuickInsetMode)}
                           style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
                         >
-                          {(quickTargetType === "game"
-                            ? [
-                                { value: "insetPosition", label: "Inset Position" },
-                                { value: "overlayPosition", label: "Overlay Position" },
-                                { value: "overlayScale", label: "Overlay Scale" },
-                                { value: "coverPosition", label: "Cover Position" },
-                                { value: "coverScale", label: "Cover Scale" },
-                              ]
-                            : [{ value: "insetPosition", label: "Inset Position" }]
-                          ).map((option) => (
+                          {[
+                            { value: "insetPosition", label: "Inset Position" },
+                            { value: "overlayPosition", label: "Overlay Position" },
+                            { value: "overlayScale", label: "Overlay Scale" },
+                            { value: "coverPosition", label: "Cover Position" },
+                            { value: "coverScale", label: "Cover Scale" },
+                          ].map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
                         </select>
@@ -8028,7 +8299,7 @@ export default function Page() {
                     <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 10, alignItems: "center" }}>
                       <div
                         onMouseDown={(e) => {
-                          if (quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          if (quickInsetMode !== "overlayPosition") return;
                           quickOverlayDragRef.current = {
                             x: e.clientX,
                             y: e.clientY,
@@ -8038,12 +8309,19 @@ export default function Page() {
                         }}
                         onMouseMove={(e) => {
                           const drag = quickOverlayDragRef.current;
-                          if (!drag || quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          if (!drag || quickInsetMode !== "overlayPosition") return;
                           const rect = e.currentTarget.getBoundingClientRect();
                           const dxPct = ((e.clientX - drag.x) / rect.width) * 100;
                           const dyPct = ((e.clientY - drag.y) / rect.height) * 100;
-                          updatePlatformOverlay(quickTargetPlatform, "left", Number((drag.left + dxPct).toFixed(2)));
-                          updatePlatformOverlay(quickTargetPlatform, "top", Number((drag.top + dyPct).toFixed(2)));
+                          const nextLeft = Number((drag.left + dxPct).toFixed(2));
+                          const nextTop = Number((drag.top + dyPct).toFixed(2));
+                          if (quickTargetType === "game") {
+                            updatePlatformOverlay(quickTargetPlatform, "left", nextLeft);
+                            updatePlatformOverlay(quickTargetPlatform, "top", nextTop);
+                          } else {
+                            updateNonGameOverlay(quickTargetType, "left", nextLeft);
+                            updateNonGameOverlay(quickTargetType, "top", nextTop);
+                          }
                         }}
                         onMouseUp={() => {
                           quickOverlayDragRef.current = null;
@@ -8059,7 +8337,7 @@ export default function Page() {
                           border: "1px solid rgba(0,0,0,0.2)",
                           background: "linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.03) 100%)",
                           overflow: "hidden",
-                          cursor: quickTargetType === "game" && quickInsetMode === "overlayPosition" ? "move" : "default",
+                          cursor: quickInsetMode === "overlayPosition" ? "move" : "default",
                         }}
                       >
                         <div
@@ -8074,21 +8352,19 @@ export default function Page() {
                             boxSizing: "border-box",
                           }}
                         />
-                        {quickTargetType === "game" ? (
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: `${50 + quickInsetSnapshot.overlay.top}%`,
-                              left: `${50 + quickInsetSnapshot.overlay.left}%`,
-                              width: `${quickInsetSnapshot.overlay.width}%`,
-                              height: `${quickInsetSnapshot.overlay.height}%`,
-                              transform: "translate(-50%, -50%)",
-                              border: "2px solid rgba(255, 189, 76, 0.95)",
-                              background: "rgba(255, 189, 76, 0.14)",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                        ) : null}
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: `${50 + quickInsetSnapshot.overlay.top}%`,
+                            left: `${50 + quickInsetSnapshot.overlay.left}%`,
+                            width: `${quickInsetSnapshot.overlay.width}%`,
+                            height: `${quickInsetSnapshot.overlay.height}%`,
+                            transform: "translate(-50%, -50%)",
+                            border: "2px solid rgba(255, 189, 76, 0.95)",
+                            background: "rgba(255, 189, 76, 0.14)",
+                            boxSizing: "border-box",
+                          }}
+                        />
                       </div>
 
                       <div style={{ display: "grid", gridTemplateColumns: "46px 46px 46px", gridTemplateRows: "46px 46px 46px", gap: 6, justifyContent: "center" }}>
@@ -8106,9 +8382,7 @@ export default function Page() {
 
                     <div style={{ fontSize: 11, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
                       Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
-                      {quickTargetType === "game" ? (
-                        <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
-                      ) : null}
+                      <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -9585,7 +9859,7 @@ export default function Page() {
                         insetLeftVal = caseInsetLeftPx;
                       }
                       
-                      // Get overlay settings and cover scale for games
+                      // Get overlay and cover transform settings for the active media type
                       let overlayWidth = 100;
                       let overlayHeight = 100;
                       let overlayTop = 0;
@@ -9610,6 +9884,30 @@ export default function Page() {
                         const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
                         coverOffsetX = platformCoverOffsetSettings.x;
                         coverOffsetY = platformCoverOffsetSettings.y;
+                      } else if (isBook) {
+                        overlayWidth = bookOverlaySettings.width;
+                        overlayHeight = bookOverlaySettings.height;
+                        overlayTop = bookOverlaySettings.top;
+                        overlayLeft = bookOverlaySettings.left;
+                        coverScale = bookCoverScale;
+                        coverOffsetX = bookCoverOffset.x;
+                        coverOffsetY = bookCoverOffset.y;
+                      } else if (isMovie) {
+                        overlayWidth = movieOverlaySettings.width;
+                        overlayHeight = movieOverlaySettings.height;
+                        overlayTop = movieOverlaySettings.top;
+                        overlayLeft = movieOverlaySettings.left;
+                        coverScale = movieCoverScale;
+                        coverOffsetX = movieCoverOffset.x;
+                        coverOffsetY = movieCoverOffset.y;
+                      } else {
+                        overlayWidth = tvOverlaySettings.width;
+                        overlayHeight = tvOverlaySettings.height;
+                        overlayTop = tvOverlaySettings.top;
+                        overlayLeft = tvOverlaySettings.left;
+                        coverScale = tvCoverScale;
+                        coverOffsetX = tvCoverOffset.x;
+                        coverOffsetY = tvCoverOffset.y;
                       }
                       const gameCoverFit = getGameCoverFit(gamePlatform);
 
@@ -9643,10 +9941,10 @@ export default function Page() {
                         insetTop + (insetHeightPx - coverVisualHeightPx) / 2 + coverTranslateYPx;
                       const selectedCoverUrl = getDisplayCoverUrl(show);
                       const statusIndicator = getStatusIndicator(show);
-                      const statusRegionLeftPx = isGame ? coverVisualLeftPx : insetLeft;
-                      const statusRegionTopPx = isGame ? coverVisualTopPx : insetTop;
-                      const statusRegionWidthPx = isGame ? coverVisualWidthPx : insetWidthPx;
-                      const statusRegionHeightPx = isGame ? coverVisualHeightPx : insetHeightPx;
+                      const statusRegionLeftPx = coverVisualLeftPx;
+                      const statusRegionTopPx = coverVisualTopPx;
+                      const statusRegionWidthPx = coverVisualWidthPx;
+                      const statusRegionHeightPx = coverVisualHeightPx;
                       const statusDotBaseSizePx = Math.round(
                         Math.max(
                           STATUS_DOT_MIN_SIZE,
@@ -9844,9 +10142,11 @@ export default function Page() {
                                   right: insetRight,
                                   bottom: insetBottom,
                                   left: insetLeft,
-                                  overflow: "hidden",
+                                  // Allow cover translation/scale to move beyond raw inset bounds so it can
+                                  // align with resized/repositioned overlays without hard clipping at inset edge.
+                                  overflow: "visible",
                                   borderRadius: 0,
-                                  background: "rgba(255,255,255,0.12)",
+                                  background: "transparent",
                                 }}
                               >
                                 {showInsetGuide ? (
@@ -9873,7 +10173,10 @@ export default function Page() {
                                       width: "100%",
                                       height: "100%",
                                       objectFit: "cover",
+                                      objectPosition: "center",
                                       display: "block",
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
                                     }}
                                     onError={e => {
                                       const itemKey = getMediaItemKey(show);
@@ -9930,6 +10233,8 @@ export default function Page() {
                                       zIndex: 2,
                                       background:
                                         "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
                                     }}
                                   />
                                 ) : null}
@@ -9937,29 +10242,38 @@ export default function Page() {
                               </div>
 
                               {/* Case frame overlay */}
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={nonGameOverlaySrc}
-                                onError={(e) => {
-                                  const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
-                                  if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
-                                    e.currentTarget.dataset.fallbackTried = "1";
-                                    e.currentTarget.src = nonGameOverlayExpectedSrc;
-                                  }
-                                }}
-                                alt=""
+                              <div
                                 style={{
                                   position: "absolute",
-                                  top: 0,
-                                  left: 0,
+                                  top: `${50 + overlayTop}%`,
+                                  left: `${50 + overlayLeft}%`,
                                   width: "100%",
                                   height: "100%",
-                                  objectFit: "fill",
+                                  transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
                                   pointerEvents: "none",
-                                  userSelect: "none",
                                 }}
-                                draggable={false}
-                              />
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={nonGameOverlaySrc}
+                                  onError={(e) => {
+                                    const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                    if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
+                                      e.currentTarget.dataset.fallbackTried = "1";
+                                      e.currentTarget.src = nonGameOverlayExpectedSrc;
+                                    }
+                                  }}
+                                  alt=""
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    objectFit: "fill",
+                                    pointerEvents: "none",
+                                    userSelect: "none",
+                                  }}
+                                  draggable={false}
+                                />
+                              </div>
                             </>
                           )}
 
