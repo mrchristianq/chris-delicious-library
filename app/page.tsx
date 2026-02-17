@@ -4604,6 +4604,7 @@ export default function Page() {
       }
       if (
         status === "playing" ||
+        status === "now playing" ||
         status === "currently playing" ||
         status === "in progress" ||
         status === "paused"
@@ -5450,24 +5451,22 @@ export default function Page() {
   const shelves = useMemo(() => {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     const out: any[][] = [];
+    // Pack every shelf by rendered visual width so row edges stay consistent across all views.
     let currentShelf: any[] = [];
-    let runningVisualX = 0;
+    let currentWidth = 0;
 
-    // Pack each shelf by actual rendered widths so every view reaches the same right edge behavior.
     for (let i = 0; i < shows.length; i++) {
       const show = shows[i];
-      const { itemSize, visualLeft, visualWidth } = getItemVisualLayout(show);
-      const x = Math.round(runningVisualX - visualLeft);
-      const caseRight = x + itemSize;
+      const { visualWidth } = getItemVisualLayout(show);
+      const itemWidth = visualWidth + (currentShelf.length > 0 ? gap : 0);
 
-      // Wrap by full rendered case bounds so frames/covers do not overrun shelf width.
-      if (currentShelf.length > 0 && caseRight > usable) {
+      if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
         out.push(currentShelf);
         currentShelf = [show];
-        runningVisualX = visualWidth + gap;
+        currentWidth = visualWidth;
       } else {
         currentShelf.push(show);
-        runningVisualX += visualWidth + gap;
+        currentWidth += itemWidth;
       }
     }
 
