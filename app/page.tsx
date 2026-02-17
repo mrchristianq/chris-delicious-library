@@ -4696,6 +4696,7 @@ export default function Page() {
       }
       if (
         status === "playing" ||
+        status === "now playing" ||
         status === "currently playing" ||
         status === "in progress" ||
         status === "paused"
@@ -5542,50 +5543,33 @@ export default function Page() {
   const shelves = useMemo(() => {
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     const out: any[][] = [];
+    // Pack every shelf by rendered visual width so row edges stay consistent across all views.
+    let currentShelf: any[] = [];
+    let currentWidth = 0;
 
-    // Mixed-content views: pack each shelf by actual item widths so row counts can vary naturally.
-    if (
-      nav === "home" ||
-      nav === "wishlist" ||
-      nav === "watchlist" ||
-      nav === "current" ||
-      nav === "completed" ||
-      nav === "abandoned" ||
-      nav === "year-this" ||
-      nav === "year-previous"
-    ) {
-      let currentShelf: any[] = [];
-      let currentWidth = 0;
+    for (let i = 0; i < shows.length; i++) {
+      const show = shows[i];
+      const { visualWidth } = getItemVisualLayout(show);
+      const itemWidth = visualWidth + (currentShelf.length > 0 ? gap : 0);
 
-      for (let i = 0; i < shows.length; i++) {
-        const show = shows[i];
-        const { visualWidth } = getItemVisualLayout(show);
-        const itemWidth = visualWidth + (currentShelf.length > 0 ? gap : 0);
-
-        if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
-          out.push(currentShelf);
-          currentShelf = [show];
-          currentWidth = visualWidth;
-        } else {
-          currentShelf.push(show);
-          currentWidth += itemWidth;
-        }
-      }
-
-      if (currentShelf.length > 0) out.push(currentShelf);
-    } else {
-      // Single-content views: fixed count per shelf.
-      for (let i = 0; i < shows.length; i += postersPerShelf) {
-        out.push(shows.slice(i, i + postersPerShelf));
+      if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
+        out.push(currentShelf);
+        currentShelf = [show];
+        currentWidth = visualWidth;
+      } else {
+        currentShelf.push(show);
+        currentWidth += itemWidth;
       }
     }
+
+    if (currentShelf.length > 0) out.push(currentShelf);
 
     const headerOffset = 140;
     const minShelves = Math.max(1, Math.ceil(Math.max(0, viewportH - headerOffset) / SHELF_HEIGHT));
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, postersPerShelf, viewportH, SHELF_HEIGHT, stageWidth, nav, gap, getItemVisualLayout]);
+  }, [shows, viewportH, SHELF_HEIGHT, stageWidth, gap, getItemVisualLayout]);
 
   const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
 
