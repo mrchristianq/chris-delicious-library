@@ -273,10 +273,55 @@ type Game = {
   tag?: string;
 };
 
+type SmartListMediaType = "book" | "movie" | "tv" | "game";
+
+type SmartList = {
+  id: string;
+  name: string;
+  mediaTypes: SmartListMediaType[];
+  statuses: Partial<Record<SmartListMediaType, string[]>>;
+  year: string;
+  icon: string;
+  defaultSortField: string;
+  defaultSortOrder: "Asc" | "Desc";
+  allowManualSort: boolean;
+};
+
+type SmartListDraft = Omit<SmartList, "id">;
+
+type SmartListStatusOption = {
+  value: string;
+  label: string;
+};
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "5.0.1";
+const APP_VERSION = "5.1.0";
 const MANUAL_SORT_FIELD = "Manual";
+const SMART_LISTS_SETTING_KEY = "smartLists:v1";
+const SMART_LIST_MANUAL_ORDER_SETTING_PREFIX = "smartListManualOrder:";
+const SMART_LIST_ALLOWED_SORT_FIELDS = new Set([
+  "Title",
+  "ReleaseDate",
+  "CompletedDate",
+  "CompletedDateOrReleaseDate",
+  "MyRatingSort",
+  "ExternalRatingSort",
+  MANUAL_SORT_FIELD,
+]);
+const SMART_LIST_ICON_OPTIONS = [
+  { value: "", label: "Placeholder" },
+  { value: "/icon-other.png", label: "Other" },
+  { value: "/icon-year.png", label: "Year" },
+  { value: "/icon-current.png", label: "Current" },
+  { value: "/icon-completed.png", label: "Completed" },
+  { value: "/icon-abaonded.png", label: "Abandoned" },
+  { value: "/icon-books.png", label: "Books" },
+  { value: "/icon-movies.png", label: "Movies" },
+  { value: "/icon-tv.png", label: "TV" },
+  { value: "/icon-games.png", label: "Games" },
+  { value: "/icon-watchlist.png", label: "Watchlist" },
+  { value: "/icon-wishlist.png", label: "Wishlist" },
+] as const;
 const WISHLIST_SORT_FIELD_SETTING_KEY = "viewSortField:wishlist";
 const WISHLIST_SORT_ORDER_SETTING_KEY = "viewSortOrder:wishlist";
 const WISHLIST_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:wishlist";
@@ -295,6 +340,16 @@ const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
 const VERSION_HISTORY = [
+  {
+    version: "5.1.0",
+    date: "2026-02-18",
+    notes: [
+      "Added custom Smart List creation and removal directly from the Smart Lists section.",
+      "New Smart List builder popup supports media selection, per-media status filters, and optional year filtering (ex: completed in 2026).",
+      "Added Smart List icon selection with placeholder support.",
+      "Added per-Smart-List default sort settings and optional manual sorting support.",
+    ],
+  },
   {
     version: "5.0.1",
     date: "2026-02-17",
@@ -508,6 +563,106 @@ function moveKeyRelative(
   const insertAt = placement === "after" ? targetIndex + 1 : targetIndex;
   next.splice(Math.min(insertAt, next.length), 0, moved);
   return next;
+}
+
+function createDefaultSmartListDraft(): SmartListDraft {
+  return {
+    name: "",
+    mediaTypes: ["book", "movie"],
+    statuses: {},
+    year: "",
+    icon: "",
+    defaultSortField: "ReleaseDate",
+    defaultSortOrder: "Desc",
+    allowManualSort: false,
+  };
+}
+
+function parseStringArraySetting(value: unknown): string[] {
+  try {
+    if (!value) return [];
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry) => safeStr(entry)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function parseSmartListsSetting(value: unknown): SmartList[] {
+  const parsed = typeof value === "string" ? (() => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  })() : value;
+
+  if (!Array.isArray(parsed)) return [];
+
+  const allowedMediaTypes = new Set<SmartListMediaType>(["book", "movie", "tv", "game"]);
+  const normalized: SmartList[] = [];
+  const seenIds = new Set<string>();
+
+  parsed.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const row = entry as Record<string, unknown>;
+    const id = safeStr(row.id);
+    const name = safeStr(row.name);
+    if (!id || !name) return;
+    if (seenIds.has(id)) return;
+
+    const mediaTypes = Array.isArray(row.mediaTypes)
+      ? (row.mediaTypes
+          .map((mediaType) => safeStr(mediaType))
+          .filter((mediaType): mediaType is SmartListMediaType => allowedMediaTypes.has(mediaType as SmartListMediaType)))
+      : [];
+    if (!mediaTypes.length) return;
+
+    const statusSource = row.statuses && typeof row.statuses === "object"
+      ? (row.statuses as Record<string, unknown>)
+      : {};
+    const statuses: Partial<Record<SmartListMediaType, string[]>> = {};
+
+    mediaTypes.forEach((mediaType) => {
+      const values = Array.isArray(statusSource[mediaType])
+        ? (statusSource[mediaType] as unknown[])
+            .map((status) => normalizeStatusToken(safeStr(status)))
+            .filter(Boolean)
+        : [];
+      if (!values.length) return;
+      statuses[mediaType] = Array.from(new Set(values));
+    });
+
+    const yearRaw = safeStr(row.year);
+    const year = /^\d{4}$/.test(yearRaw) ? yearRaw : "";
+    const icon = safeStr(row.icon);
+
+    let defaultSortField = safeStr(row.defaultSortField);
+    if (!SMART_LIST_ALLOWED_SORT_FIELDS.has(defaultSortField)) {
+      defaultSortField = "ReleaseDate";
+    }
+    const defaultSortOrder: "Asc" | "Desc" = row.defaultSortOrder === "Asc" ? "Asc" : "Desc";
+    const allowManualSort = Boolean(row.allowManualSort);
+    if (!allowManualSort && defaultSortField === MANUAL_SORT_FIELD) {
+      defaultSortField = "ReleaseDate";
+    }
+
+    seenIds.add(id);
+    normalized.push({
+      id,
+      name,
+      mediaTypes,
+      statuses,
+      year,
+      icon,
+      defaultSortField,
+      defaultSortOrder,
+      allowManualSort,
+    });
+  });
+
+  return normalized;
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -944,7 +1099,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "year-previous" | "smart-custom";
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -1040,6 +1195,16 @@ export default function Page() {
   const [smartListsOpen, setSmartListsOpen] = useState<boolean>(false);
   const [discoverOpen, setDiscoverOpen] = useState<boolean>(true);
   const [selectedPreviousYear, setSelectedPreviousYear] = useState<number>(2025);
+  const [customSmartLists, setCustomSmartLists] = useState<SmartList[]>([]);
+  const [selectedSmartListId, setSelectedSmartListId] = useState<string | null>(null);
+  const [smartListBuilderOpen, setSmartListBuilderOpen] = useState<boolean>(false);
+  const [smartListBuilderError, setSmartListBuilderError] = useState<string | null>(null);
+  const [smartListDraft, setSmartListDraft] = useState<SmartListDraft>(() => createDefaultSmartListDraft());
+  const [smartListManualOrderKeysById, setSmartListManualOrderKeysById] = useState<Record<string, string[]>>({});
+  const activeSmartList = useMemo(
+    () => customSmartLists.find((list) => list.id === selectedSmartListId) || null,
+    [customSmartLists, selectedSmartListId]
+  );
 
   // Settings submenus
   const [settingsOpen, setSettingsOpen] = useState<{
@@ -3432,10 +3597,205 @@ export default function Page() {
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
     setShowStatusIndicators(getSetting("showStatusIndicators", false));
+
+    const loadedSmartLists = parseSmartListsSetting(getSetting(SMART_LISTS_SETTING_KEY, "[]"));
+    setCustomSmartLists(loadedSmartLists);
+
+    const loadedSmartListManualOrders: Record<string, string[]> = {};
+    settingsRows.forEach((row) => {
+      const key = safeStr(row["Key"]);
+      if (!key.startsWith(SMART_LIST_MANUAL_ORDER_SETTING_PREFIX)) return;
+      const listId = safeStr(key.slice(SMART_LIST_MANUAL_ORDER_SETTING_PREFIX.length));
+      if (!listId) return;
+      const parsed = parseStringArraySetting(getSetting(key, safeStr(row["Value"])));
+      if (!parsed.length) return;
+      loadedSmartListManualOrders[listId] = parsed;
+    });
+
+    const settingsCache = settingsCacheRef.current;
+    if (settingsCache && typeof settingsCache === "object") {
+      Object.entries(settingsCache).forEach(([key, value]) => {
+        if (!key.startsWith(SMART_LIST_MANUAL_ORDER_SETTING_PREFIX)) return;
+        const listId = safeStr(key.slice(SMART_LIST_MANUAL_ORDER_SETTING_PREFIX.length));
+        if (!listId || loadedSmartListManualOrders[listId]) return;
+        const parsed = parseStringArraySetting(value);
+        if (!parsed.length) return;
+        loadedSmartListManualOrders[listId] = parsed;
+      });
+    }
+    setSmartListManualOrderKeysById(loadedSmartListManualOrders);
     
     setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
     setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
   }, [getSetting, settingsRows]);
+
+  const persistSmartLists = useCallback(
+    (nextLists: SmartList[]) => {
+      setCustomSmartLists(nextLists);
+      saveSetting(
+        SMART_LISTS_SETTING_KEY,
+        JSON.stringify(nextLists),
+        "Smart Lists",
+        "Custom smart list definitions"
+      );
+    },
+    [saveSetting]
+  );
+
+  const handleOpenSmartListBuilder = useCallback(() => {
+    setSortPopupOpen(false);
+    setSettingsPopupOpen(false);
+    setShowVersionNotes(false);
+    setSmartListBuilderError(null);
+    setSmartListDraft(createDefaultSmartListDraft());
+    setSmartListBuilderOpen(true);
+  }, []);
+
+  const handleToggleSmartListMediaType = useCallback((mediaType: SmartListMediaType) => {
+    setSmartListDraft((prev) => {
+      const hasType = prev.mediaTypes.includes(mediaType);
+      const mediaTypes = hasType
+        ? prev.mediaTypes.filter((entry) => entry !== mediaType)
+        : [...prev.mediaTypes, mediaType];
+
+      const nextStatuses = { ...prev.statuses };
+      if (!mediaTypes.includes(mediaType)) {
+        delete nextStatuses[mediaType];
+      }
+
+      return {
+        ...prev,
+        mediaTypes,
+        statuses: nextStatuses,
+      };
+    });
+  }, []);
+
+  const handleToggleSmartListStatus = useCallback((mediaType: SmartListMediaType, statusToken: string) => {
+    const normalizedStatus = normalizeStatusToken(statusToken);
+    if (!normalizedStatus) return;
+
+    setSmartListDraft((prev) => {
+      const current = prev.statuses[mediaType] || [];
+      const hasStatus = current.includes(normalizedStatus);
+      const nextValues = hasStatus
+        ? current.filter((entry) => entry !== normalizedStatus)
+        : [...current, normalizedStatus];
+      const nextStatuses = { ...prev.statuses };
+      if (nextValues.length) {
+        nextStatuses[mediaType] = nextValues;
+      } else {
+        delete nextStatuses[mediaType];
+      }
+      return { ...prev, statuses: nextStatuses };
+    });
+  }, []);
+
+  const handleCreateSmartList = useCallback(() => {
+    const name = safeStr(smartListDraft.name);
+    if (!name) {
+      setSmartListBuilderError("Please enter a smart list name.");
+      return;
+    }
+    if (!smartListDraft.mediaTypes.length) {
+      setSmartListBuilderError("Choose at least one media type.");
+      return;
+    }
+
+    const year = safeStr(smartListDraft.year);
+    if (year && !/^\d{4}$/.test(year)) {
+      setSmartListBuilderError("Year filter must be 4 digits (for example: 2026).");
+      return;
+    }
+
+    const listId = `smart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const mediaTypes = Array.from(new Set(smartListDraft.mediaTypes));
+    const statuses: Partial<Record<SmartListMediaType, string[]>> = {};
+    mediaTypes.forEach((mediaType) => {
+      const values = (smartListDraft.statuses[mediaType] || [])
+        .map((status) => normalizeStatusToken(status))
+        .filter(Boolean);
+      if (!values.length) return;
+      statuses[mediaType] = Array.from(new Set(values));
+    });
+
+    const allowManualSort = Boolean(smartListDraft.allowManualSort);
+    const defaultSortField =
+      allowManualSort && smartListDraft.defaultSortField === MANUAL_SORT_FIELD
+        ? MANUAL_SORT_FIELD
+        : smartListDraft.defaultSortField === MANUAL_SORT_FIELD
+          ? "ReleaseDate"
+          : smartListDraft.defaultSortField;
+
+    const nextList: SmartList = {
+      id: listId,
+      name,
+      mediaTypes,
+      statuses,
+      year,
+      icon: safeStr(smartListDraft.icon),
+      defaultSortField: SMART_LIST_ALLOWED_SORT_FIELDS.has(defaultSortField) ? defaultSortField : "ReleaseDate",
+      defaultSortOrder: smartListDraft.defaultSortOrder === "Asc" ? "Asc" : "Desc",
+      allowManualSort,
+    };
+
+    persistSmartLists([...customSmartLists, nextList]);
+    setSmartListBuilderOpen(false);
+    setSmartListBuilderError(null);
+    setSmartListDraft(createDefaultSmartListDraft());
+    setSelectedSmartListId(nextList.id);
+    setNav("smart-custom");
+    setSortField(nextList.defaultSortField);
+    setSortOrder(nextList.defaultSortOrder);
+  }, [customSmartLists, persistSmartLists, smartListDraft]);
+
+  const handleDeleteSmartList = useCallback(
+    (listId: string) => {
+      const listToDelete = customSmartLists.find((list) => list.id === listId);
+      const nextLists = customSmartLists.filter((list) => list.id !== listId);
+      persistSmartLists(nextLists);
+      setSmartListManualOrderKeysById((prev) => {
+        const next = { ...prev };
+        delete next[listId];
+        return next;
+      });
+      removeSetting(`${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${listId}`);
+      saveSetting(
+        `${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${listId}`,
+        "",
+        "Smart Lists",
+        `Manual order keys for smart list ${listId}`
+      );
+      if (selectedSmartListId === listId) {
+        setSelectedSmartListId(null);
+        if (nav === "smart-custom") {
+          setNav("home");
+          setSortField("ReleaseDate");
+          setSortOrder("Desc");
+        }
+      }
+      if (listToDelete) {
+        setSyncState("ok");
+        setSyncMsg(`Removed smart list: ${listToDelete.name}`);
+        setLastSyncAt(Date.now());
+        setTimeout(() => {
+          setSyncMsg("Synced");
+        }, 1200);
+      }
+    },
+    [customSmartLists, nav, persistSmartLists, removeSetting, saveSetting, selectedSmartListId]
+  );
+
+  useEffect(() => {
+    if (!selectedSmartListId) return;
+    if (customSmartLists.some((list) => list.id === selectedSmartListId)) return;
+    setSelectedSmartListId(null);
+    if (nav === "smart-custom") {
+      setNav("home");
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    }
+  }, [customSmartLists, nav, selectedSmartListId]);
 
   useEffect(() => {
     if (
@@ -3496,7 +3856,8 @@ export default function Page() {
   }, [getSetting, nav]);
 
   useEffect(() => {
-    if (nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv") return;
+    const smartListSupportsManualSort = nav === "smart-custom" && Boolean(activeSmartList?.allowManualSort);
+    if (nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || smartListSupportsManualSort) return;
     setDraggingWishlistKey(null);
     setWishlistPointerDrag(null);
     setWishlistDragHoverKey(null);
@@ -3511,7 +3872,7 @@ export default function Page() {
     if (sortField === MANUAL_SORT_FIELD) {
       setSortField("ReleaseDate");
     }
-  }, [nav, sortField]);
+  }, [activeSmartList?.allowManualSort, nav, sortField]);
 
   // Function to save all current settings to spreadsheet
   const saveAllSettings = async () => {
@@ -5720,6 +6081,49 @@ export default function Page() {
     return counts;
   }, [allMovies, movieGenres]);
 
+  const smartListStatusOptionsByMedia = useMemo(() => {
+    const buildOptions = (values: string[], fallbackLabels: string[]): SmartListStatusOption[] => {
+      const byToken = new Map<string, string>();
+
+      values.forEach((value) => {
+        const raw = safeStr(value);
+        if (!raw) return;
+        const token = normalizeStatus(raw);
+        if (!token) return;
+        if (!byToken.has(token)) byToken.set(token, raw);
+      });
+
+      fallbackLabels.forEach((label) => {
+        const token = normalizeStatus(label);
+        if (!token) return;
+        if (!byToken.has(token)) byToken.set(token, label);
+      });
+
+      return Array.from(byToken.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    };
+
+    return {
+      book: buildOptions(
+        allBooks.map((book) => safeStr(book.status)),
+        ["Reading", "Completed", "Backlog", "Abandoned", "Paused"]
+      ),
+      movie: buildOptions(
+        allMovies.map((movie) => safeStr(movie.watchStatus || movie.watched || movie.status || movie.movieStatus)),
+        ["Watched", "Watching", "Backlog", "Abandoned", "Paused"]
+      ),
+      tv: buildOptions(
+        allShows.map((show) => safeStr(show.watchStatus || show.showStatus || show.watched)),
+        ["Currently Watching", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return"]
+      ),
+      game: buildOptions(
+        allGames.map((game) => safeStr(game.status || game.playStatus || game.gameStatus || game.completed)),
+        ["Now Playing", "Completed", "Backlog", "Abandoned", "Paused", "Play Next"]
+      ),
+    } satisfies Record<SmartListMediaType, SmartListStatusOption[]>;
+  }, [allBooks, allGames, allMovies, allShows, normalizeStatus]);
+
   // Generic sorting function
   const applySorting = useCallback(<T,>(items: T[], field: string, order: "Asc" | "Desc"): T[] => {
     const ratingNumber = (raw: unknown): number => {
@@ -6210,6 +6614,88 @@ export default function Page() {
       return sorted as any[];
     }
 
+    if (nav === "smart-custom") {
+      if (!activeSmartList) return [];
+
+      const mediaSet = new Set(activeSmartList.mediaTypes);
+      const yearFilter = safeStr(activeSmartList.year);
+      const statusFilters = activeSmartList.statuses || {};
+      const hasStatusFilter = (mediaType: SmartListMediaType) => Boolean(statusFilters[mediaType]?.length);
+      const matchesStatusFilter = (mediaType: SmartListMediaType, rawStatus: string) => {
+        const allowed = statusFilters[mediaType] || [];
+        if (!allowed.length) return true;
+        const normalized = normalizeStatus(rawStatus);
+        return allowed.includes(normalized);
+      };
+
+      const qb = mediaSet.has("book")
+        ? indexedBooks.filter((book) => {
+            if (yearFilter && book.completedYear !== yearFilter) return false;
+            if (!hasStatusFilter("book")) return true;
+            return matchesStatusFilter("book", safeStr(book.item.status));
+          })
+        : [];
+
+      const qs = mediaSet.has("tv")
+        ? indexedShows.filter((show) => {
+            if (yearFilter && show.tagValue !== yearFilter) return false;
+            if (!hasStatusFilter("tv")) return true;
+            return matchesStatusFilter("tv", safeStr(show.item.watchStatus || show.item.showStatus || show.item.watched));
+          })
+        : [];
+
+      const qm = mediaSet.has("movie")
+        ? indexedMovies.filter((movie) => {
+            if (yearFilter && movie.tagValue !== yearFilter) return false;
+            if (!hasStatusFilter("movie")) return true;
+            return matchesStatusFilter("movie", safeStr(movie.item.watchStatus || movie.item.watched || movie.item.status || movie.item.movieStatus));
+          })
+        : [];
+
+      const qg = mediaSet.has("game")
+        ? indexedGames.filter((game) => {
+            if (yearFilter && game.yearPlayedValue !== yearFilter) return false;
+            if (!hasStatusFilter("game")) return true;
+            return matchesStatusFilter("game", safeStr(game.item.status || game.item.playStatus || game.item.gameStatus || game.item.completed));
+          })
+        : [];
+
+      let combined = [
+        ...qb.map((book) => ({ ...book.item, __type: "book" } as Book & { __type: "book" })),
+        ...qs.map((show) => ({ ...show.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...qm.map((movie) => ({ ...movie.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...qg.map((game) => ({ ...game.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
+
+      if (q) {
+        combined = combined.filter((item) => safeStr(item.title).toLowerCase().includes(q));
+      }
+
+      if (sortField === MANUAL_SORT_FIELD && activeSmartList.allowManualSort) {
+        const itemsByKey = new Map<string, typeof combined[number]>();
+        combined.forEach((item) => {
+          itemsByKey.set(getMediaItemKey(item), item);
+        });
+
+        const savedOrder = (smartListManualOrderKeysById[activeSmartList.id] || []).filter((key) => itemsByKey.has(key));
+        const fallbackSortField =
+          activeSmartList.defaultSortField === MANUAL_SORT_FIELD
+            ? "ReleaseDate"
+            : activeSmartList.defaultSortField;
+        const fallbackOrder = applySorting(combined, fallbackSortField, activeSmartList.defaultSortOrder)
+          .map((item) => getMediaItemKey(item))
+          .filter((key) => itemsByKey.has(key));
+        const combinedOrder = Array.from(new Set([...savedOrder, ...fallbackOrder]));
+        return combinedOrder
+          .map((key) => itemsByKey.get(key))
+          .filter(Boolean) as any[];
+      }
+
+      const effectiveSortField = sortField === MANUAL_SORT_FIELD ? "ReleaseDate" : sortField;
+      const sorted = applySorting(combined, effectiveSortField, sortOrder);
+      return sorted as any[];
+    }
+
     // TV default path
     const hasTvFilters = Boolean(watchFilter || showFilter || tagFilter);
     const tvBase = hasTvFilters ? indexedShows : indexedShows.filter((s) => s.watchStatusNorm !== "backlog");
@@ -6236,7 +6722,7 @@ export default function Page() {
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    deferredQuery, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedPlayNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, selectedPreviousYear, seriesFilter, showFilter, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistFilter, wishlistItems, wishlistItemsByKey
+    activeSmartList, deferredQuery, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedPlayNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, selectedPreviousYear, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
   const persistBacklogSortSettings = useCallback(
@@ -6269,9 +6755,56 @@ export default function Page() {
     [saveSetting]
   );
 
+  const manualSortableSmartListId = nav === "smart-custom" && activeSmartList?.allowManualSort
+    ? activeSmartList.id
+    : null;
+
+  const persistSmartListManualOrder = useCallback(
+    (listId: string, nextKeys: string[]) => {
+      const normalizedKeys = nextKeys
+        .map((key) => safeStr(key))
+        .filter(Boolean)
+        .filter((key, index, arr) => arr.indexOf(key) === index);
+      if (!listId || !normalizedKeys.length) return;
+      setSmartListManualOrderKeysById((prev) => ({ ...prev, [listId]: normalizedKeys }));
+      saveSetting(
+        `${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${listId}`,
+        JSON.stringify(normalizedKeys),
+        "Smart Lists",
+        `Manual order keys for smart list ${listId}`
+      );
+    },
+    [saveSetting]
+  );
+
   const handleSortFieldChange = useCallback(
-    (nextField: string) => {
+    (nextFieldRaw: string) => {
+      const nextField =
+        nextFieldRaw === MANUAL_SORT_FIELD && nav === "smart-custom" && !manualSortableSmartListId
+          ? "ReleaseDate"
+          : nextFieldRaw;
+
       setSortField(nextField);
+
+      if (nav === "smart-custom") {
+        if (!activeSmartList) return;
+        if (nextField !== MANUAL_SORT_FIELD || !manualSortableSmartListId) return;
+        const visibleKeys = shows.map((item) => getMediaItemKey(item));
+        const previousKeys = (smartListManualOrderKeysById[activeSmartList.id] || []).filter((key) =>
+          visibleKeys.includes(key)
+        );
+        const mergedKeys = Array.from(new Set([...previousKeys, ...visibleKeys]));
+        if (!mergedKeys.length) return;
+        setSmartListManualOrderKeysById((prev) => ({ ...prev, [activeSmartList.id]: mergedKeys }));
+        saveSetting(
+          `${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${activeSmartList.id}`,
+          JSON.stringify(mergedKeys),
+          "Smart Lists",
+          `Manual order keys for smart list ${activeSmartList.id}`
+        );
+        return;
+      }
+
       const backlogView =
         nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
           ? nav
@@ -6305,6 +6838,8 @@ export default function Page() {
       );
     },
     [
+      activeSmartList,
+      manualSortableSmartListId,
       nav,
       persistBacklogSortSettings,
       resolvedPlayNextManualOrderKeys,
@@ -6312,6 +6847,8 @@ export default function Page() {
       resolvedWatchlistTvManualOrderKeys,
       resolvedWishlistManualOrderKeys,
       saveSetting,
+      shows,
+      smartListManualOrderKeysById,
       sortOrder,
     ]
   );
@@ -6460,9 +6997,17 @@ export default function Page() {
   );
 
   const wishlistVisibleKeys = useMemo(() => {
-    if (nav !== "wishlist" && nav !== "play-next" && nav !== "watchlist-movies" && nav !== "watchlist-tv") return [];
+    if (
+      nav !== "wishlist" &&
+      nav !== "play-next" &&
+      nav !== "watchlist-movies" &&
+      nav !== "watchlist-tv" &&
+      !manualSortableSmartListId
+    ) {
+      return [];
+    }
     return shows.map((item) => getMediaItemKey(item));
-  }, [nav, shows]);
+  }, [manualSortableSmartListId, nav, shows]);
 
   const wishlistDragDirection = useMemo(() => {
     if (!wishlistPointerDrag?.active || !wishlistDragHoverKey) return 0;
@@ -6504,6 +7049,20 @@ export default function Page() {
         nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
           ? nav
           : null;
+      if (!backlogView && !manualSortableSmartListId) return;
+
+      if (manualSortableSmartListId) {
+        const nextKeys = shows.map((item) => getMediaItemKey(item));
+        if (!nextKeys.length) return;
+        setSmartListManualOrderKeysById((prev) => ({
+          ...prev,
+          [manualSortableSmartListId]: nextKeys,
+        }));
+        setSortField(MANUAL_SORT_FIELD);
+        setSortOrder("Asc");
+        return;
+      }
+
       if (!backlogView) return;
       const sourceItems =
         backlogView === "play-next"
@@ -6530,11 +7089,13 @@ export default function Page() {
     },
     [
       applySorting,
+      manualSortableSmartListId,
       nav,
       persistBacklogSortSettings,
       playNextItems,
       sortField,
       sortOrder,
+      shows,
       watchlistMovieItems,
       watchlistTvItems,
       wishlistItems,
@@ -6549,6 +7110,42 @@ export default function Page() {
         nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
           ? nav
           : null;
+      if (!backlogView && !manualSortableSmartListId) return;
+
+      if (manualSortableSmartListId) {
+        const activeItemsByKey = new Map<string, any>();
+        shows.forEach((item) => {
+          activeItemsByKey.set(getMediaItemKey(item), item);
+        });
+        const savedOrder = (smartListManualOrderKeysById[manualSortableSmartListId] || []).filter((key) =>
+          activeItemsByKey.has(key)
+        );
+        const activeResolvedKeys = Array.from(
+          new Set([...savedOrder, ...wishlistVisibleKeys.filter((key) => activeItemsByKey.has(key))])
+        );
+        const applyReorder = (prev: string[]) => {
+          const base = prev.length
+            ? prev.filter((key) => activeItemsByKey.has(key))
+            : activeResolvedKeys;
+          const merged = [...base];
+          activeResolvedKeys.forEach((key) => {
+            if (!merged.includes(key) && activeItemsByKey.has(key)) {
+              merged.push(key);
+            }
+          });
+          const dragIndex = merged.indexOf(dragKey);
+          const targetIndex = merged.indexOf(targetKey);
+          if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) return merged;
+          const placement = targetIndex > dragIndex ? "after" : "before";
+          return moveKeyRelative(merged, dragKey, targetKey, placement);
+        };
+        setSmartListManualOrderKeysById((prev) => ({
+          ...prev,
+          [manualSortableSmartListId]: applyReorder(prev[manualSortableSmartListId] || []),
+        }));
+        return;
+      }
+
       if (!backlogView) return;
 
       const activeItemsByKey =
@@ -6594,14 +7191,18 @@ export default function Page() {
       }
     },
     [
+      manualSortableSmartListId,
       nav,
       playNextItemsByKey,
       resolvedPlayNextManualOrderKeys,
       resolvedWatchlistMovieManualOrderKeys,
       resolvedWatchlistTvManualOrderKeys,
       resolvedWishlistManualOrderKeys,
+      shows,
+      smartListManualOrderKeysById,
       watchlistMovieItemsByKey,
       watchlistTvItemsByKey,
+      wishlistVisibleKeys,
       wishlistItemsByKey,
     ]
   );
@@ -6688,7 +7289,12 @@ export default function Page() {
         nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
           ? nav
           : null;
-      if (draggedKey && backlogView) {
+      if (draggedKey && manualSortableSmartListId) {
+        const finalOrder = smartListManualOrderKeysById[manualSortableSmartListId]?.length
+          ? smartListManualOrderKeysById[manualSortableSmartListId]
+          : wishlistVisibleKeys;
+        persistSmartListManualOrder(manualSortableSmartListId, finalOrder);
+      } else if (draggedKey && backlogView) {
         const finalOrder =
           backlogView === "play-next"
             ? (playNextManualOrderKeys.length ? playNextManualOrderKeys : resolvedPlayNextManualOrderKeys)
@@ -6707,22 +7313,34 @@ export default function Page() {
       }
     },
     [
+      manualSortableSmartListId,
       nav,
       persistBacklogManualOrder,
+      persistSmartListManualOrder,
       playNextManualOrderKeys,
       resolvedPlayNextManualOrderKeys,
       resolvedWatchlistMovieManualOrderKeys,
       resolvedWatchlistTvManualOrderKeys,
       resolvedWishlistManualOrderKeys,
+      smartListManualOrderKeysById,
       watchlistMoviesManualOrderKeys,
       watchlistTvManualOrderKeys,
+      wishlistVisibleKeys,
       wishlistManualOrderKeys,
     ]
   );
 
   const handleWishlistCasePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>, itemKey: string) => {
-      if (nav !== "wishlist" && nav !== "play-next" && nav !== "watchlist-movies" && nav !== "watchlist-tv") return;
+      if (
+        nav !== "wishlist" &&
+        nav !== "play-next" &&
+        nav !== "watchlist-movies" &&
+        nav !== "watchlist-tv" &&
+        !manualSortableSmartListId
+      ) {
+        return;
+      }
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (wishlistPointerDragRef.current) {
         finishWishlistPointerDrag();
@@ -6751,7 +7369,7 @@ export default function Page() {
       setWishlistPointerDrag(nextDrag);
       event.preventDefault();
     },
-    [finishWishlistPointerDrag, nav]
+    [finishWishlistPointerDrag, manualSortableSmartListId, nav]
   );
 
   const handleWishlistGlobalPointerMove = useCallback(
@@ -8996,6 +9614,118 @@ export default function Page() {
                   <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={handleOpenSmartListBuilder}
+                  style={{
+                    width: "100%",
+                    marginTop: 4,
+                    marginBottom: customSmartLists.length ? 0 : 4,
+                    textAlign: "left",
+                    border: "1px dashed rgba(0,0,0,0.25)",
+                    borderRadius: 10,
+                    padding: "6px 8px",
+                    background: "rgba(255,255,255,0.35)",
+                    color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.98)" : "#3b2f27",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFamily: "Nunito, sans-serif",
+                    cursor: "pointer",
+                  }}
+                >
+                  + Add Smart List
+                </button>
+
+                {customSmartLists.map((smartList) => {
+                  const isActive = nav === "smart-custom" && selectedSmartListId === smartList.id;
+                  const iconSrc = safeStr(smartList.icon);
+                  const defaultSortField =
+                    smartList.allowManualSort || smartList.defaultSortField !== MANUAL_SORT_FIELD
+                      ? smartList.defaultSortField
+                      : "ReleaseDate";
+                  return (
+                    <div
+                      key={smartList.id}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "stretch",
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedSmartListId(smartList.id);
+                          setNav("smart-custom");
+                          setSortField(defaultSortField);
+                          setSortOrder(smartList.defaultSortOrder);
+                        }}
+                        className={`sideItem ${isActive ? "active" : ""}`}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          border: "none",
+                          borderRadius: 0,
+                          background: "transparent",
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: isActive ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                          <span
+                            aria-hidden
+                            style={{
+                              width: 18,
+                              height: 14,
+                              borderRadius: 4,
+                              background: isActive ? "rgba(0,0,0,0.05)" : "transparent",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flex: "0 0 auto",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {iconSrc ? (
+                              <img src={iconSrc} alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                            ) : (
+                              <span style={{ fontSize: 10, opacity: 0.6, lineHeight: 1 }}>□</span>
+                            )}
+                          </span>
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 126 }}>
+                            {smartList.name}
+                          </span>
+                        </span>
+                        <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleDeleteSmartList(smartList.id);
+                        }}
+                        title={`Remove ${smartList.name}`}
+                        aria-label={`Remove ${smartList.name}`}
+                        style={{
+                          width: 28,
+                          border: "none",
+                          background: "transparent",
+                          color: "rgba(0,0,0,0.45)",
+                          fontSize: 16,
+                          cursor: "pointer",
+                          flex: "0 0 28px",
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+
                 {/* Other submenu */}
                 <button
                   onClick={() => setOtherMenuOpen(!otherMenuOpen)}
@@ -10777,11 +11507,11 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "year-previous" || nav === "smart-custom") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
-                      {nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
+                      {nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
                     </>
                   )}
                 </select>
@@ -10791,7 +11521,7 @@ export default function Page() {
                 <select
                   value={sortOrder}
                   onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
-                  disabled={(nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv") && sortField === MANUAL_SORT_FIELD}
+                  disabled={(nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
                   style={{
                     width: "100%",
                     padding: "9px 10px",
@@ -10809,6 +11539,383 @@ export default function Page() {
                   <option value="Desc">Desc</option>
                 </select>
               </label>
+            </div>
+          ) : null}
+
+          {smartListBuilderOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: "calc(env(safe-area-inset-top, 0px) + 14px) 14px 14px 14px",
+                zIndex: POPUP_FAQ_Z_INDEX,
+                background: "linear-gradient(180deg, rgba(248, 244, 236, 0.99) 0%, rgba(241, 234, 222, 0.99) 100%)",
+                border: "1px solid rgba(58, 37, 24, 0.4)",
+                borderRadius: 16,
+                boxShadow: "0 24px 70px rgba(0, 0, 0, 0.42)",
+                padding: 16,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  paddingBottom: 10,
+                  background: "rgba(248, 244, 236, 0.98)",
+                  borderBottom: "1px solid rgba(0, 0, 0, 0.14)",
+                }}
+              >
+                <span style={{ fontSize: 17, fontWeight: 900, color: "#5c3c38", letterSpacing: "0.02em" }}>
+                  Create Smart List
+                </span>
+                <button
+                  onClick={() => {
+                    setSmartListBuilderOpen(false);
+                    setSmartListBuilderError(null);
+                  }}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.25)",
+                    background: "rgba(255,255,255,0.86)",
+                    color: "#5c3c38",
+                    borderRadius: 9,
+                    padding: "7px 12px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>
+                Name
+                <input
+                  type="text"
+                  value={smartListDraft.name}
+                  onChange={(event) => {
+                    setSmartListDraft((prev) => ({ ...prev, name: event.target.value }));
+                    setSmartListBuilderError(null);
+                  }}
+                  placeholder="Example: Completed in 2026"
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                  }}
+                />
+              </label>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>Media Types</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {([
+                    ["book", "Books"],
+                    ["movie", "Movies"],
+                    ["tv", "TV Shows"],
+                    ["game", "Games"],
+                  ] as Array<[SmartListMediaType, string]>).map(([mediaType, label]) => {
+                    const checked = smartListDraft.mediaTypes.includes(mediaType);
+                    return (
+                      <label
+                        key={`smart-list-media-${mediaType}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          borderRadius: 999,
+                          padding: "5px 10px",
+                          border: checked ? "1px solid rgba(130, 86, 54, 0.56)" : "1px solid rgba(0,0,0,0.2)",
+                          background: checked ? "rgba(164, 114, 78, 0.15)" : "rgba(255,255,255,0.8)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#4d3a31",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            handleToggleSmartListMediaType(mediaType);
+                            setSmartListBuilderError(null);
+                          }}
+                        />
+                        {label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>Status Filters</span>
+                {smartListDraft.mediaTypes.map((mediaType) => {
+                  const selectedStatuses = smartListDraft.statuses[mediaType] || [];
+                  const options = smartListStatusOptionsByMedia[mediaType];
+                  const mediaLabel =
+                    mediaType === "book"
+                      ? "Books"
+                      : mediaType === "movie"
+                        ? "Movies"
+                        : mediaType === "tv"
+                          ? "TV Shows"
+                          : "Games";
+                  return (
+                    <div
+                      key={`smart-list-status-${mediaType}`}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                        padding: 10,
+                        borderRadius: 10,
+                        border: "1px solid rgba(0,0,0,0.12)",
+                        background: "rgba(255,255,255,0.68)",
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#4d3a31" }}>{mediaLabel}</span>
+                      {options.length ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {options.map((status) => {
+                            const checked = selectedStatuses.includes(status.value);
+                            return (
+                              <label
+                                key={`smart-list-status-option-${mediaType}-${status.value}`}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  borderRadius: 999,
+                                  padding: "4px 9px",
+                                  border: checked ? "1px solid rgba(130, 86, 54, 0.56)" : "1px solid rgba(0,0,0,0.18)",
+                                  background: checked ? "rgba(164, 114, 78, 0.15)" : "rgba(255,255,255,0.9)",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  color: "#3f312a",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => handleToggleSmartListStatus(mediaType, status.value)}
+                                />
+                                {status.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#7a6557" }}>No statuses found yet for this media type.</span>
+                      )}
+                      <span style={{ fontSize: 11, color: "#7a6557" }}>
+                        Leave all unchecked to include every status.
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>
+                Year Filter (optional)
+                <input
+                  type="text"
+                  value={smartListDraft.year}
+                  onChange={(event) => {
+                    const digitsOnly = event.target.value.replace(/[^0-9]/g, "").slice(0, 4);
+                    setSmartListDraft((prev) => ({ ...prev, year: digitsOnly }));
+                    setSmartListBuilderError(null);
+                  }}
+                  placeholder="2026"
+                  style={{
+                    width: 120,
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>
+                Icon
+                <select
+                  value={smartListDraft.icon}
+                  onChange={(event) => setSmartListDraft((prev) => ({ ...prev, icon: event.target.value }))}
+                  style={{
+                    width: "100%",
+                    maxWidth: 260,
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: "1px solid rgba(0,0,0,0.2)",
+                    background: "rgba(255,255,255,0.9)",
+                    color: "#3a2f28",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {SMART_LIST_ICON_OPTIONS.map((option) => (
+                    <option key={`smart-list-icon-option-${option.value || "placeholder"}`} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>
+                <input
+                  type="checkbox"
+                  checked={smartListDraft.allowManualSort}
+                  onChange={(event) => {
+                    const allowManualSort = event.target.checked;
+                    setSmartListDraft((prev) => ({
+                      ...prev,
+                      allowManualSort,
+                      defaultSortField:
+                        !allowManualSort && prev.defaultSortField === MANUAL_SORT_FIELD
+                          ? "ReleaseDate"
+                          : prev.defaultSortField,
+                    }));
+                  }}
+                />
+                Allow manual sorting
+              </label>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>
+                  Default Sort
+                  <select
+                    value={smartListDraft.defaultSortField}
+                    onChange={(event) =>
+                      setSmartListDraft((prev) => ({
+                        ...prev,
+                        defaultSortField: event.target.value,
+                      }))
+                    }
+                    style={{
+                      minWidth: 200,
+                      padding: "9px 10px",
+                      borderRadius: 9,
+                      border: "1px solid rgba(0,0,0,0.2)",
+                      background: "rgba(255,255,255,0.9)",
+                      color: "#3a2f28",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      outline: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="Title">Title</option>
+                    <option value="ReleaseDate">Release Date</option>
+                    <option value="CompletedDateOrReleaseDate">Completed/Release Date</option>
+                    <option value="CompletedDate">Completed Date</option>
+                    <option value="MyRatingSort">My Rating</option>
+                    <option value="ExternalRatingSort">User Rating</option>
+                    {smartListDraft.allowManualSort ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
+                  </select>
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: "#6d5a4e" }}>
+                  Order
+                  <select
+                    value={smartListDraft.defaultSortOrder}
+                    onChange={(event) =>
+                      setSmartListDraft((prev) => ({
+                        ...prev,
+                        defaultSortOrder: event.target.value as "Asc" | "Desc",
+                      }))
+                    }
+                    disabled={smartListDraft.allowManualSort && smartListDraft.defaultSortField === MANUAL_SORT_FIELD}
+                    style={{
+                      minWidth: 120,
+                      padding: "9px 10px",
+                      borderRadius: 9,
+                      border: "1px solid rgba(0,0,0,0.2)",
+                      background: "rgba(255,255,255,0.9)",
+                      color: "#3a2f28",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      outline: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="Asc">Asc</option>
+                    <option value="Desc">Desc</option>
+                  </select>
+                </label>
+              </div>
+
+              {smartListBuilderError ? (
+                <div
+                  style={{
+                    borderRadius: 9,
+                    border: "1px solid rgba(141, 24, 24, 0.45)",
+                    background: "rgba(173, 48, 48, 0.12)",
+                    color: "#7f2323",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "8px 10px",
+                  }}
+                >
+                  {smartListBuilderError}
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button
+                  onClick={() => {
+                    setSmartListBuilderOpen(false);
+                    setSmartListBuilderError(null);
+                  }}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.25)",
+                    background: "rgba(255,255,255,0.86)",
+                    color: "#5c3c38",
+                    borderRadius: 9,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateSmartList}
+                  style={{
+                    border: "1px solid rgba(55, 90, 39, 0.6)",
+                    background: "linear-gradient(180deg, rgba(102, 141, 69, 0.95), rgba(66, 107, 38, 0.94))",
+                    color: "rgba(239, 253, 226, 0.98)",
+                    borderRadius: 9,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  Create Smart List
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -11409,7 +12516,11 @@ export default function Page() {
                       );
                       const itemKey = getMediaItemKey(show);
                       const isWishlistCase =
-                        nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv";
+                        nav === "wishlist" ||
+                        nav === "play-next" ||
+                        nav === "watchlist-movies" ||
+                        nav === "watchlist-tv" ||
+                        Boolean(manualSortableSmartListId);
                       const isWishlistPointerDragging = Boolean(
                         isWishlistCase &&
                         wishlistPointerDrag?.active &&

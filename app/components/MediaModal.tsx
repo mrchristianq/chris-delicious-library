@@ -130,15 +130,12 @@ const MOVIE_EDIT_FIELDS: MovieEditField[] = [
   { key: "overview", label: "Overview", multiline: true },
 ];
 const GAME_EDIT_FIELDS: GameEditField[] = [
-  { key: "platform", label: "Platform" },
   { key: "status", label: "Status" },
   { key: "releaseDateAlt", label: "Release Date" },
   { key: "platforms", label: "Platforms" },
-  { key: "coverUrl", label: "CoverURL" },
   { key: "igdbRating", label: "IGDB Rating" },
   { key: "myRating", label: "My Rating" },
   { key: "ownership", label: "Ownership" },
-  { key: "format", label: "Format" },
   { key: "backlog", label: "Backlog" },
   { key: "completed", label: "Completed" },
   { key: "dateCompleted", label: "Date Completed" },
@@ -147,9 +144,9 @@ const GAME_EDIT_FIELDS: GameEditField[] = [
   { key: "genres", label: "Genres" },
   { key: "hoursPlayed", label: "Hours Played" },
   { key: "developer", label: "Developer" },
-  { key: "screensotsUrl", label: "ScreensotsURL" },
   { key: "igdbId", label: "IGDB_ID" },
-  { key: "igdbIdOverride", label: "IGDB_ID_Override" },
+  { key: "platform", label: "Platform" },
+  { key: "format", label: "Format" },
   { key: "description", label: "Description", multiline: true },
 ];
 
@@ -264,6 +261,12 @@ function splitCommaValues(value: string): string[] {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function normalizeYesNoValue(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  return isTruthyValue(value) ? "Yes" : "No";
 }
 
 function humanizeFieldKey(key: string): string {
@@ -452,8 +455,8 @@ function buildGameEditValues(item: Record<string, any>): Record<string, string> 
     myRating: firstNonEmpty(item, ["myRating", "My Rating"]),
     ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
     format: firstNonEmpty(item, ["format", "Format"]),
-    backlog: firstNonEmpty(item, ["backlog", "Backlog"]),
-    completed: firstNonEmpty(item, ["completed", "Completed"]),
+    backlog: normalizeYesNoValue(firstNonEmpty(item, ["backlog", "Backlog"])),
+    completed: normalizeYesNoValue(firstNonEmpty(item, ["completed", "Completed"])),
     dateCompleted: firstNonEmpty(item, ["dateCompleted", "Date Completed"]),
     yearPlayed: firstNonEmpty(item, ["yearPlayed", "Year Played"]),
     dateAdded: firstNonEmpty(item, ["dateAdded", "Date Added"]),
@@ -1477,7 +1480,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       }
                     }}
                     className="subtitleInput"
-                    placeholder={itemType === "movie" ? "Year" : "Year Played"}
+                    placeholder={itemType === "movie" ? "Year" : "Year Played (e.g. 2025, 2026)"}
                   />
                 )}
               </>
@@ -1858,110 +1861,138 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                   ))}
               </div>
             ) : itemType === "game" && isEditingGame ? (
-              <div className="editGrid">
-                {[...GAME_EDIT_FIELDS]
-                  .sort((a, b) => (a.key === "description" ? -1 : b.key === "description" ? 1 : 0))
-                  .map((field) => (
-                    <label key={field.key} className={`editField${field.key === "description" ? " editFieldFullWidth" : ""}`}>
-                      <span className="editLabel">{field.label}</span>
-                      {field.multiline ? (
-                        <textarea
-                          ref={field.key === "description" ? descriptionTextareaRef : undefined}
-                          value={gameEditValues[field.key] || ""}
-                          onChange={(e) => {
-                            handleGameFieldChange(field.key, e.target.value);
-                            if (field.key === "description") autoSizeDescriptionTextarea(e.currentTarget);
-                          }}
-                          className={`editTextarea${field.key === "description" ? " editDescriptionTextarea" : ""}`}
-                          rows={field.key === "description" ? 8 : 4}
-                        />
-                      ) : field.key === "status" ? (
-                        <select
-                          value={gameEditValues[field.key] || ""}
-                          onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
-                          className="editInput"
-                        >
-                          <option value="">Select status</option>
-                          {resolvedGameStatusOptions.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                          {gameEditValues[field.key] && !resolvedGameStatusOptions.includes(gameEditValues[field.key]) ? (
-                            <option value={gameEditValues[field.key]}>{gameEditValues[field.key]}</option>
-                          ) : null}
-                        </select>
-                      ) : field.key === "platform" ? (
-                        (() => {
-                          const selectedPlatforms = splitCommaValues(gameEditValues[field.key] || "");
-                          const platformOptions = Array.from(new Set([...resolvedGamePlatformOptions, ...selectedPlatforms]));
-                          return (
-                            <select
-                              multiple
-                              value={selectedPlatforms}
-                              onChange={(e) => {
-                                const selected = Array.from(e.currentTarget.selectedOptions).map((opt) => opt.value);
-                                handleGameFieldChange(field.key, selected.join(", "));
-                              }}
-                              className="editInput multiSelectInput"
-                            >
-                              {platformOptions.map((platform) => (
-                                <option key={platform} value={platform}>
-                                  {platform}
-                                </option>
-                              ))}
-                            </select>
-                          );
-                        })()
-                      ) : field.key === "ownership" ? (
-                        <select
-                          value={gameEditValues[field.key] || ""}
-                          onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
-                          className="editInput"
-                        >
-                          <option value="">Select ownership</option>
-                          {resolvedGameOwnershipOptions.map((ownership) => (
-                            <option key={ownership} value={ownership}>
-                              {ownership}
-                            </option>
-                          ))}
-                          {gameEditValues[field.key] && !resolvedGameOwnershipOptions.includes(gameEditValues[field.key]) ? (
-                            <option value={gameEditValues[field.key]}>{gameEditValues[field.key]}</option>
-                          ) : null}
-                        </select>
-                      ) : field.key === "format" ? (
-                        (() => {
-                          const selectedFormats = splitCommaValues(gameEditValues[field.key] || "");
-                          const formatOptions = Array.from(new Set([...resolvedGameFormatOptions, ...selectedFormats]));
-                          return (
-                            <select
-                              multiple
-                              value={selectedFormats}
-                              onChange={(e) => {
-                                const selected = Array.from(e.currentTarget.selectedOptions).map((opt) => opt.value);
-                                handleGameFieldChange(field.key, selected.join(", "));
-                              }}
-                              className="editInput multiSelectInput"
-                            >
-                              {formatOptions.map((format) => (
-                                <option key={format} value={format}>
-                                  {format}
-                                </option>
-                              ))}
-                            </select>
-                          );
-                        })()
-                      ) : (
-                        <input
-                          type="text"
-                          value={gameEditValues[field.key] || ""}
-                          onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
-                          className="editInput"
-                        />
-                      )}
-                    </label>
-                  ))}
-              </div>
+              <>
+                <div className="editGrid">
+                  {[...GAME_EDIT_FIELDS]
+                    .filter((field) => field.key !== "platform" && field.key !== "format")
+                    .sort((a, b) => (a.key === "description" ? -1 : b.key === "description" ? 1 : 0))
+                    .map((field) => (
+                      <label key={field.key} className={`editField${field.key === "description" ? " editFieldFullWidth" : ""}`}>
+                        <span className="editLabel">{field.label}</span>
+                        {field.multiline ? (
+                          <textarea
+                            ref={field.key === "description" ? descriptionTextareaRef : undefined}
+                            value={gameEditValues[field.key] || ""}
+                            onChange={(e) => {
+                              handleGameFieldChange(field.key, e.target.value);
+                              if (field.key === "description") autoSizeDescriptionTextarea(e.currentTarget);
+                            }}
+                            className={`editTextarea${field.key === "description" ? " editDescriptionTextarea" : ""}`}
+                            rows={field.key === "description" ? 8 : 4}
+                          />
+                        ) : field.key === "status" ? (
+                          <select
+                            value={gameEditValues[field.key] || ""}
+                            onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
+                            className="editInput"
+                          >
+                            <option value="">Select status</option>
+                            {resolvedGameStatusOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                            {gameEditValues[field.key] && !resolvedGameStatusOptions.includes(gameEditValues[field.key]) ? (
+                              <option value={gameEditValues[field.key]}>{gameEditValues[field.key]}</option>
+                            ) : null}
+                          </select>
+                        ) : field.key === "ownership" ? (
+                          <select
+                            value={gameEditValues[field.key] || ""}
+                            onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
+                            className="editInput"
+                          >
+                            <option value="">Select ownership</option>
+                            {resolvedGameOwnershipOptions.map((ownership) => (
+                              <option key={ownership} value={ownership}>
+                                {ownership}
+                              </option>
+                            ))}
+                            {gameEditValues[field.key] && !resolvedGameOwnershipOptions.includes(gameEditValues[field.key]) ? (
+                              <option value={gameEditValues[field.key]}>{gameEditValues[field.key]}</option>
+                            ) : null}
+                          </select>
+                        ) : field.key === "backlog" || field.key === "completed" ? (
+                          <select
+                            value={gameEditValues[field.key] || ""}
+                            onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
+                            className="editInput"
+                          >
+                            <option value="">Select Yes/No</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            {gameEditValues[field.key] && !["Yes", "No"].includes(gameEditValues[field.key]) ? (
+                              <option value={gameEditValues[field.key]}>{gameEditValues[field.key]}</option>
+                            ) : null}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={gameEditValues[field.key] || ""}
+                            onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
+                            className="editInput"
+                            placeholder={field.key === "yearPlayed" ? "e.g. 2025, 2026" : undefined}
+                          />
+                        )}
+                        {field.key === "yearPlayed" ? <span className="editHelp">Separate multiple years with commas</span> : null}
+                      </label>
+                    ))}
+                </div>
+                <div className="editGrid" style={{ marginTop: 8 }}>
+                  {GAME_EDIT_FIELDS
+                    .filter((field) => field.key === "platform" || field.key === "format")
+                    .map((field) => (
+                      <label key={field.key} className="editField">
+                        <span className="editLabel">{field.label}</span>
+                        {field.key === "platform" ? (
+                          (() => {
+                            const selectedPlatforms = splitCommaValues(gameEditValues[field.key] || "");
+                            const platformOptions = Array.from(new Set([...resolvedGamePlatformOptions, ...selectedPlatforms]));
+                            return (
+                              <select
+                                multiple
+                                value={selectedPlatforms}
+                                onChange={(e) => {
+                                  const selected = Array.from(e.currentTarget.selectedOptions).map((opt) => opt.value);
+                                  handleGameFieldChange(field.key, selected.join(", "));
+                                }}
+                                className="editInput multiSelectInput"
+                              >
+                                {platformOptions.map((platform) => (
+                                  <option key={platform} value={platform}>
+                                    {platform}
+                                  </option>
+                                ))}
+                              </select>
+                            );
+                          })()
+                        ) : (
+                          (() => {
+                            const selectedFormats = splitCommaValues(gameEditValues[field.key] || "");
+                            const formatOptions = Array.from(new Set([...resolvedGameFormatOptions, ...selectedFormats]));
+                            return (
+                              <select
+                                multiple
+                                value={selectedFormats}
+                                onChange={(e) => {
+                                  const selected = Array.from(e.currentTarget.selectedOptions).map((opt) => opt.value);
+                                  handleGameFieldChange(field.key, selected.join(", "));
+                                }}
+                                className="editInput multiSelectInput"
+                              >
+                                {formatOptions.map((format) => (
+                                  <option key={format} value={format}>
+                                    {format}
+                                  </option>
+                                ))}
+                              </select>
+                            );
+                          })()
+                        )}
+                      </label>
+                    ))}
+                </div>
+              </>
             ) : (
               <div className="infoGrid">
                 {infoRows.map((row) => (
