@@ -106,7 +106,7 @@
 
 "use client";
 
-import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
@@ -117,6 +117,25 @@ type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
 type MediaType = "book" | "movie" | "tv" | "game";
 type QuickInsetMode = "insetPosition" | "overlayPosition" | "overlayScale" | "coverPosition" | "coverScale";
+type InsetEditableMediaType = "tv" | "movie" | "book";
+type OverlaySettings = { width: number; height: number; top: number; left: number };
+type CoverScaleSettings = { x: number; y: number };
+type CoverOffsetSettings = { x: number; y: number };
+type WishlistPointerDrag = {
+  pointerId: number;
+  key: string;
+  startX: number;
+  startY: number;
+  pointerX: number;
+  pointerY: number;
+  grabOffsetX: number;
+  grabOffsetY: number;
+  dragWidth: number;
+  dragHeight: number;
+  momentumX: number;
+  momentumY: number;
+  active: boolean;
+};
 
 type Show = {
   title: string;
@@ -182,6 +201,8 @@ type Book = {
   audiobookDuration?: string;
   githubCoverUrl?: string;
   coverSyncStatus?: string;
+  wishlistOrder?: string;
+  queuedOrder?: string;
 };
 
 type Movie = {
@@ -254,8 +275,34 @@ type Game = {
 
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "5.0.0";
+const APP_VERSION = "5.0.1";
+const MANUAL_SORT_FIELD = "Manual";
+const WISHLIST_SORT_FIELD_SETTING_KEY = "viewSortField:wishlist";
+const WISHLIST_SORT_ORDER_SETTING_KEY = "viewSortOrder:wishlist";
+const WISHLIST_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:wishlist";
+const PLAY_NEXT_SORT_FIELD_SETTING_KEY = "viewSortField:play-next";
+const PLAY_NEXT_SORT_ORDER_SETTING_KEY = "viewSortOrder:play-next";
+const PLAY_NEXT_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:play-next";
+const WATCHLIST_MOVIES_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-movies";
+const WATCHLIST_MOVIES_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-movies";
+const WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-movies";
+const WATCHLIST_TV_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-tv";
+const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
+const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
+const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
+const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
+const POPUP_OVERLAY_Z_INDEX = 2147483000;
+const POPUP_PANEL_Z_INDEX = 2147483200;
+const POPUP_FAQ_Z_INDEX = 2147483300;
 const VERSION_HISTORY = [
+  {
+    version: "5.0.1",
+    date: "2026-02-17",
+    notes: [
+      "Fixed game status indicator mapping so \"Now Playing\" shows yellow (active) instead of red.",
+      "Updated shelf row packing so Books, Movies, TV Shows, and Games fill shelf width consistently without extra right-side gaps.",
+    ],
+  },
   {
     version: "5.0.0",
     date: "2026-02-15",
@@ -360,6 +407,9 @@ const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const GAME_FRAME_IMAGE = "/game-frame.png";
+const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = { width: 100, height: 100, top: 0, left: 0 };
+const DEFAULT_COVER_SCALE: CoverScaleSettings = { x: 100, y: 100 };
+const DEFAULT_COVER_OFFSET: CoverOffsetSettings = { x: 0, y: 0 };
 const APP_ICON = "/logo4.png";
 const SHOW_HEADER_DEBUG_CONTROLS = false;
 
@@ -426,6 +476,47 @@ function normalizeStatusToken(value?: string): string {
   return safeStr(value)
     .toLowerCase()
     .replace("cancelled", "canceled");
+}
+
+const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
+
+function isMovieWatchedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
+  const watched = normalizeStatusToken(movie.watchStatus || movie.watched);
+  return WATCHED_STATUS_VALUES.has(watched);
+}
+
+function parseManualOrderValue(value: unknown): number | null {
+  const parsed = Number.parseFloat(safeStr(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function moveKeyRelative(
+  keys: string[],
+  movingKey: string,
+  targetKey: string,
+  placement: "before" | "after"
+): string[] {
+  if (!movingKey || !targetKey || movingKey === targetKey) return keys;
+  const fromIndex = keys.indexOf(movingKey);
+  const toIndex = keys.indexOf(targetKey);
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return keys;
+
+  const next = [...keys];
+  const [moved] = next.splice(fromIndex, 1);
+  const targetIndex = next.indexOf(targetKey);
+  if (targetIndex === -1) return keys;
+  const insertAt = placement === "after" ? targetIndex + 1 : targetIndex;
+  next.splice(Math.min(insertAt, next.length), 0, moved);
+  return next;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read image file."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function normalizeOwnership(value?: string): string {
@@ -726,6 +817,8 @@ function rowToBook(r: Row): Book | null {
     audiobookDuration: safeStr(r["audiobookDuration"]) || safeStr(r["AudiobookDuration"]) || undefined,
     githubCoverUrl: githubCoverUrl || generatedGitHubUrl || undefined,
     coverSyncStatus: coverSyncStatus || undefined,
+    wishlistOrder: safeStr(r["WishlistOrder"]) || undefined,
+    queuedOrder: safeStr(r["QueuedOrder"]) || undefined,
   };
 }
 
@@ -851,7 +944,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "wishlist" | "watchlist" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "year-previous";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "year-previous";
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -913,6 +1006,12 @@ export default function Page() {
     Record<string, { value: string; category: string; description: string }>
   >({});
   const settingsSheetFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const suppressCaseClickRef = useRef(false);
+  const wishlistPointerDragRef = useRef<WishlistPointerDrag | null>(null);
+  const wishlistCaseNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const wishlistDragHoverTargetRef = useRef<string | null>(null);
+  const wishlistDragVisualRafRef = useRef<number | null>(null);
+  const wishlistDragVisualPendingRef = useRef<WishlistPointerDrag | null>(null);
   
   // Debounce timers for settings persistence
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -1004,6 +1103,13 @@ export default function Page() {
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
+  const [wishlistManualOrderKeys, setWishlistManualOrderKeys] = useState<string[]>([]);
+  const [playNextManualOrderKeys, setPlayNextManualOrderKeys] = useState<string[]>([]);
+  const [watchlistMoviesManualOrderKeys, setWatchlistMoviesManualOrderKeys] = useState<string[]>([]);
+  const [watchlistTvManualOrderKeys, setWatchlistTvManualOrderKeys] = useState<string[]>([]);
+  const [draggingWishlistKey, setDraggingWishlistKey] = useState<string | null>(null);
+  const [wishlistPointerDrag, setWishlistPointerDrag] = useState<WishlistPointerDrag | null>(null);
+  const [wishlistDragHoverKey, setWishlistDragHoverKey] = useState<string | null>(null);
   const [watchStatusOpen, setWatchStatusOpen] = useState<boolean>(false);
   const [showStatusOpen, setShowStatusOpen] = useState<boolean>(false);
   const [tagOpen, setTagOpen] = useState<boolean>(false);
@@ -1204,6 +1310,9 @@ export default function Page() {
   const [bookInsetRightPx, setBookInsetRightPx] = useState(75);
   const [bookInsetBottomPx, setBookInsetBottomPx] = useState(104);
   const [bookInsetLeftPx, setBookInsetLeftPx] = useState(62);
+  const [bookOverlaySettings, setBookOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
+  const [bookCoverScale, setBookCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
+  const [bookCoverOffset, setBookCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
   
   // Movie frame: separate insets for movie covers
   const MOVIE_SRC_W = 1024;
@@ -1212,6 +1321,12 @@ export default function Page() {
   const [movieInsetRightPx, setMovieInsetRightPx] = useState(100);
   const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
   const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
+  const [movieOverlaySettings, setMovieOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
+  const [movieCoverScale, setMovieCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
+  const [movieCoverOffset, setMovieCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
+  const [tvOverlaySettings, setTvOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
+  const [tvCoverScale, setTvCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
+  const [tvCoverOffset, setTvCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
   
   // Platform-specific insets (stored as a single object)
   const [platformInsets, setPlatformInsets] = useState<Record<string, { top: number; right: number; bottom: number; left: number }>>({
@@ -1274,9 +1389,11 @@ export default function Page() {
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
   const [overlayFrameOverrides, setOverlayFrameOverrides] = useState<Record<string, string>>({});
+  const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>({});
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
+  const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
@@ -1284,6 +1401,8 @@ export default function Page() {
   const [uploadingOverlayForKey, setUploadingOverlayForKey] = useState<string | null>(null);
   const [overlayUploadError, setOverlayUploadError] = useState<string | null>(null);
   const overlayFileInputRef = useRef<HTMLInputElement | null>(null);
+  const sidebarIconFileInputRef = useRef<HTMLInputElement | null>(null);
+  const sidebarIconTargetKeyRef = useRef<string | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1565,6 +1684,17 @@ export default function Page() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [settingsPopupOpen, sortPopupOpen, faqPopupOpen]);
 
+  const openSettingsPopup = useCallback((event?: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    setSortPopupOpen(false);
+    setShowVersionNotes(false);
+    // Always open (not toggle) to avoid double-event close races after submenu interactions.
+    setSettingsPopupOpen(true);
+  }, []);
+
   useEffect(() => {
     if (!SHOW_HEADER_DEBUG_CONTROLS) return;
     applyDebugHeaderOffset();
@@ -1616,10 +1746,24 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setSidebarIconOverrides(parsed as Record<string, string>);
+      }
+    } catch (e) {
+      console.warn("Failed to load sidebar icon overrides from localStorage:", e);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!settingsRows.length) return;
     const fromSheet: Record<string, string> = {};
     const popupModesFromSheet: Record<string, "custom" | "default"> = {};
     const overlayFromSheet: Record<string, string> = {};
+    const sidebarIconFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
       const value = safeStr(r["Value"]);
@@ -1641,6 +1785,12 @@ export default function Page() {
           popupModesFromSheet[mediaKey] = value;
         }
       }
+      if (key.startsWith(SIDEBAR_ICON_SETTING_PREFIX)) {
+        const iconKey = key.slice(SIDEBAR_ICON_SETTING_PREFIX.length);
+        if (iconKey && value) {
+          sidebarIconFromSheet[iconKey] = value;
+        }
+      }
     });
     if (Object.keys(fromSheet).length) {
       setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
@@ -1651,6 +1801,9 @@ export default function Page() {
     if (Object.keys(overlayFromSheet).length) {
       setOverlayFrameOverrides((prev) => ({ ...overlayFromSheet, ...prev }));
     }
+    if (Object.keys(sidebarIconFromSheet).length) {
+      setSidebarIconOverrides((prev) => ({ ...sidebarIconFromSheet, ...prev }));
+    }
   }, [settingsRows]);
 
   useEffect(() => {
@@ -1658,6 +1811,98 @@ export default function Page() {
     setModalItem((prev: any) => (prev ? buildItemWithCoverSelection(prev, coverOverrides) : prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverOverrides]);
+
+  const getSidebarIconSrc = (iconKey: string, fallbackSrc: string): string => {
+    const override = safeStr(sidebarIconOverrides[iconKey]);
+    return override || fallbackSrc;
+  };
+
+  const openSidebarIconFilePicker = (event: ReactMouseEvent<HTMLElement>, iconKey: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (uploadingSidebarIconKey) return;
+    sidebarIconTargetKeyRef.current = iconKey;
+    const input = sidebarIconFileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+
+  const handleSidebarIconFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const iconKey = sidebarIconTargetKeyRef.current;
+    if (!file || !iconKey) return;
+    if (!safeStr(file.type).toLowerCase().startsWith("image/")) {
+      alert("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingSidebarIconKey(iconKey);
+
+    try {
+      let iconUrl = "";
+      let uploadedToCloud = false;
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("itemKey", `sidebar-icon-${iconKey}`);
+        formData.append("mediaType", "sidebar-icon");
+        formData.append("title", iconKey);
+
+        const res = await fetch("/api/upload-cover", {
+          method: "POST",
+          body: formData,
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) {
+          throw new Error(payload?.error || `Upload failed (${res.status})`);
+        }
+        iconUrl = String(payload.url);
+        uploadedToCloud = true;
+      } catch (uploadError) {
+        console.warn("Sidebar icon upload failed, using local fallback:", uploadError);
+        iconUrl = await fileToDataUrl(file);
+      }
+
+      setSidebarIconOverrides((prev) => {
+        const next = { ...prev, [iconKey]: iconUrl };
+        try {
+          localStorage.setItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next));
+        } catch (persistError) {
+          console.warn("Failed to persist sidebar icon overrides locally:", persistError);
+        }
+        return next;
+      });
+
+      if (uploadedToCloud) {
+        saveSetting(
+          `${SIDEBAR_ICON_SETTING_PREFIX}${iconKey}`,
+          iconUrl,
+          "Sidebar Icons",
+          `Custom sidebar icon for ${iconKey}`
+        );
+      }
+
+      setSyncState("ok");
+      setSyncMsg(uploadedToCloud ? "Sidebar icon saved" : "Sidebar icon saved locally");
+      setLastSyncAt(Date.now());
+      setTimeout(() => {
+        setSyncMsg("Synced");
+      }, 1200);
+    } catch (error: any) {
+      const msg = error?.message || "Failed to update sidebar icon.";
+      console.error("Sidebar icon update failed:", error);
+      setSyncState("error");
+      setSyncMsg(msg);
+      alert(msg);
+    } finally {
+      setUploadingSidebarIconKey(null);
+      sidebarIconTargetKeyRef.current = null;
+      event.target.value = "";
+    }
+  };
 
   const handleReplaceCover = async (item: any, file: File) => {
     const itemKey = getMediaItemKey(item);
@@ -2902,6 +3147,14 @@ export default function Page() {
           saveSettingToSheet("caseInsetRightPx", caseInsetRightPx, "TV Insets", "TV Case Right Inset (px)"),
           saveSettingToSheet("caseInsetBottomPx", caseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)"),
           saveSettingToSheet("caseInsetLeftPx", caseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)"),
+          saveSettingToSheet("tvOverlayWidth", tvOverlaySettings.width, "TV Overlay", "TV Overlay Width (%)"),
+          saveSettingToSheet("tvOverlayHeight", tvOverlaySettings.height, "TV Overlay", "TV Overlay Height (%)"),
+          saveSettingToSheet("tvOverlayTop", tvOverlaySettings.top, "TV Overlay", "TV Overlay Top (%)"),
+          saveSettingToSheet("tvOverlayLeft", tvOverlaySettings.left, "TV Overlay", "TV Overlay Left (%)"),
+          saveSettingToSheet("tvCoverScaleX", tvCoverScale.x, "TV Cover", "TV Cover Scale X (%)"),
+          saveSettingToSheet("tvCoverScaleY", tvCoverScale.y, "TV Cover", "TV Cover Scale Y (%)"),
+          saveSettingToSheet("tvCoverOffsetX", tvCoverOffset.x, "TV Cover", "TV Cover Offset X (%)"),
+          saveSettingToSheet("tvCoverOffsetY", tvCoverOffset.y, "TV Cover", "TV Cover Offset Y (%)"),
         ];
       } else if (insetType === 'book') {
         savePromises = [
@@ -2909,6 +3162,14 @@ export default function Page() {
           saveSettingToSheet("bookInsetRightPx", bookInsetRightPx, "Book Insets", "Book Right Inset (px)"),
           saveSettingToSheet("bookInsetBottomPx", bookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)"),
           saveSettingToSheet("bookInsetLeftPx", bookInsetLeftPx, "Book Insets", "Book Left Inset (px)"),
+          saveSettingToSheet("bookOverlayWidth", bookOverlaySettings.width, "Book Overlay", "Book Overlay Width (%)"),
+          saveSettingToSheet("bookOverlayHeight", bookOverlaySettings.height, "Book Overlay", "Book Overlay Height (%)"),
+          saveSettingToSheet("bookOverlayTop", bookOverlaySettings.top, "Book Overlay", "Book Overlay Top (%)"),
+          saveSettingToSheet("bookOverlayLeft", bookOverlaySettings.left, "Book Overlay", "Book Overlay Left (%)"),
+          saveSettingToSheet("bookCoverScaleX", bookCoverScale.x, "Book Cover", "Book Cover Scale X (%)"),
+          saveSettingToSheet("bookCoverScaleY", bookCoverScale.y, "Book Cover", "Book Cover Scale Y (%)"),
+          saveSettingToSheet("bookCoverOffsetX", bookCoverOffset.x, "Book Cover", "Book Cover Offset X (%)"),
+          saveSettingToSheet("bookCoverOffsetY", bookCoverOffset.y, "Book Cover", "Book Cover Offset Y (%)"),
         ];
       } else if (insetType === 'movie') {
         savePromises = [
@@ -2916,6 +3177,14 @@ export default function Page() {
           saveSettingToSheet("movieInsetRightPx", movieInsetRightPx, "Movie Insets", "Movie Right Inset (px)"),
           saveSettingToSheet("movieInsetBottomPx", movieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)"),
           saveSettingToSheet("movieInsetLeftPx", movieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)"),
+          saveSettingToSheet("movieOverlayWidth", movieOverlaySettings.width, "Movie Overlay", "Movie Overlay Width (%)"),
+          saveSettingToSheet("movieOverlayHeight", movieOverlaySettings.height, "Movie Overlay", "Movie Overlay Height (%)"),
+          saveSettingToSheet("movieOverlayTop", movieOverlaySettings.top, "Movie Overlay", "Movie Overlay Top (%)"),
+          saveSettingToSheet("movieOverlayLeft", movieOverlaySettings.left, "Movie Overlay", "Movie Overlay Left (%)"),
+          saveSettingToSheet("movieCoverScaleX", movieCoverScale.x, "Movie Cover", "Movie Cover Scale X (%)"),
+          saveSettingToSheet("movieCoverScaleY", movieCoverScale.y, "Movie Cover", "Movie Cover Scale Y (%)"),
+          saveSettingToSheet("movieCoverOffsetX", movieCoverOffset.x, "Movie Cover", "Movie Cover Offset X (%)"),
+          saveSettingToSheet("movieCoverOffsetY", movieCoverOffset.y, "Movie Cover", "Movie Cover Offset Y (%)"),
         ];
       } else if (insetType === 'game') {
         // Save only the currently selected platform's insets, overlay settings, and cover scale
@@ -2973,16 +3242,61 @@ export default function Page() {
     setCaseInsetRightPx(getSetting("caseInsetRightPx", 121));
     setCaseInsetBottomPx(getSetting("caseInsetBottomPx", 136));
     setCaseInsetLeftPx(getSetting("caseInsetLeftPx", 74));
+    setTvOverlaySettings({
+      width: getSetting("tvOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
+      height: getSetting("tvOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
+      top: getSetting("tvOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
+      left: getSetting("tvOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
+    });
+    const tvLegacyCoverScale = getSetting("tvCoverScale", DEFAULT_COVER_SCALE.x);
+    setTvCoverScale({
+      x: getSetting("tvCoverScaleX", tvLegacyCoverScale),
+      y: getSetting("tvCoverScaleY", tvLegacyCoverScale),
+    });
+    setTvCoverOffset({
+      x: getSetting("tvCoverOffsetX", DEFAULT_COVER_OFFSET.x),
+      y: getSetting("tvCoverOffsetY", DEFAULT_COVER_OFFSET.y),
+    });
     
     setBookInsetTopPx(getSetting("bookInsetTopPx", 99));
     setBookInsetRightPx(getSetting("bookInsetRightPx", 75));
     setBookInsetBottomPx(getSetting("bookInsetBottomPx", 104));
     setBookInsetLeftPx(getSetting("bookInsetLeftPx", 62));
+    setBookOverlaySettings({
+      width: getSetting("bookOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
+      height: getSetting("bookOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
+      top: getSetting("bookOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
+      left: getSetting("bookOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
+    });
+    const bookLegacyCoverScale = getSetting("bookCoverScale", DEFAULT_COVER_SCALE.x);
+    setBookCoverScale({
+      x: getSetting("bookCoverScaleX", bookLegacyCoverScale),
+      y: getSetting("bookCoverScaleY", bookLegacyCoverScale),
+    });
+    setBookCoverOffset({
+      x: getSetting("bookCoverOffsetX", DEFAULT_COVER_OFFSET.x),
+      y: getSetting("bookCoverOffsetY", DEFAULT_COVER_OFFSET.y),
+    });
     
     setMovieInsetTopPx(getSetting("movieInsetTopPx", 156));
     setMovieInsetRightPx(getSetting("movieInsetRightPx", 100));
     setMovieInsetBottomPx(getSetting("movieInsetBottomPx", 136));
     setMovieInsetLeftPx(getSetting("movieInsetLeftPx", 120));
+    setMovieOverlaySettings({
+      width: getSetting("movieOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
+      height: getSetting("movieOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
+      top: getSetting("movieOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
+      left: getSetting("movieOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
+    });
+    const movieLegacyCoverScale = getSetting("movieCoverScale", DEFAULT_COVER_SCALE.x);
+    setMovieCoverScale({
+      x: getSetting("movieCoverScaleX", movieLegacyCoverScale),
+      y: getSetting("movieCoverScaleY", movieLegacyCoverScale),
+    });
+    setMovieCoverOffset({
+      x: getSetting("movieCoverOffsetX", DEFAULT_COVER_OFFSET.x),
+      y: getSetting("movieCoverOffsetY", DEFAULT_COVER_OFFSET.y),
+    });
     
     setPosterSizeGames(getSetting("posterSizeGames", 108));
     
@@ -3024,12 +3338,15 @@ export default function Page() {
         y: getSetting("DefaultCoverOffsetY", 0),
       },
     };
+    const nonGameInsetPrefixes = new Set(["case", "tv", "movie", "book"]);
+    const nonGameOverlayPrefixes = new Set(["tv", "movie", "book"]);
+    const nonGameCoverPrefixes = new Set(["tv", "movie", "book"]);
     
     // Load settings for any platforms found in settings
     settingsRows.forEach(row => {
       const key = safeStr(row["Key"]);
       const match = key.match(/^(.+)InsetTopPx$/);
-      if (match && match[1] !== "Default") {
+      if (match && match[1] !== "Default" && !nonGameInsetPrefixes.has(match[1])) {
         const rawPlatform = match[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformInsets[platform] = {
@@ -3044,7 +3361,7 @@ export default function Page() {
       
       // Also check for overlay settings
       const overlayMatch = key.match(/^(.+)OverlayWidth$/);
-      if (overlayMatch && overlayMatch[1] !== "Default") {
+      if (overlayMatch && overlayMatch[1] !== "Default" && !nonGameOverlayPrefixes.has(overlayMatch[1])) {
         const rawPlatform = overlayMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformOverlaySettings[platform] = {
@@ -3058,7 +3375,7 @@ export default function Page() {
       
       // Also check for cover scale settings
       const coverScaleMatch = key.match(/^(.+)CoverScale(?:X|Y)?$/);
-      if (coverScaleMatch && coverScaleMatch[1] !== "Default") {
+      if (coverScaleMatch && coverScaleMatch[1] !== "Default" && !nonGameCoverPrefixes.has(coverScaleMatch[1])) {
         const rawPlatform = coverScaleMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         const legacyScale = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
@@ -3070,7 +3387,7 @@ export default function Page() {
       }
       
       const coverOffsetMatch = key.match(/^(.+)CoverOffsetX$/);
-      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default") {
+      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default" && !nonGameCoverPrefixes.has(coverOffsetMatch[1])) {
         const rawPlatform = coverOffsetMatch[1];
         const platform = canonicalizePlatformLabel(rawPlatform);
         loadedPlatformCoverOffset[platform] = {
@@ -3119,6 +3436,82 @@ export default function Page() {
     setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
     setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
   }, [getSetting, settingsRows]);
+
+  useEffect(() => {
+    if (
+      nav !== "wishlist" &&
+      nav !== "play-next" &&
+      nav !== "wishlist-books" &&
+      nav !== "watchlist-movies" &&
+      nav !== "watchlist-tv"
+    ) {
+      return;
+    }
+
+    if (nav === "wishlist" || nav === "wishlist-books") {
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    } else {
+      setSortField(MANUAL_SORT_FIELD);
+      setSortOrder("Asc");
+    }
+
+    let manualSettingKey = "";
+    if (nav === "wishlist") manualSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
+    if (nav === "play-next") manualSettingKey = PLAY_NEXT_MANUAL_ORDER_SETTING_KEY;
+    if (nav === "watchlist-movies") manualSettingKey = WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY;
+    if (nav === "watchlist-tv") manualSettingKey = WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY;
+    if (!manualSettingKey) return;
+
+    const savedManualOrderRaw = safeStr(getSetting(manualSettingKey, ""));
+
+    if (!savedManualOrderRaw) return;
+    try {
+      const parsed = JSON.parse(savedManualOrderRaw);
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .map((entry) => safeStr(entry))
+          .filter(Boolean);
+        if (nav === "play-next") {
+          setPlayNextManualOrderKeys(normalized);
+        } else if (nav === "watchlist-movies") {
+          setWatchlistMoviesManualOrderKeys(normalized);
+        } else if (nav === "watchlist-tv") {
+          setWatchlistTvManualOrderKeys(normalized);
+        } else {
+          setWishlistManualOrderKeys(normalized);
+        }
+      }
+    } catch (error) {
+      const label =
+        nav === "play-next"
+          ? "play-next"
+          : nav === "watchlist-movies"
+            ? "watchlist-movies"
+            : nav === "watchlist-tv"
+              ? "watchlist-tv"
+              : "wishlist";
+      console.warn(`Failed to parse ${label} manual order setting:`, error);
+    }
+  }, [getSetting, nav]);
+
+  useEffect(() => {
+    if (nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv") return;
+    setDraggingWishlistKey(null);
+    setWishlistPointerDrag(null);
+    setWishlistDragHoverKey(null);
+    wishlistPointerDragRef.current = null;
+    wishlistDragHoverTargetRef.current = null;
+    wishlistDragVisualPendingRef.current = null;
+    if (wishlistDragVisualRafRef.current !== null) {
+      window.cancelAnimationFrame(wishlistDragVisualRafRef.current);
+      wishlistDragVisualRafRef.current = null;
+    }
+    suppressCaseClickRef.current = false;
+    if (sortField === MANUAL_SORT_FIELD) {
+      setSortField("ReleaseDate");
+    }
+  }, [nav, sortField]);
 
   // Function to save all current settings to spreadsheet
   const saveAllSettings = async () => {
@@ -3477,6 +3870,81 @@ export default function Page() {
   const updateMovieInsetLeftPx = useCallback((value: number) => {
     debouncedUpdate("movieInsetLeftPx", value, setMovieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)");
   }, [debouncedUpdate]);
+  const updateNonGameOverlay = useCallback(
+    (mediaType: InsetEditableMediaType, property: "width" | "height" | "top" | "left", value: number) => {
+      const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
+      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
+      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
+
+      debouncedUpdate(
+        `${settingPrefix}Overlay${propertyCapitalized}`,
+        value,
+        () => {
+          const applyUpdate = (prev: OverlaySettings): OverlaySettings => ({ ...prev, [property]: value });
+          if (mediaType === "tv") {
+            setTvOverlaySettings(applyUpdate);
+            return;
+          }
+          if (mediaType === "movie") {
+            setMovieOverlaySettings(applyUpdate);
+            return;
+          }
+          setBookOverlaySettings(applyUpdate);
+        },
+        `${settingLabel} Overlay`,
+        `${settingLabel} Overlay ${propertyCapitalized} (%)`
+      );
+    },
+    [debouncedUpdate]
+  );
+  const updateNonGameCoverScale = useCallback(
+    (mediaType: InsetEditableMediaType, axis: "x" | "y", value: number) => {
+      const axisLabel = axis.toUpperCase();
+      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
+      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
+      const applyUpdate = (prev: CoverScaleSettings): CoverScaleSettings => ({ ...prev, [axis]: value });
+
+      if (mediaType === "tv") {
+        setTvCoverScale(applyUpdate);
+      } else if (mediaType === "movie") {
+        setMovieCoverScale(applyUpdate);
+      } else {
+        setBookCoverScale(applyUpdate);
+      }
+
+      saveSetting(
+        `${settingPrefix}CoverScale${axisLabel}`,
+        value,
+        `${settingLabel} Cover`,
+        `${settingLabel} Cover Scale ${axisLabel} (%)`
+      );
+    },
+    [saveSetting]
+  );
+  const updateNonGameCoverOffset = useCallback(
+    (mediaType: InsetEditableMediaType, axis: "x" | "y", value: number) => {
+      const axisLabel = axis.toUpperCase();
+      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
+      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
+      const applyUpdate = (prev: CoverOffsetSettings): CoverOffsetSettings => ({ ...prev, [axis]: value });
+
+      if (mediaType === "tv") {
+        setTvCoverOffset(applyUpdate);
+      } else if (mediaType === "movie") {
+        setMovieCoverOffset(applyUpdate);
+      } else {
+        setBookCoverOffset(applyUpdate);
+      }
+
+      saveSetting(
+        `${settingPrefix}CoverOffset${axisLabel}`,
+        value,
+        `${settingLabel} Cover`,
+        `${settingLabel} Cover Offset ${axisLabel} (%)`
+      );
+    },
+    [saveSetting]
+  );
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
@@ -3882,6 +4350,218 @@ export default function Page() {
       })),
     [allGames]
   );
+
+  const wishlistItems = useMemo(
+    () =>
+      [
+        ...indexedGames
+          .filter((game) => game.ownershipNorm === "wishlist")
+          .map((game) => ({ ...game.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>,
+    [indexedGames]
+  );
+
+  const wishlistBookItems = useMemo(
+    () =>
+      [
+        ...indexedBooks
+          .filter((book) => book.ownershipNorm === "wishlist")
+          .map((book) => ({ ...book.item, __type: "book" } as Book & { __type: "book" })),
+      ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>,
+    [indexedBooks]
+  );
+
+  const wishlistItemsByKey = useMemo(() => {
+    const map = new Map<string, (Book & { __type: "book" }) | (Game & { __type: "game" })>();
+    wishlistItems.forEach((item) => {
+      map.set(getMediaItemKey(item), item);
+    });
+    return map;
+  }, [wishlistItems]);
+
+  const wishlistFallbackOrderKeys = useMemo(() => {
+    const sorted = [...wishlistItems].sort((a, b) => {
+      const aOrder = parseManualOrderValue((a as any).wishlistOrder);
+      const bOrder = parseManualOrderValue((b as any).wishlistOrder);
+      if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
+      if (aOrder !== null) return -1;
+      if (bOrder !== null) return 1;
+      return safeStr(a.title).localeCompare(safeStr(b.title));
+    });
+    return sorted.map((item) => getMediaItemKey(item));
+  }, [wishlistItems]);
+
+  const resolvedWishlistManualOrderKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    wishlistManualOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!wishlistItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    wishlistFallbackOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!wishlistItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    return ordered;
+  }, [wishlistFallbackOrderKeys, wishlistItemsByKey, wishlistManualOrderKeys]);
+
+  const playNextItems = useMemo(
+    () =>
+      [
+        ...indexedGames
+          .filter((game) => normalizeStatusToken(game.statusValue) === "play next")
+          .map((game) => ({ ...game.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>,
+    [indexedGames]
+  );
+
+  const playNextItemsByKey = useMemo(() => {
+    const map = new Map<string, (Book & { __type: "book" }) | (Game & { __type: "game" })>();
+    playNextItems.forEach((item) => {
+      map.set(getMediaItemKey(item), item);
+    });
+    return map;
+  }, [playNextItems]);
+
+  const playNextFallbackOrderKeys = useMemo(() => {
+    const sorted = [...playNextItems].sort((a, b) => {
+      const aOrder = parseManualOrderValue((a as any).queuedOrder);
+      const bOrder = parseManualOrderValue((b as any).queuedOrder);
+      if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
+      if (aOrder !== null) return -1;
+      if (bOrder !== null) return 1;
+      return safeStr(a.title).localeCompare(safeStr(b.title));
+    });
+    return sorted.map((item) => getMediaItemKey(item));
+  }, [playNextItems]);
+
+  const resolvedPlayNextManualOrderKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    playNextManualOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!playNextItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    playNextFallbackOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!playNextItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    return ordered;
+  }, [playNextFallbackOrderKeys, playNextItemsByKey, playNextManualOrderKeys]);
+
+  const watchlistMovieItems = useMemo(
+    () =>
+      indexedMovies
+        .filter((movie) => !isMovieWatchedStatus(movie.item))
+        .map((movie) => ({ ...movie.item, __type: "movie" } as Movie & { __type: "movie" })),
+    [indexedMovies]
+  );
+
+  const watchlistMovieItemsByKey = useMemo(() => {
+    const map = new Map<string, Movie & { __type: "movie" }>();
+    watchlistMovieItems.forEach((item) => {
+      map.set(getMediaItemKey(item), item);
+    });
+    return map;
+  }, [watchlistMovieItems]);
+
+  const watchlistMovieFallbackOrderKeys = useMemo(() => {
+    const sorted = [...watchlistMovieItems].sort((a, b) => {
+      const aTime = Date.parse(safeStr((a as any).releaseDate));
+      const bTime = Date.parse(safeStr((b as any).releaseDate));
+      if (!Number.isNaN(aTime) && !Number.isNaN(bTime)) return bTime - aTime;
+      if (!Number.isNaN(aTime)) return -1;
+      if (!Number.isNaN(bTime)) return 1;
+      return safeStr(a.title).localeCompare(safeStr(b.title));
+    });
+    return sorted.map((item) => getMediaItemKey(item));
+  }, [watchlistMovieItems]);
+
+  const resolvedWatchlistMovieManualOrderKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    watchlistMoviesManualOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!watchlistMovieItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    watchlistMovieFallbackOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!watchlistMovieItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    return ordered;
+  }, [watchlistMovieFallbackOrderKeys, watchlistMovieItemsByKey, watchlistMoviesManualOrderKeys]);
+
+  const watchlistTvItems = useMemo(
+    () =>
+      indexedShows
+        .filter((show) => show.watchStatusNorm !== "completed" && show.watchStatusNorm !== "abandoned")
+        .map((show) => ({ ...show.item, __type: "tv" } as Show & { __type: "tv" })),
+    [indexedShows]
+  );
+
+  const watchlistTvItemsByKey = useMemo(() => {
+    const map = new Map<string, Show & { __type: "tv" }>();
+    watchlistTvItems.forEach((item) => {
+      map.set(getMediaItemKey(item), item);
+    });
+    return map;
+  }, [watchlistTvItems]);
+
+  const watchlistTvFallbackOrderKeys = useMemo(() => {
+    const sorted = [...watchlistTvItems].sort((a, b) => {
+      const aDate = safeStr((a as any).lastAirDate) || safeStr((a as any).firstAirDate);
+      const bDate = safeStr((b as any).lastAirDate) || safeStr((b as any).firstAirDate);
+      const aTime = Date.parse(aDate);
+      const bTime = Date.parse(bDate);
+      if (!Number.isNaN(aTime) && !Number.isNaN(bTime)) return bTime - aTime;
+      if (!Number.isNaN(aTime)) return -1;
+      if (!Number.isNaN(bTime)) return 1;
+      return safeStr(a.title).localeCompare(safeStr(b.title));
+    });
+    return sorted.map((item) => getMediaItemKey(item));
+  }, [watchlistTvItems]);
+
+  const resolvedWatchlistTvManualOrderKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    watchlistTvManualOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!watchlistTvItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    watchlistTvFallbackOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!watchlistTvItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    return ordered;
+  }, [watchlistTvFallbackOrderKeys, watchlistTvItemsByKey, watchlistTvManualOrderKeys]);
 
   const gamePlatformOptions = useMemo(() => {
     const options = new Set<string>();
@@ -4303,6 +4983,15 @@ export default function Page() {
     const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
     const movieInset = { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx };
     const bookInset = { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx };
+    const tvOverlay = tvOverlaySettings;
+    const movieOverlay = movieOverlaySettings;
+    const bookOverlay = bookOverlaySettings;
+    const tvCoverOffsetSettings = tvCoverOffset;
+    const movieCoverOffsetSettings = movieCoverOffset;
+    const bookCoverOffsetSettings = bookCoverOffset;
+    const tvCoverScaleSettings = tvCoverScale;
+    const movieCoverScaleSettings = movieCoverScale;
+    const bookCoverScaleSettings = bookCoverScale;
     const gameInset = platformInsets[quickTargetPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
     const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
     const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
@@ -4310,9 +4999,23 @@ export default function Page() {
     const gameFrameSource = getGameFrameSourceDimensions(quickTargetPlatformKey);
     return {
       inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
-      overlay: gameOverlay,
-      coverOffset: gameCoverOffset,
-      coverScale: gameCoverScale,
+      overlay: quickTargetType === "tv" ? tvOverlay : quickTargetType === "movie" ? movieOverlay : quickTargetType === "book" ? bookOverlay : gameOverlay,
+      coverOffset:
+        quickTargetType === "tv"
+          ? tvCoverOffsetSettings
+          : quickTargetType === "movie"
+            ? movieCoverOffsetSettings
+            : quickTargetType === "book"
+              ? bookCoverOffsetSettings
+              : gameCoverOffset,
+      coverScale:
+        quickTargetType === "tv"
+          ? tvCoverScaleSettings
+          : quickTargetType === "movie"
+            ? movieCoverScaleSettings
+            : quickTargetType === "book"
+              ? bookCoverScaleSettings
+              : gameCoverScale,
       sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : gameFrameSource.width,
       sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : gameFrameSource.height,
     };
@@ -4327,14 +5030,23 @@ export default function Page() {
     bookInsetLeftPx,
     bookInsetRightPx,
     bookInsetTopPx,
+    bookOverlaySettings,
+    bookCoverOffset,
+    bookCoverScale,
     caseInsetBottomPx,
     caseInsetLeftPx,
     caseInsetRightPx,
     caseInsetTopPx,
+    tvOverlaySettings,
+    tvCoverOffset,
+    tvCoverScale,
     movieInsetBottomPx,
     movieInsetLeftPx,
     movieInsetRightPx,
     movieInsetTopPx,
+    movieOverlaySettings,
+    movieCoverOffset,
+    movieCoverScale,
     platformCoverOffset,
     platformCoverScale,
     platformInsets,
@@ -4344,13 +5056,10 @@ export default function Page() {
   ]);
 
   useEffect(() => {
-    if (quickTargetType !== "game" && quickInsetMode !== "insetPosition") {
-      setQuickInsetMode("insetPosition");
-    }
     if (quickTargetType === "game") {
       setSelectedPlatformForInsets(quickTargetPlatform);
     }
-  }, [quickInsetMode, quickTargetPlatform, quickTargetType]);
+  }, [quickTargetPlatform, quickTargetType]);
 
   const applyQuickInsetNudge = useCallback(
     (direction: "up" | "down" | "left" | "right") => {
@@ -4392,36 +5101,82 @@ export default function Page() {
         return;
       }
 
-      if (quickTargetType !== "game") return;
-
       if (quickInsetMode === "overlayPosition") {
-        if (isUp) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
-        if (isDown) updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
-        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
-        if (isRight) updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
+        if (isUp) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
+          else updateNonGameOverlay(quickTargetType, "top", overlay.top - step);
+        }
+        if (isDown) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
+          else updateNonGameOverlay(quickTargetType, "top", overlay.top + step);
+        }
+        if (isLeft) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
+          else updateNonGameOverlay(quickTargetType, "left", overlay.left - step);
+        }
+        if (isRight) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
+          else updateNonGameOverlay(quickTargetType, "left", overlay.left + step);
+        }
         return;
       }
 
       if (quickInsetMode === "overlayScale") {
-        if (isUp) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
-        if (isDown) updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
-        if (isLeft) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
-        if (isRight) updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
+        if (isUp) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
+          else updateNonGameOverlay(quickTargetType, "height", overlay.height + step);
+        }
+        if (isDown) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
+          else updateNonGameOverlay(quickTargetType, "height", overlay.height - step);
+        }
+        if (isLeft) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
+          else updateNonGameOverlay(quickTargetType, "width", overlay.width - step);
+        }
+        if (isRight) {
+          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
+          else updateNonGameOverlay(quickTargetType, "width", overlay.width + step);
+        }
         return;
       }
 
       if (quickInsetMode === "coverPosition") {
-        if (isUp) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
-        if (isDown) updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
-        if (isLeft) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
-        if (isRight) updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
+        if (isUp) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
+          else updateNonGameCoverOffset(quickTargetType, "y", cover.y - step);
+        }
+        if (isDown) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
+          else updateNonGameCoverOffset(quickTargetType, "y", cover.y + step);
+        }
+        if (isLeft) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
+          else updateNonGameCoverOffset(quickTargetType, "x", cover.x - step);
+        }
+        if (isRight) {
+          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
+          else updateNonGameCoverOffset(quickTargetType, "x", cover.x + step);
+        }
         return;
       }
 
-      if (isLeft) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
-      if (isRight) updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
-      if (isUp) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
-      if (isDown) updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
+      if (isLeft) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
+        else updateNonGameCoverScale(quickTargetType, "x", quickInsetSnapshot.coverScale.x - step);
+      }
+      if (isRight) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
+        else updateNonGameCoverScale(quickTargetType, "x", quickInsetSnapshot.coverScale.x + step);
+      }
+      if (isUp) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
+        else updateNonGameCoverScale(quickTargetType, "y", quickInsetSnapshot.coverScale.y + step);
+      }
+      if (isDown) {
+        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
+        else updateNonGameCoverScale(quickTargetType, "y", quickInsetSnapshot.coverScale.y - step);
+      }
     },
     [
       quickInsetMode,
@@ -4445,6 +5200,9 @@ export default function Page() {
       updatePlatformCoverScale,
       updatePlatformInset,
       updatePlatformOverlay,
+      updateNonGameCoverOffset,
+      updateNonGameCoverScale,
+      updateNonGameOverlay,
     ]
   );
 
@@ -4512,10 +5270,21 @@ export default function Page() {
       setCaseInsetRightPx(121);
       setCaseInsetBottomPx(136);
       setCaseInsetLeftPx(74);
+      setTvOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
+      setTvCoverScale({ ...DEFAULT_COVER_SCALE });
+      setTvCoverOffset({ ...DEFAULT_COVER_OFFSET });
       saveSetting("caseInsetTopPx", 156, "TV Insets", "TV Case Top Inset (px)");
       saveSetting("caseInsetRightPx", 121, "TV Insets", "TV Case Right Inset (px)");
       saveSetting("caseInsetBottomPx", 136, "TV Insets", "TV Case Bottom Inset (px)");
       saveSetting("caseInsetLeftPx", 74, "TV Insets", "TV Case Left Inset (px)");
+      saveSetting("tvOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "TV Overlay", "TV Overlay Width (%)");
+      saveSetting("tvOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "TV Overlay", "TV Overlay Height (%)");
+      saveSetting("tvOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "TV Overlay", "TV Overlay Top (%)");
+      saveSetting("tvOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "TV Overlay", "TV Overlay Left (%)");
+      saveSetting("tvCoverScaleX", DEFAULT_COVER_SCALE.x, "TV Cover", "TV Cover Scale X (%)");
+      saveSetting("tvCoverScaleY", DEFAULT_COVER_SCALE.y, "TV Cover", "TV Cover Scale Y (%)");
+      saveSetting("tvCoverOffsetX", DEFAULT_COVER_OFFSET.x, "TV Cover", "TV Cover Offset X (%)");
+      saveSetting("tvCoverOffsetY", DEFAULT_COVER_OFFSET.y, "TV Cover", "TV Cover Offset Y (%)");
       return;
     }
 
@@ -4524,10 +5293,21 @@ export default function Page() {
       setMovieInsetRightPx(100);
       setMovieInsetBottomPx(136);
       setMovieInsetLeftPx(120);
+      setMovieOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
+      setMovieCoverScale({ ...DEFAULT_COVER_SCALE });
+      setMovieCoverOffset({ ...DEFAULT_COVER_OFFSET });
       saveSetting("movieInsetTopPx", 156, "Movie Insets", "Movie Top Inset (px)");
       saveSetting("movieInsetRightPx", 100, "Movie Insets", "Movie Right Inset (px)");
       saveSetting("movieInsetBottomPx", 136, "Movie Insets", "Movie Bottom Inset (px)");
       saveSetting("movieInsetLeftPx", 120, "Movie Insets", "Movie Left Inset (px)");
+      saveSetting("movieOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "Movie Overlay", "Movie Overlay Width (%)");
+      saveSetting("movieOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "Movie Overlay", "Movie Overlay Height (%)");
+      saveSetting("movieOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "Movie Overlay", "Movie Overlay Top (%)");
+      saveSetting("movieOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "Movie Overlay", "Movie Overlay Left (%)");
+      saveSetting("movieCoverScaleX", DEFAULT_COVER_SCALE.x, "Movie Cover", "Movie Cover Scale X (%)");
+      saveSetting("movieCoverScaleY", DEFAULT_COVER_SCALE.y, "Movie Cover", "Movie Cover Scale Y (%)");
+      saveSetting("movieCoverOffsetX", DEFAULT_COVER_OFFSET.x, "Movie Cover", "Movie Cover Offset X (%)");
+      saveSetting("movieCoverOffsetY", DEFAULT_COVER_OFFSET.y, "Movie Cover", "Movie Cover Offset Y (%)");
       return;
     }
 
@@ -4536,10 +5316,21 @@ export default function Page() {
       setBookInsetRightPx(75);
       setBookInsetBottomPx(104);
       setBookInsetLeftPx(62);
+      setBookOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
+      setBookCoverScale({ ...DEFAULT_COVER_SCALE });
+      setBookCoverOffset({ ...DEFAULT_COVER_OFFSET });
       saveSetting("bookInsetTopPx", 99, "Book Insets", "Book Top Inset (px)");
       saveSetting("bookInsetRightPx", 75, "Book Insets", "Book Right Inset (px)");
       saveSetting("bookInsetBottomPx", 104, "Book Insets", "Book Bottom Inset (px)");
       saveSetting("bookInsetLeftPx", 62, "Book Insets", "Book Left Inset (px)");
+      saveSetting("bookOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "Book Overlay", "Book Overlay Width (%)");
+      saveSetting("bookOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "Book Overlay", "Book Overlay Height (%)");
+      saveSetting("bookOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "Book Overlay", "Book Overlay Top (%)");
+      saveSetting("bookOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "Book Overlay", "Book Overlay Left (%)");
+      saveSetting("bookCoverScaleX", DEFAULT_COVER_SCALE.x, "Book Cover", "Book Cover Scale X (%)");
+      saveSetting("bookCoverScaleY", DEFAULT_COVER_SCALE.y, "Book Cover", "Book Cover Scale Y (%)");
+      saveSetting("bookCoverOffsetX", DEFAULT_COVER_OFFSET.x, "Book Cover", "Book Cover Offset X (%)");
+      saveSetting("bookCoverOffsetY", DEFAULT_COVER_OFFSET.y, "Book Cover", "Book Cover Offset Y (%)");
       return;
     }
 
@@ -4642,11 +5433,7 @@ export default function Page() {
   const hasWishlistOwnership = useCallback((value?: string) => normalizeOwnership(value) === "wishlist", []);
   const hasOwnedOwnership = useCallback((value?: string) => normalizeOwnership(value) === "owned", []);
 
-  const isMovieWatched = useCallback((movie: Movie) => {
-    const watched = normalizeStatus(movie.watchStatus || movie.watched);
-    const watchedValues = new Set(["watched", "completed", "true", "yes", "1"]);
-    return watchedValues.has(watched);
-  }, [normalizeStatus]);
+  const isMovieWatched = useCallback((movie: Movie) => isMovieWatchedStatus(movie), []);
 
   const getStatusIndicator = useCallback((item: any): StatusIndicator | null => {
     const mediaType = getMediaType(item);
@@ -5079,41 +5866,73 @@ export default function Page() {
       return sorted as any[];
     }
 
-    // Wishlist: books and games only
+    // Wishlist: games only
     if (nav === "wishlist") {
-      const qb = indexedBooks.filter((b) => b.ownershipNorm === "wishlist");
-      const qg = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
+      const ordered =
+        sortField === MANUAL_SORT_FIELD
+          ? resolvedWishlistManualOrderKeys
+              .map((key) => wishlistItemsByKey.get(key))
+              .filter(Boolean) as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>
+          : applySorting(wishlistItems, sortField, sortOrder);
 
-      const queryFilteredBooks = q ? qb.filter((b) => b.titleLC.includes(q)) : qb;
-      const queryFilteredGames = q ? qg.filter((g) => g.titleLC.includes(q)) : qg;
+      const queryFiltered = q
+        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : ordered;
+      return queryFiltered as any[];
+    }
 
-      const combined = [
-        ...queryFilteredBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
-        ...queryFilteredGames.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
-      ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>;
-
-      const sorted = applySorting(combined, sortField, sortOrder);
+    // Wishlist (Books): books with ownership "Wishlist"
+    if (nav === "wishlist-books") {
+      const queryFiltered = q
+        ? wishlistBookItems.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : wishlistBookItems;
+      const sorted = applySorting(queryFiltered, sortField, sortOrder);
       return sorted as any[];
     }
 
-    // Watchlist: movies not watched + TV not completed/abandoned
-    if (nav === "watchlist") {
-      const qs = indexedShows.filter((s) => {
-        const status = s.watchStatusNorm;
-        return status !== "completed" && status !== "abandoned";
-      });
-      const qm = indexedMovies.filter((m) => !isMovieWatched(m.item));
+    // Play Next: games with status "Play Next"
+    if (nav === "play-next") {
+      const ordered =
+        sortField === MANUAL_SORT_FIELD
+          ? resolvedPlayNextManualOrderKeys
+              .map((key) => playNextItemsByKey.get(key))
+              .filter(Boolean) as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>
+          : applySorting(playNextItems, sortField, sortOrder);
 
-      const queryFilteredShows = q ? qs.filter((s) => s.titleLC.includes(q)) : qs;
-      const queryFilteredMovies = q ? qm.filter((m) => m.titleLC.includes(q)) : qm;
+      const queryFiltered = q
+        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : ordered;
+      return queryFiltered as any[];
+    }
 
-      const combined = [
-        ...queryFilteredShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
-        ...queryFilteredMovies.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
-      ] as Array<(Show & { __type: "tv" }) | (Movie & { __type: "movie" })>;
+    // Watchlist (Movies): unwatched movies
+    if (nav === "watchlist-movies") {
+      const ordered =
+        sortField === MANUAL_SORT_FIELD
+          ? resolvedWatchlistMovieManualOrderKeys
+              .map((key) => watchlistMovieItemsByKey.get(key))
+              .filter(Boolean) as Array<Movie & { __type: "movie" }>
+          : applySorting(watchlistMovieItems, sortField, sortOrder);
 
-      const sorted = applySorting(combined, sortField, sortOrder);
-      return sorted as any[];
+      const queryFiltered = q
+        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : ordered;
+      return queryFiltered as any[];
+    }
+
+    // Watchlist (TV): active shows (not completed/abandoned)
+    if (nav === "watchlist-tv") {
+      const ordered =
+        sortField === MANUAL_SORT_FIELD
+          ? resolvedWatchlistTvManualOrderKeys
+              .map((key) => watchlistTvItemsByKey.get(key))
+              .filter(Boolean) as Array<Show & { __type: "tv" }>
+          : applySorting(watchlistTvItems, sortField, sortOrder);
+
+      const queryFiltered = q
+        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : ordered;
+      return queryFiltered as any[];
     }
 
     const isCurrentToken = (value?: string) => {
@@ -5417,13 +6236,604 @@ export default function Page() {
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    deferredQuery, readingStatusFilter, selectedPreviousYear, seriesFilter, showFilter, sortField, sortOrder, tagFilter, watchFilter, wishlistFilter
+    deferredQuery, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedPlayNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, selectedPreviousYear, seriesFilter, showFilter, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
+
+  const persistBacklogSortSettings = useCallback(
+    (
+      view: "wishlist" | "play-next" | "watchlist-movies" | "watchlist-tv",
+      field: string,
+      order: "Asc" | "Desc"
+    ) => {
+      let sortFieldKey = WISHLIST_SORT_FIELD_SETTING_KEY;
+      let sortOrderKey = WISHLIST_SORT_ORDER_SETTING_KEY;
+      let descriptionPrefix = "Wishlist (Backlog)";
+
+      if (view === "play-next") {
+        sortFieldKey = PLAY_NEXT_SORT_FIELD_SETTING_KEY;
+        sortOrderKey = PLAY_NEXT_SORT_ORDER_SETTING_KEY;
+        descriptionPrefix = "Play Next (Backlog)";
+      } else if (view === "watchlist-movies") {
+        sortFieldKey = WATCHLIST_MOVIES_SORT_FIELD_SETTING_KEY;
+        sortOrderKey = WATCHLIST_MOVIES_SORT_ORDER_SETTING_KEY;
+        descriptionPrefix = "Watchlist (Movies)";
+      } else if (view === "watchlist-tv") {
+        sortFieldKey = WATCHLIST_TV_SORT_FIELD_SETTING_KEY;
+        sortOrderKey = WATCHLIST_TV_SORT_ORDER_SETTING_KEY;
+        descriptionPrefix = "Watchlist (TV)";
+      }
+
+      saveSetting(sortFieldKey, field, "View Sorting", `Sort field for ${descriptionPrefix} view`);
+      saveSetting(sortOrderKey, order, "View Sorting", `Sort order for ${descriptionPrefix} view`);
+    },
+    [saveSetting]
+  );
+
+  const handleSortFieldChange = useCallback(
+    (nextField: string) => {
+      setSortField(nextField);
+      const backlogView =
+        nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
+          ? nav
+          : null;
+      if (!backlogView) return;
+      persistBacklogSortSettings(backlogView, nextField, sortOrder);
+      if (nextField !== MANUAL_SORT_FIELD) return;
+
+      let manualOrderKeys: string[] = resolvedWishlistManualOrderKeys;
+      let manualOrderSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
+      let descriptionPrefix = "Wishlist (Backlog)";
+      if (backlogView === "play-next") {
+        manualOrderKeys = resolvedPlayNextManualOrderKeys;
+        manualOrderSettingKey = PLAY_NEXT_MANUAL_ORDER_SETTING_KEY;
+        descriptionPrefix = "Play Next (Backlog)";
+      } else if (backlogView === "watchlist-movies") {
+        manualOrderKeys = resolvedWatchlistMovieManualOrderKeys;
+        manualOrderSettingKey = WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY;
+        descriptionPrefix = "Watchlist (Movies)";
+      } else if (backlogView === "watchlist-tv") {
+        manualOrderKeys = resolvedWatchlistTvManualOrderKeys;
+        manualOrderSettingKey = WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY;
+        descriptionPrefix = "Watchlist (TV)";
+      }
+
+      saveSetting(
+        manualOrderSettingKey,
+        JSON.stringify(manualOrderKeys),
+        "View Sorting",
+        `Manual order keys for ${descriptionPrefix} view`
+      );
+    },
+    [
+      nav,
+      persistBacklogSortSettings,
+      resolvedPlayNextManualOrderKeys,
+      resolvedWatchlistMovieManualOrderKeys,
+      resolvedWatchlistTvManualOrderKeys,
+      resolvedWishlistManualOrderKeys,
+      saveSetting,
+      sortOrder,
+    ]
+  );
+
+  const handleSortOrderChange = useCallback(
+    (nextOrder: "Asc" | "Desc") => {
+      setSortOrder(nextOrder);
+      const backlogView =
+        nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
+          ? nav
+          : null;
+      if (!backlogView) return;
+      persistBacklogSortSettings(backlogView, sortField, nextOrder);
+    },
+    [nav, persistBacklogSortSettings, sortField]
+  );
+
+  const persistBacklogManualOrder = useCallback(
+    async (view: "wishlist" | "play-next" | "watchlist-movies" | "watchlist-tv", nextKeys: string[]) => {
+      const activeItemsByKey =
+        view === "play-next"
+          ? playNextItemsByKey
+          : view === "watchlist-movies"
+            ? watchlistMovieItemsByKey
+            : view === "watchlist-tv"
+              ? watchlistTvItemsByKey
+              : wishlistItemsByKey;
+      const normalizedKeys = nextKeys
+        .map((key) => safeStr(key))
+        .filter(Boolean)
+        .filter((key, index, arr) => arr.indexOf(key) === index)
+        .filter((key) => activeItemsByKey.has(key));
+
+      if (!normalizedKeys.length) return;
+
+      if (view === "play-next") {
+        setPlayNextManualOrderKeys(normalizedKeys);
+      } else if (view === "watchlist-movies") {
+        setWatchlistMoviesManualOrderKeys(normalizedKeys);
+      } else if (view === "watchlist-tv") {
+        setWatchlistTvManualOrderKeys(normalizedKeys);
+      } else {
+        setWishlistManualOrderKeys(normalizedKeys);
+      }
+      setSortField(MANUAL_SORT_FIELD);
+      setSortOrder("Asc");
+      persistBacklogSortSettings(view, MANUAL_SORT_FIELD, "Asc");
+
+      let manualOrderSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
+      let manualOrderDescription = "Manual order keys for Wishlist (Backlog) view";
+      if (view === "play-next") {
+        manualOrderSettingKey = PLAY_NEXT_MANUAL_ORDER_SETTING_KEY;
+        manualOrderDescription = "Manual order keys for Play Next (Backlog) view";
+      } else if (view === "watchlist-movies") {
+        manualOrderSettingKey = WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY;
+        manualOrderDescription = "Manual order keys for Watchlist (Movies) view";
+      } else if (view === "watchlist-tv") {
+        manualOrderSettingKey = WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY;
+        manualOrderDescription = "Manual order keys for Watchlist (TV) view";
+      }
+
+      saveSetting(
+        manualOrderSettingKey,
+        JSON.stringify(normalizedKeys),
+        "View Sorting",
+        manualOrderDescription
+      );
+
+      if (view !== "wishlist") return;
+
+      const orderByKey = new Map(normalizedKeys.map((key, index) => [key, String(index + 1)]));
+      setGameRows((prev) =>
+        prev.map((row) => {
+          const title = safeStr(row["Title"]);
+          if (!title) return row;
+          const rowPlatform = normalizePlatformToken(safeStr(row["Platform"]));
+          const rowKey = `game:${normalizeTitleKey(title)}:${rowPlatform || "default"}`;
+          const nextOrder = orderByKey.get(rowKey);
+          if (!nextOrder) return row;
+          if (safeStr(row["WishlistOrder"]) === nextOrder) return row;
+          return { ...row, WishlistOrder: nextOrder };
+        })
+      );
+
+      const orderedItems = normalizedKeys
+        .map((key) => wishlistItemsByKey.get(key))
+        .filter(Boolean) as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>;
+
+      const writes: Promise<void>[] = [];
+      orderedItems.forEach((item, index) => {
+        const orderValue = String(index + 1);
+        const itemTitle = safeStr(item.title);
+        if (item.__type !== "game" || !gamesWriteUrl) return;
+
+        const matchIgdbId = safeStr((item as any).igdbId);
+        if (matchIgdbId || itemTitle) {
+          writes.push(
+            postSheetWrite(
+              gamesWriteUrl,
+              {
+                action: "updateGame",
+                match: {
+                  igdbId: matchIgdbId,
+                  title: itemTitle,
+                },
+                updates: {
+                  WishlistOrder: orderValue,
+                },
+              },
+              `Failed to save wishlist order for game: ${itemTitle}`
+            )
+          );
+        }
+      });
+
+      if (!writes.length) return;
+
+      setSyncState("saving");
+      setSyncMsg("Saving wishlist order...");
+      const results = await Promise.allSettled(writes);
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+
+      if (failedCount > 0) {
+        setSyncState("error");
+        setSyncMsg(`Saved ${writes.length - failedCount}/${writes.length} wishlist order updates`);
+        return;
+      }
+
+      setSyncState("ok");
+      setSyncMsg("Wishlist order saved");
+      setLastSyncAt(Date.now());
+      setTimeout(() => {
+        setSyncMsg("Synced");
+      }, 1200);
+    },
+    [
+      gamesWriteUrl,
+      persistBacklogSortSettings,
+      playNextItemsByKey,
+      postSheetWrite,
+      saveSetting,
+      watchlistMovieItemsByKey,
+      watchlistTvItemsByKey,
+      wishlistItemsByKey,
+    ]
+  );
+
+  const wishlistVisibleKeys = useMemo(() => {
+    if (nav !== "wishlist" && nav !== "play-next" && nav !== "watchlist-movies" && nav !== "watchlist-tv") return [];
+    return shows.map((item) => getMediaItemKey(item));
+  }, [nav, shows]);
+
+  const wishlistDragDirection = useMemo(() => {
+    if (!wishlistPointerDrag?.active || !wishlistDragHoverKey) return 0;
+    const dragIndex = wishlistVisibleKeys.indexOf(wishlistPointerDrag.key);
+    const hoverIndex = wishlistVisibleKeys.indexOf(wishlistDragHoverKey);
+    if (dragIndex === -1 || hoverIndex === -1 || dragIndex === hoverIndex) return 0;
+    return hoverIndex > dragIndex ? 1 : -1;
+  }, [wishlistDragHoverKey, wishlistPointerDrag, wishlistVisibleKeys]);
+
+  const wishlistDragNeighborKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!wishlistPointerDrag?.active || !wishlistDragHoverKey) return keys;
+    const hoverIndex = wishlistVisibleKeys.indexOf(wishlistDragHoverKey);
+    if (hoverIndex === -1) return keys;
+    const prevKey = wishlistVisibleKeys[hoverIndex - 1];
+    const nextKey = wishlistVisibleKeys[hoverIndex + 1];
+    if (prevKey) keys.add(prevKey);
+    if (nextKey) keys.add(nextKey);
+    keys.delete(wishlistPointerDrag.key);
+    return keys;
+  }, [wishlistDragHoverKey, wishlistPointerDrag, wishlistVisibleKeys]);
+
+  const registerWishlistCaseNode = useCallback((key: string, node: HTMLDivElement | null) => {
+    if (node) {
+      wishlistCaseNodeMapRef.current.set(key, node);
+      return;
+    }
+    wishlistCaseNodeMapRef.current.delete(key);
+  }, []);
+
+  const activateWishlistPointerDrag = useCallback(
+    (itemKey: string) => {
+      setDraggingWishlistKey(itemKey);
+      suppressCaseClickRef.current = true;
+
+      if (sortField === MANUAL_SORT_FIELD) return;
+
+      const backlogView =
+        nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
+          ? nav
+          : null;
+      if (!backlogView) return;
+      const sourceItems =
+        backlogView === "play-next"
+          ? playNextItems
+          : backlogView === "watchlist-movies"
+            ? watchlistMovieItems
+            : backlogView === "watchlist-tv"
+              ? watchlistTvItems
+              : wishlistItems;
+      const sortedBacklogItems = applySorting(sourceItems as any[], sortField, sortOrder);
+      const nextKeys = sortedBacklogItems.map((item) => getMediaItemKey(item));
+      if (backlogView === "play-next") {
+        setPlayNextManualOrderKeys(nextKeys);
+      } else if (backlogView === "watchlist-movies") {
+        setWatchlistMoviesManualOrderKeys(nextKeys);
+      } else if (backlogView === "watchlist-tv") {
+        setWatchlistTvManualOrderKeys(nextKeys);
+      } else {
+        setWishlistManualOrderKeys(nextKeys);
+      }
+      setSortField(MANUAL_SORT_FIELD);
+      setSortOrder("Asc");
+      persistBacklogSortSettings(backlogView, MANUAL_SORT_FIELD, "Asc");
+    },
+    [
+      applySorting,
+      nav,
+      persistBacklogSortSettings,
+      playNextItems,
+      sortField,
+      sortOrder,
+      watchlistMovieItems,
+      watchlistTvItems,
+      wishlistItems,
+    ]
+  );
+
+  const reorderWishlistDuringPointerDrag = useCallback(
+    (dragKey: string, targetKey: string) => {
+      if (!dragKey || !targetKey || dragKey === targetKey) return;
+
+      const backlogView =
+        nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
+          ? nav
+          : null;
+      if (!backlogView) return;
+
+      const activeItemsByKey =
+        backlogView === "play-next"
+          ? playNextItemsByKey
+          : backlogView === "watchlist-movies"
+            ? watchlistMovieItemsByKey
+            : backlogView === "watchlist-tv"
+              ? watchlistTvItemsByKey
+              : wishlistItemsByKey;
+      const activeResolvedKeys =
+        backlogView === "play-next"
+          ? resolvedPlayNextManualOrderKeys
+          : backlogView === "watchlist-movies"
+            ? resolvedWatchlistMovieManualOrderKeys
+            : backlogView === "watchlist-tv"
+              ? resolvedWatchlistTvManualOrderKeys
+              : resolvedWishlistManualOrderKeys;
+      const applyReorder = (prev: string[]) => {
+        const base = prev.length
+          ? prev.filter((key) => activeItemsByKey.has(key))
+          : activeResolvedKeys;
+        const merged = [...base];
+        activeResolvedKeys.forEach((key) => {
+          if (!merged.includes(key) && activeItemsByKey.has(key)) {
+            merged.push(key);
+          }
+        });
+        const dragIndex = merged.indexOf(dragKey);
+        const targetIndex = merged.indexOf(targetKey);
+        if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) return merged;
+        const placement = targetIndex > dragIndex ? "after" : "before";
+        return moveKeyRelative(merged, dragKey, targetKey, placement);
+      };
+      if (backlogView === "play-next") {
+        setPlayNextManualOrderKeys(applyReorder);
+      } else if (backlogView === "watchlist-movies") {
+        setWatchlistMoviesManualOrderKeys(applyReorder);
+      } else if (backlogView === "watchlist-tv") {
+        setWatchlistTvManualOrderKeys(applyReorder);
+      } else {
+        setWishlistManualOrderKeys(applyReorder);
+      }
+    },
+    [
+      nav,
+      playNextItemsByKey,
+      resolvedPlayNextManualOrderKeys,
+      resolvedWatchlistMovieManualOrderKeys,
+      resolvedWatchlistTvManualOrderKeys,
+      resolvedWishlistManualOrderKeys,
+      watchlistMovieItemsByKey,
+      watchlistTvItemsByKey,
+      wishlistItemsByKey,
+    ]
+  );
+
+  const findWishlistTargetKey = useCallback(
+    (dragState: WishlistPointerDrag): string | null => {
+      const dragKey = dragState.key;
+      const dragLeft = dragState.pointerX - dragState.grabOffsetX;
+      const dragTop = dragState.pointerY - dragState.grabOffsetY;
+      const dragRight = dragLeft + dragState.dragWidth;
+      const dragBottom = dragTop + dragState.dragHeight;
+      const dragCenterX = dragLeft + dragState.dragWidth / 2;
+      const dragCenterY = dragTop + dragState.dragHeight / 2;
+
+      let overlapKey: string | null = null;
+      let overlapArea = 0;
+      let nearestKey: string | null = null;
+      let nearestScore = Number.POSITIVE_INFINITY;
+
+      wishlistVisibleKeys.forEach((key) => {
+        if (key === dragKey) return;
+        const node = wishlistCaseNodeMapRef.current.get(key);
+        if (!node) return;
+        const rect = node.getBoundingClientRect();
+
+        const overlapW = Math.max(0, Math.min(dragRight, rect.right) - Math.max(dragLeft, rect.left));
+        const overlapH = Math.max(0, Math.min(dragBottom, rect.bottom) - Math.max(dragTop, rect.top));
+        const nextOverlapArea = overlapW * overlapH;
+        if (nextOverlapArea > overlapArea) {
+          overlapArea = nextOverlapArea;
+          overlapKey = key;
+        }
+
+        const dx =
+          dragCenterX < rect.left ? rect.left - dragCenterX : dragCenterX > rect.right ? dragCenterX - rect.right : 0;
+        const dy =
+          dragCenterY < rect.top ? rect.top - dragCenterY : dragCenterY > rect.bottom ? dragCenterY - rect.bottom : 0;
+        const score = Math.hypot(dx, dy * 1.6);
+        if (score < nearestScore) {
+          nearestScore = score;
+          nearestKey = key;
+        }
+      });
+
+      if (overlapKey && overlapArea > 0) return overlapKey;
+      const snapDistance = Math.max(16, Math.min(44, dragState.dragWidth * 0.28));
+      if (!nearestKey || !Number.isFinite(nearestScore) || nearestScore > snapDistance) return null;
+      return nearestKey;
+    },
+    [wishlistVisibleKeys]
+  );
+
+  const scheduleWishlistDragVisual = useCallback((nextDrag: WishlistPointerDrag) => {
+    wishlistDragVisualPendingRef.current = nextDrag;
+    if (wishlistDragVisualRafRef.current !== null) return;
+    wishlistDragVisualRafRef.current = window.requestAnimationFrame(() => {
+      wishlistDragVisualRafRef.current = null;
+      const pending = wishlistDragVisualPendingRef.current;
+      if (!pending) return;
+      setWishlistPointerDrag(pending);
+    });
+  }, []);
+
+  const finishWishlistPointerDrag = useCallback(
+    (pointerId?: number) => {
+      const drag = wishlistPointerDragRef.current;
+      if (!drag) return;
+      if (pointerId !== undefined && drag.pointerId !== pointerId) return;
+
+      const draggedKey = drag.active ? drag.key : null;
+
+      wishlistPointerDragRef.current = null;
+      wishlistDragHoverTargetRef.current = null;
+      wishlistDragVisualPendingRef.current = null;
+      setWishlistDragHoverKey(null);
+      if (wishlistDragVisualRafRef.current !== null) {
+        window.cancelAnimationFrame(wishlistDragVisualRafRef.current);
+        wishlistDragVisualRafRef.current = null;
+      }
+      setWishlistPointerDrag(null);
+      setDraggingWishlistKey(null);
+
+      const backlogView =
+        nav === "play-next" || nav === "wishlist" || nav === "watchlist-movies" || nav === "watchlist-tv"
+          ? nav
+          : null;
+      if (draggedKey && backlogView) {
+        const finalOrder =
+          backlogView === "play-next"
+            ? (playNextManualOrderKeys.length ? playNextManualOrderKeys : resolvedPlayNextManualOrderKeys)
+            : backlogView === "watchlist-movies"
+              ? (watchlistMoviesManualOrderKeys.length ? watchlistMoviesManualOrderKeys : resolvedWatchlistMovieManualOrderKeys)
+              : backlogView === "watchlist-tv"
+                ? (watchlistTvManualOrderKeys.length ? watchlistTvManualOrderKeys : resolvedWatchlistTvManualOrderKeys)
+                : (wishlistManualOrderKeys.length ? wishlistManualOrderKeys : resolvedWishlistManualOrderKeys);
+        void persistBacklogManualOrder(backlogView, finalOrder);
+      }
+
+      if (drag.active) {
+        setTimeout(() => {
+          suppressCaseClickRef.current = false;
+        }, 0);
+      }
+    },
+    [
+      nav,
+      persistBacklogManualOrder,
+      playNextManualOrderKeys,
+      resolvedPlayNextManualOrderKeys,
+      resolvedWatchlistMovieManualOrderKeys,
+      resolvedWatchlistTvManualOrderKeys,
+      resolvedWishlistManualOrderKeys,
+      watchlistMoviesManualOrderKeys,
+      watchlistTvManualOrderKeys,
+      wishlistManualOrderKeys,
+    ]
+  );
+
+  const handleWishlistCasePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>, itemKey: string) => {
+      if (nav !== "wishlist" && nav !== "play-next" && nav !== "watchlist-movies" && nav !== "watchlist-tv") return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (wishlistPointerDragRef.current) {
+        finishWishlistPointerDrag();
+      }
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      const nextDrag: WishlistPointerDrag = {
+        pointerId: event.pointerId,
+        key: itemKey,
+        startX: event.clientX,
+        startY: event.clientY,
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        grabOffsetX: event.clientX - rect.left,
+        grabOffsetY: event.clientY - rect.top,
+        dragWidth: rect.width,
+        dragHeight: rect.height,
+        momentumX: 0,
+        momentumY: 0,
+        active: false,
+      };
+
+      wishlistPointerDragRef.current = nextDrag;
+      wishlistDragHoverTargetRef.current = null;
+      setWishlistDragHoverKey(null);
+      setWishlistPointerDrag(nextDrag);
+      event.preventDefault();
+    },
+    [finishWishlistPointerDrag, nav]
+  );
+
+  const handleWishlistGlobalPointerMove = useCallback(
+    (event: PointerEvent) => {
+      const currentDrag = wishlistPointerDragRef.current;
+      if (!currentDrag || currentDrag.pointerId !== event.pointerId) return;
+
+      const distance = Math.hypot(event.clientX - currentDrag.startX, event.clientY - currentDrag.startY);
+      const active = currentDrag.active || distance >= 2;
+
+      const nextDrag: WishlistPointerDrag = {
+        ...currentDrag,
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        momentumX: 0,
+        momentumY: 0,
+        active,
+      };
+
+      wishlistPointerDragRef.current = nextDrag;
+      if (!active) return;
+
+      scheduleWishlistDragVisual(nextDrag);
+
+      event.preventDefault();
+
+      if (!currentDrag.active) {
+        activateWishlistPointerDrag(currentDrag.key);
+      }
+
+      const targetKey = findWishlistTargetKey(nextDrag);
+      if (!targetKey) {
+        if (wishlistDragHoverTargetRef.current !== null) {
+          wishlistDragHoverTargetRef.current = null;
+          setWishlistDragHoverKey(null);
+        }
+        return;
+      }
+      if (targetKey === wishlistDragHoverTargetRef.current) return;
+
+      wishlistDragHoverTargetRef.current = targetKey;
+      setWishlistDragHoverKey(targetKey);
+      reorderWishlistDuringPointerDrag(currentDrag.key, targetKey);
+    },
+    [activateWishlistPointerDrag, findWishlistTargetKey, reorderWishlistDuringPointerDrag, scheduleWishlistDragVisual]
+  );
+
+  const handleWishlistGlobalPointerEnd = useCallback(
+    (event: PointerEvent) => {
+      const currentDrag = wishlistPointerDragRef.current;
+      if (!currentDrag || currentDrag.pointerId !== event.pointerId) return;
+      finishWishlistPointerDrag(event.pointerId);
+    },
+    [finishWishlistPointerDrag]
+  );
+
+  useEffect(() => {
+    window.addEventListener("pointermove", handleWishlistGlobalPointerMove, { passive: false });
+    window.addEventListener("pointerup", handleWishlistGlobalPointerEnd);
+    window.addEventListener("pointercancel", handleWishlistGlobalPointerEnd);
+    return () => {
+      window.removeEventListener("pointermove", handleWishlistGlobalPointerMove);
+      window.removeEventListener("pointerup", handleWishlistGlobalPointerEnd);
+      window.removeEventListener("pointercancel", handleWishlistGlobalPointerEnd);
+    };
+  }, [handleWishlistGlobalPointerEnd, handleWishlistGlobalPointerMove]);
+
+  useEffect(() => {
+    return () => {
+      if (wishlistDragVisualRafRef.current !== null) {
+        window.cancelAnimationFrame(wishlistDragVisualRafRef.current);
+      }
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
+    const playNextGames = allGames.filter((g) =>
+      normalizeStatus(g.status || g.playStatus || g.gameStatus) === "play next"
+    ).length;
     const wishlistGames = allGames.filter((g) => hasWishlistOwnership(g.ownership)).length;
-    const watchlistShows = allShows.filter((s) => {
+    const watchlistTv = allShows.filter((s) => {
       const status = normalizeStatus(s.watchStatus);
       return status !== "completed" && status !== "abandoned";
     }).length;
@@ -5434,13 +6844,23 @@ export default function Page() {
       tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "backlog").length,
       books: allBooks.filter((b) => hasOwnedOwnership(b.ownership)).length,
       games: allGames.filter((g) => hasOwnedOwnership(g.ownership)).length,
-      wishlist: wishlistBooks + wishlistGames,
-      watchlist: watchlistShows + watchlistMovies,
+      playNext: playNextGames,
+      wishlistBooks,
+      wishlist: wishlistGames,
+      watchlistMovies,
+      watchlistTv,
     };
   }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
   const postersPerShelf = useMemo(() => {
-    const size = nav === "books" ? posterSizeBooks : nav === "movies" ? posterSizeMovies : nav === "games" ? posterSizeGames : posterSizeTv;
+    const size =
+      nav === "books"
+        ? posterSizeBooks
+        : nav === "movies"
+          ? posterSizeMovies
+          : nav === "games" || nav === "play-next"
+            ? posterSizeGames
+            : posterSizeTv;
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
   }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
@@ -5629,7 +7049,7 @@ export default function Page() {
           style={{
             position: "sticky",
             top: topSafeInset,
-            zIndex: settingsPopupOpen ? 6000 : 1400,
+            zIndex: settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 1 : 1400,
             alignSelf: "start",
             height: "100vh",
             minHeight: "100vh",
@@ -5831,7 +7251,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-home.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("home", "/icon-home.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "home")} title={uploadingSidebarIconKey === "home" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Home
                   </span>
@@ -5868,7 +7288,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-books.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("books", "/icon-books.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "books")} title={uploadingSidebarIconKey === "books" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Books
                   </span>
@@ -6239,7 +7659,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-movies.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("movies", "/icon-movies.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "movies")} title={uploadingSidebarIconKey === "movies" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Movies
                   </span>
@@ -6428,7 +7848,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-tv.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("tv", "/icon-tv.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "tv")} title={uploadingSidebarIconKey === "tv" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     TV Shows
                   </span>
@@ -6683,7 +8103,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-games.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("games", "/icon-games.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "games")} title={uploadingSidebarIconKey === "games" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Games
                   </span>
@@ -7083,6 +8503,85 @@ export default function Page() {
                   </div>
                 ) : null}
 
+                <div
+                  style={{
+                    marginTop: 16,
+                    marginBottom: 6,
+                    fontSize: sidebarHeaderFontSize,
+                    fontWeight: sidebarHeaderFontWeight,
+                    letterSpacing: "0.04em",
+                    color: currentTheme.primaryColor,
+                    fontFamily: "Nunito, sans-serif",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>BACKLOG</span>
+                  <span />
+                </div>
+
+                <button
+                  onClick={() => {
+                    setNav("play-next");
+                    setOpenSection((s) => (s === "play-next" ? null : "play-next"));
+                  }}
+                  className={`sideItem ${nav === "play-next" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "play-next" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "play-next" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src={getSidebarIconSrc("play-next", "/icon-other.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "play-next")} title={uploadingSidebarIconKey === "play-next" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
+                    </span>
+                    Play Next
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 38,
+                        height: 18,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "play-next" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(92, 118, 164, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.playNext}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+
                 <button
                   onClick={() => {
                     setNav("wishlist");
@@ -7114,9 +8613,9 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-wishlist.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("wishlist-games", "/icon-wishlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-games")} title={uploadingSidebarIconKey === "wishlist-games" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
-                    Wishlist
+                    Wishlist (Games)
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
@@ -7146,10 +8645,10 @@ export default function Page() {
 
                 <button
                   onClick={() => {
-                    setNav("watchlist");
-                    setOpenSection((s) => (s === "watchlist" ? null : "watchlist"));
+                    setNav("wishlist-books");
+                    setOpenSection((s) => (s === "wishlist-books" ? null : "wishlist-books"));
                   }}
-                  className={`sideItem ${nav === "watchlist" ? "active" : ""}`}
+                  className={`sideItem ${nav === "wishlist-books" ? "active" : ""}`}
                   style={{
                     width: "100%",
                     textAlign: "left",
@@ -7160,14 +8659,14 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist-books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
                         width: 18,
                         height: 14,
                         borderRadius: 4,
-                        background: nav === "watchlist" ? "rgba(0,0,0,0.05)" : "transparent",
+                        background: nav === "wishlist-books" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -7175,9 +8674,9 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-watchlist.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("wishlist-books", "/icon-other.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-books")} title={uploadingSidebarIconKey === "wishlist-books" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
-                    Watchlist
+                    Wishlist (Books)
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
@@ -7189,7 +8688,68 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
-                        fontWeight: nav === "watchlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        fontWeight: nav === "wishlist-books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(112, 88, 174, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.wishlistBooks}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setNav("watchlist-movies");
+                    setOpenSection((s) => (s === "watchlist-movies" ? null : "watchlist-movies"));
+                  }}
+                  className={`sideItem ${nav === "watchlist-movies" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist-movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "watchlist-movies" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src={getSidebarIconSrc("watchlist-movies", "/icon-watchlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "watchlist-movies")} title={uploadingSidebarIconKey === "watchlist-movies" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
+                    </span>
+                    Watchlist (Movies)
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 38,
+                        height: 18,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "watchlist-movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
                           sidebarTheme === "darkBlue"
                             ? "rgba(56, 142, 173, 0.95)"
@@ -7199,7 +8759,68 @@ export default function Page() {
                         color: "#fff",
                       }}
                     >
-                      {stats.watchlist}
+                      {stats.watchlistMovies}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setNav("watchlist-tv");
+                    setOpenSection((s) => (s === "watchlist-tv" ? null : "watchlist-tv"));
+                  }}
+                  className={`sideItem ${nav === "watchlist-tv" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist-tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "watchlist-tv" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src={getSidebarIconSrc("watchlist-tv", "/icon-watchlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "watchlist-tv")} title={uploadingSidebarIconKey === "watchlist-tv" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
+                    </span>
+                    Watchlist (TV)
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 38,
+                        height: 18,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "watchlist-tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(56, 142, 173, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.watchlistTv}
                     </span>
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
@@ -7266,7 +8887,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-year.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("year-this", "/icon-year.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "year-this")} title={uploadingSidebarIconKey === "year-this" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     This Year
                   </span>
@@ -7300,7 +8921,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-current.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("current", "/icon-current.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "current")} title={uploadingSidebarIconKey === "current" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Current
                   </span>
@@ -7334,7 +8955,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-completed.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("completed", "/icon-completed.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "completed")} title={uploadingSidebarIconKey === "completed" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Completed
                   </span>
@@ -7368,7 +8989,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-abaonded.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("abandoned", "/icon-abaonded.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "abandoned")} title={uploadingSidebarIconKey === "abandoned" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Abandoned
                   </span>
@@ -7404,7 +9025,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-other.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("other", "/icon-other.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "other")} title={uploadingSidebarIconKey === "other" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Other
                   </span>
@@ -7538,7 +9159,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-statistics.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("statistics", "/icon-statistics.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "statistics")} title={uploadingSidebarIconKey === "statistics" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Statistics
                   </span>
@@ -7575,7 +9196,7 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src="/icon-theme.png" alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                      <img src={getSidebarIconSrc("themes", "/icon-theme.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "themes")} title={uploadingSidebarIconKey === "themes" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Themes
                   </span>
@@ -8024,16 +9645,13 @@ export default function Page() {
                           onChange={(e) => setQuickInsetMode(e.target.value as QuickInsetMode)}
                           style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
                         >
-                          {(quickTargetType === "game"
-                            ? [
-                                { value: "insetPosition", label: "Inset Position" },
-                                { value: "overlayPosition", label: "Overlay Position" },
-                                { value: "overlayScale", label: "Overlay Scale" },
-                                { value: "coverPosition", label: "Cover Position" },
-                                { value: "coverScale", label: "Cover Scale" },
-                              ]
-                            : [{ value: "insetPosition", label: "Inset Position" }]
-                          ).map((option) => (
+                          {[
+                            { value: "insetPosition", label: "Inset Position" },
+                            { value: "overlayPosition", label: "Overlay Position" },
+                            { value: "overlayScale", label: "Overlay Scale" },
+                            { value: "coverPosition", label: "Cover Position" },
+                            { value: "coverScale", label: "Cover Scale" },
+                          ].map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
                         </select>
@@ -8116,7 +9734,7 @@ export default function Page() {
                     <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 10, alignItems: "center" }}>
                       <div
                         onMouseDown={(e) => {
-                          if (quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          if (quickInsetMode !== "overlayPosition") return;
                           quickOverlayDragRef.current = {
                             x: e.clientX,
                             y: e.clientY,
@@ -8126,12 +9744,19 @@ export default function Page() {
                         }}
                         onMouseMove={(e) => {
                           const drag = quickOverlayDragRef.current;
-                          if (!drag || quickTargetType !== "game" || quickInsetMode !== "overlayPosition") return;
+                          if (!drag || quickInsetMode !== "overlayPosition") return;
                           const rect = e.currentTarget.getBoundingClientRect();
                           const dxPct = ((e.clientX - drag.x) / rect.width) * 100;
                           const dyPct = ((e.clientY - drag.y) / rect.height) * 100;
-                          updatePlatformOverlay(quickTargetPlatform, "left", Number((drag.left + dxPct).toFixed(2)));
-                          updatePlatformOverlay(quickTargetPlatform, "top", Number((drag.top + dyPct).toFixed(2)));
+                          const nextLeft = Number((drag.left + dxPct).toFixed(2));
+                          const nextTop = Number((drag.top + dyPct).toFixed(2));
+                          if (quickTargetType === "game") {
+                            updatePlatformOverlay(quickTargetPlatform, "left", nextLeft);
+                            updatePlatformOverlay(quickTargetPlatform, "top", nextTop);
+                          } else {
+                            updateNonGameOverlay(quickTargetType, "left", nextLeft);
+                            updateNonGameOverlay(quickTargetType, "top", nextTop);
+                          }
                         }}
                         onMouseUp={() => {
                           quickOverlayDragRef.current = null;
@@ -8147,7 +9772,7 @@ export default function Page() {
                           border: "1px solid rgba(0,0,0,0.2)",
                           background: "linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.03) 100%)",
                           overflow: "hidden",
-                          cursor: quickTargetType === "game" && quickInsetMode === "overlayPosition" ? "move" : "default",
+                          cursor: quickInsetMode === "overlayPosition" ? "move" : "default",
                         }}
                       >
                         <div
@@ -8162,21 +9787,19 @@ export default function Page() {
                             boxSizing: "border-box",
                           }}
                         />
-                        {quickTargetType === "game" ? (
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: `${50 + quickInsetSnapshot.overlay.top}%`,
-                              left: `${50 + quickInsetSnapshot.overlay.left}%`,
-                              width: `${quickInsetSnapshot.overlay.width}%`,
-                              height: `${quickInsetSnapshot.overlay.height}%`,
-                              transform: "translate(-50%, -50%)",
-                              border: "2px solid rgba(255, 189, 76, 0.95)",
-                              background: "rgba(255, 189, 76, 0.14)",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                        ) : null}
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: `${50 + quickInsetSnapshot.overlay.top}%`,
+                            left: `${50 + quickInsetSnapshot.overlay.left}%`,
+                            width: `${quickInsetSnapshot.overlay.width}%`,
+                            height: `${quickInsetSnapshot.overlay.height}%`,
+                            transform: "translate(-50%, -50%)",
+                            border: "2px solid rgba(255, 189, 76, 0.95)",
+                            background: "rgba(255, 189, 76, 0.14)",
+                            boxSizing: "border-box",
+                          }}
+                        />
                       </div>
 
                       <div style={{ display: "grid", gridTemplateColumns: "46px 46px 46px", gridTemplateRows: "46px 46px 46px", gap: 6, justifyContent: "center" }}>
@@ -8194,9 +9817,7 @@ export default function Page() {
 
                     <div style={{ fontSize: 11, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
                       Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
-                      {quickTargetType === "game" ? (
-                        <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
-                      ) : null}
+                      <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -8684,16 +10305,16 @@ export default function Page() {
                   onClick={() => setFaqPopupOpen(true)}
                   style={{
                     width: "100%",
-                    textAlign: "left",
+                    textAlign: "center",
                     border: "1px solid rgba(38, 62, 91, 0.28)",
                     background: "linear-gradient(180deg, rgba(84, 118, 160, 0.92) 0%, rgba(58, 89, 126, 0.92) 100%)",
                     padding: "10px 12px",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between",
+                    justifyContent: "center",
                     fontSize: 11,
-                    fontWeight: 700,
+                    fontWeight: 600,
                     color: "#fff",
                     marginTop: 8,
                     borderRadius: 8,
@@ -8701,7 +10322,6 @@ export default function Page() {
                   }}
                 >
                   <span>CHRIS&apos; DELICIOUS LIBRARY FAQ</span>
-                  <span>Open</span>
                 </button>
 
                 {/* Save All Settings Button */}
@@ -9038,7 +10658,10 @@ export default function Page() {
           {sortPopupOpen || faqPopupOpen ? (
             <button
               aria-label="Close popup"
-              onClick={() => {
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
                 setFaqPopupOpen(false);
                 setShowVersionNotes(false);
@@ -9046,7 +10669,7 @@ export default function Page() {
               style={{
                 position: "fixed",
                 inset: 0,
-                zIndex: 4000,
+                zIndex: POPUP_OVERLAY_Z_INDEX,
                 border: "none",
                 margin: 0,
                 padding: 0,
@@ -9063,7 +10686,7 @@ export default function Page() {
                 top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                 right: 74,
                 width: "min(320px, calc(100vw - 40px))",
-                zIndex: 5000,
+                zIndex: POPUP_PANEL_Z_INDEX,
                 padding: 14,
                 display: "flex",
                 flexDirection: "column",
@@ -9105,7 +10728,7 @@ export default function Page() {
                 SORT BY
                 <select
                   value={sortField}
-                  onChange={(e) => setSortField(e.target.value)}
+                  onChange={(e) => handleSortFieldChange(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "9px 10px",
@@ -9154,10 +10777,11 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "wishlist" || nav === "watchlist" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "year-previous") && (
+                  {(nav === "home" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "year-previous") && (
                     <>
                       <option value="Title">Title</option>
                       <option value="ReleaseDate">Release Date</option>
+                      {nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
                     </>
                   )}
                 </select>
@@ -9166,7 +10790,8 @@ export default function Page() {
                 ORDER
                 <select
                   value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value as "Asc" | "Desc")}
+                  onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
+                  disabled={(nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv") && sortField === MANUAL_SORT_FIELD}
                   style={{
                     width: "100%",
                     padding: "9px 10px",
@@ -9192,7 +10817,7 @@ export default function Page() {
               style={{
                 position: "fixed",
                 inset: "calc(env(safe-area-inset-top, 0px) + 14px) 14px 14px 14px",
-                zIndex: 6500,
+                zIndex: POPUP_FAQ_Z_INDEX,
                 background: "linear-gradient(180deg, rgba(248, 244, 236, 0.99) 0%, rgba(241, 234, 222, 0.99) 100%)",
                 border: "1px solid rgba(58, 37, 24, 0.4)",
                 borderRadius: 16,
@@ -9571,11 +11196,7 @@ export default function Page() {
                     </button>
                     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
-                        onClick={() => {
-                          setSortPopupOpen(false);
-                          setShowVersionNotes(false);
-                          setSettingsPopupOpen((prev) => !prev);
-                        }}
+                        onClick={openSettingsPopup}
                         title="Open settings"
                         aria-label="Open settings"
                         style={{
@@ -9676,7 +11297,7 @@ export default function Page() {
                         insetLeftVal = caseInsetLeftPx;
                       }
                       
-                      // Get overlay settings and cover scale for games
+                      // Get overlay and cover transform settings for the active media type
                       let overlayWidth = 100;
                       let overlayHeight = 100;
                       let overlayTop = 0;
@@ -9701,6 +11322,30 @@ export default function Page() {
                         const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
                         coverOffsetX = platformCoverOffsetSettings.x;
                         coverOffsetY = platformCoverOffsetSettings.y;
+                      } else if (isBook) {
+                        overlayWidth = bookOverlaySettings.width;
+                        overlayHeight = bookOverlaySettings.height;
+                        overlayTop = bookOverlaySettings.top;
+                        overlayLeft = bookOverlaySettings.left;
+                        coverScale = bookCoverScale;
+                        coverOffsetX = bookCoverOffset.x;
+                        coverOffsetY = bookCoverOffset.y;
+                      } else if (isMovie) {
+                        overlayWidth = movieOverlaySettings.width;
+                        overlayHeight = movieOverlaySettings.height;
+                        overlayTop = movieOverlaySettings.top;
+                        overlayLeft = movieOverlaySettings.left;
+                        coverScale = movieCoverScale;
+                        coverOffsetX = movieCoverOffset.x;
+                        coverOffsetY = movieCoverOffset.y;
+                      } else {
+                        overlayWidth = tvOverlaySettings.width;
+                        overlayHeight = tvOverlaySettings.height;
+                        overlayTop = tvOverlaySettings.top;
+                        overlayLeft = tvOverlaySettings.left;
+                        coverScale = tvCoverScale;
+                        coverOffsetX = tvCoverOffset.x;
+                        coverOffsetY = tvCoverOffset.y;
                       }
                       const gameCoverFit = getGameCoverFit(gamePlatform);
 
@@ -9734,10 +11379,10 @@ export default function Page() {
                         insetTop + (insetHeightPx - coverVisualHeightPx) / 2 + coverTranslateYPx;
                       const selectedCoverUrl = getDisplayCoverUrl(show);
                       const statusIndicator = getStatusIndicator(show);
-                      const statusRegionLeftPx = isGame ? coverVisualLeftPx : insetLeft;
-                      const statusRegionTopPx = isGame ? coverVisualTopPx : insetTop;
-                      const statusRegionWidthPx = isGame ? coverVisualWidthPx : insetWidthPx;
-                      const statusRegionHeightPx = isGame ? coverVisualHeightPx : insetHeightPx;
+                      const statusRegionLeftPx = coverVisualLeftPx;
+                      const statusRegionTopPx = coverVisualTopPx;
+                      const statusRegionWidthPx = coverVisualWidthPx;
+                      const statusRegionHeightPx = coverVisualHeightPx;
                       const statusDotBaseSizePx = Math.round(
                         Math.max(
                           STATUS_DOT_MIN_SIZE,
@@ -9762,21 +11407,78 @@ export default function Page() {
                         insetTop,
                         Math.min(caseHeight - insetBottom - statusDotSizePx, statusDotTopPx)
                       );
+                      const itemKey = getMediaItemKey(show);
+                      const isWishlistCase =
+                        nav === "wishlist" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv";
+                      const isWishlistPointerDragging = Boolean(
+                        isWishlistCase &&
+                        wishlistPointerDrag?.active &&
+                        wishlistPointerDrag.key === itemKey
+                      );
+                      const wishlistDragState = isWishlistPointerDragging ? wishlistPointerDrag : null;
+                      const dragLeft = wishlistDragState
+                        ? wishlistDragState.pointerX - wishlistDragState.grabOffsetX
+                        : x;
+                      const dragTop = wishlistDragState
+                        ? wishlistDragState.pointerY - wishlistDragState.grabOffsetY
+                        : undefined;
+                      const dragShakeDeg = wishlistDragState
+                        ? 0
+                        : 0;
+                      const isWishlistDragActive = Boolean(isWishlistCase && wishlistPointerDrag?.active);
+                      const isDragHoverTarget = Boolean(
+                        isWishlistDragActive && wishlistDragHoverKey === itemKey && !isWishlistPointerDragging
+                      );
+                      const isDragHoverNeighbor = Boolean(
+                        isWishlistDragActive && wishlistDragNeighborKeys.has(itemKey) && !isWishlistPointerDragging
+                      );
+                      const hoverPushX =
+                        wishlistDragDirection === 0
+                          ? 0
+                          : isDragHoverTarget
+                            ? wishlistDragDirection * 1.8
+                            : isDragHoverNeighbor
+                              ? wishlistDragDirection * 0.8
+                              : 0;
+                      const hoverPushY = isDragHoverTarget ? -1.2 : isDragHoverNeighbor ? -0.6 : 0;
+                      const dragPushX = wishlistDragState ? 0 : hoverPushX;
+                      const dragPushY = wishlistDragState ? 0 : hoverPushY;
+                      const dragScale = wishlistDragState ? 1 : isDragHoverTarget ? 1.008 : isDragHoverNeighbor ? 1.003 : 1;
 
                       return (
                         <div
-                          key={`${show.tmdbId ?? show.title}-${i}`}
+                          key={isWishlistCase ? itemKey : `${show.tmdbId ?? show.title}-${i}`}
                           title={show.title}
                           className="case"
+                          ref={(node) => {
+                            registerWishlistCaseNode(itemKey, isWishlistCase ? node : null);
+                          }}
                           style={{
-                            position: "absolute",
-                            left: x,
-                            bottom: LIP_FROM_BOTTOM,
+                            position: isWishlistPointerDragging ? "fixed" : "absolute",
+                            left: dragLeft,
+                            top: isWishlistPointerDragging ? dragTop : undefined,
+                            bottom: isWishlistPointerDragging ? undefined : LIP_FROM_BOTTOM,
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "hidden",
-                          }}
+                            cursor: isWishlistCase ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
+                            opacity: isWishlistPointerDragging ? 0.94 : 1,
+                            zIndex: isWishlistCase ? (isWishlistPointerDragging ? 60 : draggingWishlistKey ? 2 : undefined) : undefined,
+                            transition: isWishlistCase
+                              ? isWishlistPointerDragging
+                                ? "opacity 70ms ease"
+                                : "left 118ms cubic-bezier(0.22, 0.76, 0.2, 1), opacity 90ms ease, transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1)"
+                              : undefined,
+                            touchAction: isWishlistCase ? "none" : undefined,
+                            "--dragShakeDeg": `${dragShakeDeg.toFixed(2)}deg`,
+                            "--dragPushX": `${dragPushX.toFixed(2)}px`,
+                            "--dragPushY": `${dragPushY.toFixed(2)}px`,
+                            "--dragScale": dragScale.toFixed(3),
+                          } as CSSProperties}
+                          draggable={false}
+                          onPointerDown={isWishlistCase ? (event) => handleWishlistCasePointerDown(event, itemKey) : undefined}
                           onClick={() => {
+                            if (suppressCaseClickRef.current) return;
                             setModalItem(buildItemWithCoverSelection(show, coverOverrides));
                             setModalOpen(true);
                           }}
@@ -9935,9 +11637,11 @@ export default function Page() {
                                   right: insetRight,
                                   bottom: insetBottom,
                                   left: insetLeft,
-                                  overflow: "hidden",
+                                  // Allow cover translation/scale to move beyond raw inset bounds so it can
+                                  // align with resized/repositioned overlays without hard clipping at inset edge.
+                                  overflow: "visible",
                                   borderRadius: 0,
-                                  background: "rgba(255,255,255,0.12)",
+                                  background: "transparent",
                                 }}
                               >
                                 {showInsetGuide ? (
@@ -9964,7 +11668,10 @@ export default function Page() {
                                       width: "100%",
                                       height: "100%",
                                       objectFit: "cover",
+                                      objectPosition: "center",
                                       display: "block",
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
                                     }}
                                     onError={e => {
                                       const itemKey = getMediaItemKey(show);
@@ -10021,6 +11728,8 @@ export default function Page() {
                                       zIndex: 2,
                                       background:
                                         "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
+                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transformOrigin: "center",
                                     }}
                                   />
                                 ) : null}
@@ -10028,29 +11737,38 @@ export default function Page() {
                               </div>
 
                               {/* Case frame overlay */}
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={nonGameOverlaySrc}
-                                onError={(e) => {
-                                  const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
-                                  if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
-                                    e.currentTarget.dataset.fallbackTried = "1";
-                                    e.currentTarget.src = nonGameOverlayExpectedSrc;
-                                  }
-                                }}
-                                alt=""
+                              <div
                                 style={{
                                   position: "absolute",
-                                  top: 0,
-                                  left: 0,
+                                  top: `${50 + overlayTop}%`,
+                                  left: `${50 + overlayLeft}%`,
                                   width: "100%",
                                   height: "100%",
-                                  objectFit: "fill",
+                                  transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
                                   pointerEvents: "none",
-                                  userSelect: "none",
                                 }}
-                                draggable={false}
-                              />
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={nonGameOverlaySrc}
+                                  onError={(e) => {
+                                    const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                    if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
+                                      e.currentTarget.dataset.fallbackTried = "1";
+                                      e.currentTarget.src = nonGameOverlayExpectedSrc;
+                                    }
+                                  }}
+                                  alt=""
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    objectFit: "fill",
+                                    pointerEvents: "none",
+                                    userSelect: "none",
+                                  }}
+                                  draggable={false}
+                                />
+                              </div>
                             </>
                           )}
 
@@ -10135,6 +11853,14 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      <input
+        ref={sidebarIconFileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleSidebarIconFileChange}
+      />
 
       {/* MediaModal for cover/info popup - overlays app */}
       <AddItemModal
@@ -10258,8 +11984,8 @@ export default function Page() {
           font-weight: 700;
         }
         .case {
-          transition: transform 60ms ease;
-          transform: perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg));
+          transition: transform 70ms ease, filter 140ms ease;
+          transform: translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
           transform-style: preserve-3d;
           filter: drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34));
         }
