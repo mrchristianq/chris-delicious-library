@@ -695,7 +695,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const releaseDate = parseDateValue(movie.releaseDate);
       const watchDate = parseDateValue(movie.watchDate);
       const activityDate = watchDate || releaseDate;
-      const rating = parseRatingValue(movie.myRating, "five");
+      const rating = parseRatingValue(movie.myRating, "ten");
       const externalRating = parseRatingValue(movie.tmdbRating);
       const genres = splitList(movie.genres);
       const tags = [...splitList(movie.tag), ...splitList(movie.tags)];
@@ -933,7 +933,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
   const monthlyWindowMonths = 12;
 
   const monthlySeries = useMemo<MonthlyPoint[]>(() => {
-    const datedItems = filteredItems.filter((item) => item.activityDate);
+    const completedItems = filteredItems.filter((item) => item.completionDate);
     const anchor = new Date();
     const anchorYear = anchor.getUTCFullYear();
     const anchorMonth = anchor.getUTCMonth();
@@ -953,9 +953,9 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
     const byKey = new Map(timeline.map((point) => [point.key, point]));
 
-    datedItems.forEach((item) => {
-      if (!item.activityDate) return;
-      const key = toMonthKey(item.activityDate);
+    completedItems.forEach((item) => {
+      if (!item.completionDate) return;
+      const key = toMonthKey(item.completionDate);
       const monthRow = byKey.get(key);
       if (!monthRow) return;
       monthRow.counts[item.mediaType] += 1;
@@ -968,6 +968,16 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
   const monthlyMax = useMemo(() => {
     const max = Math.max(...monthlySeries.map((point) => point.total), 0);
     return Math.max(1, max);
+  }, [monthlySeries]);
+
+  const monthlyMediaTotals = useMemo(() => {
+    const totals: Record<StatsMediaType, number> = { book: 0, movie: 0, tv: 0, game: 0 };
+    monthlySeries.forEach((point) => {
+      (Object.keys(totals) as StatsMediaType[]).forEach((mediaType) => {
+        totals[mediaType] += point.counts[mediaType];
+      });
+    });
+    return totals;
   }, [monthlySeries]);
 
   const releaseYearSeries = useMemo(() => {
@@ -985,9 +995,59 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       .slice(-18);
   }, [filteredItems]);
 
+  const releaseYearLabelStep = useMemo(() => {
+    const count = releaseYearSeries.length;
+    if (count <= 6) return 1;
+    // Keep roughly 6 readable year labels across the timeline.
+    return Math.ceil((count - 1) / 5);
+  }, [releaseYearSeries.length]);
+
   const releasePaths = useMemo(() => {
     const values = releaseYearSeries.map((entry) => entry.value);
     return buildReleaseChartPaths(values, 520, 168);
+  }, [releaseYearSeries]);
+
+  const releasePeakRows = useMemo(() => {
+    return [...releaseYearSeries]
+      .filter((entry) => entry.value > 0)
+      .sort((a, b) => b.value - a.value || b.year - a.year)
+      .slice(0, 5);
+  }, [releaseYearSeries]);
+
+  const releasePeakYearSet = useMemo(() => {
+    return new Set(releasePeakRows.map((entry) => entry.year));
+  }, [releasePeakRows]);
+
+  const releaseLowRows = useMemo(() => {
+    return [...releaseYearSeries]
+      .filter((entry) => entry.value > 0 && !releasePeakYearSet.has(entry.year))
+      .sort((a, b) => a.value - b.value || a.year - b.year)
+      .slice(0, 5);
+  }, [releasePeakYearSet, releaseYearSeries]);
+
+  const releaseLowYearSet = useMemo(() => {
+    return new Set(releaseLowRows.map((entry) => entry.year));
+  }, [releaseLowRows]);
+
+  const releasePointCoords = useMemo(() => {
+    const values = releaseYearSeries.map((entry) => entry.value);
+    if (!values.length) return [];
+
+    const width = 520;
+    const height = 168;
+    const maxValue = Math.max(1, ...values);
+    const step = values.length > 1 ? width / (values.length - 1) : 0;
+
+    return values.map((value, index) => {
+      const x = values.length === 1 ? width / 2 : index * step;
+      const y = height - (value / maxValue) * (height - 16) - 8;
+      return {
+        year: releaseYearSeries[index].year,
+        value,
+        x,
+        y,
+      };
+    });
   }, [releaseYearSeries]);
 
   const topDimension = useMemo(() => {
@@ -1641,6 +1701,9 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                         );
                       })}
                     </div>
+                    <div className="monthCount" title={`${month.label}: ${month.total} completed`}>
+                      {month.total}
+                    </div>
                     <div className="monthLabel">
                       <span>{monthParts.month}</span>
                       <span>{monthParts.year}</span>
@@ -1659,6 +1722,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 <div key={mediaType} className="legendItem">
                   <span className="legendSwatch" style={{ background: MEDIA_COLORS[mediaType] }} />
                   <span>{MEDIA_LABELS[mediaType]}</span>
+                  <span className="legendCount">{monthlyMediaTotals[mediaType]}</span>
                 </div>
               ))}
             </div>
@@ -1765,12 +1829,83 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 </defs>
                 <path d={releasePaths.areaPath} fill="url(#releaseAreaGradient)" />
                 <path d={releasePaths.linePath} fill="none" stroke="#ff7357" strokeWidth="3" />
+                {releasePointCoords.map((point) => {
+                  const isPeak = releasePeakYearSet.has(point.year);
+                  const isLow = !isPeak && releaseLowYearSet.has(point.year);
+                  return (
+                    <g key={`release-point-${point.year}`}>
+                      <circle
+                        className={`releasePoint ${isPeak ? "peak" : isLow ? "low" : ""}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r={isPeak ? 4.2 : isLow ? 3.8 : 2.6}
+                      >
+                        <title>{`${point.year}: ${point.value}`}</title>
+                      </circle>
+                      {isPeak ? (
+                        <text
+                          className="releasePeakValue"
+                          x={point.x}
+                          y={Math.max(12, point.y - 7)}
+                          textAnchor="middle"
+                        >
+                          {point.value}
+                        </text>
+                      ) : null}
+                      {isLow ? (
+                        <text
+                          className="releaseLowValue"
+                          x={point.x}
+                          y={Math.min(164, point.y + 13)}
+                          textAnchor="middle"
+                        >
+                          {point.value}
+                        </text>
+                      ) : null}
+                    </g>
+                  );
+                })}
               </svg>
               <div className="timelineYears">
-                {releaseYearSeries.map((entry) => (
-                  <span key={entry.year}>{entry.year}</span>
-                ))}
+                {releaseYearSeries.map((entry, index) => {
+                  const releaseYearCount = releaseYearSeries.length;
+                  const isFirst = index === 0;
+                  const isLast = index === releaseYearCount - 1;
+                  const isPenultimateInDenseSeries =
+                    releaseYearCount > 6 && index === releaseYearCount - 2;
+                  const showLabel =
+                    isFirst ||
+                    isLast ||
+                    (!isPenultimateInDenseSeries && index % releaseYearLabelStep === 0);
+                  return (
+                    <span
+                      key={entry.year}
+                      className={`timelineYear ${showLabel ? "visible" : "hidden"}`}
+                      title={`${entry.year}`}
+                    >
+                      {entry.year}
+                    </span>
+                  );
+                })}
               </div>
+              {releasePeakRows.length > 0 ? (
+                <div className="timelinePeaks" aria-label="Top release year peaks">
+                  {releasePeakRows.map((entry) => (
+                    <span key={`release-peak-${entry.year}`} className="timelinePeakTag">
+                      {entry.year}: {entry.value}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {releaseLowRows.length > 0 ? (
+                <div className="timelineLows" aria-label="Lowest release year counts">
+                  {releaseLowRows.map((entry) => (
+                    <span key={`release-low-${entry.year}`} className="timelineLowTag">
+                      {entry.year}: {entry.value}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="cardEmpty">No release dates in this selection.</div>
@@ -2516,6 +2651,15 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           letter-spacing: 0.03em;
         }
 
+        .monthCount {
+          min-height: 14px;
+          font-size: 10px;
+          line-height: 1;
+          font-weight: 900;
+          color: #f7fbff;
+          text-shadow: 0 1px 3px rgba(2, 8, 23, 0.8);
+        }
+
         .legendRow {
           margin-top: 10px;
           display: flex;
@@ -2531,6 +2675,13 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           font-size: 11px;
           color: rgba(201, 220, 245, 0.88);
           font-weight: 700;
+        }
+
+        .legendCount {
+          min-width: 18px;
+          text-align: right;
+          color: #f7fbff;
+          font-weight: 900;
         }
 
         .legendSwatch {
@@ -2730,6 +2881,44 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           background: linear-gradient(180deg, rgba(8, 18, 40, 0.72), rgba(8, 20, 46, 0.54));
         }
 
+        .releasePoint {
+          fill: rgba(255, 207, 140, 0.92);
+          stroke: rgba(12, 26, 56, 0.72);
+          stroke-width: 1.1;
+        }
+
+        .releasePoint.peak {
+          fill: #ffd95a;
+          stroke: rgba(255, 247, 220, 0.72);
+          stroke-width: 1.4;
+        }
+
+        .releasePoint.low {
+          fill: #8ad8ff;
+          stroke: rgba(212, 240, 255, 0.75);
+          stroke-width: 1.3;
+        }
+
+        .releasePeakValue {
+          fill: #ffe88b;
+          font-size: 10px;
+          font-weight: 900;
+          paint-order: stroke;
+          stroke: rgba(4, 14, 34, 0.88);
+          stroke-width: 2px;
+          stroke-linejoin: round;
+        }
+
+        .releaseLowValue {
+          fill: #9fe5ff;
+          font-size: 10px;
+          font-weight: 900;
+          paint-order: stroke;
+          stroke: rgba(5, 15, 35, 0.9);
+          stroke-width: 2px;
+          stroke-linejoin: round;
+        }
+
         .timelineYears {
           display: grid;
           grid-template-columns: repeat(${Math.max(1, releaseYearSeries.length)}, minmax(0, 1fr));
@@ -2738,6 +2927,61 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           color: rgba(188, 208, 237, 0.78);
           font-weight: 700;
           text-align: center;
+        }
+
+        .timelineYear {
+          display: block;
+          min-height: 12px;
+          line-height: 1.15;
+          white-space: nowrap;
+        }
+
+        .timelineYear.hidden {
+          visibility: hidden;
+        }
+
+        .timelineYear.visible {
+          visibility: visible;
+        }
+
+        .timelinePeaks {
+          margin-top: 4px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+
+        .timelinePeakTag {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 7px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 800;
+          color: #fff9e3;
+          border: 1px solid rgba(255, 216, 132, 0.45);
+          background: linear-gradient(165deg, rgba(255, 147, 99, 0.3), rgba(255, 206, 114, 0.2));
+        }
+
+        .timelineLows {
+          margin-top: 2px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+
+        .timelineLowTag {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 7px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 800;
+          color: #e8f7ff;
+          border: 1px solid rgba(140, 213, 247, 0.45);
+          background: linear-gradient(165deg, rgba(90, 165, 219, 0.28), rgba(111, 203, 237, 0.18));
         }
 
         .highlightsGrid {
