@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 type StatsMediaType = "book" | "movie" | "tv" | "game";
 type StatsFilter = "all" | StatsMediaType;
 type StatsTab = StatsFilter | "yearReview";
+type StatsYearFilter = "all" | number;
 type StatusBucket = "completed" | "inProgress" | "backlog" | "wishlist" | "abandoned" | "other";
 
 type BookStatsItem = {
@@ -185,6 +186,7 @@ const STATUS_LABELS: Record<StatusBucket, string> = {
 };
 
 const DONUT_COLORS = ["#ffcf5c", "#6de7ff", "#ff7baf", "#7df592", "#9fa7ff", "#ff9756", "#8fe2d3"];
+const ALL_STATS_YEARS = "all" as const;
 const UNRATED_TOKENS = new Set([
   "na",
   "n/a",
@@ -638,7 +640,7 @@ function compareRankedItems(
 export function StatisticsView({ books, movies, shows, games, coverOverrides = {} }: StatisticsViewProps) {
   const currentYear = new Date().getUTCFullYear();
   const [activeTab, setActiveTab] = useState<StatsTab>("all");
-  const [statsYear, setStatsYear] = useState<number>(currentYear);
+  const [statsYear, setStatsYear] = useState<StatsYearFilter>(ALL_STATS_YEARS);
   const [reviewYear, setReviewYear] = useState<number>(currentYear);
   const filter: StatsFilter = activeTab === "yearReview" ? "all" : activeTab;
 
@@ -843,9 +845,14 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     return [...years].sort((a, b) => b - a);
   }, [currentYear, unifiedItems]);
 
-  const selectedStatsYear = reviewYearOptions.includes(statsYear)
-    ? statsYear
-    : (reviewYearOptions[0] || currentYear);
+  const selectedStatsYear: StatsYearFilter =
+    statsYear === ALL_STATS_YEARS
+      ? ALL_STATS_YEARS
+      : reviewYearOptions.includes(statsYear)
+        ? statsYear
+        : ALL_STATS_YEARS;
+  const statsYearLabel = selectedStatsYear === ALL_STATS_YEARS ? "All Years" : `${selectedStatsYear}`;
+  const statsYearScopePhrase = selectedStatsYear === ALL_STATS_YEARS ? "all-years scope" : `${selectedStatsYear} scope`;
   const selectedReviewYear = reviewYearOptions.includes(reviewYear)
     ? reviewYear
     : (reviewYearOptions[0] || currentYear);
@@ -857,7 +864,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
   }, [filter, unifiedItems]);
 
   const filteredItems = useMemo(() => {
-    if (activeTab === "yearReview") return baseFilteredItems;
+    if (activeTab === "yearReview" || selectedStatsYear === ALL_STATS_YEARS) return baseFilteredItems;
 
     return baseFilteredItems.filter((item) => {
       const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
@@ -968,15 +975,32 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const completedItems = filteredItems.filter((item) => item.completionDate);
 
     const timeline: MonthlyPoint[] = [];
-    for (let monthIndex = 0; monthIndex < monthlyWindowMonths; monthIndex += 1) {
-      const cursor = new Date(Date.UTC(selectedStatsYear, monthIndex, 1));
-      const key = toMonthKey(cursor);
-      timeline.push({
-        key,
-        label: formatMonthFromKey(key),
-        counts: { book: 0, movie: 0, tv: 0, game: 0 },
-        total: 0,
-      });
+    if (selectedStatsYear === ALL_STATS_YEARS) {
+      const anchor = new Date();
+      const anchorYear = anchor.getUTCFullYear();
+      const anchorMonth = anchor.getUTCMonth();
+      for (let offset = monthlyWindowMonths - 1; offset >= 0; offset -= 1) {
+        const monthIndex = anchorMonth - offset;
+        const cursor = new Date(Date.UTC(anchorYear, monthIndex, 1));
+        const key = toMonthKey(cursor);
+        timeline.push({
+          key,
+          label: formatMonthFromKey(key),
+          counts: { book: 0, movie: 0, tv: 0, game: 0 },
+          total: 0,
+        });
+      }
+    } else {
+      for (let monthIndex = 0; monthIndex < monthlyWindowMonths; monthIndex += 1) {
+        const cursor = new Date(Date.UTC(selectedStatsYear, monthIndex, 1));
+        const key = toMonthKey(cursor);
+        timeline.push({
+          key,
+          label: formatMonthFromKey(key),
+          counts: { book: 0, movie: 0, tv: 0, game: 0 },
+          total: 0,
+        });
+      }
     }
 
     const byKey = new Map(timeline.map((point) => [point.key, point]));
@@ -992,6 +1016,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
     return timeline;
   }, [filteredItems, monthlyWindowMonths, selectedStatsYear]);
+  const monthlySeriesLabel = selectedStatsYear === ALL_STATS_YEARS ? "Last 12 months" : `${selectedStatsYear}`;
 
   const monthlyMax = useMemo(() => {
     const max = Math.max(...monthlySeries.map((point) => point.total), 0);
@@ -1120,6 +1145,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
   const comparisonYearItems = useMemo(() => {
     if (filter === "all") return [];
+    if (selectedStatsYear === ALL_STATS_YEARS) return filteredItems;
     return filteredItems.filter((item) => {
       const completedOrWatchedInYear = item.completionDate?.getUTCFullYear() === selectedStatsYear;
       const releasedInYear = item.releaseDate?.getUTCFullYear() === selectedStatsYear;
@@ -1143,12 +1169,18 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
   }, [comparisonYearItems]);
 
   const highlightStats = useMemo(() => {
-    const yearLogged = filteredItems.filter((item) => {
-      const activityInYear = item.activityDate?.getUTCFullYear() === selectedStatsYear;
-      const playedInYear = item.mediaType === "game" && item.playedYears.includes(selectedStatsYear);
-      return activityInYear || playedInYear;
-    }).length;
-    const yearCompleted = filteredItems.filter((item) => item.completionDate?.getUTCFullYear() === selectedStatsYear).length;
+    const yearLogged =
+      selectedStatsYear === ALL_STATS_YEARS
+        ? filteredItems.length
+        : filteredItems.filter((item) => {
+            const activityInYear = item.activityDate?.getUTCFullYear() === selectedStatsYear;
+            const playedInYear = item.mediaType === "game" && item.playedYears.includes(selectedStatsYear);
+            return activityInYear || playedInYear;
+          }).length;
+    const yearCompleted =
+      selectedStatsYear === ALL_STATS_YEARS
+        ? filteredItems.filter((item) => Boolean(item.completionDate)).length
+        : filteredItems.filter((item) => item.completionDate?.getUTCFullYear() === selectedStatsYear).length;
 
     const monthPool = monthlySeries.filter((month) => !isExcludedBusiestMonthKey(month.key));
     const bestMonth = [...monthPool].sort((a, b) => b.total - a.total).find((month) => month.total > 0) || null;
@@ -1398,7 +1430,14 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       {
         label: "Library Size",
         value: `${total}`,
-        subLabel: filter === "all" ? `all media items in ${selectedStatsYear}` : `${MEDIA_LABELS[filter]} in ${selectedStatsYear}`,
+        subLabel:
+          filter === "all"
+            ? selectedStatsYear === ALL_STATS_YEARS
+              ? "all media items across all years"
+              : `all media items in ${selectedStatsYear}`
+            : selectedStatsYear === ALL_STATS_YEARS
+              ? `${MEDIA_LABELS[filter]} across all years`
+              : `${MEDIA_LABELS[filter]} in ${selectedStatsYear}`,
         accent: "var(--stats-accent-1)",
       },
       {
@@ -1442,15 +1481,26 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             {activeTab === "yearReview"
               ? `Your ${selectedReviewYear} annual wrap-up with year-over-year comparisons.`
               : filter === "all"
-              ? `High-level trends across your full library in ${selectedStatsYear}.`
-              : `Focused stats for ${MEDIA_LABELS[filter]} in ${selectedStatsYear}.`}
+              ? selectedStatsYear === ALL_STATS_YEARS
+                ? "High-level trends across your full library."
+                : `High-level trends across your full library in ${selectedStatsYear}.`
+              : selectedStatsYear === ALL_STATS_YEARS
+                ? `Focused stats for ${MEDIA_LABELS[filter]} across all years.`
+                : `Focused stats for ${MEDIA_LABELS[filter]} in ${selectedStatsYear}.`}
           </p>
         </div>
         <div className="statsHeaderControls">
           {activeTab === "yearReview" ? null : (
             <label className="yearReviewPicker statsYearPicker">
               <span>Year</span>
-              <select value={selectedStatsYear} onChange={(event) => setStatsYear(Number(event.target.value))}>
+              <select
+                value={selectedStatsYear}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setStatsYear(value === ALL_STATS_YEARS ? ALL_STATS_YEARS : Number(value));
+                }}
+              >
+                <option value={ALL_STATS_YEARS}>All</option>
                 {reviewYearOptions.map((year) => (
                   <option key={year} value={year}>
                     {year}
@@ -1709,7 +1759,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         <article className="statsCard spanTwo">
           <div className="cardHeader">
             <h2>Activity by Month</h2>
-            <span>{selectedStatsYear}</span>
+            <span>{monthlySeriesLabel}</span>
           </div>
 
           {monthlySeries.some((point) => point.total > 0) ? (
@@ -1975,15 +2025,19 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         <article className="statsCard spanTwo">
           <div className="cardHeader">
             <h2>Highlights</h2>
-            <span>{selectedStatsYear}</span>
+            <span>{statsYearLabel}</span>
           </div>
           <div className="highlightsGrid">
             <div className="highlightItem">
-              <div className="highlightLabel">Logged in {selectedStatsYear}</div>
+              <div className="highlightLabel">
+                {selectedStatsYear === ALL_STATS_YEARS ? "Logged (all years)" : `Logged in ${selectedStatsYear}`}
+              </div>
               <div className="highlightValue">{highlightStats.yearLogged}</div>
             </div>
             <div className="highlightItem">
-              <div className="highlightLabel">Completed in {selectedStatsYear}</div>
+              <div className="highlightLabel">
+                {selectedStatsYear === ALL_STATS_YEARS ? "Completed (all years)" : `Completed in ${selectedStatsYear}`}
+              </div>
               <div className="highlightValue">{highlightStats.yearCompleted}</div>
             </div>
             <div className="highlightItem">
@@ -2005,7 +2059,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           <article className="statsCard spanFull">
             <div className="cardHeader">
               <h2>Top 10 Comparison</h2>
-              <span>{MEDIA_LABELS[filter]} · {selectedStatsYear}</span>
+              <span>{MEDIA_LABELS[filter]} · {statsYearLabel}</span>
             </div>
             <div className="topRatedComparison">
               <section className="topRatedColumn">
@@ -2035,7 +2089,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     ))}
                   </div>
                 ) : (
-                  <div className="cardEmpty compactEmpty">No personal ratings in the {selectedStatsYear} scope.</div>
+                  <div className="cardEmpty compactEmpty">No personal ratings in the {statsYearScopePhrase}.</div>
                 )}
               </section>
 
@@ -2066,7 +2120,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     ))}
                   </div>
                 ) : (
-                  <div className="cardEmpty compactEmpty">No external ratings in the {selectedStatsYear} scope.</div>
+                  <div className="cardEmpty compactEmpty">No external ratings in the {statsYearScopePhrase}.</div>
                 )}
               </section>
             </div>
