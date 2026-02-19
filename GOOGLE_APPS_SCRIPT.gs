@@ -390,10 +390,11 @@ function updateGameRow_(payload) {
 
   if (rowNum === -1) return createCORSResponse("Error: matching game row not found");
 
-  for (var colName in updates) {
-    if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
+  const normalizedUpdates = normalizeGameValuesForWrite_(updates);
+  for (var colName in normalizedUpdates) {
+    if (!Object.prototype.hasOwnProperty.call(normalizedUpdates, colName)) continue;
     if (!headerIndex[colName]) continue;
-    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(updates[colName] || "").trim());
+    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(normalizedUpdates[colName] || "").trim());
   }
 
   return createCORSResponse("Success");
@@ -655,9 +656,56 @@ function addMovieRow_(payload) {
 }
 
 function addGameRow_(payload) {
-  const values = payload.values || payload.updates || {};
+  const values = normalizeGameValuesForWrite_(payload.values || payload.updates || {});
   if (!String(values.Title || "").trim()) return createCORSResponse("Error: Title is required for addGame");
   return appendRowByHeaders_("Games", values);
+}
+
+function normalizeGameValuesForWrite_(values) {
+  const source = values || {};
+  const next = {};
+
+  for (var key in source) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+    if (key === "Backlog" || key === "Completed") {
+      next[key] = normalizeGameCheckboxForSheet_(source[key]);
+      continue;
+    }
+    next[key] = source[key];
+  }
+
+  return next;
+}
+
+function normalizeGameCheckboxForSheet_(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const normalized = raw.toLowerCase();
+  if (
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "1" ||
+    normalized === "checked" ||
+    normalized === "completed" ||
+    normalized === "backlog" ||
+    normalized === "queued"
+  ) {
+    return "Yes";
+  }
+
+  if (
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "0" ||
+    normalized === "unchecked" ||
+    normalized === "not completed" ||
+    normalized === "not backlog"
+  ) {
+    return "No";
+  }
+
+  return raw;
 }
 
 // Add CORS headers to the response

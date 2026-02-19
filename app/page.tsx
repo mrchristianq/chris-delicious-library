@@ -2585,44 +2585,135 @@ export default function Page() {
       throw new Error("Unable to identify this game row to update.");
     }
 
+    const normalizeGameYesNo = (value: string): string => {
+      const normalized = safeStr(value).toLowerCase();
+      if (!normalized) return "";
+      if (
+        normalized === "true" ||
+        normalized === "yes" ||
+        normalized === "1" ||
+        normalized === "checked" ||
+        normalized === "completed" ||
+        normalized === "backlog" ||
+        normalized === "queued"
+      ) {
+        return "Yes";
+      }
+      if (
+        normalized === "false" ||
+        normalized === "no" ||
+        normalized === "0" ||
+        normalized === "unchecked" ||
+        normalized === "not completed" ||
+        normalized === "not backlog"
+      ) {
+        return "No";
+      }
+      return safeStr(value);
+    };
+
+    const getFirstGameValue = (source: Record<string, unknown> | null | undefined, keys: string[]): string => {
+      for (const key of keys) {
+        const raw = source?.[key];
+        if (raw === undefined || raw === null) continue;
+        const text = safeStr(raw);
+        if (text) return text;
+      }
+      return "";
+    };
+
+    const existingKeysByColumn: Record<string, string[]> = {
+      Title: ["title", "Title"],
+      Cover: ["cover", "Cover"],
+      Platform: ["platform", "Platform"],
+      Status: ["status", "Status", "gameStatus", "playStatus"],
+      Name: ["name", "Name"],
+      ReleaseDate: ["releaseDate", "ReleaseDate"],
+      "Release Date": ["releaseDateAlt", "Release Date", "releaseDate", "ReleaseDate"],
+      Platforms: ["platforms", "Platforms"],
+      CoverURL: ["coverUrl", "CoverURL"],
+      Rating: ["rating", "Rating"],
+      "IGDB Rating": ["igdbRating", "IGDB Rating"],
+      "My Rating": ["myRating", "My Rating"],
+      Ownership: ["ownership", "Ownership"],
+      Format: ["format", "Format"],
+      Backlog: ["backlog", "Backlog"],
+      Completed: ["completed", "Completed"],
+      "Date Completed": ["dateCompleted", "Date Completed"],
+      "Year Played": ["yearPlayed", "Year Played"],
+      "Date Added": ["dateAdded", "Date Added"],
+      Description: ["description", "Description"],
+      Genres: ["genres", "Genres"],
+      "Hours Played": ["hoursPlayed", "Hours Played"],
+      CoverCachedAt: ["coverCachedAt", "CoverCachedAt"],
+      Developer: ["developer", "Developer"],
+      ScreensotsURL: ["screensotsUrl", "ScreensotsURL"],
+      WishlistOrder: ["wishlistOrder", "WishlistOrder"],
+      QueuedOrder: ["queuedOrder", "QueuedOrder"],
+      IGDB_ID: ["igdbId", "IGDB_ID"],
+      IGDB_ID_Override: ["igdbIdOverride", "IGDB_ID_Override"],
+      LocalCoverURL: ["localCoverUrl", "LocalCoverURL"],
+    };
+
+    const candidateUpdates: Record<string, string> = {
+      Title: safeStr(updates.title),
+      Cover: safeStr(updates.cover),
+      Platform: safeStr(updates.platform),
+      Status: safeStr(updates.status),
+      Name: safeStr(updates.name),
+      ReleaseDate: safeStr(updates.releaseDate),
+      "Release Date": safeStr(updates.releaseDateAlt),
+      Platforms: safeStr(updates.platforms),
+      CoverURL: safeStr(updates.coverUrl),
+      Rating: safeStr(updates.rating),
+      "IGDB Rating": safeStr(updates.igdbRating),
+      "My Rating": safeStr(updates.myRating),
+      Ownership: safeStr(updates.ownership),
+      Format: safeStr(updates.format),
+      Backlog: normalizeGameYesNo(safeStr(updates.backlog)),
+      Completed: normalizeGameYesNo(safeStr(updates.completed)),
+      "Date Completed": safeStr(updates.dateCompleted),
+      "Year Played": safeStr(updates.yearPlayed),
+      "Date Added": safeStr(updates.dateAdded),
+      Description: safeStr(updates.description),
+      Genres: safeStr(updates.genres),
+      "Hours Played": safeStr(updates.hoursPlayed),
+      CoverCachedAt: safeStr(updates.coverCachedAt),
+      Developer: safeStr(updates.developer),
+      ScreensotsURL: safeStr(updates.screensotsUrl),
+      WishlistOrder: safeStr(updates.wishlistOrder),
+      QueuedOrder: safeStr(updates.queuedOrder),
+      IGDB_ID: safeStr(updates.igdbId),
+      IGDB_ID_Override: safeStr(updates.igdbIdOverride),
+      LocalCoverURL: safeStr(updates.localCoverUrl),
+    };
+
+    const changedUpdates: Record<string, string> = {};
+    Object.entries(candidateUpdates).forEach(([columnName, nextValueRaw]) => {
+      const prevValue = getFirstGameValue(item, existingKeysByColumn[columnName] || [columnName]);
+      let nextValue = safeStr(nextValueRaw);
+      let comparablePrev = safeStr(prevValue);
+
+      if (columnName === "Backlog" || columnName === "Completed") {
+        nextValue = normalizeGameYesNo(nextValue);
+        comparablePrev = normalizeGameYesNo(comparablePrev);
+      }
+
+      if (nextValue === comparablePrev) return;
+      changedUpdates[columnName] = nextValue;
+    });
+
+    if (!Object.keys(changedUpdates).length) {
+      return;
+    }
+
     const payload = {
       action: "updateGame",
       match: {
         igdbId: matchIgdbId,
         title: matchTitle,
       },
-      updates: {
-        Title: safeStr(updates.title),
-        Cover: safeStr(updates.cover),
-        Platform: safeStr(updates.platform),
-        Status: safeStr(updates.status),
-        Name: safeStr(updates.name),
-        ReleaseDate: safeStr(updates.releaseDate),
-        "Release Date": safeStr(updates.releaseDateAlt),
-        Platforms: safeStr(updates.platforms),
-        CoverURL: safeStr(updates.coverUrl),
-        Rating: safeStr(updates.rating),
-        "IGDB Rating": safeStr(updates.igdbRating),
-        "My Rating": safeStr(updates.myRating),
-        Ownership: safeStr(updates.ownership),
-        Format: safeStr(updates.format),
-        Backlog: safeStr(updates.backlog),
-        Completed: safeStr(updates.completed),
-        "Date Completed": safeStr(updates.dateCompleted),
-        "Year Played": safeStr(updates.yearPlayed),
-        "Date Added": safeStr(updates.dateAdded),
-        Description: safeStr(updates.description),
-        Genres: safeStr(updates.genres),
-        "Hours Played": safeStr(updates.hoursPlayed),
-        CoverCachedAt: safeStr(updates.coverCachedAt),
-        Developer: safeStr(updates.developer),
-        ScreensotsURL: safeStr(updates.screensotsUrl),
-        WishlistOrder: safeStr(updates.wishlistOrder),
-        QueuedOrder: safeStr(updates.queuedOrder),
-        IGDB_ID: safeStr(updates.igdbId),
-        IGDB_ID_Override: safeStr(updates.igdbIdOverride),
-        LocalCoverURL: safeStr(updates.localCoverUrl),
-      },
+      updates: changedUpdates,
     };
 
     try {

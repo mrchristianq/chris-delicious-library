@@ -42,7 +42,7 @@ function normalizeGameCheckboxValue(value: unknown): string {
     normalized === "backlog" ||
     normalized === "queued"
   ) {
-    return "TRUE";
+    return "Yes";
   }
 
   if (
@@ -53,7 +53,7 @@ function normalizeGameCheckboxValue(value: unknown): string {
     normalized === "not completed" ||
     normalized === "not backlog"
   ) {
-    return "FALSE";
+    return "No";
   }
 
   return raw;
