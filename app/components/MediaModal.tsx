@@ -73,6 +73,7 @@ const BOOK_EDIT_FIELDS: BookEditField[] = [
 
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
 const BOOK_OWNERSHIP_OPTIONS = ["Owned", "Ripped", "Wishlist", "Borrowed"];
+const BOOK_TYPE_OPTIONS = ["Physical", "eBook", "Audiobook", "Graphic Novel"];
 const SHOW_WATCH_STATUS_OPTIONS = [
   "Watching",
   "Completed",
@@ -1692,6 +1693,22 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                           </option>
                         ))}
                         {bookEditValues[field.key] && !BOOK_OWNERSHIP_OPTIONS.includes(bookEditValues[field.key]) ? (
+                          <option value={bookEditValues[field.key]}>{bookEditValues[field.key]}</option>
+                        ) : null}
+                      </select>
+                    ) : field.key === "type" ? (
+                      <select
+                        value={bookEditValues[field.key] || ""}
+                        onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
+                        className="editSelect"
+                      >
+                        <option value="">Select type</option>
+                        {BOOK_TYPE_OPTIONS.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                        {bookEditValues[field.key] && !BOOK_TYPE_OPTIONS.includes(bookEditValues[field.key]) ? (
                           <option value={bookEditValues[field.key]}>{bookEditValues[field.key]}</option>
                         ) : null}
                       </select>
