@@ -112,6 +112,7 @@ import Papa from "papaparse";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
+import { StatisticsView } from "./components/StatisticsView";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -1265,7 +1266,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -6638,6 +6639,15 @@ export default function Page() {
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
+    if (nav === "statistics") {
+      return [
+        ...indexedBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
+        ...indexedShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...indexedMovies.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...indexedGames.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
+      ] as any[];
+    }
+
     // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
     // Filter out Wishlist items - only show owned items
     if (nav === "home") {
@@ -8087,23 +8097,25 @@ export default function Page() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
-      <div
-        aria-hidden
-        style={{
-          position: "fixed",
-          top: topSafeInset,
-          left: 0,
-          right: 0,
-          height: 45,
-          zIndex: 1300,
-          pointerEvents: "none",
-          backgroundImage: `url(${currentTopHeaderImage})`,
-          backgroundRepeat: "repeat-x",
-          backgroundPosition: "0 0",
-          backgroundSize: "auto 45px",
-          boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
-        }}
-      />
+      {nav !== "statistics" ? (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            top: topSafeInset,
+            left: 0,
+            right: 0,
+            height: 45,
+            zIndex: 1300,
+            pointerEvents: "none",
+            backgroundImage: `url(${currentTopHeaderImage})`,
+            backgroundRepeat: "repeat-x",
+            backgroundPosition: "0 0",
+            backgroundSize: "auto 45px",
+            boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+          }}
+        />
+      ) : null}
       {/* Main layout: Sidebar + Content */}
       <div
         style={{
@@ -10211,7 +10223,15 @@ export default function Page() {
 
               {discoverOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
-                  className="sideItem"
+                  onClick={() => {
+                    setNav("statistics");
+                    setShowThemes(false);
+                    setSortPopupOpen(false);
+                    setSettingsPopupOpen(false);
+                    setFaqPopupOpen(false);
+                    setShowVersionNotes(false);
+                  }}
+                  className={`sideItem ${nav === "statistics" ? "active" : ""}`}
                   style={{
                     width: "100%",
                     textAlign: "left",
@@ -10222,13 +10242,14 @@ export default function Page() {
                     borderBottom: "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "statistics" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
                     <span
                       aria-hidden
                       style={{
                         width: 18,
                         height: 14,
                         borderRadius: 4,
+                        background: nav === "statistics" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -11604,41 +11625,43 @@ export default function Page() {
 
         {/* RIGHT CONTENT */}
         <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative", marginLeft: "-1px" }}>
-          <div
-            aria-hidden
-            style={{
-              position: "fixed",
-              top: topSafeInset,
-              left: SIDEBAR_WIDTH - 1,
-              right: 0,
-              height: 45,
-              zIndex: 1399,
-              pointerEvents: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span
+          {nav !== "statistics" ? (
+            <div
+              aria-hidden
               style={{
-                fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
-                fontSize: 24,
-                fontWeight: 500,
-                lineHeight: 1,
-                letterSpacing: "0.01em",
-                color: "rgba(76, 52, 34, 0.55)",
-                textShadow:
-                  "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
-                mixBlendMode: "multiply",
-                opacity: 0.9,
-                transform: "translateY(-2.5px)",
-                userSelect: "none",
-                whiteSpace: "nowrap",
+                position: "fixed",
+                top: topSafeInset,
+                left: SIDEBAR_WIDTH - 1,
+                right: 0,
+                height: 45,
+                zIndex: 1399,
+                pointerEvents: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              {APP_TITLE}
-            </span>
-          </div>
+              <span
+                style={{
+                  fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
+                  fontSize: 24,
+                  fontWeight: 500,
+                  lineHeight: 1,
+                  letterSpacing: "0.01em",
+                  color: "rgba(76, 52, 34, 0.55)",
+                  textShadow:
+                    "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
+                  mixBlendMode: "multiply",
+                  opacity: 0.9,
+                  transform: "translateY(-2.5px)",
+                  userSelect: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {APP_TITLE}
+              </span>
+            </div>
+          ) : null}
           {SHOW_HEADER_DEBUG_CONTROLS ? (
             <div
               style={{
@@ -11732,7 +11755,7 @@ export default function Page() {
             </div>
           ) : null}
 
-          {sortPopupOpen || faqPopupOpen ? (
+          {(faqPopupOpen || (sortPopupOpen && nav !== "statistics")) ? (
             <button
               aria-label="Close popup"
               onMouseDown={(event) => {
@@ -11756,7 +11779,7 @@ export default function Page() {
             />
           ) : null}
 
-          {sortPopupOpen ? (
+          {sortPopupOpen && nav !== "statistics" ? (
             <div
               style={{
                 position: "fixed",
@@ -12714,6 +12737,10 @@ export default function Page() {
             </div>
           ) : null}
 
+          {nav === "statistics" ? (
+            <StatisticsView books={allBooks} movies={allMovies} shows={allShows} games={allGames} coverOverrides={coverOverrides} />
+          ) : (
+          <>
           {/* Stage measures width so shelves always align */}
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
@@ -13633,6 +13660,8 @@ export default function Page() {
               View: {nav} · Shelves: {shelves.length} · {postersPerShelf} per shelf · lip offset {LIP_FROM_BOTTOM}px
             </div>
           </div>
+          </>
+          )}
         </main>
       </div>
 
