@@ -28,6 +28,51 @@ function normalizeShowWatchStatus(value: unknown): string {
   return raw;
 }
 
+function normalizeGameCheckboxValue(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const normalized = raw.toLowerCase();
+  if (
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "1" ||
+    normalized === "checked" ||
+    normalized === "completed" ||
+    normalized === "backlog" ||
+    normalized === "queued"
+  ) {
+    return "TRUE";
+  }
+
+  if (
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "0" ||
+    normalized === "unchecked" ||
+    normalized === "not completed" ||
+    normalized === "not backlog"
+  ) {
+    return "FALSE";
+  }
+
+  return raw;
+}
+
+function normalizeGameWriteFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const nextFields = { ...fields };
+
+  if (Object.prototype.hasOwnProperty.call(nextFields, "Backlog")) {
+    nextFields.Backlog = normalizeGameCheckboxValue(nextFields.Backlog);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(nextFields, "Completed")) {
+    nextFields.Completed = normalizeGameCheckboxValue(nextFields.Completed);
+  }
+
+  return nextFields;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -41,22 +86,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedPayload =
-      payload &&
-      typeof payload === "object" &&
-      (payload as Record<string, unknown>).action === "updateShow" &&
-      (payload as Record<string, unknown>).updates &&
-      typeof (payload as Record<string, unknown>).updates === "object"
-        ? {
-            ...(payload as Record<string, unknown>),
-            updates: {
-              ...((payload as Record<string, unknown>).updates as Record<string, unknown>),
-              WatchStatus: normalizeShowWatchStatus(
-                ((payload as Record<string, unknown>).updates as Record<string, unknown>).WatchStatus
-              ),
-            },
-          }
-        : payload;
+    let normalizedPayload = payload;
+
+    if (payload && typeof payload === "object") {
+      const payloadRecord = payload as Record<string, unknown>;
+      const action = String(payloadRecord.action || "").trim();
+      let nextPayloadRecord: Record<string, unknown> | null = null;
+
+      if (
+        action === "updateShow" &&
+        payloadRecord.updates &&
+        typeof payloadRecord.updates === "object"
+      ) {
+        nextPayloadRecord = {
+          ...(nextPayloadRecord || payloadRecord),
+          updates: {
+            ...(payloadRecord.updates as Record<string, unknown>),
+            WatchStatus: normalizeShowWatchStatus(
+              (payloadRecord.updates as Record<string, unknown>).WatchStatus
+            ),
+          },
+        };
+      }
+
+      if (action === "updateGame" || action === "addGame") {
+        if (payloadRecord.updates && typeof payloadRecord.updates === "object") {
+          nextPayloadRecord = {
+            ...(nextPayloadRecord || payloadRecord),
+            updates: normalizeGameWriteFields(payloadRecord.updates as Record<string, unknown>),
+          };
+        }
+
+        if (payloadRecord.values && typeof payloadRecord.values === "object") {
+          nextPayloadRecord = {
+            ...(nextPayloadRecord || payloadRecord),
+            values: normalizeGameWriteFields(payloadRecord.values as Record<string, unknown>),
+          };
+        }
+      }
+
+      if (nextPayloadRecord) {
+        normalizedPayload = nextPayloadRecord;
+      }
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);

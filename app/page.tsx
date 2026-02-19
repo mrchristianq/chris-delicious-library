@@ -653,6 +653,7 @@ function parseTagValues(raw?: string): string[] {
 }
 
 const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
+const PLAY_NEXT_STATUS_VALUES = new Set(["queued", "replay"]);
 
 function isMovieWatchedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
   const watched = normalizeStatusToken(movie.watchStatus || movie.watched);
@@ -5089,7 +5090,7 @@ export default function Page() {
     () =>
       [
         ...indexedGames
-          .filter((game) => normalizeStatusToken(game.statusValue) === "play next")
+          .filter((game) => PLAY_NEXT_STATUS_VALUES.has(normalizeStatusToken(game.statusValue)))
           .map((game) => ({ ...game.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>,
     [indexedGames]
@@ -6431,7 +6432,7 @@ export default function Page() {
       ),
       game: buildOptions(
         allGames.map((game) => safeStr(game.status || game.playStatus || game.gameStatus || game.completed)),
-        ["Now Playing", "Completed", "Backlog", "Abandoned", "Paused", "Play Next"]
+        ["Now Playing", "Completed", "Backlog", "Abandoned", "Paused", "Queued", "Replay"]
       ),
     } satisfies Record<SmartListMediaType, SmartListStatusOption[]>;
   }, [allBooks, allGames, allMovies, allShows, normalizeStatus]);
@@ -6689,7 +6690,7 @@ export default function Page() {
       return queryFiltered as any[];
     }
 
-    // Wishlist (Books): books with ownership "Wishlist"
+    // Read Next: books with ownership "Wishlist"
     if (nav === "wishlist-books") {
       const queryFiltered = q
         ? wishlistBookItems.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
@@ -6698,7 +6699,7 @@ export default function Page() {
       return sorted as any[];
     }
 
-    // Play Next: games with status "Play Next"
+    // Play Next: games with status "Queued" or "Replay"
     if (nav === "play-next") {
       const ordered =
         sortField === MANUAL_SORT_FIELD
@@ -7914,7 +7915,7 @@ export default function Page() {
   const stats = useMemo(() => {
     const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
     const playNextGames = allGames.filter((g) =>
-      normalizeStatus(g.status || g.playStatus || g.gameStatus) === "play next"
+      PLAY_NEXT_STATUS_VALUES.has(normalizeStatus(g.status || g.playStatus || g.gameStatus))
     ).length;
     const wishlistGames = allGames.filter((g) => hasWishlistOwnership(g.ownership)).length;
     const watchlistTv = allShows.filter((s) => {
@@ -9670,67 +9671,6 @@ export default function Page() {
 
                 <button
                   onClick={() => {
-                    setNav("wishlist");
-                    setOpenSection((s) => (s === "wishlist" ? null : "wishlist"));
-                  }}
-                  className={`sideItem ${nav === "wishlist" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("wishlist-games", "/icon-wishlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-games")} title={uploadingSidebarIconKey === "wishlist-games" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Wishlist (Games)
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          sidebarTheme === "darkBlue"
-                            ? "rgba(112, 88, 174, 0.95)"
-                            : sidebarTheme === "winterGray"
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.wishlist}
-                    </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
                     setNav("wishlist-books");
                     setOpenSection((s) => (s === "wishlist-books" ? null : "wishlist-books"));
                   }}
@@ -9762,7 +9702,7 @@ export default function Page() {
                     >
                       <img src={getSidebarIconSrc("wishlist-books", "/icon-other.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-books")} title={uploadingSidebarIconKey === "wishlist-books" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
-                    Wishlist (Books)
+                    Read Next
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
@@ -9907,6 +9847,66 @@ export default function Page() {
                       }}
                     >
                       {stats.watchlistTv}
+                    </span>
+                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    setNav("wishlist");
+                    setOpenSection((s) => (s === "wishlist" ? null : "wishlist"));
+                  }}
+                  className={`sideItem ${nav === "wishlist" ? "active" : ""}`}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img src={getSidebarIconSrc("wishlist-games", "/icon-wishlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-games")} title={uploadingSidebarIconKey === "wishlist-games" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
+                    </span>
+                    Wishlist (Games)
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 38,
+                        height: 18,
+                        borderRadius: 999,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: sidebarFontSize,
+                        fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background:
+                          sidebarTheme === "darkBlue"
+                            ? "rgba(112, 88, 174, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
+                        color: "#fff",
+                      }}
+                    >
+                      {stats.wishlist}
                     </span>
                     <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
