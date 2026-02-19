@@ -5039,7 +5039,7 @@ export default function Page() {
     () =>
       [
         ...indexedBooks
-          .filter((book) => book.ownershipNorm === "wishlist")
+          .filter((book) => book.ownershipNorm === "wishlist" || book.statusNorm === "backlog")
           .map((book) => ({ ...book.item, __type: "book" } as Book & { __type: "book" })),
       ] as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>,
     [indexedBooks]
@@ -6690,7 +6690,7 @@ export default function Page() {
       return queryFiltered as any[];
     }
 
-    // Read Next: books with ownership "Wishlist"
+    // Read Next: books with ownership "Wishlist" or status "Backlog"
     if (nav === "wishlist-books") {
       const queryFiltered = q
         ? wishlistBookItems.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
@@ -7913,7 +7913,11 @@ export default function Page() {
   }, []);
 
   const stats = useMemo(() => {
-    const wishlistBooks = allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
+    const wishlistBooks = allBooks.filter((b) => {
+      const isWishlist = hasWishlistOwnership(b.ownership);
+      const isBacklog = normalizeStatus(b.status) === "backlog";
+      return isWishlist || isBacklog;
+    }).length;
     const playNextGames = allGames.filter((g) =>
       PLAY_NEXT_STATUS_VALUES.has(normalizeStatus(g.status || g.playStatus || g.gameStatus))
     ).length;
