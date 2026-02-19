@@ -390,7 +390,7 @@ function updateGameRow_(payload) {
 
   if (rowNum === -1) return createCORSResponse("Error: matching game row not found");
 
-  const normalizedUpdates = normalizeGameValuesForWrite_(updates);
+  const normalizedUpdates = normalizeGameValuesForWrite_(updates, sheet, rowNum);
   for (var colName in normalizedUpdates) {
     if (!Object.prototype.hasOwnProperty.call(normalizedUpdates, colName)) continue;
     if (!headerIndex[colName]) continue;
@@ -656,19 +656,41 @@ function addMovieRow_(payload) {
 }
 
 function addGameRow_(payload) {
-  const values = normalizeGameValuesForWrite_(payload.values || payload.updates || {});
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Games");
+  if (!sheet) return createCORSResponse("Games sheet not found");
+
+  const values = normalizeGameValuesForWrite_(payload.values || payload.updates || {}, sheet, sheet.getLastRow() + 1);
   if (!String(values.Title || "").trim()) return createCORSResponse("Error: Title is required for addGame");
   return appendRowByHeaders_("Games", values);
 }
 
-function normalizeGameValuesForWrite_(values) {
+function normalizeGameValuesForWrite_(values, sheet, targetRowNum) {
   const source = values || {};
   const next = {};
+
+  let headerIndex = null;
+  if (sheet) {
+    const lastCol = sheet.getLastColumn();
+    if (lastCol > 0) {
+      const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+        return String(h || "").trim();
+      });
+      headerIndex = {};
+      for (var i = 0; i < headers.length; i++) {
+        headerIndex[headers[i]] = i + 1;
+      }
+    }
+  }
 
   for (var key in source) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
     if (key === "Backlog" || key === "Completed") {
-      next[key] = normalizeGameCheckboxForSheet_(source[key]);
+      if (sheet && headerIndex && headerIndex[key] && targetRowNum && targetRowNum >= 2) {
+        next[key] = normalizeGameCheckboxForCell_(sheet, targetRowNum, headerIndex[key], source[key]);
+      } else {
+        next[key] = normalizeGameCheckboxForSheet_(source[key]);
+      }
       continue;
     }
     next[key] = source[key];
@@ -677,12 +699,77 @@ function normalizeGameValuesForWrite_(values) {
   return next;
 }
 
+function normalizeGameCheckboxForCell_(sheet, rowNum, colNum, value) {
+  const raw = String(value || "").trim();
+  const loweredRaw = raw.toLowerCase();
+
+  const range = sheet.getRange(rowNum, colNum);
+  const rule = range.getDataValidation();
+  if (!rule) {
+    return normalizeGameCheckboxForSheet_(raw);
+  }
+
+  const criteriaType = rule.getCriteriaType();
+  const criteriaValues = rule.getCriteriaValues() || [];
+
+  if (criteriaType === SpreadsheetApp.DataValidationCriteria.CHECKBOX) {
+    const checkedValue = String(criteriaValues[0] != null ? criteriaValues[0] : "TRUE").trim();
+    const uncheckedValue = String(criteriaValues[1] != null ? criteriaValues[1] : "FALSE").trim();
+
+    if (!raw || isFalsyGameCheckboxValue_(loweredRaw)) return uncheckedValue;
+    if (isTruthyGameCheckboxValue_(loweredRaw)) return checkedValue;
+    if (loweredRaw === checkedValue.toLowerCase()) return checkedValue;
+    if (loweredRaw === uncheckedValue.toLowerCase()) return uncheckedValue;
+    return raw;
+  }
+
+  if (criteriaType === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
+    const allowedRaw = Array.isArray(criteriaValues[0]) ? criteriaValues[0] : [];
+    const allowed = allowedRaw.map(function(v) { return String(v || "").trim(); }).filter(Boolean);
+    const allowedLower = allowed.map(function(v) { return v.toLowerCase(); });
+
+    if (!raw) {
+      if (allowedLower.indexOf("") !== -1) return "";
+      if (allowedLower.indexOf("no") !== -1) return "No";
+      if (allowedLower.indexOf("false") !== -1) return "FALSE";
+      return "";
+    }
+    if (allowedLower.indexOf(loweredRaw) !== -1) return allowed[allowedLower.indexOf(loweredRaw)];
+
+    if (isTruthyGameCheckboxValue_(loweredRaw)) {
+      if (allowedLower.indexOf("yes") !== -1) return "Yes";
+      if (allowedLower.indexOf("true") !== -1) return "TRUE";
+      if (allowedLower.indexOf("completed") !== -1) return "Completed";
+    }
+    if (isFalsyGameCheckboxValue_(loweredRaw)) {
+      if (allowedLower.indexOf("no") !== -1) return "No";
+      if (allowedLower.indexOf("false") !== -1) return "FALSE";
+      if (allowedLower.indexOf("") !== -1) return "";
+    }
+    return raw;
+  }
+
+  return normalizeGameCheckboxForSheet_(raw);
+}
+
 function normalizeGameCheckboxForSheet_(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
 
   const normalized = raw.toLowerCase();
-  if (
+  if (isTruthyGameCheckboxValue_(normalized)) {
+    return "Yes";
+  }
+
+  if (isFalsyGameCheckboxValue_(normalized)) {
+    return "No";
+  }
+
+  return raw;
+}
+
+function isTruthyGameCheckboxValue_(normalized) {
+  return (
     normalized === "true" ||
     normalized === "yes" ||
     normalized === "1" ||
@@ -690,22 +777,19 @@ function normalizeGameCheckboxForSheet_(value) {
     normalized === "completed" ||
     normalized === "backlog" ||
     normalized === "queued"
-  ) {
-    return "Yes";
-  }
+  );
+}
 
-  if (
+function isFalsyGameCheckboxValue_(normalized) {
+  return (
+    normalized === "" ||
     normalized === "false" ||
     normalized === "no" ||
     normalized === "0" ||
     normalized === "unchecked" ||
     normalized === "not completed" ||
     normalized === "not backlog"
-  ) {
-    return "No";
-  }
-
-  return raw;
+  );
 }
 
 // Add CORS headers to the response
