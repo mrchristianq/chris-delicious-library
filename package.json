@@ -1,6 +1,6 @@
 {
   "name": "chris-delicious-library",
-  "version": "5.2.0",
+  "version": "5.3.4",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0 -p 3000",

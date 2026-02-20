@@ -781,7 +781,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         completionDate ||
         parseDateValue(game.yearPlayed) ||
         releaseDate;
-      const rating = parseRatingValue(game.myRating, "five");
+      const rating = parseRatingValue(game.myRating, "ten");
       const externalRating = parseRatingValue(firstNonEmpty([game.igdbRating, game.rating]));
       const genres = splitList(game.genres);
       const platforms = splitList(game.platform);

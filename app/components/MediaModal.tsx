@@ -475,11 +475,12 @@ function buildGameEditValues(item: Record<string, any>): Record<string, string> 
   };
 }
 
-function renderRating(value: string) {
-  const n = Number.parseFloat(value);
-  if (Number.isNaN(n)) return value || DASH;
+function renderRating(value: string, scale: "auto" | "ten" = "auto") {
+  const parsed = Number.parseFloat(value);
+  if (Number.isNaN(parsed)) return value || DASH;
 
-  const normalized = n > 5 ? n / 2 : n;
+  const score = scale === "ten" ? (parsed > 10 ? parsed / 10 : parsed) : parsed;
+  const normalized = scale === "ten" ? score / 2 : score > 5 ? score / 2 : score;
   const clamped = Math.max(0, Math.min(5, normalized));
 
   return (
@@ -497,16 +498,13 @@ function renderRating(value: string) {
           );
         })}
       </span>
-      <span className="score">{n.toFixed(1)}</span>
+      <span className="score">{score.toFixed(1)}</span>
     </span>
   );
 }
 
 function renderGameUserRating(value: string) {
-  const n = Number.parseFloat(value);
-  if (Number.isNaN(n)) return value || DASH;
-  const tenScale = n > 10 ? n / 10 : n;
-  return renderRating(String(tenScale));
+  return renderRating(value, "ten");
 }
 
 function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "tv" | "movie"): InfoRow[] {
@@ -1603,7 +1601,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                 </div>
                 <div className="infoCard">
                   <div className="label">My Rating</div>
-                  <div className="value">{renderRating(firstNonEmpty(sourceItem, ["myRating", "My Rating"]) || "")}</div>
+                  <div className="value">{renderRating(firstNonEmpty(sourceItem, ["myRating", "My Rating"]) || "", "ten")}</div>
                 </div>
               </div>
             ) : null}
