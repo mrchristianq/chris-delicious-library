@@ -1079,10 +1079,9 @@ const TV_WATCHLIST_ACTIVE_STATUSES = new Set([
   "watching",
   "currently watching",
   "in progress",
-  "paused",
   "watch next",
 ]);
-const TV_WATCHLIST_BACKLOG_STATUSES = new Set(["backlog", "wishlist"]);
+const TV_WATCHLIST_BACKLOG_STATUSES = new Set(["backlog", "wishlist", "paused"]);
 const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
   pendingReturn: {
     label: "Pending Return",
@@ -1110,6 +1109,16 @@ function getTvWatchlistSectionKey(rawStatus?: string): TvWatchlistSectionKey {
   if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "watching";
   if (TV_WATCHLIST_BACKLOG_STATUSES.has(status)) return "backlog";
   return "backlog";
+}
+
+function getTvWatchlistBadgeLabel(rawStatus?: string, fallbackSection?: TvWatchlistSectionKey): string {
+  const status = normalizeStatusToken(rawStatus);
+  if (status === "paused") return "Paused";
+  if (status === "backlog" || status === "wishlist") return "Not Started";
+  if (status === "pending return") return "Pending Return";
+  if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "Watching";
+  if (fallbackSection) return TV_WATCHLIST_SECTION_META[fallbackSection].label;
+  return "Not Started";
 }
 
 function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource): TvWatchlistSectionKey {
@@ -6436,17 +6445,19 @@ export default function Page() {
       if (status === "pending return") {
         return { color: STATUS_COLOR_YELLOW, label: "Pending Return" };
       }
+      if (status === "paused") {
+        return { color: STATUS_COLOR_YELLOW, label: "Paused" };
+      }
       if (
         status === "currently watching" ||
         status === "watching" ||
         status === "in progress" ||
-        status === "paused" ||
         status === "watch next"
       ) {
         return { color: STATUS_COLOR_YELLOW, label: "Watching" };
       }
       if (status === "backlog" || status === "wishlist") {
-        return { color: STATUS_COLOR_RED, label: "Backlog" };
+        return { color: STATUS_COLOR_RED, label: "Not Started" };
       }
       return { color: STATUS_COLOR_RED, label: "Not Watched" };
     }
@@ -13802,6 +13813,16 @@ export default function Page() {
                       const tvWatchlistSectionMeta = tvWatchlistSectionKey
                         ? TV_WATCHLIST_SECTION_META[tvWatchlistSectionKey]
                         : null;
+                      const tvWatchlistBadgeLabel =
+                        tvWatchlistSectionKey && show.__type === "tv"
+                          ? getTvWatchlistBadgeLabel(
+                              safeStr(show.watchStatus) ||
+                                safeStr(show.watched) ||
+                                safeStr(show.showStatus) ||
+                                safeStr(show.status),
+                              tvWatchlistSectionKey
+                            )
+                          : null;
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "wishlist-books" ||
@@ -14174,10 +14195,10 @@ export default function Page() {
 
                           </div>
 
-                          {tvWatchlistSectionMeta ? (
+                          {tvWatchlistSectionMeta && tvWatchlistBadgeLabel ? (
                             <div
-                              aria-label={`Watchlist status: ${tvWatchlistSectionMeta.label}`}
-                              title={`Watchlist status: ${tvWatchlistSectionMeta.label}`}
+                              aria-label={`Watchlist status: ${tvWatchlistBadgeLabel}`}
+                              title={`Watchlist status: ${tvWatchlistBadgeLabel}`}
                               style={{
                                 position: "absolute",
                                 left: Math.max(4, insetLeft + 4),
@@ -14201,7 +14222,7 @@ export default function Page() {
                                 zIndex: 28,
                               }}
                             >
-                              {tvWatchlistSectionMeta.label}
+                              {tvWatchlistBadgeLabel}
                             </div>
                           ) : null}
 
