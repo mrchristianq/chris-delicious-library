@@ -1057,6 +1057,8 @@ type TvWatchlistSectionMeta = {
   badgeColor: string;
 };
 
+type TvWatchlistBadgeColors = Pick<TvWatchlistSectionMeta, "badgeBackground" | "badgeBorder" | "badgeColor">;
+
 type TvWatchlistStatusSource = {
   watchStatus?: string;
   watched?: string;
@@ -1115,10 +1117,49 @@ function getTvWatchlistBadgeLabel(rawStatus?: string, fallbackSection?: TvWatchl
   const status = normalizeStatusToken(rawStatus);
   if (status === "paused") return "Paused";
   if (status === "backlog" || status === "wishlist") return "Not Started";
-  if (status === "pending return") return "Pending Return";
+  if (status === "pending return") return "Pending";
+  if (status === "watch next") return "Watch Next";
   if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "Watching";
   if (fallbackSection) return TV_WATCHLIST_SECTION_META[fallbackSection].label;
   return "Not Started";
+}
+
+function getTvWatchlistBadgeColors(
+  rawStatus?: string,
+  fallbackSection?: TvWatchlistSectionKey
+): TvWatchlistBadgeColors {
+  const status = normalizeStatusToken(rawStatus);
+  if (status === "paused") {
+    return {
+      badgeBackground: "rgba(117, 90, 34, 0.9)",
+      badgeBorder: "rgba(241, 213, 141, 0.84)",
+      badgeColor: "rgba(255, 247, 224, 0.98)",
+    };
+  }
+  if (status === "backlog" || status === "wishlist") {
+    return {
+      badgeBackground: "rgba(129, 50, 50, 0.9)",
+      badgeBorder: "rgba(233, 172, 172, 0.84)",
+      badgeColor: "rgba(255, 238, 238, 0.98)",
+    };
+  }
+  if (status === "pending return") {
+    return TV_WATCHLIST_SECTION_META.pendingReturn;
+  }
+  if (status === "watch next") {
+    return {
+      badgeBackground: "rgba(45, 99, 74, 0.9)",
+      badgeBorder: "rgba(158, 236, 193, 0.84)",
+      badgeColor: "rgba(231, 255, 243, 0.98)",
+    };
+  }
+  if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) {
+    return TV_WATCHLIST_SECTION_META.watching;
+  }
+  if (fallbackSection) {
+    return TV_WATCHLIST_SECTION_META[fallbackSection];
+  }
+  return TV_WATCHLIST_SECTION_META.backlog;
 }
 
 function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource): TvWatchlistSectionKey {
@@ -13813,15 +13854,21 @@ export default function Page() {
                       const tvWatchlistSectionMeta = tvWatchlistSectionKey
                         ? TV_WATCHLIST_SECTION_META[tvWatchlistSectionKey]
                         : null;
+                      const tvWatchlistRawStatus =
+                        safeStr(show.watchStatus) ||
+                        safeStr(show.watched) ||
+                        safeStr(show.showStatus) ||
+                        safeStr(show.status);
                       const tvWatchlistBadgeLabel =
                         tvWatchlistSectionKey && show.__type === "tv"
                           ? getTvWatchlistBadgeLabel(
-                              safeStr(show.watchStatus) ||
-                                safeStr(show.watched) ||
-                                safeStr(show.showStatus) ||
-                                safeStr(show.status),
+                              tvWatchlistRawStatus,
                               tvWatchlistSectionKey
                             )
+                          : null;
+                      const tvWatchlistBadgeColors =
+                        tvWatchlistSectionKey && show.__type === "tv"
+                          ? getTvWatchlistBadgeColors(tvWatchlistRawStatus, tvWatchlistSectionKey)
                           : null;
                       const isWishlistCase =
                         nav === "wishlist" ||
@@ -14195,7 +14242,7 @@ export default function Page() {
 
                           </div>
 
-                          {tvWatchlistSectionMeta && tvWatchlistBadgeLabel ? (
+                          {tvWatchlistSectionMeta && tvWatchlistBadgeLabel && tvWatchlistBadgeColors ? (
                             <div
                               aria-label={`Watchlist status: ${tvWatchlistBadgeLabel}`}
                               title={`Watchlist status: ${tvWatchlistBadgeLabel}`}
@@ -14205,9 +14252,9 @@ export default function Page() {
                                 top: Math.max(4, insetTop + 4),
                                 maxWidth: Math.max(36, caseWidth - insetLeft - insetRight - 8),
                                 borderRadius: 999,
-                                border: `1px solid ${tvWatchlistSectionMeta.badgeBorder}`,
-                                background: tvWatchlistSectionMeta.badgeBackground,
-                                color: tvWatchlistSectionMeta.badgeColor,
+                                border: `1px solid ${tvWatchlistBadgeColors.badgeBorder}`,
+                                background: tvWatchlistBadgeColors.badgeBackground,
+                                color: tvWatchlistBadgeColors.badgeColor,
                                 boxShadow: "0 2px 5px rgba(0,0,0,0.34)",
                                 padding: "2px 6px",
                                 fontSize: 8,
