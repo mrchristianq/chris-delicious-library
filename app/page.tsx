@@ -1050,9 +1050,9 @@ const STATUS_COLOR_GREEN = "#54bf3f";
 const STATUS_COLOR_YELLOW = "#e6b52e";
 const STATUS_COLOR_RED = "#c54848";
 const STATUS_COLOR_ORANGE = "#d97a2a";
-const STATUS_DOT_SIZE_RATIO = 0.16;
-const STATUS_DOT_MIN_SIZE = 14;
-const STATUS_DOT_MAX_SIZE = 24;
+const STATUS_DOT_BASE_SIZE = 16;
+const STATUS_DOT_MIN_SIZE = 8;
+const STATUS_DOT_MAX_SIZE = 40;
 const STATUS_DOT_NUDGE_LEFT_PX = 7;
 const STATUS_DOT_NUDGE_UP_PX = 7;
 
@@ -1309,12 +1309,19 @@ function rowToGame(r: Row): Game | null {
 }
 
 function useElementWidth<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
+  const nodeRef = useRef<T | null>(null);
+  const [node, setNode] = useState<T | null>(null);
   const [width, setWidth] = useState(0);
+  const ref = useCallback((nextNode: T | null) => {
+    nodeRef.current = nextNode;
+    if (nextNode) {
+      setWidth(Math.floor(nextNode.getBoundingClientRect().width));
+    }
+    setNode(nextNode);
+  }, []);
 
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    if (!node) return;
 
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -1322,13 +1329,12 @@ function useElementWidth<T extends HTMLElement>() {
       setWidth(Math.floor(entry.contentRect.width));
     });
 
-    ro.observe(el);
-    setWidth(Math.floor(el.getBoundingClientRect().width));
+    ro.observe(node);
 
     return () => ro.disconnect();
-  }, []);
+  }, [node]);
 
-  return { ref, width };
+  return { ref, width, nodeRef };
 }
 
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
@@ -1695,6 +1701,16 @@ export default function Page() {
   const SETTINGS_WINDOW_Z_INDEX = 9000;
   const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
+  const statusDotPixelSize = useMemo(
+    () =>
+      Math.round(
+        Math.max(
+          STATUS_DOT_MIN_SIZE,
+          Math.min(STATUS_DOT_MAX_SIZE, STATUS_DOT_BASE_SIZE * (statusIconScale / 100))
+        )
+      ),
+    [statusIconScale]
+  );
 
   // DVD case: poster inset inside the frame
   const CASE_SRC_W = 1024;
@@ -1833,7 +1849,7 @@ export default function Page() {
     applyDebugHeaderOffset();
   }, [applyDebugHeaderOffset]);
 
-  const { ref: stageRef, width: stageWidth } = useElementWidth<HTMLDivElement>();
+  const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
 
   const buildItemWithCoverSelection = (item: any, overrides: Record<string, string>) => {
     const itemKey = getMediaItemKey(item);
@@ -1971,11 +1987,11 @@ export default function Page() {
   }, []);
 
   const measureStageTop = useCallback(() => {
-    const node = stageRef.current;
+    const node = stageNodeRef.current;
     if (!node) return;
     const rect = node.getBoundingClientRect();
     setStageTopAbs(rect.top + (window.scrollY || window.pageYOffset || 0));
-  }, [stageRef]);
+  }, [stageNodeRef]);
 
   useEffect(() => {
     measureStageTop();
@@ -13580,29 +13596,19 @@ export default function Page() {
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
-                      const statusDotBaseSizePx = Math.round(
-                        Math.max(
-                          STATUS_DOT_MIN_SIZE,
-                          Math.min(STATUS_DOT_MAX_SIZE, statusRegionWidthPx * STATUS_DOT_SIZE_RATIO)
-                        )
-                      );
-                      const statusDotSizePx = Math.max(
-                        8,
-                        Math.round(statusDotBaseSizePx * (statusIconScale / 100))
-                      );
                       const statusDotLeftPx = Math.round(
-                        statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotSizePx + statusIconOffsetX
+                        statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX
                       );
                       const statusDotTopPx = Math.round(
-                        statusRegionTopPx + statusRegionHeightPx - STATUS_DOT_NUDGE_UP_PX - statusDotSizePx + statusIconOffsetY
+                        statusRegionTopPx + statusRegionHeightPx - STATUS_DOT_NUDGE_UP_PX - statusDotPixelSize + statusIconOffsetY
                       );
                       const statusDotLeftClampedPx = Math.max(
                         insetLeft,
-                        Math.min(caseWidth - insetRight - statusDotSizePx, statusDotLeftPx)
+                        Math.min(caseWidth - insetRight - statusDotPixelSize, statusDotLeftPx)
                       );
                       const statusDotTopClampedPx = Math.max(
                         insetTop,
-                        Math.min(caseHeight - insetBottom - statusDotSizePx, statusDotTopPx)
+                        Math.min(caseHeight - insetBottom - statusDotPixelSize, statusDotTopPx)
                       );
                       const itemKey = getMediaItemKey(show);
                       const isWishlistCase =
@@ -13662,7 +13668,7 @@ export default function Page() {
                             bottom: isWishlistPointerDragging ? undefined : LIP_FROM_BOTTOM,
                             width: caseWidth,
                             height: caseHeight,
-                            overflow: "hidden",
+                            overflow: "visible",
                             cursor: isWishlistCase ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
                             opacity: isWishlistPointerDragging ? 0.94 : 1,
                             zIndex: isWishlistCase ? (isWishlistPointerDragging ? 60 : draggingWishlistKey ? 2 : undefined) : undefined,
@@ -13687,6 +13693,7 @@ export default function Page() {
                           onMouseMove={handleCaseMouseMove}
                           onMouseLeave={handleCaseMouseLeave}
                         >
+                          <div className="caseSurface">
                           {isGame ? (
                             <>
                               <div
@@ -13974,6 +13981,8 @@ export default function Page() {
                             </>
                           )}
 
+                          </div>
+
                           {showStatusIndicators && statusIndicator ? (
                             <div
                               aria-label={`Status: ${statusIndicator.label}`}
@@ -13982,8 +13991,8 @@ export default function Page() {
                                 position: "absolute",
                                 left: statusDotLeftClampedPx,
                                 top: statusDotTopClampedPx,
-                                width: statusDotSizePx,
-                                height: statusDotSizePx,
+                                width: statusDotPixelSize,
+                                height: statusDotPixelSize,
                                 borderRadius: "50%",
                                 border: `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
                                 background: statusIndicator.color,
@@ -14190,10 +14199,16 @@ export default function Page() {
           font-weight: 700;
         }
         .case {
+          position: relative;
+          filter: drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34));
+        }
+        .caseSurface {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
           transition: transform 70ms ease, filter 140ms ease;
           transform: translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
           transform-style: preserve-3d;
-          filter: drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34));
         }
         .case-reflection {
           transition: opacity 180ms ease;
