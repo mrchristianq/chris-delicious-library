@@ -697,11 +697,17 @@ function parseTagValues(raw?: string): string[] {
 }
 
 const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
+const ABANDONED_STATUS_VALUES = new Set(["abandoned", "dropped", "drop", "quit", "dnf"]);
 const PLAY_NEXT_STATUS_VALUES = new Set(["queued", "replay"]);
 
 function isMovieWatchedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
   const watched = normalizeStatusToken(movie.watchStatus || movie.watched);
   return WATCHED_STATUS_VALUES.has(watched);
+}
+
+function isMovieAbandonedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
+  const status = normalizeStatusToken(movie.watchStatus || movie.watched);
+  return ABANDONED_STATUS_VALUES.has(status);
 }
 
 function parseManualOrderValue(value: unknown): number | null {
@@ -5378,7 +5384,7 @@ export default function Page() {
   const watchlistMovieItems = useMemo(
     () =>
       indexedMovies
-        .filter((movie) => !isMovieWatchedStatus(movie.item))
+        .filter((movie) => !isMovieWatchedStatus(movie.item) && !isMovieAbandonedStatus(movie.item))
         .map((movie) => ({ ...movie.item, __type: "movie" } as Movie & { __type: "movie" })),
     [indexedMovies]
   );
@@ -6957,7 +6963,7 @@ export default function Page() {
       return queryFiltered as any[];
     }
 
-    // Watchlist (Movies): unwatched movies
+    // Movie Watchlist: unwatched and not-abandoned movies
     if (nav === "watchlist-movies") {
       const ordered =
         sortField === MANUAL_SORT_FIELD
@@ -6972,7 +6978,7 @@ export default function Page() {
       return queryFiltered as any[];
     }
 
-    // Watchlist (TV): active shows (not completed/abandoned)
+    // TV Watchlist: active shows (not completed/abandoned)
     if (nav === "watchlist-tv") {
       const ordered =
         sortField === MANUAL_SORT_FIELD
@@ -7422,11 +7428,11 @@ export default function Page() {
       } else if (view === "watchlist-movies") {
         sortFieldKey = WATCHLIST_MOVIES_SORT_FIELD_SETTING_KEY;
         sortOrderKey = WATCHLIST_MOVIES_SORT_ORDER_SETTING_KEY;
-        descriptionPrefix = "Watchlist (Movies)";
+        descriptionPrefix = "Movie Watchlist";
       } else if (view === "watchlist-tv") {
         sortFieldKey = WATCHLIST_TV_SORT_FIELD_SETTING_KEY;
         sortOrderKey = WATCHLIST_TV_SORT_ORDER_SETTING_KEY;
-        descriptionPrefix = "Watchlist (TV)";
+        descriptionPrefix = "TV Watchlist";
       }
 
       saveSetting(sortFieldKey, field, "View Sorting", `Sort field for ${descriptionPrefix} view`);
@@ -7511,11 +7517,11 @@ export default function Page() {
       } else if (backlogView === "watchlist-movies") {
         manualOrderKeys = resolvedWatchlistMovieManualOrderKeys;
         manualOrderSettingKey = WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY;
-        descriptionPrefix = "Watchlist (Movies)";
+        descriptionPrefix = "Movie Watchlist";
       } else if (backlogView === "watchlist-tv") {
         manualOrderKeys = resolvedWatchlistTvManualOrderKeys;
         manualOrderSettingKey = WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY;
-        descriptionPrefix = "Watchlist (TV)";
+        descriptionPrefix = "TV Watchlist";
       }
 
       saveSetting(
@@ -7607,10 +7613,10 @@ export default function Page() {
         manualOrderDescription = "Manual order keys for Read Next (Books) view";
       } else if (view === "watchlist-movies") {
         manualOrderSettingKey = WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY;
-        manualOrderDescription = "Manual order keys for Watchlist (Movies) view";
+        manualOrderDescription = "Manual order keys for Movie Watchlist view";
       } else if (view === "watchlist-tv") {
         manualOrderSettingKey = WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY;
-        manualOrderDescription = "Manual order keys for Watchlist (TV) view";
+        manualOrderDescription = "Manual order keys for TV Watchlist view";
       }
 
       saveSetting(
@@ -8223,7 +8229,7 @@ export default function Page() {
       const status = normalizeStatus(s.watchStatus);
       return status !== "completed" && status !== "abandoned";
     }).length;
-    const watchlistMovies = allMovies.filter((m) => !isMovieWatched(m)).length;
+    const watchlistMovies = allMovies.filter((m) => !isMovieWatched(m) && !isMovieAbandonedStatus(m)).length;
 
     return {
       movies: allMovies.filter((m) => isMovieWatched(m)).length,
@@ -10171,7 +10177,7 @@ export default function Page() {
                     >
                       <img src={getSidebarIconSrc("watchlist-movies", "/icon-watchlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "watchlist-movies")} title={uploadingSidebarIconKey === "watchlist-movies" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
-                    Watchlist (Movies)
+                    Movie Watchlist
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
@@ -10232,7 +10238,7 @@ export default function Page() {
                     >
                       <img src={getSidebarIconSrc("watchlist-tv", "/icon-watchlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "watchlist-tv")} title={uploadingSidebarIconKey === "watchlist-tv" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
-                    Watchlist (TV)
+                    TV Watchlist
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
