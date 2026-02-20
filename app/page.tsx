@@ -745,14 +745,10 @@ function moveKeyOneStepTowardTarget(
   const toIndex = keys.indexOf(targetKey);
   if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return keys;
 
-  const distance = toIndex - fromIndex;
-  const direction = distance > 0 ? 1 : -1;
-  const stepTargetIndex = Math.abs(distance) > 1 ? fromIndex + direction : toIndex;
-  const stepTargetKey = keys[stepTargetIndex];
-  if (!stepTargetKey || stepTargetKey === movingKey) return keys;
-
-  const placement: "before" | "after" = direction > 0 ? "after" : "before";
-  return moveKeyRelative(keys, movingKey, stepTargetKey, placement);
+  // Move directly to the hovered target so long vertical drags stay in sync
+  // with what the user is hovering over.
+  const placement: "before" | "after" = toIndex > fromIndex ? "after" : "before";
+  return moveKeyRelative(keys, movingKey, targetKey, placement);
 }
 
 function createDefaultSmartListDraft(): SmartListDraft {
@@ -1052,6 +1048,22 @@ type StatusIndicator = {
   label: string;
 };
 
+type TvWatchlistSectionKey = "pendingReturn" | "watching" | "backlog";
+
+type TvWatchlistSectionMeta = {
+  label: string;
+  badgeBackground: string;
+  badgeBorder: string;
+  badgeColor: string;
+};
+
+type TvWatchlistStatusSource = {
+  watchStatus?: string;
+  watched?: string;
+  showStatus?: string;
+  status?: string;
+};
+
 const STATUS_COLOR_GREEN = "#54bf3f";
 const STATUS_COLOR_YELLOW = "#e6b52e";
 const STATUS_COLOR_RED = "#c54848";
@@ -1061,6 +1073,50 @@ const STATUS_DOT_MIN_SIZE = 8;
 const STATUS_DOT_MAX_SIZE = 40;
 const STATUS_DOT_NUDGE_LEFT_PX = 7;
 const STATUS_DOT_NUDGE_UP_PX = 7;
+
+const TV_WATCHLIST_SECTION_ORDER: TvWatchlistSectionKey[] = ["watching", "backlog", "pendingReturn"];
+const TV_WATCHLIST_ACTIVE_STATUSES = new Set([
+  "watching",
+  "currently watching",
+  "in progress",
+  "paused",
+  "watch next",
+]);
+const TV_WATCHLIST_BACKLOG_STATUSES = new Set(["backlog", "wishlist"]);
+const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
+  pendingReturn: {
+    label: "Pending Return",
+    badgeBackground: "rgba(57, 117, 163, 0.9)",
+    badgeBorder: "rgba(169, 221, 255, 0.82)",
+    badgeColor: "rgba(238, 248, 255, 0.98)",
+  },
+  watching: {
+    label: "Watching",
+    badgeBackground: "rgba(117, 90, 34, 0.88)",
+    badgeBorder: "rgba(241, 213, 141, 0.82)",
+    badgeColor: "rgba(255, 247, 224, 0.98)",
+  },
+  backlog: {
+    label: "Backlog",
+    badgeBackground: "rgba(84, 55, 96, 0.9)",
+    badgeBorder: "rgba(202, 167, 223, 0.82)",
+    badgeColor: "rgba(249, 236, 255, 0.98)",
+  },
+};
+
+function getTvWatchlistSectionKey(rawStatus?: string): TvWatchlistSectionKey {
+  const status = normalizeStatusToken(rawStatus);
+  if (status === "pending return") return "pendingReturn";
+  if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "watching";
+  if (TV_WATCHLIST_BACKLOG_STATUSES.has(status)) return "backlog";
+  return "backlog";
+}
+
+function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource): TvWatchlistSectionKey {
+  return getTvWatchlistSectionKey(
+    safeStr(item.watchStatus) || safeStr(item.watched) || safeStr(item.showStatus) || safeStr(item.status)
+  );
+}
 
 function mapBookGenre(input: string): string | null {
   const g = safeStr(input).toLowerCase();
@@ -1513,6 +1569,7 @@ export default function Page() {
   const [gameYearPlayedFilter, setGameYearPlayedFilter] = useState<string | null>(null);
   const [gameGenreFilter, setGameGenreFilter] = useState<string | null>(null);
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
+  const [watchlistTvSectionFilter, setWatchlistTvSectionFilter] = useState<TvWatchlistSectionKey>("watching");
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
   const [wishlistManualOrderKeys, setWishlistManualOrderKeys] = useState<string[]>([]);
@@ -1562,6 +1619,7 @@ export default function Page() {
     setGameYearPlayedFilter(null);
     setGameGenreFilter(null);
     setWishlistFilter(false);
+    setWatchlistTvSectionFilter("watching");
   }, []);
 
   // Logo positioning and sizing
@@ -4349,6 +4407,11 @@ export default function Page() {
   }, [getSetting, nav]);
 
   useEffect(() => {
+    if (nav !== "watchlist-tv") return;
+    setWatchlistTvSectionFilter("watching");
+  }, [nav]);
+
+  useEffect(() => {
     const smartListSupportsManualSort = nav === "smart-custom" && Boolean(activeSmartList?.allowManualSort);
     if (
       nav === "wishlist" ||
@@ -6370,15 +6433,20 @@ export default function Page() {
       ) {
         return { color: STATUS_COLOR_GREEN, label: "Watched / Completed" };
       }
+      if (status === "pending return") {
+        return { color: STATUS_COLOR_YELLOW, label: "Pending Return" };
+      }
       if (
         status === "currently watching" ||
         status === "watching" ||
         status === "in progress" ||
         status === "paused" ||
-        status === "watch next" ||
-        status === "pending return"
+        status === "watch next"
       ) {
         return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+      }
+      if (status === "backlog" || status === "wishlist") {
+        return { color: STATUS_COLOR_RED, label: "Backlog" };
       }
       return { color: STATUS_COLOR_RED, label: "Not Watched" };
     }
@@ -6987,9 +7055,12 @@ export default function Page() {
               .filter(Boolean) as Array<Show & { __type: "tv" }>
           : applySorting(watchlistTvItems, sortField, sortOrder);
 
+      const sectionFiltered = ordered.filter(
+        (item) => getTvWatchlistSectionForItem(item) === watchlistTvSectionFilter
+      );
       const queryFiltered = q
-        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
-        : ordered;
+        ? sectionFiltered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : sectionFiltered;
       return queryFiltered as any[];
     }
 
@@ -7404,8 +7475,33 @@ export default function Page() {
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    activeSmartList, deferredQuery, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
+    activeSmartList, deferredQuery, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
+
+  const watchlistTvSectionByVisibleKey = useMemo(() => {
+    const sections = new Map<string, TvWatchlistSectionKey>();
+    if (nav !== "watchlist-tv") return sections;
+
+    shows.forEach((item) => {
+      sections.set(getMediaItemKey(item), getTvWatchlistSectionForItem(item));
+    });
+
+    return sections;
+  }, [nav, shows]);
+
+  const watchlistTvSectionCounts = useMemo(() => {
+    const counts: Record<TvWatchlistSectionKey, number> = {
+      pendingReturn: 0,
+      watching: 0,
+      backlog: 0,
+    };
+    watchlistTvItems.forEach((item) => {
+      const section = getTvWatchlistSectionForItem(item);
+      counts[section] += 1;
+    });
+
+    return counts;
+  }, [watchlistTvItems]);
 
   const persistBacklogSortSettings = useCallback(
     (
@@ -7787,11 +7883,11 @@ export default function Page() {
           ? playNextItems
           : backlogView === "wishlist-books"
             ? wishlistBookItems
-          : backlogView === "watchlist-movies"
-            ? watchlistMovieItems
-            : backlogView === "watchlist-tv"
-              ? watchlistTvItems
-              : wishlistItems;
+            : backlogView === "watchlist-movies"
+              ? watchlistMovieItems
+              : backlogView === "watchlist-tv"
+                ? watchlistTvItems
+                : wishlistItems;
       const sortedBacklogItems = applySorting(sourceItems as any[], sortField, sortOrder);
       const nextKeys = sortedBacklogItems.map((item) => getMediaItemKey(item));
       wishlistDragLatestOrderRef.current = nextKeys;
@@ -7970,6 +8066,8 @@ export default function Page() {
       const dragCenterX = dragLeft + dragState.dragWidth / 2;
       const dragCenterY = dragTop + dragState.dragHeight / 2;
 
+      let centerHitKey: string | null = null;
+      let centerHitScore = Number.POSITIVE_INFINITY;
       let overlapKey: string | null = null;
       let overlapArea = 0;
       let nearestKey: string | null = null;
@@ -7980,6 +8078,21 @@ export default function Page() {
         const node = wishlistCaseNodeMapRef.current.get(key);
         if (!node) return;
         const rect = node.getBoundingClientRect();
+
+        const centerInsideRect =
+          dragCenterX >= rect.left &&
+          dragCenterX <= rect.right &&
+          dragCenterY >= rect.top &&
+          dragCenterY <= rect.bottom;
+        if (centerInsideRect) {
+          const rectCenterX = (rect.left + rect.right) / 2;
+          const rectCenterY = (rect.top + rect.bottom) / 2;
+          const centerScore = Math.hypot(dragCenterX - rectCenterX, (dragCenterY - rectCenterY) * 1.3);
+          if (centerScore < centerHitScore) {
+            centerHitScore = centerScore;
+            centerHitKey = key;
+          }
+        }
 
         const overlapW = Math.max(0, Math.min(dragRight, rect.right) - Math.max(dragLeft, rect.left));
         const overlapH = Math.max(0, Math.min(dragBottom, rect.bottom) - Math.max(dragTop, rect.top));
@@ -8000,6 +8113,7 @@ export default function Page() {
         }
       });
 
+      if (centerHitKey) return centerHitKey;
       if (overlapKey && overlapArea > 0) return overlapKey;
       const snapDistance = Math.max(16, Math.min(44, dragState.dragWidth * 0.28));
       if (!nearestKey || !Number.isFinite(nearestScore) || nearestScore > snapDistance) return null;
@@ -13294,6 +13408,70 @@ export default function Page() {
                       </button>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    {nav === "watchlist-tv" ? (
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: 2,
+                          borderRadius: 10,
+                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          background: "rgba(28, 18, 10, 0.52)",
+                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        }}
+                      >
+                        {TV_WATCHLIST_SECTION_ORDER.map((sectionKey) => {
+                          const sectionMeta = TV_WATCHLIST_SECTION_META[sectionKey];
+                          const active = watchlistTvSectionFilter === sectionKey;
+                          return (
+                            <button
+                              key={`watchlist-tv-filter-${sectionKey}`}
+                              type="button"
+                              onClick={() => setWatchlistTvSectionFilter(sectionKey)}
+                              title={`Show ${sectionMeta.label}`}
+                              aria-label={`Show ${sectionMeta.label}`}
+                              aria-pressed={active}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: 4,
+                                height: 20,
+                                padding: "0 6px",
+                                borderRadius: 8,
+                                border: active
+                                  ? `1px solid ${sectionMeta.badgeBorder}`
+                                  : "1px solid rgba(255,255,255,0.2)",
+                                background: active ? sectionMeta.badgeBackground : "rgba(17, 10, 6, 0.36)",
+                                color: active ? sectionMeta.badgeColor : "rgba(250, 242, 230, 0.72)",
+                                fontSize: 9,
+                                fontWeight: 900,
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                                cursor: "pointer",
+                                lineHeight: 1,
+                                boxShadow: active ? "0 2px 6px rgba(0,0,0,0.3)" : "none",
+                              }}
+                            >
+                              <span>{sectionMeta.label}</span>
+                              <span
+                                style={{
+                                  borderRadius: 999,
+                                  border: "1px solid rgba(255,255,255,0.24)",
+                                  background: active ? "rgba(0, 0, 0, 0.24)" : "rgba(255, 255, 255, 0.06)",
+                                  padding: "0 4px",
+                                  fontSize: 8,
+                                  letterSpacing: "0.02em",
+                                }}
+                              >
+                                {watchlistTvSectionCounts[sectionKey]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                     <span
                       style={{
                         fontSize: 11,
@@ -13617,6 +13795,13 @@ export default function Page() {
                         Math.min(caseHeight - insetBottom - statusDotPixelSize, statusDotTopPx)
                       );
                       const itemKey = getMediaItemKey(show);
+                      const tvWatchlistSectionKey =
+                        nav === "watchlist-tv" && show.__type === "tv"
+                          ? watchlistTvSectionByVisibleKey.get(itemKey) || getTvWatchlistSectionForItem(show)
+                          : null;
+                      const tvWatchlistSectionMeta = tvWatchlistSectionKey
+                        ? TV_WATCHLIST_SECTION_META[tvWatchlistSectionKey]
+                        : null;
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "wishlist-books" ||
@@ -13988,6 +14173,37 @@ export default function Page() {
                           )}
 
                           </div>
+
+                          {tvWatchlistSectionMeta ? (
+                            <div
+                              aria-label={`Watchlist status: ${tvWatchlistSectionMeta.label}`}
+                              title={`Watchlist status: ${tvWatchlistSectionMeta.label}`}
+                              style={{
+                                position: "absolute",
+                                left: Math.max(4, insetLeft + 4),
+                                top: Math.max(4, insetTop + 4),
+                                maxWidth: Math.max(36, caseWidth - insetLeft - insetRight - 8),
+                                borderRadius: 999,
+                                border: `1px solid ${tvWatchlistSectionMeta.badgeBorder}`,
+                                background: tvWatchlistSectionMeta.badgeBackground,
+                                color: tvWatchlistSectionMeta.badgeColor,
+                                boxShadow: "0 2px 5px rgba(0,0,0,0.34)",
+                                padding: "2px 6px",
+                                fontSize: 8,
+                                lineHeight: 1,
+                                fontWeight: 900,
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                pointerEvents: "none",
+                                zIndex: 28,
+                              }}
+                            >
+                              {tvWatchlistSectionMeta.label}
+                            </div>
+                          ) : null}
 
                           {showStatusIndicators && statusIndicator ? (
                             <div
