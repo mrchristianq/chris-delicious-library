@@ -745,10 +745,13 @@ function moveKeyOneStepTowardTarget(
   const toIndex = keys.indexOf(targetKey);
   if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return keys;
 
-  // Move directly to the hovered target so long vertical drags stay in sync
-  // with what the user is hovering over.
-  const placement: "before" | "after" = toIndex > fromIndex ? "after" : "before";
-  return moveKeyRelative(keys, movingKey, targetKey, placement);
+  const direction = toIndex > fromIndex ? 1 : -1;
+  const stepTargetIndex = fromIndex + direction;
+  const stepTargetKey = keys[stepTargetIndex];
+  if (!stepTargetKey || stepTargetKey === movingKey) return keys;
+
+  const placement: "before" | "after" = direction > 0 ? "after" : "before";
+  return moveKeyRelative(keys, movingKey, stepTargetKey, placement);
 }
 
 function createDefaultSmartListDraft(): SmartListDraft {
@@ -1450,6 +1453,32 @@ function useElementWidth<T extends HTMLElement>() {
 }
 
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
+
+function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
+  return (
+    nav === "home" ||
+    nav === "books" ||
+    nav === "movies" ||
+    nav === "tv" ||
+    nav === "games" ||
+    nav === "current" ||
+    nav === "completed" ||
+    nav === "abandoned" ||
+    nav === "year-this"
+  );
+}
+
+function getPersistedStandardSortViewLabel(nav: "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this"): string {
+  if (nav === "home") return "Home";
+  if (nav === "books") return "Books";
+  if (nav === "movies") return "Movies";
+  if (nav === "tv") return "TV Shows";
+  if (nav === "games") return "Games";
+  if (nav === "current") return "Current";
+  if (nav === "completed") return "Completed";
+  if (nav === "abandoned") return "Abandoned";
+  return "This Year";
+}
 
 export default function Page() {
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
@@ -4454,6 +4483,20 @@ export default function Page() {
               : "wishlist";
       console.warn(`Failed to parse ${label} manual order setting:`, error);
     }
+  }, [getSetting, nav]);
+
+  useEffect(() => {
+    if (!isPersistedStandardSortView(nav)) return;
+
+    const sortFieldSettingKey = `viewSortField:${nav}`;
+    const sortOrderSettingKey = `viewSortOrder:${nav}`;
+    const savedSortFieldRaw = safeStr(getSetting(sortFieldSettingKey, "ReleaseDate"));
+    const normalizedSortField = savedSortFieldRaw || "ReleaseDate";
+    const savedSortOrderRaw = safeStr(getSetting(sortOrderSettingKey, "Desc"));
+    const normalizedSortOrder: "Asc" | "Desc" = savedSortOrderRaw === "Asc" ? "Asc" : "Desc";
+
+    setSortField(normalizedSortField);
+    setSortOrder(normalizedSortOrder);
   }, [getSetting, nav]);
 
   useEffect(() => {
@@ -7589,9 +7632,49 @@ export default function Page() {
     [saveSetting]
   );
 
+  const persistStandardViewSortSettings = useCallback(
+    (
+      view: "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this",
+      field: string,
+      order: "Asc" | "Desc"
+    ) => {
+      const label = getPersistedStandardSortViewLabel(view);
+      saveSetting(`viewSortField:${view}`, field, "View Sorting", `Sort field for ${label} view`);
+      saveSetting(`viewSortOrder:${view}`, order, "View Sorting", `Sort order for ${label} view`);
+    },
+    [saveSetting]
+  );
+
   const manualSortableSmartListId = nav === "smart-custom" && activeSmartList?.allowManualSort
     ? activeSmartList.id
     : null;
+
+  const persistActiveSmartListSortDefaults = useCallback(
+    (field: string, order: "Asc" | "Desc") => {
+      if (!activeSmartList) return;
+      const normalizedField =
+        field === MANUAL_SORT_FIELD && !activeSmartList.allowManualSort
+          ? "ReleaseDate"
+          : field;
+      if (
+        activeSmartList.defaultSortField === normalizedField &&
+        activeSmartList.defaultSortOrder === order
+      ) {
+        return;
+      }
+      const nextLists = customSmartLists.map((list) =>
+        list.id === activeSmartList.id
+          ? {
+              ...list,
+              defaultSortField: normalizedField,
+              defaultSortOrder: order,
+            }
+          : list
+      );
+      persistSmartLists(nextLists);
+    },
+    [activeSmartList, customSmartLists, persistSmartLists]
+  );
 
   const persistSmartListManualOrder = useCallback(
     (listId: string, nextKeys: string[]) => {
@@ -7622,6 +7705,7 @@ export default function Page() {
 
       if (nav === "smart-custom") {
         if (!activeSmartList) return;
+        persistActiveSmartListSortDefaults(nextField, sortOrder);
         if (nextField !== MANUAL_SORT_FIELD || !manualSortableSmartListId) return;
         const visibleKeys = shows.map((item) => getMediaItemKey(item));
         const previousKeys = (smartListManualOrderKeysById[activeSmartList.id] || []).filter((key) =>
@@ -7647,7 +7731,12 @@ export default function Page() {
         nav === "watchlist-tv"
           ? nav
           : null;
-      if (!backlogView) return;
+      if (!backlogView) {
+        if (isPersistedStandardSortView(nav)) {
+          persistStandardViewSortSettings(nav, nextField, sortOrder);
+        }
+        return;
+      }
       persistBacklogSortSettings(backlogView, nextField, sortOrder);
       if (nextField !== MANUAL_SORT_FIELD) return;
 
@@ -7681,9 +7770,11 @@ export default function Page() {
     },
     [
       activeSmartList,
+      persistActiveSmartListSortDefaults,
       manualSortableSmartListId,
       nav,
       persistBacklogSortSettings,
+      persistStandardViewSortSettings,
       resolvedPlayNextManualOrderKeys,
       resolvedReadNextManualOrderKeys,
       resolvedWatchlistMovieManualOrderKeys,
@@ -7699,6 +7790,10 @@ export default function Page() {
   const handleSortOrderChange = useCallback(
     (nextOrder: "Asc" | "Desc") => {
       setSortOrder(nextOrder);
+      if (nav === "smart-custom") {
+        persistActiveSmartListSortDefaults(sortField, nextOrder);
+        return;
+      }
       const backlogView =
         nav === "play-next" ||
         nav === "wishlist" ||
@@ -7707,10 +7802,15 @@ export default function Page() {
         nav === "watchlist-tv"
           ? nav
           : null;
-      if (!backlogView) return;
-      persistBacklogSortSettings(backlogView, sortField, nextOrder);
+      if (backlogView) {
+        persistBacklogSortSettings(backlogView, sortField, nextOrder);
+        return;
+      }
+      if (isPersistedStandardSortView(nav)) {
+        persistStandardViewSortSettings(nav, sortField, nextOrder);
+      }
     },
-    [nav, persistBacklogSortSettings, sortField]
+    [nav, persistActiveSmartListSortDefaults, persistBacklogSortSettings, persistStandardViewSortSettings, sortField]
   );
 
   const persistBacklogManualOrder = useCallback(

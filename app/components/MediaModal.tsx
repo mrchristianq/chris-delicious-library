@@ -475,19 +475,42 @@ function buildGameEditValues(item: Record<string, any>): Record<string, string> 
   };
 }
 
-function renderRating(value: string, scale: "auto" | "ten" = "auto") {
-  const parsed = Number.parseFloat(value);
-  if (Number.isNaN(parsed)) return value || DASH;
+type RatingScale = "five" | "ten";
 
-  const score = scale === "ten" ? (parsed > 10 ? parsed / 10 : parsed) : parsed;
-  const normalized = scale === "ten" ? score / 2 : score > 5 ? score / 2 : score;
-  const clamped = Math.max(0, Math.min(5, normalized));
+function normalizeRatingValue(value: string, scale: RatingScale): number | null {
+  const parsed = Number.parseFloat(value);
+  if (Number.isNaN(parsed)) return null;
+
+  if (scale === "ten") {
+    let normalized = parsed;
+    if (value.includes("%") || normalized > 10) {
+      normalized = normalized / 10;
+    }
+    if (!Number.isFinite(normalized)) return null;
+    return Math.max(0, Math.min(10, normalized));
+  }
+
+  let normalized = parsed;
+  if (value.includes("%")) {
+    normalized = normalized / 20;
+  } else if (normalized > 5) {
+    normalized = normalized / 2;
+  }
+  if (!Number.isFinite(normalized)) return null;
+  return Math.max(0, Math.min(5, normalized));
+}
+
+function renderRating(value: string, scale: RatingScale) {
+  const score = normalizeRatingValue(value, scale);
+  if (score === null) return value || DASH;
+
+  const starScore = scale === "ten" ? score / 2 : score;
 
   return (
     <span className="ratingValue">
       <span className="stars">
         {Array.from({ length: 5 }, (_, i) => {
-          const fill = Math.max(0, Math.min(1, clamped - i));
+          const fill = Math.max(0, Math.min(1, starScore - i));
           return (
             <span key={i} className="star">
               <span className="starBase">★</span>
@@ -498,7 +521,9 @@ function renderRating(value: string, scale: "auto" | "ten" = "auto") {
           );
         })}
       </span>
-      <span className="score">{score.toFixed(1)}</span>
+      <span className="score">
+        {score.toFixed(1)}/{scale === "ten" ? 10 : 5}
+      </span>
     </span>
   );
 }
@@ -540,8 +565,8 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
       { label: "Completed Date", value: firstNonEmpty(item, ["completedDate"]) || DASH },
       { label: "Release Date", value: firstNonEmpty(item, ["releaseDate"]) || DASH },
       { label: "ISBN", value: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]) || DASH },
-      { label: "User Rating", value: renderRating(firstNonEmpty(item, ["userRating", "UserRating"]) || "") },
-      { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]) || "") },
+      { label: "User Rating", value: renderRating(firstNonEmpty(item, ["userRating", "UserRating"]) || "", "five") },
+      { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]) || "", "ten") },
       { label: "Pages", value: firstNonEmpty(item, ["pages", "Pages"]) || DASH },
       {
         label: "Audiobook Duration",
@@ -556,9 +581,9 @@ function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "t
     return [
       { label: "Date Completed", value: firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate"]) || DASH },
       { label: "First Air Date", value: firstNonEmpty(item, ["firstAirDate"]) || DASH },
-      { label: "TMDB Rating", value: renderRating(firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]) || "") },
+      { label: "TMDB Rating", value: renderRating(firstNonEmpty(item, ["tmdbRating", "TMDB_Rating"]) || "", "ten") },
       { label: "Last Air Date", value: firstNonEmpty(item, ["lastAirDate"]) || DASH },
-      { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]) || "") },
+      { label: "My Rating", value: renderRating(firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]) || "", "ten") },
       { label: "Seasons", value: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]) || DASH },
       { label: "Episodes", value: firstNonEmpty(item, ["numberOfEpisodes", "NumberOfEpisodes"]) || DASH },
       { label: "Show Status", value: firstNonEmpty(item, ["showStatus", "Status"]) || DASH },
@@ -1610,11 +1635,11 @@ export const MediaModal: React.FC<MediaModalProps> = ({
               <div className="infoGrid">
                 <div className="infoCard">
                   <div className="label">TMDB Rating</div>
-                  <div className="value">{renderRating(firstNonEmpty(sourceItem, ["tmdbRating", "TMDB_Rating"]) || "")}</div>
+                  <div className="value">{renderRating(firstNonEmpty(sourceItem, ["tmdbRating", "TMDB_Rating"]) || "", "ten")}</div>
                 </div>
                 <div className="infoCard">
                   <div className="label">My Rating</div>
-                  <div className="value">{renderRating(firstNonEmpty(sourceItem, ["myRating", "MyRating", "My Rating"]) || "")}</div>
+                  <div className="value">{renderRating(firstNonEmpty(sourceItem, ["myRating", "MyRating", "My Rating"]) || "", "ten")}</div>
                 </div>
               </div>
             ) : null}
