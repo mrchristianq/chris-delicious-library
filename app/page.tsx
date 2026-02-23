@@ -138,6 +138,13 @@ type WishlistPointerDrag = {
   active: boolean;
 };
 
+type WishlistDragPlacement = "before" | "after";
+
+type WishlistDragTarget = {
+  key: string;
+  placement: WishlistDragPlacement;
+};
+
 type Show = {
   title: string;
   posterUrl: string;
@@ -719,7 +726,7 @@ function moveKeyRelative(
   keys: string[],
   movingKey: string,
   targetKey: string,
-  placement: "before" | "after"
+  placement: WishlistDragPlacement
 ): string[] {
   if (!movingKey || !targetKey || movingKey === targetKey) return keys;
   const fromIndex = keys.indexOf(movingKey);
@@ -735,23 +742,35 @@ function moveKeyRelative(
   return next;
 }
 
-function moveKeyOneStepTowardTarget(
+function areStringArraysEqual(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function moveKeyToTargetPlacement(
   keys: string[],
   movingKey: string,
-  targetKey: string
+  targetKey: string,
+  placement: WishlistDragPlacement
 ): string[] {
   if (!movingKey || !targetKey || movingKey === targetKey) return keys;
   const fromIndex = keys.indexOf(movingKey);
   const toIndex = keys.indexOf(targetKey);
-  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return keys;
+  if (fromIndex === -1 || toIndex === -1) return keys;
 
-  const direction = toIndex > fromIndex ? 1 : -1;
-  const stepTargetIndex = fromIndex + direction;
-  const stepTargetKey = keys[stepTargetIndex];
-  if (!stepTargetKey || stepTargetKey === movingKey) return keys;
-
-  const placement: "before" | "after" = direction > 0 ? "after" : "before";
-  return moveKeyRelative(keys, movingKey, stepTargetKey, placement);
+  const next = [...keys];
+  const [moved] = next.splice(fromIndex, 1);
+  let insertAt = placement === "before" ? toIndex : toIndex + 1;
+  if (fromIndex < toIndex) {
+    insertAt -= 1;
+  }
+  const clampedInsertAt = Math.max(0, Math.min(insertAt, next.length));
+  next.splice(clampedInsertAt, 0, moved);
+  return next;
 }
 
 function createDefaultSmartListDraft(): SmartListDraft {
@@ -1544,6 +1563,7 @@ export default function Page() {
   const wishlistPointerDragRef = useRef<WishlistPointerDrag | null>(null);
   const wishlistCaseNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const wishlistDragHoverTargetRef = useRef<string | null>(null);
+  const wishlistDragHoverPlacementRef = useRef<WishlistDragPlacement | null>(null);
   const wishlistDragVisualRafRef = useRef<number | null>(null);
   const wishlistDragVisualPendingRef = useRef<WishlistPointerDrag | null>(null);
   const wishlistDragLatestOrderRef = useRef<string[] | null>(null);
@@ -4521,6 +4541,7 @@ export default function Page() {
     setWishlistDragHoverKey(null);
     wishlistPointerDragRef.current = null;
     wishlistDragHoverTargetRef.current = null;
+    wishlistDragHoverPlacementRef.current = null;
     wishlistDragVisualPendingRef.current = null;
     wishlistDragLatestOrderRef.current = null;
     if (wishlistDragVisualRafRef.current !== null) {
@@ -8075,7 +8096,7 @@ export default function Page() {
   );
 
   const reorderWishlistDuringPointerDrag = useCallback(
-    (dragKey: string, targetKey: string) => {
+    (dragKey: string, targetKey: string, targetPlacement: WishlistDragPlacement) => {
       if (!dragKey || !targetKey || dragKey === targetKey) return;
 
       const backlogView =
@@ -8109,13 +8130,14 @@ export default function Page() {
               merged.push(key);
             }
           });
-          return moveKeyOneStepTowardTarget(merged, dragKey, targetKey);
+          return moveKeyToTargetPlacement(merged, dragKey, targetKey, targetPlacement);
         };
         const baseOrder =
           wishlistDragLatestOrderRef.current && wishlistDragLatestOrderRef.current.length
             ? wishlistDragLatestOrderRef.current
             : (smartListManualOrderKeysById[manualSortableSmartListId] || []);
         const nextOrder = applyReorder(baseOrder);
+        if (areStringArraysEqual(nextOrder, baseOrder)) return;
         wishlistDragLatestOrderRef.current = nextOrder;
         setSmartListManualOrderKeysById((prev) => ({
           ...prev,
@@ -8156,7 +8178,7 @@ export default function Page() {
             merged.push(key);
           }
         });
-        return moveKeyOneStepTowardTarget(merged, dragKey, targetKey);
+        return moveKeyToTargetPlacement(merged, dragKey, targetKey, targetPlacement);
       };
       const baseOrder =
         wishlistDragLatestOrderRef.current && wishlistDragLatestOrderRef.current.length
@@ -8167,10 +8189,11 @@ export default function Page() {
               ? (readNextManualOrderKeys.length ? readNextManualOrderKeys : resolvedReadNextManualOrderKeys)
             : backlogView === "watchlist-movies"
               ? (watchlistMoviesManualOrderKeys.length ? watchlistMoviesManualOrderKeys : resolvedWatchlistMovieManualOrderKeys)
-              : backlogView === "watchlist-tv"
+            : backlogView === "watchlist-tv"
                 ? (watchlistTvManualOrderKeys.length ? watchlistTvManualOrderKeys : resolvedWatchlistTvManualOrderKeys)
                 : (wishlistManualOrderKeys.length ? wishlistManualOrderKeys : resolvedWishlistManualOrderKeys);
       const nextOrder = applyReorder(baseOrder);
+      if (areStringArraysEqual(nextOrder, baseOrder)) return;
       wishlistDragLatestOrderRef.current = nextOrder;
       if (backlogView === "play-next") {
         setPlayNextManualOrderKeys(nextOrder);
@@ -8208,22 +8231,22 @@ export default function Page() {
     ]
   );
 
-  const findWishlistTargetKey = useCallback(
-    (dragState: WishlistPointerDrag): string | null => {
-      const dragKey = dragState.key;
-      const dragLeft = dragState.pointerX - dragState.grabOffsetX;
-      const dragTop = dragState.pointerY - dragState.grabOffsetY;
-      const dragRight = dragLeft + dragState.dragWidth;
-      const dragBottom = dragTop + dragState.dragHeight;
-      const dragCenterX = dragLeft + dragState.dragWidth / 2;
-      const dragCenterY = dragTop + dragState.dragHeight / 2;
-
-      let centerHitKey: string | null = null;
-      let centerHitScore = Number.POSITIVE_INFINITY;
-      let overlapKey: string | null = null;
-      let overlapArea = 0;
+  const findWishlistDragTarget = useCallback(
+    (
+      pointerX: number,
+      pointerY: number,
+      dragKey: string,
+      dragWidth: number,
+      dragHeight: number
+    ): WishlistDragTarget | null => {
+      let pointerInsideKey: string | null = null;
+      let pointerInsideScore = Number.POSITIVE_INFINITY;
       let nearestKey: string | null = null;
       let nearestScore = Number.POSITIVE_INFINITY;
+      let boundsLeft = Number.POSITIVE_INFINITY;
+      let boundsTop = Number.POSITIVE_INFINITY;
+      let boundsRight = Number.NEGATIVE_INFINITY;
+      let boundsBottom = Number.NEGATIVE_INFINITY;
 
       wishlistVisibleKeys.forEach((key) => {
         if (key === dragKey) return;
@@ -8231,45 +8254,64 @@ export default function Page() {
         if (!node) return;
         const rect = node.getBoundingClientRect();
 
-        const centerInsideRect =
-          dragCenterX >= rect.left &&
-          dragCenterX <= rect.right &&
-          dragCenterY >= rect.top &&
-          dragCenterY <= rect.bottom;
-        if (centerInsideRect) {
+        boundsLeft = Math.min(boundsLeft, rect.left);
+        boundsTop = Math.min(boundsTop, rect.top);
+        boundsRight = Math.max(boundsRight, rect.right);
+        boundsBottom = Math.max(boundsBottom, rect.bottom);
+
+        const pointerInsideRect =
+          pointerX >= rect.left &&
+          pointerX <= rect.right &&
+          pointerY >= rect.top &&
+          pointerY <= rect.bottom;
+        if (pointerInsideRect) {
           const rectCenterX = (rect.left + rect.right) / 2;
           const rectCenterY = (rect.top + rect.bottom) / 2;
-          const centerScore = Math.hypot(dragCenterX - rectCenterX, (dragCenterY - rectCenterY) * 1.3);
-          if (centerScore < centerHitScore) {
-            centerHitScore = centerScore;
-            centerHitKey = key;
+          const score = Math.hypot(pointerX - rectCenterX, (pointerY - rectCenterY) * 1.2);
+          if (score < pointerInsideScore) {
+            pointerInsideScore = score;
+            pointerInsideKey = key;
           }
         }
 
-        const overlapW = Math.max(0, Math.min(dragRight, rect.right) - Math.max(dragLeft, rect.left));
-        const overlapH = Math.max(0, Math.min(dragBottom, rect.bottom) - Math.max(dragTop, rect.top));
-        const nextOverlapArea = overlapW * overlapH;
-        if (nextOverlapArea > overlapArea) {
-          overlapArea = nextOverlapArea;
-          overlapKey = key;
-        }
-
-        const dx =
-          dragCenterX < rect.left ? rect.left - dragCenterX : dragCenterX > rect.right ? dragCenterX - rect.right : 0;
-        const dy =
-          dragCenterY < rect.top ? rect.top - dragCenterY : dragCenterY > rect.bottom ? dragCenterY - rect.bottom : 0;
-        const score = Math.hypot(dx, dy * 1.6);
+        const dx = pointerX < rect.left ? rect.left - pointerX : pointerX > rect.right ? pointerX - rect.right : 0;
+        const dy = pointerY < rect.top ? rect.top - pointerY : pointerY > rect.bottom ? pointerY - rect.bottom : 0;
+        const score = Math.hypot(dx, dy * 1.45);
         if (score < nearestScore) {
           nearestScore = score;
           nearestKey = key;
         }
       });
 
-      if (centerHitKey) return centerHitKey;
-      if (overlapKey && overlapArea > 0) return overlapKey;
-      const snapDistance = Math.max(16, Math.min(44, dragState.dragWidth * 0.28));
-      if (!nearestKey || !Number.isFinite(nearestScore) || nearestScore > snapDistance) return null;
-      return nearestKey;
+      const hasBounds = Number.isFinite(boundsLeft) && Number.isFinite(boundsTop);
+      if (!hasBounds) return null;
+
+      const marginX = Math.max(48, dragWidth * 0.65);
+      const marginY = Math.max(48, dragHeight * 0.8);
+      const pointerWithinDragZone =
+        pointerX >= boundsLeft - marginX &&
+        pointerX <= boundsRight + marginX &&
+        pointerY >= boundsTop - marginY &&
+        pointerY <= boundsBottom + marginY;
+      if (!pointerWithinDragZone) return null;
+
+      const resolveTarget = (key: string | null): WishlistDragTarget | null => {
+        if (!key) return null;
+        const node = wishlistCaseNodeMapRef.current.get(key);
+        if (!node) return { key, placement: "after" };
+        const rect = node.getBoundingClientRect();
+        const rectCenterX = (rect.left + rect.right) / 2;
+        const rectCenterY = (rect.top + rect.bottom) / 2;
+        const normX = Math.abs(pointerX - rectCenterX) / Math.max(1, rect.width);
+        const normY = Math.abs(pointerY - rectCenterY) / Math.max(1, rect.height);
+        const preferVertical = normY > normX * 0.95;
+        const placement: WishlistDragPlacement = preferVertical
+          ? pointerY < rectCenterY ? "before" : "after"
+          : pointerX < rectCenterX ? "before" : "after";
+        return { key, placement };
+      };
+
+      return resolveTarget(pointerInsideKey ?? nearestKey);
     },
     [wishlistVisibleKeys]
   );
@@ -8296,6 +8338,7 @@ export default function Page() {
 
       wishlistPointerDragRef.current = null;
       wishlistDragHoverTargetRef.current = null;
+      wishlistDragHoverPlacementRef.current = null;
       wishlistDragVisualPendingRef.current = null;
       setWishlistDragHoverKey(null);
       if (wishlistDragVisualRafRef.current !== null) {
@@ -8401,6 +8444,7 @@ export default function Page() {
 
       wishlistPointerDragRef.current = nextDrag;
       wishlistDragHoverTargetRef.current = null;
+      wishlistDragHoverPlacementRef.current = null;
       setWishlistDragHoverKey(null);
       setWishlistPointerDrag(nextDrag);
       event.preventDefault();
@@ -8436,30 +8480,65 @@ export default function Page() {
         activateWishlistPointerDrag(currentDrag.key);
       }
 
-      const targetKey = findWishlistTargetKey(nextDrag);
-      if (!targetKey) {
+      const target = findWishlistDragTarget(
+        nextDrag.pointerX,
+        nextDrag.pointerY,
+        currentDrag.key,
+        nextDrag.dragWidth,
+        nextDrag.dragHeight
+      );
+      if (!target) {
         if (wishlistDragHoverTargetRef.current !== null) {
           wishlistDragHoverTargetRef.current = null;
+          wishlistDragHoverPlacementRef.current = null;
           setWishlistDragHoverKey(null);
         }
         return;
       }
-      if (targetKey === wishlistDragHoverTargetRef.current) return;
-
-      wishlistDragHoverTargetRef.current = targetKey;
-      setWishlistDragHoverKey(targetKey);
-      reorderWishlistDuringPointerDrag(currentDrag.key, targetKey);
+      if (
+        target.key === wishlistDragHoverTargetRef.current &&
+        target.placement === wishlistDragHoverPlacementRef.current
+      ) {
+        return;
+      }
+      if (target.key !== wishlistDragHoverTargetRef.current) {
+        setWishlistDragHoverKey(target.key);
+      }
+      wishlistDragHoverTargetRef.current = target.key;
+      wishlistDragHoverPlacementRef.current = target.placement;
+      reorderWishlistDuringPointerDrag(currentDrag.key, target.key, target.placement);
     },
-    [activateWishlistPointerDrag, findWishlistTargetKey, reorderWishlistDuringPointerDrag, scheduleWishlistDragVisual]
+    [activateWishlistPointerDrag, findWishlistDragTarget, reorderWishlistDuringPointerDrag, scheduleWishlistDragVisual]
   );
 
   const handleWishlistGlobalPointerEnd = useCallback(
     (event: PointerEvent) => {
       const currentDrag = wishlistPointerDragRef.current;
       if (!currentDrag || currentDrag.pointerId !== event.pointerId) return;
+      const dropDrag: WishlistPointerDrag = {
+        ...currentDrag,
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+      };
+      if (dropDrag.active) {
+        const finalTarget = findWishlistDragTarget(
+          dropDrag.pointerX,
+          dropDrag.pointerY,
+          currentDrag.key,
+          dropDrag.dragWidth,
+          dropDrag.dragHeight
+        );
+        if (finalTarget) {
+          reorderWishlistDuringPointerDrag(
+            currentDrag.key,
+            finalTarget.key,
+            finalTarget.placement
+          );
+        }
+      }
       finishWishlistPointerDrag(event.pointerId);
     },
-    [finishWishlistPointerDrag]
+    [findWishlistDragTarget, finishWishlistPointerDrag, reorderWishlistDuringPointerDrag]
   );
 
   useEffect(() => {
