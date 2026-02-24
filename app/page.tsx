@@ -1696,9 +1696,11 @@ export default function Page() {
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
+  const [viewportW, setViewportW] = useState(0);
   const [viewportH, setViewportH] = useState(0);
   const [windowScrollY, setWindowScrollY] = useState(0);
   const [stageTopAbs, setStageTopAbs] = useState(0);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -1854,6 +1856,7 @@ export default function Page() {
   }, []);
 
   // Layout tuning
+  const MOBILE_LAYOUT_MAX_WIDTH = 980;
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
@@ -1864,6 +1867,8 @@ export default function Page() {
   const SETTINGS_WINDOW_Z_INDEX = 9000;
   const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
+  const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
+  const mobileSidebarWidth = isMobileLayout ? Math.min(SIDEBAR_WIDTH, Math.max(220, viewportW - 20)) : SIDEBAR_WIDTH;
   const statusDotPixelSize = useMemo(
     () =>
       Math.round(
@@ -2084,11 +2089,26 @@ export default function Page() {
   );
 
   useEffect(() => {
-    const onResize = () => setViewportH(window.innerHeight || 0);
+    const onResize = () => {
+      setViewportH(window.innerHeight || 0);
+      setViewportW(window.innerWidth || 0);
+    };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (isMobileLayout) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isMobileLayout, nav]);
 
   useEffect(() => {
     let rafId: number | null = null;
@@ -8750,7 +8770,15 @@ export default function Page() {
   const showStartupSplash = !splashMinDurationDone || !initialLoadSettled;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f1ea", color: "#111", position: "relative" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f4f1ea",
+        color: "#111",
+        position: "relative",
+        overflowX: isMobileLayout ? "hidden" : undefined,
+      }}
+    >
       {showStartupSplash ? (
         <>
           <style>{`
@@ -8884,31 +8912,53 @@ export default function Page() {
           margin: 0,
           padding: 0,
           display: "grid",
-          gridTemplateColumns: `${SIDEBAR_WIDTH}px 1fr`,
+          gridTemplateColumns: isMobileLayout ? "1fr" : `${SIDEBAR_WIDTH}px 1fr`,
           gap: 0,
           alignItems: "stretch",
         }}
       >
+        {isMobileLayout && mobileSidebarOpen ? (
+          <button
+            aria-label="Close sidebar"
+            onClick={() => setMobileSidebarOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              border: "none",
+              margin: 0,
+              padding: 0,
+              background: "rgba(0, 0, 0, 0.42)",
+              zIndex: 2390,
+              cursor: "pointer",
+            }}
+          />
+        ) : null}
         {/* LEFT MENU */}
         <aside
           className="sidebar"
           style={{
-            position: "sticky",
+            position: isMobileLayout ? "fixed" : "sticky",
             top: topSafeInset,
-            zIndex: settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 1 : 1400,
-            alignSelf: "start",
-            height: "100vh",
-            minHeight: "100vh",
+            left: isMobileLayout ? 0 : undefined,
+            bottom: isMobileLayout ? 0 : undefined,
+            zIndex: isMobileLayout ? (settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 2 : 2400) : settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 1 : 1400,
+            alignSelf: isMobileLayout ? undefined : "start",
+            width: isMobileLayout ? mobileSidebarWidth : SIDEBAR_WIDTH,
+            height: isMobileLayout ? `calc(100dvh - ${topSafeInset})` : "100vh",
+            minHeight: isMobileLayout ? `calc(100dvh - ${topSafeInset})` : "100vh",
             borderRadius: "0 0 0 0",
             isolation: "isolate",
             overflowY: "visible",
             overflowX: "visible",
             background: "transparent",
             border: "none",
-            boxShadow: "none",
+            boxShadow: isMobileLayout ? "12px 0 34px rgba(0,0,0,0.45)" : "none",
             display: "flex",
             flexDirection: "column",
             padding: "6px",
+            transform: isMobileLayout ? (mobileSidebarOpen ? "translateX(0)" : "translateX(calc(-100% - 14px))") : undefined,
+            transition: isMobileLayout ? "transform 220ms cubic-bezier(0.22, 0.8, 0.2, 1)" : undefined,
+            pointerEvents: isMobileLayout && !mobileSidebarOpen ? "none" : "auto",
           }}
         >
           <div
@@ -12383,14 +12433,23 @@ export default function Page() {
         </aside>
 
         {/* RIGHT CONTENT */}
-        <main style={{ width: "100%", padding: "0 0 40px 0", boxSizing: "border-box", position: "relative", marginLeft: "-1px" }}>
+        <main
+          style={{
+            width: "100%",
+            padding: "0 0 40px 0",
+            boxSizing: "border-box",
+            position: "relative",
+            marginLeft: isMobileLayout ? 0 : "-1px",
+            minWidth: 0,
+          }}
+        >
           {nav !== "statistics" ? (
             <div
               aria-hidden
               style={{
                 position: "fixed",
                 top: topSafeInset,
-                left: SIDEBAR_WIDTH - 1,
+                left: isMobileLayout ? 0 : SIDEBAR_WIDTH - 1,
                 right: 0,
                 height: 45,
                 zIndex: 1399,
@@ -12543,7 +12602,7 @@ export default function Page() {
               style={{
                 position: "fixed",
                 top: "calc(env(safe-area-inset-top, 0px) + 84px)",
-                right: 74,
+                right: isMobileLayout ? 12 : 74,
                 width: "min(320px, calc(100vw - 40px))",
                 zIndex: POPUP_PANEL_Z_INDEX,
                 padding: 14,
@@ -13506,40 +13565,71 @@ export default function Page() {
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              <div
-                  style={{
-                    position: "sticky",
-                    top: topSafeInset,
-                    height: 45,
-                    overflow: "hidden",
-                    background: "transparent",
-                    borderRadius: 0,
-                    zIndex: 2000,
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      zIndex: 1401,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      paddingLeft: 10,
-                      paddingRight: 10,
-                      gap: 5,
-                      transform: "translateY(-4.5px)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: "min(340px, calc(100% - 220px))" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          flex: 1,
-                          borderRadius: 9,
-                          border: "1px solid rgba(10, 6, 3, 0.68)",
-                          background: "rgba(16, 10, 6, 0.54)",
+	              <div
+	                  style={{
+	                    position: "sticky",
+	                    top: topSafeInset,
+	                    height: isMobileLayout ? 82 : 45,
+	                    overflow: "hidden",
+	                    background: "transparent",
+	                    borderRadius: 0,
+	                    zIndex: 2000,
+	                  }}
+	                >
+	                  <div
+	                    style={{
+	                      position: "absolute",
+	                      inset: 0,
+	                      zIndex: 1401,
+	                      display: "flex",
+	                      flexDirection: isMobileLayout ? "column" : "row",
+	                      alignItems: isMobileLayout ? "stretch" : "center",
+	                      justifyContent: isMobileLayout ? "flex-start" : "space-between",
+	                      paddingLeft: isMobileLayout ? 6 : 10,
+	                      paddingRight: isMobileLayout ? 6 : 10,
+	                      gap: isMobileLayout ? 6 : 5,
+	                      transform: isMobileLayout ? "translateY(-1.5px)" : "translateY(-4.5px)",
+	                    }}
+	                  >
+	                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: isMobileLayout ? "100%" : "min(340px, calc(100% - 220px))" }}>
+	                      {isMobileLayout ? (
+	                        <button
+	                          type="button"
+	                          onClick={() => setMobileSidebarOpen((prev) => !prev)}
+	                          title={mobileSidebarOpen ? "Close menu" : "Open menu"}
+	                          aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+	                          aria-expanded={mobileSidebarOpen}
+	                          style={{
+	                            display: "inline-flex",
+	                            alignItems: "center",
+	                            justifyContent: "center",
+	                            height: 24,
+	                            minWidth: 24,
+	                            padding: "3px 6px",
+	                            background: "rgba(28, 18, 10, 0.52)",
+	                            border: "1px solid rgba(10, 6, 3, 0.78)",
+	                            borderRadius: 9,
+	                            color: "rgba(250, 242, 230, 0.78)",
+	                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+	                            cursor: "pointer",
+	                          }}
+	                        >
+	                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+	                            <line x1="4" y1="7" x2="20" y2="7" />
+	                            <line x1="4" y1="12" x2="20" y2="12" />
+	                            <line x1="4" y1="17" x2="20" y2="17" />
+	                          </svg>
+	                        </button>
+	                      ) : null}
+	                      <div
+	                        style={{
+	                          display: "flex",
+	                          alignItems: "center",
+	                          flex: 1,
+	                          minWidth: 0,
+	                          borderRadius: 9,
+	                          border: "1px solid rgba(10, 6, 3, 0.68)",
+	                          background: "rgba(16, 10, 6, 0.54)",
                           boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
                           paddingLeft: 7,
                         }}
@@ -13556,39 +13646,40 @@ export default function Page() {
                           onChange={(e) => setQuery(e.target.value)}
                           placeholder="Search..."
                           style={{
-                            flex: 1,
-                            height: 22,
-                            border: "none",
-                            background: "transparent",
-                            color: "rgba(250, 242, 230, 0.86)",
-                            fontSize: 11,
-                            fontWeight: 600,
-                            outline: "none",
-                          }}
-                        />
-                      </div>
+	                            flex: 1,
+	                            height: 22,
+	                            border: "none",
+	                            background: "transparent",
+	                            color: "rgba(250, 242, 230, 0.86)",
+	                            fontSize: 11,
+	                            fontWeight: 600,
+	                            minWidth: 0,
+	                            outline: "none",
+	                          }}
+	                        />
+	                      </div>
                       <button
                         onClick={clearAllFilters}
                         title="Clear filters"
                         aria-label="Clear filters"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          height: 24,
-                          minWidth: 58,
-                          padding: "3px 6px",
-                          background: "rgba(28, 18, 10, 0.52)",
-                          border: "1px solid rgba(10, 6, 3, 0.78)",
-                          borderRadius: 9,
-                          color: "rgba(250, 242, 230, 0.72)",
-                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 800,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                        }}
+	                        style={{
+	                          display: "inline-flex",
+	                          alignItems: "center",
+	                          justifyContent: "center",
+	                          height: 24,
+	                          minWidth: isMobileLayout ? 46 : 58,
+	                          padding: isMobileLayout ? "3px 5px" : "3px 6px",
+	                          background: "rgba(28, 18, 10, 0.52)",
+	                          border: "1px solid rgba(10, 6, 3, 0.78)",
+	                          borderRadius: 9,
+	                          color: "rgba(250, 242, 230, 0.72)",
+	                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+	                          cursor: "pointer",
+	                          fontSize: isMobileLayout ? 10 : 11,
+	                          fontWeight: 800,
+	                          letterSpacing: "0.04em",
+	                          textTransform: "uppercase",
+	                        }}
                       >
                         Clear
                       </button>
@@ -13599,29 +13690,29 @@ export default function Page() {
                         aria-pressed={showStatusIndicators}
                         style={{
                           display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          height: 24,
-                          minWidth: 68,
-                          padding: "3px 7px",
-                          background: showStatusIndicators
-                            ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
-                            : "rgba(28, 18, 10, 0.52)",
+	                          alignItems: "center",
+	                          justifyContent: "center",
+	                          gap: 6,
+	                          height: 24,
+	                          minWidth: isMobileLayout ? 54 : 68,
+	                          padding: isMobileLayout ? "3px 6px" : "3px 7px",
+	                          background: showStatusIndicators
+	                            ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
+	                            : "rgba(28, 18, 10, 0.52)",
                           border: showStatusIndicators
                             ? "1px solid rgba(190, 221, 166, 0.75)"
                             : "1px solid rgba(10, 6, 3, 0.78)",
                           borderRadius: 9,
                           color: showStatusIndicators ? "rgba(242, 255, 228, 0.95)" : "rgba(250, 242, 230, 0.72)",
-                          boxShadow: showStatusIndicators
-                            ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
-                            : "0 3px 8px rgba(0, 0, 0, 0.34)",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 800,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                        }}
+	                          boxShadow: showStatusIndicators
+	                            ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
+	                            : "0 3px 8px rgba(0, 0, 0, 0.34)",
+	                          cursor: "pointer",
+	                          fontSize: isMobileLayout ? 10 : 11,
+	                          fontWeight: 800,
+	                          letterSpacing: "0.04em",
+	                          textTransform: "uppercase",
+	                        }}
                       >
                         <span
                           aria-hidden
@@ -13635,10 +13726,20 @@ export default function Page() {
                               : "0 0 0 1px rgba(255, 255, 255, 0.2)",
                           }}
                         />
-                        Status
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+	                        Status
+	                      </button>
+	                    </div>
+	                    <div
+	                      style={{
+	                        display: "flex",
+	                        alignItems: "center",
+	                        gap: 5,
+	                        width: isMobileLayout ? "100%" : undefined,
+	                        justifyContent: isMobileLayout ? "flex-start" : undefined,
+	                        overflowX: isMobileLayout ? "auto" : undefined,
+	                        WebkitOverflowScrolling: isMobileLayout ? "touch" : undefined,
+	                      }}
+	                    >
                     {nav === "watchlist-tv" ? (
                       <div
                         style={{
