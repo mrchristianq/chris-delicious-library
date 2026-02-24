@@ -1701,6 +1701,7 @@ export default function Page() {
   const [windowScrollY, setWindowScrollY] = useState(0);
   const [stageTopAbs, setStageTopAbs] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -1868,7 +1869,6 @@ export default function Page() {
   const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
   const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
-  const mobileSidebarWidth = isMobileLayout ? Math.min(SIDEBAR_WIDTH, Math.max(220, viewportW - 20)) : SIDEBAR_WIDTH;
   const statusDotPixelSize = useMemo(
     () =>
       Math.round(
@@ -2101,12 +2101,14 @@ export default function Page() {
   useEffect(() => {
     if (!isMobileLayout) {
       setMobileSidebarOpen(false);
+      setMobileSettingsOpen(false);
     }
   }, [isMobileLayout]);
 
   useEffect(() => {
     if (isMobileLayout) {
       setMobileSidebarOpen(false);
+      setMobileSettingsOpen(false);
     }
   }, [isMobileLayout, nav]);
 
@@ -2294,6 +2296,31 @@ export default function Page() {
     // Always open (not toggle) to avoid double-event close races after submenu interactions.
     setSettingsPopupOpen(true);
   }, []);
+
+  const handleMobileNavSelect = useCallback((nextNav: NavKey) => {
+    setNav(nextNav);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, []);
+
+  const handleMobileSmartListSelect = useCallback((smartList: SmartList) => {
+    const defaultSortField =
+      smartList.allowManualSort || smartList.defaultSortField !== MANUAL_SORT_FIELD
+        ? smartList.defaultSortField
+        : "ReleaseDate";
+    const hasSavedManualOrder = Boolean(
+      smartList.allowManualSort && (smartListManualOrderKeysById[smartList.id] || []).length
+    );
+    const shouldUseManualSort =
+      smartList.allowManualSort &&
+      (defaultSortField === MANUAL_SORT_FIELD || hasSavedManualOrder);
+    setSelectedSmartListId(smartList.id);
+    setNav("smart-custom");
+    setSortField(shouldUseManualSort ? MANUAL_SORT_FIELD : defaultSortField);
+    setSortOrder(shouldUseManualSort ? "Asc" : smartList.defaultSortOrder);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, [smartListManualOrderKeysById]);
 
   useEffect(() => {
     if (!SHOW_HEADER_DEBUG_CONTROLS) return;
@@ -8767,6 +8794,26 @@ export default function Page() {
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
     [shelfRenderWindow.end, shelfRenderWindow.start, shelves]
   );
+  const mobileLibraryMenuItems: Array<{ key: NavKey; label: string; count?: number }> = [
+    { key: "home", label: "Home" },
+    { key: "books", label: "Books", count: stats.books },
+    { key: "movies", label: "Movies", count: stats.movies },
+    { key: "tv", label: "TV Shows", count: stats.tv },
+    { key: "games", label: "Games", count: stats.games },
+  ];
+  const mobileBacklogMenuItems: Array<{ key: NavKey; label: string; count?: number }> = [
+    { key: "play-next", label: "Play Next", count: stats.playNext },
+    { key: "wishlist-books", label: "Read Next", count: stats.wishlistBooks },
+    { key: "watchlist-movies", label: "Watchlist Movies", count: stats.watchlistMovies },
+    { key: "watchlist-tv", label: "Watchlist TV", count: stats.watchlistTv },
+    { key: "wishlist", label: "Wishlist Games", count: stats.wishlist },
+  ];
+  const mobileSmartListMenuItems: Array<{ key: NavKey; label: string }> = [
+    { key: "year-this", label: "This Year" },
+    { key: "current", label: "Current" },
+    { key: "completed", label: "Completed" },
+    { key: "abandoned", label: "Abandoned" },
+  ];
   const showStartupSplash = !splashMinDurationDone || !initialLoadSettled;
 
   return (
@@ -8904,6 +8951,460 @@ export default function Page() {
           }}
         />
       ) : null}
+      {isMobileLayout && (mobileSidebarOpen || mobileSettingsOpen) ? (
+        <button
+          aria-label="Close mobile panel"
+          onClick={() => {
+            setMobileSidebarOpen(false);
+            setMobileSettingsOpen(false);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            border: "none",
+            margin: 0,
+            padding: 0,
+            background: "rgba(0, 0, 0, 0.42)",
+            zIndex: 2490,
+            cursor: "pointer",
+          }}
+        />
+      ) : null}
+      {isMobileLayout && mobileSidebarOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            top: "calc(env(safe-area-inset-top, 0px) + 45px)",
+            left: 0,
+            bottom: 0,
+            width: "min(90vw, 360px)",
+            zIndex: 2500,
+            background: "rgba(247, 244, 238, 0.98)",
+            borderRight: "1px solid rgba(0,0,0,0.18)",
+            boxShadow: "18px 0 34px rgba(0,0,0,0.34)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 12px",
+              borderBottom: "1px solid rgba(0,0,0,0.12)",
+              background: "rgba(255,255,255,0.78)",
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#2e2e2e", letterSpacing: "0.03em" }}>MENU</span>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              style={{
+                border: "1px solid rgba(0,0,0,0.2)",
+                background: "#fff",
+                borderRadius: 8,
+                padding: "4px 8px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+          <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>LIBRARY</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {mobileLibraryMenuItems.map((item) => {
+                const active = nav === item.key;
+                return (
+                  <button
+                    key={`mobile-library-${item.key}`}
+                    type="button"
+                    onClick={() => handleMobileNavSelect(item.key)}
+                    style={{
+                      width: "100%",
+                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
+                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
+                      color: "#1f1f1f",
+                      borderRadius: 10,
+                      padding: "9px 10px",
+                      fontSize: 13,
+                      fontWeight: active ? 800 : 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    {typeof item.count === "number" ? (
+                      <span
+                        style={{
+                          minWidth: 22,
+                          height: 18,
+                          borderRadius: 999,
+                          padding: "0 6px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          color: "#fff",
+                          background: "#4f6f98",
+                        }}
+                      >
+                        {item.count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>BACKLOG</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {mobileBacklogMenuItems.map((item) => {
+                const active = nav === item.key;
+                return (
+                  <button
+                    key={`mobile-backlog-${item.key}`}
+                    type="button"
+                    onClick={() => handleMobileNavSelect(item.key)}
+                    style={{
+                      width: "100%",
+                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
+                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
+                      color: "#1f1f1f",
+                      borderRadius: 10,
+                      padding: "9px 10px",
+                      fontSize: 13,
+                      fontWeight: active ? 800 : 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    {typeof item.count === "number" ? (
+                      <span
+                        style={{
+                          minWidth: 22,
+                          height: 18,
+                          borderRadius: 999,
+                          padding: "0 6px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          color: "#fff",
+                          background: "#4f6f98",
+                        }}
+                      >
+                        {item.count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>SMART LISTS</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {mobileSmartListMenuItems.map((item) => {
+                const active = nav === item.key;
+                return (
+                  <button
+                    key={`mobile-smart-${item.key}`}
+                    type="button"
+                    onClick={() => handleMobileNavSelect(item.key)}
+                    style={{
+                      width: "100%",
+                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
+                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
+                      color: "#1f1f1f",
+                      borderRadius: 10,
+                      padding: "9px 10px",
+                      fontSize: 13,
+                      fontWeight: active ? 800 : 700,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+              {customSmartLists.map((smartList) => {
+                const active = nav === "smart-custom" && selectedSmartListId === smartList.id;
+                return (
+                  <button
+                    key={`mobile-custom-smart-${smartList.id}`}
+                    type="button"
+                    onClick={() => handleMobileSmartListSelect(smartList)}
+                    style={{
+                      width: "100%",
+                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
+                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
+                      color: "#1f1f1f",
+                      borderRadius: 10,
+                      padding: "9px 10px",
+                      fontSize: 13,
+                      fontWeight: active ? 800 : 700,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {smartList.name}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenSmartListBuilder();
+                  setMobileSidebarOpen(false);
+                  setMobileSettingsOpen(false);
+                }}
+                style={{
+                  width: "100%",
+                  border: "1px solid rgba(34, 76, 128, 0.55)",
+                  background: "rgba(52, 96, 152, 0.12)",
+                  color: "#173352",
+                  borderRadius: 10,
+                  padding: "9px 10px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                + Add Smart List
+              </button>
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>DISCOVER</div>
+            <button
+              type="button"
+              onClick={() => handleMobileNavSelect("statistics")}
+              style={{
+                width: "100%",
+                border: nav === "statistics" ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
+                background: nav === "statistics" ? "rgba(52, 96, 152, 0.15)" : "#fff",
+                color: "#1f1f1f",
+                borderRadius: 10,
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: nav === "statistics" ? 800 : 700,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              Statistics
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {isMobileLayout && mobileSettingsOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            top: "calc(env(safe-area-inset-top, 0px) + 45px)",
+            right: 0,
+            bottom: 0,
+            width: "min(90vw, 340px)",
+            zIndex: 2500,
+            background: "rgba(247, 244, 238, 0.98)",
+            borderLeft: "1px solid rgba(0,0,0,0.18)",
+            boxShadow: "-18px 0 34px rgba(0,0,0,0.34)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 12px",
+              borderBottom: "1px solid rgba(0,0,0,0.12)",
+              background: "rgba(255,255,255,0.78)",
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#2e2e2e", letterSpacing: "0.03em" }}>SETTINGS</span>
+            <button
+              type="button"
+              onClick={() => setMobileSettingsOpen(false)}
+              style={{
+                border: "1px solid rgba(0,0,0,0.2)",
+                background: "#fff",
+                borderRadius: 8,
+                padding: "4px 8px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+          <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
+              style={{
+                width: "100%",
+                border: "1px solid rgba(0,0,0,0.16)",
+                background: showStatusIndicators ? "rgba(72, 128, 56, 0.18)" : "#fff",
+                color: "#1f1f1f",
+                borderRadius: 10,
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              Status Indicators: {showStatusIndicators ? "On" : "Off"}
+            </button>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              style={{
+                width: "100%",
+                border: "1px solid rgba(0,0,0,0.16)",
+                background: "#fff",
+                color: "#1f1f1f",
+                borderRadius: 10,
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              Clear All Filters
+            </button>
+            {nav === "watchlist-tv" ? (
+              <div
+                style={{
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.8)",
+                  padding: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>
+                  TV WATCHLIST
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {TV_WATCHLIST_SECTION_ORDER.map((sectionKey) => {
+                    const sectionMeta = TV_WATCHLIST_SECTION_META[sectionKey];
+                    const active = watchlistTvSectionFilter === sectionKey;
+                    return (
+                      <button
+                        key={`mobile-watchlist-tv-filter-${sectionKey}`}
+                        type="button"
+                        onClick={() => setWatchlistTvSectionFilter(sectionKey)}
+                        style={{
+                          border: active ? `1px solid ${sectionMeta.badgeBorder}` : "1px solid rgba(0,0,0,0.18)",
+                          background: active ? sectionMeta.badgeBackground : "#fff",
+                          color: active ? sectionMeta.badgeColor : "#2a2a2a",
+                          borderRadius: 999,
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {sectionMeta.label} ({watchlistTvSectionCounts[sectionKey]})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setSortPopupOpen(true);
+                setSettingsPopupOpen(false);
+                setShowVersionNotes(false);
+                setMobileSettingsOpen(false);
+                setMobileSidebarOpen(false);
+              }}
+              style={{
+                width: "100%",
+                border: "1px solid rgba(0,0,0,0.16)",
+                background: "#fff",
+                color: "#1f1f1f",
+                borderRadius: 10,
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              Sort
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSortPopupOpen(false);
+                setSettingsPopupOpen(false);
+                setShowVersionNotes(false);
+                setAddSaveError(null);
+                setAddModalOpen(true);
+                setMobileSettingsOpen(false);
+                setMobileSidebarOpen(false);
+              }}
+              style={{
+                width: "100%",
+                border: "1px solid rgba(0,0,0,0.16)",
+                background: "#fff",
+                color: "#1f1f1f",
+                borderRadius: 10,
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              Add New Item
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileSettingsOpen(false);
+                setMobileSidebarOpen(false);
+                openSettingsPopup();
+              }}
+              style={{
+                width: "100%",
+                border: "1px solid rgba(34, 76, 128, 0.55)",
+                background: "rgba(52, 96, 152, 0.12)",
+                color: "#173352",
+                borderRadius: 10,
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: 800,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              Advanced Settings
+            </button>
+          </div>
+        </div>
+      ) : null}
       {/* Main layout: Sidebar + Content */}
       <div
         style={{
@@ -8917,48 +9418,27 @@ export default function Page() {
           alignItems: "stretch",
         }}
       >
-        {isMobileLayout && mobileSidebarOpen ? (
-          <button
-            aria-label="Close sidebar"
-            onClick={() => setMobileSidebarOpen(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              border: "none",
-              margin: 0,
-              padding: 0,
-              background: "rgba(0, 0, 0, 0.42)",
-              zIndex: 2390,
-              cursor: "pointer",
-            }}
-          />
-        ) : null}
         {/* LEFT MENU */}
         <aside
           className="sidebar"
           style={{
-            position: isMobileLayout ? "fixed" : "sticky",
+            position: "sticky",
             top: topSafeInset,
-            left: isMobileLayout ? 0 : undefined,
-            bottom: isMobileLayout ? 0 : undefined,
-            zIndex: isMobileLayout ? (settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 2 : 2400) : settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 1 : 1400,
-            alignSelf: isMobileLayout ? undefined : "start",
-            width: isMobileLayout ? mobileSidebarWidth : SIDEBAR_WIDTH,
-            height: isMobileLayout ? `calc(100dvh - ${topSafeInset})` : "100vh",
-            minHeight: isMobileLayout ? `calc(100dvh - ${topSafeInset})` : "100vh",
+            zIndex: settingsPopupOpen ? POPUP_PANEL_Z_INDEX + 1 : 1400,
+            alignSelf: "start",
+            width: SIDEBAR_WIDTH,
+            height: "100vh",
+            minHeight: "100vh",
             borderRadius: "0 0 0 0",
             isolation: "isolate",
             overflowY: "visible",
             overflowX: "visible",
             background: "transparent",
             border: "none",
-            boxShadow: isMobileLayout ? "12px 0 34px rgba(0,0,0,0.45)" : "none",
-            display: "flex",
+            boxShadow: "none",
+            display: isMobileLayout ? "none" : "flex",
             flexDirection: "column",
             padding: "6px",
-            transform: isMobileLayout ? (mobileSidebarOpen ? "translateX(0)" : "translateX(calc(-100% - 14px))") : undefined,
-            transition: isMobileLayout ? "transform 220ms cubic-bezier(0.22, 0.8, 0.2, 1)" : undefined,
-            pointerEvents: isMobileLayout && !mobileSidebarOpen ? "none" : "auto",
           }}
         >
           <div
@@ -13566,49 +14046,53 @@ export default function Page() {
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
 	              <div
-	                  style={{
-	                    position: "sticky",
-	                    top: topSafeInset,
-	                    height: isMobileLayout ? 82 : 45,
-	                    overflow: "hidden",
-	                    background: "transparent",
-	                    borderRadius: 0,
-	                    zIndex: 2000,
-	                  }}
-	                >
-	                  <div
-	                    style={{
-	                      position: "absolute",
-	                      inset: 0,
-	                      zIndex: 1401,
-	                      display: "flex",
-	                      flexDirection: isMobileLayout ? "column" : "row",
-	                      alignItems: isMobileLayout ? "stretch" : "center",
-	                      justifyContent: isMobileLayout ? "flex-start" : "space-between",
-	                      paddingLeft: isMobileLayout ? 6 : 10,
-	                      paddingRight: isMobileLayout ? 6 : 10,
-	                      gap: isMobileLayout ? 6 : 5,
-	                      transform: isMobileLayout ? "translateY(-1.5px)" : "translateY(-4.5px)",
-	                    }}
-	                  >
-	                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: isMobileLayout ? "100%" : "min(340px, calc(100% - 220px))" }}>
-	                      {isMobileLayout ? (
-	                        <button
-	                          type="button"
-	                          onClick={() => setMobileSidebarOpen((prev) => !prev)}
-	                          title={mobileSidebarOpen ? "Close menu" : "Open menu"}
-	                          aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
-	                          aria-expanded={mobileSidebarOpen}
-	                          style={{
-	                            display: "inline-flex",
-	                            alignItems: "center",
-	                            justifyContent: "center",
-	                            height: 24,
-	                            minWidth: 24,
-	                            padding: "3px 6px",
-	                            background: "rgba(28, 18, 10, 0.52)",
-	                            border: "1px solid rgba(10, 6, 3, 0.78)",
-	                            borderRadius: 9,
+		                  style={{
+		                    position: "sticky",
+		                    top: topSafeInset,
+		                    height: 45,
+		                    overflow: "hidden",
+		                    background: "transparent",
+		                    borderRadius: 0,
+		                    zIndex: 2000,
+		                  }}
+		                >
+		                  <div
+		                    style={{
+		                      position: "absolute",
+		                      inset: 0,
+		                      zIndex: 1401,
+		                      display: "flex",
+		                      flexDirection: "row",
+		                      alignItems: "center",
+		                      justifyContent: "space-between",
+		                      paddingLeft: isMobileLayout ? 6 : 10,
+		                      paddingRight: isMobileLayout ? 6 : 10,
+		                      gap: 5,
+		                      transform: "translateY(-4.5px)",
+		                    }}
+		                  >
+		                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: isMobileLayout ? "100%" : "min(340px, calc(100% - 220px))" }}>
+		                      {isMobileLayout ? (
+		                        <button
+		                          type="button"
+		                          onClick={() => {
+		                            setMobileSettingsOpen(false);
+		                            setMobileSidebarOpen((prev) => !prev);
+		                          }}
+		                          title={mobileSidebarOpen ? "Close menu" : "Open menu"}
+		                          aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+		                          aria-expanded={mobileSidebarOpen}
+		                          style={{
+		                            display: "inline-flex",
+		                            alignItems: "center",
+		                            justifyContent: "center",
+		                            height: 24,
+		                            minWidth: 24,
+		                            padding: "3px 6px",
+		                            order: 2,
+		                            background: "rgba(28, 18, 10, 0.52)",
+		                            border: "1px solid rgba(10, 6, 3, 0.78)",
+		                            borderRadius: 9,
 	                            color: "rgba(250, 242, 230, 0.78)",
 	                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
 	                            cursor: "pointer",
@@ -13623,13 +14107,14 @@ export default function Page() {
 	                      ) : null}
 	                      <div
 	                        style={{
-	                          display: "flex",
-	                          alignItems: "center",
-	                          flex: 1,
-	                          minWidth: 0,
-	                          borderRadius: 9,
-	                          border: "1px solid rgba(10, 6, 3, 0.68)",
-	                          background: "rgba(16, 10, 6, 0.54)",
+		                          display: "flex",
+		                          alignItems: "center",
+		                          flex: 1,
+		                          minWidth: 0,
+		                          order: isMobileLayout ? 1 : undefined,
+		                          borderRadius: 9,
+		                          border: "1px solid rgba(10, 6, 3, 0.68)",
+		                          background: "rgba(16, 10, 6, 0.54)",
                           boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
                           paddingLeft: 7,
                         }}
@@ -13658,88 +14143,119 @@ export default function Page() {
 	                          }}
 	                        />
 	                      </div>
-                      <button
-                        onClick={clearAllFilters}
-                        title="Clear filters"
-                        aria-label="Clear filters"
-	                        style={{
-	                          display: "inline-flex",
-	                          alignItems: "center",
-	                          justifyContent: "center",
-	                          height: 24,
-	                          minWidth: isMobileLayout ? 46 : 58,
-	                          padding: isMobileLayout ? "3px 5px" : "3px 6px",
-	                          background: "rgba(28, 18, 10, 0.52)",
-	                          border: "1px solid rgba(10, 6, 3, 0.78)",
-	                          borderRadius: 9,
-	                          color: "rgba(250, 242, 230, 0.72)",
-	                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-	                          cursor: "pointer",
-	                          fontSize: isMobileLayout ? 10 : 11,
-	                          fontWeight: 800,
-	                          letterSpacing: "0.04em",
-	                          textTransform: "uppercase",
-	                        }}
-                      >
-                        Clear
-                      </button>
-                      <button
-                        onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
-                        title="Toggle status indicators"
-                        aria-label="Toggle status indicators"
-                        aria-pressed={showStatusIndicators}
-                        style={{
-                          display: "inline-flex",
-	                          alignItems: "center",
-	                          justifyContent: "center",
-	                          gap: 6,
-	                          height: 24,
-	                          minWidth: isMobileLayout ? 54 : 68,
-	                          padding: isMobileLayout ? "3px 6px" : "3px 7px",
-	                          background: showStatusIndicators
-	                            ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
-	                            : "rgba(28, 18, 10, 0.52)",
-                          border: showStatusIndicators
-                            ? "1px solid rgba(190, 221, 166, 0.75)"
-                            : "1px solid rgba(10, 6, 3, 0.78)",
-                          borderRadius: 9,
-                          color: showStatusIndicators ? "rgba(242, 255, 228, 0.95)" : "rgba(250, 242, 230, 0.72)",
-	                          boxShadow: showStatusIndicators
-	                            ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
-	                            : "0 3px 8px rgba(0, 0, 0, 0.34)",
-	                          cursor: "pointer",
-	                          fontSize: isMobileLayout ? 10 : 11,
-	                          fontWeight: 800,
-	                          letterSpacing: "0.04em",
-	                          textTransform: "uppercase",
-	                        }}
-                      >
-                        <span
-                          aria-hidden
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: showStatusIndicators ? "rgba(194, 246, 166, 0.95)" : "rgba(250, 242, 230, 0.45)",
-                            boxShadow: showStatusIndicators
-                              ? "0 0 0 1px rgba(173, 237, 138, 0.8), 0 0 8px rgba(150, 223, 108, 0.55)"
-                              : "0 0 0 1px rgba(255, 255, 255, 0.2)",
+                      {isMobileLayout ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileSidebarOpen(false);
+                            setMobileSettingsOpen((prev) => !prev);
                           }}
-                        />
-	                        Status
-	                      </button>
+                          title={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
+                          aria-label={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
+                          aria-expanded={mobileSettingsOpen}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: 24,
+                            minWidth: 24,
+                            padding: "3px 6px",
+                            order: 3,
+                            background: "rgba(28, 18, 10, 0.52)",
+                            border: "1px solid rgba(10, 6, 3, 0.78)",
+                            borderRadius: 9,
+                            color: "rgba(250, 242, 230, 0.78)",
+                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
+                          </svg>
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={clearAllFilters}
+                            title="Clear filters"
+                            aria-label="Clear filters"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              height: 24,
+                              minWidth: 58,
+                              padding: "3px 6px",
+                              background: "rgba(28, 18, 10, 0.52)",
+                              border: "1px solid rgba(10, 6, 3, 0.78)",
+                              borderRadius: 9,
+                              color: "rgba(250, 242, 230, 0.72)",
+                              boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Clear
+                          </button>
+                          <button
+                            onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
+                            title="Toggle status indicators"
+                            aria-label="Toggle status indicators"
+                            aria-pressed={showStatusIndicators}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                              height: 24,
+                              minWidth: 68,
+                              padding: "3px 7px",
+                              background: showStatusIndicators
+                                ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
+                                : "rgba(28, 18, 10, 0.52)",
+                              border: showStatusIndicators
+                                ? "1px solid rgba(190, 221, 166, 0.75)"
+                                : "1px solid rgba(10, 6, 3, 0.78)",
+                              borderRadius: 9,
+                              color: showStatusIndicators ? "rgba(242, 255, 228, 0.95)" : "rgba(250, 242, 230, 0.72)",
+                              boxShadow: showStatusIndicators
+                                ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
+                                : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            <span
+                              aria-hidden
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: showStatusIndicators ? "rgba(194, 246, 166, 0.95)" : "rgba(250, 242, 230, 0.45)",
+                                boxShadow: showStatusIndicators
+                                  ? "0 0 0 1px rgba(173, 237, 138, 0.8), 0 0 8px rgba(150, 223, 108, 0.55)"
+                                  : "0 0 0 1px rgba(255, 255, 255, 0.2)",
+                              }}
+                            />
+                            Status
+                          </button>
+                        </>
+                      )}
 	                    </div>
-	                    <div
-	                      style={{
-	                        display: "flex",
-	                        alignItems: "center",
-	                        gap: 5,
-	                        width: isMobileLayout ? "100%" : undefined,
-	                        justifyContent: isMobileLayout ? "flex-start" : undefined,
-	                        overflowX: isMobileLayout ? "auto" : undefined,
-	                        WebkitOverflowScrolling: isMobileLayout ? "touch" : undefined,
-	                      }}
-	                    >
+		                    <div
+		                      style={{
+		                        display: isMobileLayout ? "none" : "flex",
+		                        alignItems: "center",
+		                        gap: 5,
+		                      }}
+		                    >
                     {nav === "watchlist-tv" ? (
                       <div
                         style={{
