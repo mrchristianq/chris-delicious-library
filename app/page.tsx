@@ -1472,6 +1472,7 @@ function useElementWidth<T extends HTMLElement>() {
 }
 
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
+type LibraryNavKey = Exclude<NavKey, "statistics">;
 
 function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
   return (
@@ -1590,6 +1591,7 @@ export default function Page() {
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
+  const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [faqPopupOpen, setFaqPopupOpen] = useState<boolean>(false);
@@ -1956,11 +1958,24 @@ export default function Page() {
   } | null>(null);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
-  const mobileCoverRenderScale = isMobileLayout ? 0.82 : 1;
-  const mobileAdjustedPosterSizeTv = Math.max(56, Math.round(posterSizeTv * mobileCoverRenderScale));
-  const mobileAdjustedPosterSizeMovies = Math.max(58, Math.round(posterSizeMovies * mobileCoverRenderScale));
-  const mobileAdjustedPosterSizeBooks = Math.max(62, Math.round(posterSizeBooks * mobileCoverRenderScale));
-  const mobileAdjustedPosterSizeGames = Math.max(58, Math.round(posterSizeGames * mobileCoverRenderScale));
+  const [mobileCoverScalePct, setMobileCoverScalePct] = useState<number>(100);
+  const mobileCoverScaleFactor = isMobileLayout ? mobileCoverScalePct / 100 : 1;
+  const mobileUsableWidthForDefaultCoverSizing = Math.max(0, viewportW - SHELF_SIDE_PADDING * 2);
+  const mobileDefaultCoversPerRow = 4;
+  const mobileMaxPosterSizeForDefaultRows =
+    isMobileLayout && mobileUsableWidthForDefaultCoverSizing > 0
+      ? Math.floor((mobileUsableWidthForDefaultCoverSizing + gap) / mobileDefaultCoversPerRow - gap)
+      : 0;
+  const defaultLargestPosterSize = Math.max(posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames);
+  const mobileAutoFitScale =
+    isMobileLayout && mobileMaxPosterSizeForDefaultRows > 0 && defaultLargestPosterSize > 0
+      ? Math.min(1, mobileMaxPosterSizeForDefaultRows / defaultLargestPosterSize)
+      : 1;
+  const mobileCoverRenderScale = isMobileLayout ? mobileAutoFitScale * mobileCoverScaleFactor : 1;
+  const mobileAdjustedPosterSizeTv = Math.max(52, Math.round(posterSizeTv * mobileCoverRenderScale));
+  const mobileAdjustedPosterSizeMovies = Math.max(54, Math.round(posterSizeMovies * mobileCoverRenderScale));
+  const mobileAdjustedPosterSizeBooks = Math.max(56, Math.round(posterSizeBooks * mobileCoverRenderScale));
+  const mobileAdjustedPosterSizeGames = Math.max(54, Math.round(posterSizeGames * mobileCoverRenderScale));
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
   const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
     tv: 100,
@@ -2307,6 +2322,29 @@ export default function Page() {
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (nav !== "statistics") {
+      setLastLibraryNav(nav);
+    }
+  }, [nav]);
+
+  const openStatisticsView = useCallback(() => {
+    setNav("statistics");
+    setShowThemes(false);
+    setSortPopupOpen(false);
+    setSettingsPopupOpen(false);
+    setFaqPopupOpen(false);
+    setShowVersionNotes(false);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, []);
+
+  const handleExitStatistics = useCallback(() => {
+    setNav(lastLibraryNav || "home");
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, [lastLibraryNav]);
 
   const handleMobileSmartListSelect = useCallback((smartList: SmartList) => {
     const defaultSortField =
@@ -3970,6 +4008,7 @@ export default function Page() {
     setPosterSizeTv(getSetting("posterSizeTv", 100));
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
+    setMobileCoverScalePct(getSetting("mobileCoverScalePct", 100));
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
     setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
@@ -4630,6 +4669,7 @@ export default function Page() {
       { key: "posterSizeMovies", value: posterSizeMovies, category: "Cover Sizes", description: "Movie Cover Size" },
       { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
       { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
+      { key: "mobileCoverScalePct", value: mobileCoverScalePct, category: "Cover Sizes", description: "Mobile Cover Scale (%)" },
       { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
       { key: "coverGapSize", value: coverGapSize, category: "Cover Sizes", description: "Cover Gap Size (px)" },
       { key: "tight", value: tight, category: "Cover Sizes", description: "Tight spacing between items" },
@@ -4794,6 +4834,7 @@ export default function Page() {
         setPosterSizeTv(getNum("posterSizeTv", 100));
         setPosterSizeMovies(getNum("posterSizeMovies", 108));
         setPosterSizeBooks(getNum("posterSizeBooks", 115));
+        setMobileCoverScalePct(getNum("mobileCoverScalePct", 100));
         setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
         setCoverGapSize(getNum("coverGapSize", 24));
         setTight(getBool("tight", true));
@@ -5042,6 +5083,11 @@ export default function Page() {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
   };
+  const updateMobileCoverScalePct = useCallback((value: number) => {
+    const nextValue = Math.max(70, Math.min(140, Math.round(value)));
+    setMobileCoverScalePct(nextValue);
+    saveSetting("mobileCoverScalePct", nextValue, "Cover Sizes", "Mobile Cover Scale (%)");
+  }, [saveSetting]);
   const clampUnifiedCoverSize = (value: number) => Math.max(70, Math.min(125, Math.round(value)));
   const captureGlobalCoverScaleBase = useCallback(() => {
     globalCoverScaleBaseRef.current = {
@@ -9037,6 +9083,36 @@ export default function Page() {
             </button>
           </div>
           <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div
+              style={{
+                border: "1px solid rgba(146, 181, 235, 0.35)",
+                borderRadius: 10,
+                background: "rgba(10, 24, 46, 0.68)",
+                padding: 10,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>
+                  COVER SIZE
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(226, 239, 255, 0.97)" }}>
+                  {`${mobileCoverScalePct}%`}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={70}
+                max={140}
+                step={1}
+                value={mobileCoverScalePct}
+                onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
+                aria-label="Scale all covers for mobile view"
+                style={{ width: "100%" }}
+              />
+            </div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>LIBRARY</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileLibraryMenuItems.map((item) => {
@@ -9212,7 +9288,7 @@ export default function Page() {
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>DISCOVER</div>
             <button
               type="button"
-              onClick={() => handleMobileNavSelect("statistics")}
+              onClick={openStatisticsView}
               style={{
                 width: "100%",
                 border: nav === "statistics" ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
@@ -11539,14 +11615,7 @@ export default function Page() {
 
               {discoverOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
-                  onClick={() => {
-                    setNav("statistics");
-                    setShowThemes(false);
-                    setSortPopupOpen(false);
-                    setSettingsPopupOpen(false);
-                    setFaqPopupOpen(false);
-                    setShowVersionNotes(false);
-                  }}
+                  onClick={openStatisticsView}
                   className={`sideItem ${nav === "statistics" ? "active" : ""}`}
                   style={{
                     width: "100%",
@@ -14089,7 +14158,14 @@ export default function Page() {
           ) : null}
 
           {nav === "statistics" ? (
-            <StatisticsView books={allBooks} movies={allMovies} shows={allShows} games={allGames} coverOverrides={coverOverrides} />
+            <StatisticsView
+              books={allBooks}
+              movies={allMovies}
+              shows={allShows}
+              games={allGames}
+              coverOverrides={coverOverrides}
+              onExit={handleExitStatistics}
+            />
           ) : (
           <>
           {/* Stage measures width so shelves always align */}

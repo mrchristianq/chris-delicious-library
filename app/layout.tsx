@@ -15,6 +15,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Chris' Delicious Library",
   description: "Chris' personal library of books, TV shows, movies, and games",
+  applicationName: "Chris' Delicious Library",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/cdl-icon.png", sizes: "800x800", type: "image/png" }],
+    apple: [{ url: "/cdl-icon.png", sizes: "800x800", type: "image/png" }],
+    shortcut: ["/cdl-icon.png"],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Chris' Delicious Library",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({

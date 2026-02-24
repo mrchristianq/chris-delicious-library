@@ -1,0 +1,19 @@
+{
+  "name": "Chris' Delicious Library",
+  "short_name": "Delicious Library",
+  "description": "Chris' personal library of books, TV shows, movies, and games",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f2442",
+  "theme_color": "#0f2442",
+  "icons": [
+    {
+      "src": "/cdl-icon.png",
+      "sizes": "800x800",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

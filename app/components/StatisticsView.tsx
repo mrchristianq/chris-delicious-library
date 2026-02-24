@@ -125,6 +125,7 @@ type StatisticsViewProps = {
   shows: ShowStatsItem[];
   games: GameStatsItem[];
   coverOverrides?: Record<string, string>;
+  onExit?: () => void;
 };
 
 type SummaryMetric = {
@@ -637,7 +638,7 @@ function compareRankedItems(
   return a.title.localeCompare(b.title);
 }
 
-export function StatisticsView({ books, movies, shows, games, coverOverrides = {} }: StatisticsViewProps) {
+export function StatisticsView({ books, movies, shows, games, coverOverrides = {}, onExit }: StatisticsViewProps) {
   const currentYear = new Date().getUTCFullYear();
   const [activeTab, setActiveTab] = useState<StatsTab>("all");
   const [statsYear, setStatsYear] = useState<StatsYearFilter>(ALL_STATS_YEARS);
@@ -1475,7 +1476,12 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       <div className="statsBackgroundGlow" aria-hidden />
 
       <header className="statsHeader">
-        <div>
+        <div className="statsHeaderIntro">
+          {onExit ? (
+            <button type="button" className="statsExitButton" onClick={onExit}>
+              Back to Library
+            </button>
+          ) : null}
           <h1 className="statsTitle">Statistics</h1>
           <p className="statsSubtitle">
             {activeTab === "yearReview"
@@ -2179,6 +2185,37 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           gap: 14px;
           margin-bottom: 16px;
           flex-wrap: wrap;
+        }
+
+        .statsHeaderIntro {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-width: min(100%, 320px);
+        }
+
+        .statsExitButton {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          align-self: flex-start;
+          border: 1px solid rgba(154, 198, 255, 0.64);
+          background: linear-gradient(165deg, rgba(39, 78, 140, 0.82), rgba(21, 48, 94, 0.88));
+          color: #e7f2ff;
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          cursor: pointer;
+          box-shadow: 0 8px 16px rgba(7, 20, 44, 0.4), inset 0 1px 0 rgba(220, 241, 255, 0.3);
+          transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+        }
+
+        .statsExitButton:hover {
+          transform: translateY(-1px);
+          border-color: rgba(194, 226, 255, 0.82);
+          background: linear-gradient(165deg, rgba(48, 92, 162, 0.9), rgba(28, 62, 119, 0.92));
         }
 
         .statsTitle {
@@ -3136,6 +3173,14 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             margin: 6px 6px 0 6px;
             padding: 12px;
             border-radius: 14px;
+          }
+
+          .statsHeaderIntro {
+            width: 100%;
+          }
+
+          .statsExitButton {
+            width: 100%;
           }
 
           .statsHeaderControls {
