@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [{ url: "/mobile-icon.png", sizes: "512x512", type: "image/png" }],
-    apple: [{ url: "/mobile-icon.png", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "/mobile-icon-2.png", sizes: "512x512", type: "image/png" }],
     shortcut: ["/mobile-icon.png"],
   },
   appleWebApp: {

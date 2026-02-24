@@ -1868,9 +1868,10 @@ export default function Page() {
   const SETTINGS_WINDOW_MARGIN = 20;
   const SETTINGS_WINDOW_START_Y = 84;
   const SETTINGS_WINDOW_Z_INDEX = 9000;
-  const gap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
-  const topSafeInset = "env(safe-area-inset-top, 0px)";
   const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
+  const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
+  const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
+  const topSafeInset = "env(safe-area-inset-top, 0px)";
   const statusDotPixelSize = useMemo(
     () =>
       Math.round(
