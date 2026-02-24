@@ -10,8 +10,8 @@
   "theme_color": "#0f2442",
   "icons": [
     {
-      "src": "/cdl-icon.png",
-      "sizes": "800x800",
+      "src": "/mobile-icon.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
