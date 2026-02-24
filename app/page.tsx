@@ -7182,7 +7182,7 @@ export default function Page() {
       const qbBase = indexedBooks.filter((b) => b.ownershipNorm === "owned");
       const qgBase = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
       const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
-      const qsBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist");
+      const qsBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist" && s.showStatusNorm !== "in production");
       const qmBase = indexedMovies.filter((m) => m.watchStatusNorm !== "wishlist");
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
