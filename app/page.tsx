@@ -1961,7 +1961,7 @@ export default function Page() {
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   const [mobileCoverScalePct, setMobileCoverScalePct] = useState<number>(100);
-  const mobileCoverScaleFactor = isMobileLayout ? Math.min(1, mobileCoverScalePct / 100) : 1;
+  const mobileCoverScaleFactor = isMobileLayout ? mobileCoverScalePct / 100 : 1;
   const mobileShelfWidthForDefaultCoverSizing = stageWidth > 0 ? stageWidth : viewportW;
   const mobileUsableWidthForDefaultCoverSizing = Math.max(0, mobileShelfWidthForDefaultCoverSizing - SHELF_SIDE_PADDING * 2);
   const mobileDefaultCoversPerRow = 4;
@@ -4009,7 +4009,7 @@ export default function Page() {
     setPosterSizeTv(getSetting("posterSizeTv", 100));
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
-    setMobileCoverScalePct(Math.max(70, Math.min(100, getSetting("mobileCoverScalePct", 100))));
+    setMobileCoverScalePct(Math.max(70, Math.min(125, getSetting("mobileCoverScalePct", 100))));
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
     setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
@@ -4835,7 +4835,7 @@ export default function Page() {
         setPosterSizeTv(getNum("posterSizeTv", 100));
         setPosterSizeMovies(getNum("posterSizeMovies", 108));
         setPosterSizeBooks(getNum("posterSizeBooks", 115));
-        setMobileCoverScalePct(Math.max(70, Math.min(100, getNum("mobileCoverScalePct", 100))));
+        setMobileCoverScalePct(Math.max(70, Math.min(125, getNum("mobileCoverScalePct", 100))));
         setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
         setCoverGapSize(getNum("coverGapSize", 24));
         setTight(getBool("tight", true));
@@ -5085,7 +5085,7 @@ export default function Page() {
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
   };
   const updateMobileCoverScalePct = useCallback((value: number) => {
-    const nextValue = Math.max(70, Math.min(100, Math.round(value)));
+    const nextValue = Math.max(70, Math.min(125, Math.round(value)));
     setMobileCoverScalePct(nextValue);
     saveSetting("mobileCoverScalePct", nextValue, "Cover Sizes", "Mobile Cover Scale (%)");
   }, [saveSetting]);
@@ -9106,7 +9106,7 @@ export default function Page() {
               <input
                 type="range"
                 min={70}
-                max={100}
+                max={125}
                 step={1}
                 value={mobileCoverScalePct}
                 onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
