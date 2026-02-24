@@ -1956,6 +1956,11 @@ export default function Page() {
   } | null>(null);
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
+  const mobileCoverRenderScale = isMobileLayout ? 0.82 : 1;
+  const mobileAdjustedPosterSizeTv = Math.max(56, Math.round(posterSizeTv * mobileCoverRenderScale));
+  const mobileAdjustedPosterSizeMovies = Math.max(58, Math.round(posterSizeMovies * mobileCoverRenderScale));
+  const mobileAdjustedPosterSizeBooks = Math.max(62, Math.round(posterSizeBooks * mobileCoverRenderScale));
+  const mobileAdjustedPosterSizeGames = Math.max(58, Math.round(posterSizeGames * mobileCoverRenderScale));
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
   const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
     tv: 100,
@@ -8639,21 +8644,35 @@ export default function Page() {
   const postersPerShelf = useMemo(() => {
     const size =
       nav === "books"
-        ? posterSizeBooks
+        ? mobileAdjustedPosterSizeBooks
         : nav === "movies"
-          ? posterSizeMovies
+          ? mobileAdjustedPosterSizeMovies
           : nav === "games" || nav === "play-next"
-            ? posterSizeGames
-            : posterSizeTv;
+            ? mobileAdjustedPosterSizeGames
+            : mobileAdjustedPosterSizeTv;
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
     return Math.max(1, Math.floor((usable + gap) / (size + gap)));
-  }, [stageWidth, posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames, nav, gap]);
+  }, [
+    gap,
+    mobileAdjustedPosterSizeBooks,
+    mobileAdjustedPosterSizeGames,
+    mobileAdjustedPosterSizeMovies,
+    mobileAdjustedPosterSizeTv,
+    nav,
+    stageWidth,
+  ]);
 
   const getItemVisualLayout = useCallback((item: any) => {
     const isBook = item.__type === "book";
     const isMovie = item.__type === "movie";
     const isGame = item.__type === "game";
-    const itemSize = isBook ? posterSizeBooks : isMovie ? posterSizeMovies : isGame ? posterSizeGames : posterSizeTv;
+    const itemSize = isBook
+      ? mobileAdjustedPosterSizeBooks
+      : isMovie
+        ? mobileAdjustedPosterSizeMovies
+        : isGame
+          ? mobileAdjustedPosterSizeGames
+          : mobileAdjustedPosterSizeTv;
     const caseWidth = itemSize;
     const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
 
@@ -8721,10 +8740,10 @@ export default function Page() {
     return { itemSize, visualLeft, visualWidth };
   }, [
     bookHeightMultiplier,
-    posterSizeBooks,
-    posterSizeGames,
-    posterSizeMovies,
-    posterSizeTv,
+    mobileAdjustedPosterSizeBooks,
+    mobileAdjustedPosterSizeGames,
+    mobileAdjustedPosterSizeMovies,
+    mobileAdjustedPosterSizeTv,
     getRenderPlatform,
     getGameFrameSourceDimensions,
     bookInsetTopPx,
@@ -8979,8 +8998,9 @@ export default function Page() {
             bottom: 0,
             width: "min(90vw, 360px)",
             zIndex: 2500,
-            background: "rgba(247, 244, 238, 0.98)",
-            borderRight: "1px solid rgba(0,0,0,0.18)",
+            background:
+              "linear-gradient(180deg, rgba(18, 34, 61, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%)",
+            borderRight: "1px solid rgba(146, 181, 235, 0.45)",
             boxShadow: "18px 0 34px rgba(0,0,0,0.34)",
             display: "flex",
             flexDirection: "column",
@@ -8992,17 +9012,20 @@ export default function Page() {
               alignItems: "center",
               justifyContent: "space-between",
               padding: "10px 12px",
-              borderBottom: "1px solid rgba(0,0,0,0.12)",
-              background: "rgba(255,255,255,0.78)",
+              borderBottom: "1px solid rgba(146, 181, 235, 0.35)",
+              background: "rgba(14, 30, 58, 0.78)",
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#2e2e2e", letterSpacing: "0.03em" }}>MENU</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "rgba(226, 239, 255, 0.97)", letterSpacing: "0.03em" }}>
+              MENU
+            </span>
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(false)}
               style={{
-                border: "1px solid rgba(0,0,0,0.2)",
-                background: "#fff",
+                border: "1px solid rgba(146, 181, 235, 0.5)",
+                background: "rgba(20, 42, 79, 0.9)",
+                color: "rgba(236, 246, 255, 0.96)",
                 borderRadius: 8,
                 padding: "4px 8px",
                 fontSize: 11,
@@ -9014,7 +9037,7 @@ export default function Page() {
             </button>
           </div>
           <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>LIBRARY</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>LIBRARY</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileLibraryMenuItems.map((item) => {
                 const active = nav === item.key;
@@ -9025,9 +9048,9 @@ export default function Page() {
                     onClick={() => handleMobileNavSelect(item.key)}
                     style={{
                       width: "100%",
-                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
-                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
-                      color: "#1f1f1f",
+                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
+                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
+                      color: "rgba(232, 243, 255, 0.97)",
                       borderRadius: 10,
                       padding: "9px 10px",
                       fontSize: 13,
@@ -9063,7 +9086,7 @@ export default function Page() {
               })}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>BACKLOG</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>BACKLOG</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileBacklogMenuItems.map((item) => {
                 const active = nav === item.key;
@@ -9074,9 +9097,9 @@ export default function Page() {
                     onClick={() => handleMobileNavSelect(item.key)}
                     style={{
                       width: "100%",
-                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
-                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
-                      color: "#1f1f1f",
+                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
+                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
+                      color: "rgba(232, 243, 255, 0.97)",
                       borderRadius: 10,
                       padding: "9px 10px",
                       fontSize: 13,
@@ -9112,7 +9135,7 @@ export default function Page() {
               })}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>SMART LISTS</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>SMART LISTS</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileSmartListMenuItems.map((item) => {
                 const active = nav === item.key;
@@ -9123,9 +9146,9 @@ export default function Page() {
                     onClick={() => handleMobileNavSelect(item.key)}
                     style={{
                       width: "100%",
-                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
-                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
-                      color: "#1f1f1f",
+                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
+                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
+                      color: "rgba(232, 243, 255, 0.97)",
                       borderRadius: 10,
                       padding: "9px 10px",
                       fontSize: 13,
@@ -9147,9 +9170,9 @@ export default function Page() {
                     onClick={() => handleMobileSmartListSelect(smartList)}
                     style={{
                       width: "100%",
-                      border: active ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
-                      background: active ? "rgba(52, 96, 152, 0.15)" : "#fff",
-                      color: "#1f1f1f",
+                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
+                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
+                      color: "rgba(232, 243, 255, 0.97)",
                       borderRadius: 10,
                       padding: "9px 10px",
                       fontSize: 13,
@@ -9171,9 +9194,9 @@ export default function Page() {
                 }}
                 style={{
                   width: "100%",
-                  border: "1px solid rgba(34, 76, 128, 0.55)",
-                  background: "rgba(52, 96, 152, 0.12)",
-                  color: "#173352",
+                  border: "1px solid rgba(153, 203, 255, 0.75)",
+                  background: "rgba(46, 92, 146, 0.62)",
+                  color: "rgba(236, 246, 255, 0.98)",
                   borderRadius: 10,
                   padding: "9px 10px",
                   fontSize: 13,
@@ -9186,15 +9209,15 @@ export default function Page() {
               </button>
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>DISCOVER</div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>DISCOVER</div>
             <button
               type="button"
               onClick={() => handleMobileNavSelect("statistics")}
               style={{
                 width: "100%",
-                border: nav === "statistics" ? "1px solid rgba(34, 76, 128, 0.8)" : "1px solid rgba(0,0,0,0.12)",
-                background: nav === "statistics" ? "rgba(52, 96, 152, 0.15)" : "#fff",
-                color: "#1f1f1f",
+                border: nav === "statistics" ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
+                background: nav === "statistics" ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
+                color: "rgba(232, 243, 255, 0.97)",
                 borderRadius: 10,
                 padding: "9px 10px",
                 fontSize: 13,
@@ -9217,8 +9240,9 @@ export default function Page() {
             bottom: 0,
             width: "min(90vw, 340px)",
             zIndex: 2500,
-            background: "rgba(247, 244, 238, 0.98)",
-            borderLeft: "1px solid rgba(0,0,0,0.18)",
+            background:
+              "linear-gradient(180deg, rgba(18, 34, 61, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%)",
+            borderLeft: "1px solid rgba(146, 181, 235, 0.45)",
             boxShadow: "-18px 0 34px rgba(0,0,0,0.34)",
             display: "flex",
             flexDirection: "column",
@@ -9230,17 +9254,20 @@ export default function Page() {
               alignItems: "center",
               justifyContent: "space-between",
               padding: "10px 12px",
-              borderBottom: "1px solid rgba(0,0,0,0.12)",
-              background: "rgba(255,255,255,0.78)",
+              borderBottom: "1px solid rgba(146, 181, 235, 0.35)",
+              background: "rgba(14, 30, 58, 0.78)",
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#2e2e2e", letterSpacing: "0.03em" }}>SETTINGS</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "rgba(226, 239, 255, 0.97)", letterSpacing: "0.03em" }}>
+              SETTINGS
+            </span>
             <button
               type="button"
               onClick={() => setMobileSettingsOpen(false)}
               style={{
-                border: "1px solid rgba(0,0,0,0.2)",
-                background: "#fff",
+                border: "1px solid rgba(146, 181, 235, 0.5)",
+                background: "rgba(20, 42, 79, 0.9)",
+                color: "rgba(236, 246, 255, 0.96)",
                 borderRadius: 8,
                 padding: "4px 8px",
                 fontSize: 11,
@@ -9257,9 +9284,9 @@ export default function Page() {
               onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
               style={{
                 width: "100%",
-                border: "1px solid rgba(0,0,0,0.16)",
-                background: showStatusIndicators ? "rgba(72, 128, 56, 0.18)" : "#fff",
-                color: "#1f1f1f",
+                border: "1px solid rgba(146, 181, 235, 0.45)",
+                background: showStatusIndicators ? "rgba(55, 102, 66, 0.65)" : "rgba(12, 28, 54, 0.72)",
+                color: "rgba(232, 243, 255, 0.97)",
                 borderRadius: 10,
                 padding: "9px 10px",
                 fontSize: 13,
@@ -9275,9 +9302,9 @@ export default function Page() {
               onClick={clearAllFilters}
               style={{
                 width: "100%",
-                border: "1px solid rgba(0,0,0,0.16)",
-                background: "#fff",
-                color: "#1f1f1f",
+                border: "1px solid rgba(146, 181, 235, 0.45)",
+                background: "rgba(12, 28, 54, 0.72)",
+                color: "rgba(232, 243, 255, 0.97)",
                 borderRadius: 10,
                 padding: "9px 10px",
                 fontSize: 13,
@@ -9291,16 +9318,16 @@ export default function Page() {
             {nav === "watchlist-tv" ? (
               <div
                 style={{
-                  border: "1px solid rgba(0,0,0,0.12)",
+                  border: "1px solid rgba(146, 181, 235, 0.35)",
                   borderRadius: 10,
-                  background: "rgba(255,255,255,0.8)",
+                  background: "rgba(10, 24, 46, 0.68)",
                   padding: 10,
                   display: "flex",
                   flexDirection: "column",
                   gap: 8,
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b6b6b" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>
                   TV WATCHLIST
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -9313,9 +9340,9 @@ export default function Page() {
                         type="button"
                         onClick={() => setWatchlistTvSectionFilter(sectionKey)}
                         style={{
-                          border: active ? `1px solid ${sectionMeta.badgeBorder}` : "1px solid rgba(0,0,0,0.18)",
-                          background: active ? sectionMeta.badgeBackground : "#fff",
-                          color: active ? sectionMeta.badgeColor : "#2a2a2a",
+                          border: active ? `1px solid ${sectionMeta.badgeBorder}` : "1px solid rgba(146, 181, 235, 0.45)",
+                          background: active ? sectionMeta.badgeBackground : "rgba(12, 28, 54, 0.72)",
+                          color: active ? sectionMeta.badgeColor : "rgba(232, 243, 255, 0.97)",
                           borderRadius: 999,
                           padding: "4px 8px",
                           fontSize: 11,
@@ -9341,9 +9368,9 @@ export default function Page() {
               }}
               style={{
                 width: "100%",
-                border: "1px solid rgba(0,0,0,0.16)",
-                background: "#fff",
-                color: "#1f1f1f",
+                border: "1px solid rgba(146, 181, 235, 0.45)",
+                background: "rgba(12, 28, 54, 0.72)",
+                color: "rgba(232, 243, 255, 0.97)",
                 borderRadius: 10,
                 padding: "9px 10px",
                 fontSize: 13,
@@ -9367,9 +9394,9 @@ export default function Page() {
               }}
               style={{
                 width: "100%",
-                border: "1px solid rgba(0,0,0,0.16)",
-                background: "#fff",
-                color: "#1f1f1f",
+                border: "1px solid rgba(146, 181, 235, 0.45)",
+                background: "rgba(12, 28, 54, 0.72)",
+                color: "rgba(232, 243, 255, 0.97)",
                 borderRadius: 10,
                 padding: "9px 10px",
                 fontSize: 13,
@@ -9389,9 +9416,9 @@ export default function Page() {
               }}
               style={{
                 width: "100%",
-                border: "1px solid rgba(34, 76, 128, 0.55)",
-                background: "rgba(52, 96, 152, 0.12)",
-                color: "#173352",
+                border: "1px solid rgba(153, 203, 255, 0.75)",
+                background: "rgba(46, 92, 146, 0.62)",
+                color: "rgba(236, 246, 255, 0.98)",
                 borderRadius: 10,
                 padding: "9px 10px",
                 fontSize: 13,
@@ -13084,59 +13111,74 @@ export default function Page() {
                 top: "calc(env(safe-area-inset-top, 0px) + 84px)",
                 right: isMobileLayout ? 12 : 74,
                 width: "min(320px, calc(100vw - 40px))",
-                zIndex: POPUP_PANEL_Z_INDEX,
-                padding: 14,
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                background: "rgba(248, 244, 236, 0.98)",
-                border: "1px solid rgba(58, 37, 24, 0.38)",
-                borderRadius: 14,
-                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
-                backdropFilter: "blur(2px)",
+	                zIndex: POPUP_PANEL_Z_INDEX,
+	                padding: 14,
+	                display: "flex",
+	                flexDirection: "column",
+	                gap: 10,
+	                background: isMobileLayout
+	                  ? "linear-gradient(180deg, rgba(18, 34, 61, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%)"
+	                  : "rgba(248, 244, 236, 0.98)",
+	                border: isMobileLayout
+	                  ? "1px solid rgba(146, 181, 235, 0.45)"
+	                  : "1px solid rgba(58, 37, 24, 0.38)",
+	                borderRadius: 14,
+	                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+	                backdropFilter: "blur(2px)",
               }}
             >
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingBottom: 8,
-                  borderBottom: "1px solid rgba(0,0,0,0.12)",
-                }}
-              >
-                <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Sort</span>
-                <button
-                  onClick={() => setSortPopupOpen(false)}
-                  style={{
-                    border: "1px solid rgba(0,0,0,0.2)",
-                    background: "rgba(255,255,255,0.85)",
-                    color: "#5c3c38",
-                    borderRadius: 8,
-                    padding: "4px 8px",
-                    cursor: "pointer",
+	                  display: "flex",
+	                  alignItems: "center",
+	                  justifyContent: "space-between",
+	                  paddingBottom: 8,
+	                  borderBottom: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.35)" : "1px solid rgba(0,0,0,0.12)",
+	                }}
+	              >
+	                <span style={{ fontSize: 14, fontWeight: 800, color: isMobileLayout ? "rgba(226, 239, 255, 0.97)" : "#5c3c38" }}>
+	                  Sort
+	                </span>
+	                <button
+	                  onClick={() => setSortPopupOpen(false)}
+	                  style={{
+	                    border: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.5)" : "1px solid rgba(0,0,0,0.2)",
+	                    background: isMobileLayout ? "rgba(20, 42, 79, 0.9)" : "rgba(255,255,255,0.85)",
+	                    color: isMobileLayout ? "rgba(236, 246, 255, 0.96)" : "#5c3c38",
+	                    borderRadius: 8,
+	                    padding: "4px 8px",
+	                    cursor: "pointer",
                     fontSize: 11,
                     fontWeight: 700,
                   }}
-                >
-                  Close
-                </button>
-              </div>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>
-                SORT BY
-                <select
-                  value={sortField}
+	                >
+	                  Close
+	                </button>
+	              </div>
+	              <label
+	                style={{
+	                  display: "flex",
+	                  flexDirection: "column",
+	                  gap: 6,
+	                  fontSize: 11,
+	                  fontWeight: 700,
+	                  color: isMobileLayout ? "rgba(178, 203, 241, 0.9)" : "#8A8A8A",
+	                }}
+	              >
+	                SORT BY
+	                <select
+	                  value={sortField}
                   onChange={(e) => handleSortFieldChange(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "9px 10px",
-                    borderRadius: 9,
-                    border: "1px solid rgba(0,0,0,0.2)",
-                    background: "rgba(255,255,255,0.9)",
-                    color: "#3a2f28",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    outline: "none",
+	                  style={{
+	                    width: "100%",
+	                    padding: "9px 10px",
+	                    borderRadius: 9,
+	                    border: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.5)" : "1px solid rgba(0,0,0,0.2)",
+	                    background: isMobileLayout ? "rgba(12, 28, 54, 0.76)" : "rgba(255,255,255,0.9)",
+	                    color: isMobileLayout ? "rgba(232, 243, 255, 0.97)" : "#3a2f28",
+	                    fontSize: 14,
+	                    fontWeight: 600,
+	                    outline: "none",
                     cursor: "pointer",
                   }}
                 >
@@ -13183,25 +13225,34 @@ export default function Page() {
                       {nav === "wishlist" || nav === "play-next" ? <option value="CompletedDate">Date Completed</option> : null}
                       {nav === "wishlist" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
                     </>
-                  )}
-                </select>
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>
-                ORDER
-                <select
-                  value={sortOrder}
+	                  )}
+	                </select>
+	              </label>
+	              <label
+	                style={{
+	                  display: "flex",
+	                  flexDirection: "column",
+	                  gap: 6,
+	                  fontSize: 11,
+	                  fontWeight: 700,
+	                  color: isMobileLayout ? "rgba(178, 203, 241, 0.9)" : "#8A8A8A",
+	                }}
+	              >
+	                ORDER
+	                <select
+	                  value={sortOrder}
                   onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
                   disabled={(nav === "wishlist" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
-                  style={{
-                    width: "100%",
-                    padding: "9px 10px",
-                    borderRadius: 9,
-                    border: "1px solid rgba(0,0,0,0.2)",
-                    background: "rgba(255,255,255,0.9)",
-                    color: "#3a2f28",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    outline: "none",
+	                  style={{
+	                    width: "100%",
+	                    padding: "9px 10px",
+	                    borderRadius: 9,
+	                    border: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.5)" : "1px solid rgba(0,0,0,0.2)",
+	                    background: isMobileLayout ? "rgba(12, 28, 54, 0.76)" : "rgba(255,255,255,0.9)",
+	                    color: isMobileLayout ? "rgba(232, 243, 255, 0.97)" : "#3a2f28",
+	                    fontSize: 14,
+	                    fontWeight: 600,
+	                    outline: "none",
                     cursor: "pointer",
                   }}
                 >
@@ -14082,21 +14133,21 @@ export default function Page() {
 		                          title={mobileSidebarOpen ? "Close menu" : "Open menu"}
 		                          aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
 		                          aria-expanded={mobileSidebarOpen}
-		                          style={{
-		                            display: "inline-flex",
-		                            alignItems: "center",
-		                            justifyContent: "center",
-		                            height: 24,
-		                            minWidth: 24,
-		                            padding: "3px 6px",
-		                            order: 2,
-		                            background: "rgba(28, 18, 10, 0.52)",
-		                            border: "1px solid rgba(10, 6, 3, 0.78)",
-		                            borderRadius: 9,
-	                            color: "rgba(250, 242, 230, 0.78)",
-	                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-	                            cursor: "pointer",
-	                          }}
+			                          style={{
+			                            display: "inline-flex",
+			                            alignItems: "center",
+			                            justifyContent: "center",
+			                            height: 24,
+			                            minWidth: 24,
+			                            padding: "3px 6px",
+			                            order: 2,
+			                            background: "rgba(14, 30, 58, 0.82)",
+			                            border: "1px solid rgba(146, 181, 235, 0.52)",
+			                            borderRadius: 9,
+		                            color: "rgba(250, 242, 230, 0.78)",
+		                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.42)",
+		                            cursor: "pointer",
+		                          }}
 	                        >
 	                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
 	                            <line x1="4" y1="7" x2="20" y2="7" />
@@ -14110,15 +14161,21 @@ export default function Page() {
 		                          display: "flex",
 		                          alignItems: "center",
 		                          flex: 1,
-		                          minWidth: 0,
-		                          order: isMobileLayout ? 1 : undefined,
-		                          borderRadius: 9,
-		                          border: "1px solid rgba(10, 6, 3, 0.68)",
-		                          background: "rgba(16, 10, 6, 0.54)",
-                          boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
-                          paddingLeft: 7,
-                        }}
-                      >
+			                          minWidth: 0,
+			                          order: isMobileLayout ? 1 : undefined,
+			                          borderRadius: 9,
+			                          border: isMobileLayout
+			                            ? "1px solid rgba(146, 181, 235, 0.52)"
+			                            : "1px solid rgba(10, 6, 3, 0.68)",
+			                          background: isMobileLayout
+			                            ? "rgba(14, 30, 58, 0.78)"
+			                            : "rgba(16, 10, 6, 0.54)",
+	                          boxShadow: isMobileLayout
+	                            ? "0 3px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(173, 205, 255, 0.2)"
+	                            : "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+	                          paddingLeft: 7,
+	                        }}
+	                      >
                         <img
                           src="/icon-search.png"
                           alt=""
@@ -14153,21 +14210,21 @@ export default function Page() {
                           title={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
                           aria-label={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
                           aria-expanded={mobileSettingsOpen}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: 24,
-                            minWidth: 24,
-                            padding: "3px 6px",
-                            order: 3,
-                            background: "rgba(28, 18, 10, 0.52)",
-                            border: "1px solid rgba(10, 6, 3, 0.78)",
-                            borderRadius: 9,
-                            color: "rgba(250, 242, 230, 0.78)",
-                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                            cursor: "pointer",
-                          }}
+	                          style={{
+	                            display: "inline-flex",
+	                            alignItems: "center",
+	                            justifyContent: "center",
+	                            height: 24,
+	                            minWidth: 24,
+	                            padding: "3px 6px",
+	                            order: 3,
+	                            background: "rgba(14, 30, 58, 0.82)",
+	                            border: "1px solid rgba(146, 181, 235, 0.52)",
+	                            borderRadius: 9,
+	                            color: "rgba(250, 242, 230, 0.78)",
+	                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.42)",
+	                            cursor: "pointer",
+	                          }}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <circle cx="12" cy="12" r="3"></circle>
