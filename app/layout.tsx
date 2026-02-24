@@ -18,9 +18,9 @@ export const metadata: Metadata = {
   applicationName: "Chris' Delicious Library",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/mobile-icon.png", sizes: "512x512", type: "image/png" }],
+    icon: [{ url: "/mobile-icon-2.png", sizes: "512x512", type: "image/png" }],
     apple: [{ url: "/mobile-icon-2.png", sizes: "512x512", type: "image/png" }],
-    shortcut: ["/mobile-icon.png"],
+    shortcut: ["/mobile-icon-2.png"],
   },
   appleWebApp: {
     capable: true,

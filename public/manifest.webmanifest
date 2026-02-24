@@ -10,7 +10,7 @@
   "theme_color": "#0f2442",
   "icons": [
     {
-      "src": "/mobile-icon.png",
+      "src": "/mobile-icon-2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
