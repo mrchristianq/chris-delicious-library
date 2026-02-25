@@ -9743,17 +9743,17 @@ export default function Page() {
                 digitTileBorder={isElectricBlueSidebarTheme ? "rgba(255, 255, 255, 0.84)" : currentTheme.rolodexTileBorder}
                 digitTileShadow={
                   isElectricBlueSidebarTheme
-                    ? "0 0 9px rgba(196, 229, 255, 0.42), 0 0 20px rgba(196, 229, 255, 0.3), inset 0 0 0 1px rgba(214, 236, 255, 0.45), inset 0 0 22px rgba(16, 54, 104, 0.56)"
+                    ? "0 0 9px rgba(196, 229, 255, 0.34), 0 0 20px rgba(196, 229, 255, 0.24), inset 0 0 0 1px rgba(214, 236, 255, 0.37), inset 0 0 22px rgba(16, 54, 104, 0.48)"
                     : undefined
                 }
                 digitHighlightBackground={
                   isElectricBlueSidebarTheme
-                    ? "linear-gradient(rgba(230, 243, 255, 0.26), rgba(230, 243, 255, 0))"
+                    ? "linear-gradient(rgba(230, 243, 255, 0.21), rgba(230, 243, 255, 0))"
                     : undefined
                 }
                 digitNumberTextShadow={
                   isElectricBlueSidebarTheme
-                    ? "0 0 3px rgba(244, 252, 255, 0.95), 0 0 10px rgba(196, 229, 255, 0.8), 0 0 18px rgba(132, 188, 255, 0.56)"
+                    ? "0 0 3px rgba(244, 252, 255, 0.82), 0 0 10px rgba(196, 229, 255, 0.66), 0 0 18px rgba(132, 188, 255, 0.44)"
                     : undefined
                 }
                 showLabel={!isElectricBlueSidebarTheme}
@@ -9780,6 +9780,7 @@ export default function Page() {
                 boxShadow: sidebarModuleCardShadow,
                 border: sidebarModuleCardBorder,
                 borderBottom: sidebarModuleCardBorderBottom,
+                marginTop: isElectricBlueSidebarTheme ? 9 : 6,
                 padding: "12px",
               }}
             >
@@ -15617,118 +15618,118 @@ export default function Page() {
 	          animation: rolodexNeonDigitPulseColor 96s ease-in-out infinite;
 	          animation-delay: var(--neon-sync-offset, 0s);
 	        }
-	        @keyframes rolodexNeonDigitPulseColor {
+        @keyframes rolodexNeonDigitPulseColor {
           0% {
             color: rgba(236, 248, 255, 0.98);
             text-shadow:
-              0 0 3px rgba(244, 252, 255, 0.95),
-              0 0 10px rgba(196, 229, 255, 0.8),
-              0 0 18px rgba(132, 188, 255, 0.56);
+              0 0 3px rgba(244, 252, 255, 0.82),
+              0 0 10px rgba(196, 229, 255, 0.66),
+              0 0 18px rgba(132, 188, 255, 0.44);
           }
           20% {
             color: rgba(214, 237, 255, 0.98);
             text-shadow:
-              0 0 3px rgba(226, 242, 255, 0.95),
-              0 0 10px rgba(163, 214, 255, 0.84),
-              0 0 18px rgba(79, 152, 255, 0.58);
+              0 0 3px rgba(226, 242, 255, 0.82),
+              0 0 10px rgba(163, 214, 255, 0.69),
+              0 0 18px rgba(79, 152, 255, 0.46);
           }
           40% {
             color: rgba(255, 216, 241, 0.98);
             text-shadow:
-              0 0 3px rgba(255, 226, 244, 0.94),
-              0 0 10px rgba(255, 189, 232, 0.83),
-              0 0 18px rgba(232, 112, 196, 0.58);
+              0 0 3px rgba(255, 226, 244, 0.81),
+              0 0 10px rgba(255, 189, 232, 0.68),
+              0 0 18px rgba(232, 112, 196, 0.46);
           }
           60% {
             color: rgba(222, 251, 232, 0.98);
             text-shadow:
-              0 0 3px rgba(233, 255, 241, 0.94),
-              0 0 10px rgba(178, 246, 199, 0.82),
-              0 0 18px rgba(76, 188, 126, 0.58);
+              0 0 3px rgba(233, 255, 241, 0.81),
+              0 0 10px rgba(178, 246, 199, 0.67),
+              0 0 18px rgba(76, 188, 126, 0.46);
           }
           80% {
             color: rgba(232, 217, 255, 0.98);
             text-shadow:
-              0 0 3px rgba(243, 228, 255, 0.95),
-              0 0 10px rgba(220, 191, 255, 0.84),
-              0 0 18px rgba(143, 102, 223, 0.58);
+              0 0 3px rgba(243, 228, 255, 0.82),
+              0 0 10px rgba(220, 191, 255, 0.69),
+              0 0 18px rgba(143, 102, 223, 0.46);
           }
           100% {
             color: rgba(236, 248, 255, 0.98);
             text-shadow:
-              0 0 3px rgba(244, 252, 255, 0.95),
-              0 0 10px rgba(196, 229, 255, 0.8),
-              0 0 18px rgba(132, 188, 255, 0.56);
+              0 0 3px rgba(244, 252, 255, 0.82),
+              0 0 10px rgba(196, 229, 255, 0.66),
+              0 0 18px rgba(132, 188, 255, 0.44);
           }
         }
         @keyframes rolodexNeonTilePulseColor {
           0% {
             border-color: rgba(255, 255, 255, 0.84);
             box-shadow:
-              0 0 9px rgba(196, 229, 255, 0.42),
-              0 0 20px rgba(196, 229, 255, 0.3),
-              inset 0 0 0 1px rgba(214, 236, 255, 0.45),
-              inset 0 0 22px rgba(16, 54, 104, 0.56);
+              0 0 9px rgba(196, 229, 255, 0.34),
+              0 0 20px rgba(196, 229, 255, 0.24),
+              inset 0 0 0 1px rgba(214, 236, 255, 0.37),
+              inset 0 0 22px rgba(16, 54, 104, 0.48);
           }
           20% {
             border-color: rgba(168, 214, 255, 0.84);
             box-shadow:
-              0 0 9px rgba(176, 221, 255, 0.42),
-              0 0 20px rgba(79, 152, 255, 0.32),
-              inset 0 0 0 1px rgba(170, 216, 255, 0.44),
-              inset 0 0 22px rgba(14, 47, 97, 0.56);
+              0 0 9px rgba(176, 221, 255, 0.34),
+              0 0 20px rgba(79, 152, 255, 0.26),
+              inset 0 0 0 1px rgba(170, 216, 255, 0.36),
+              inset 0 0 22px rgba(14, 47, 97, 0.48);
           }
           40% {
             border-color: rgba(255, 183, 230, 0.84);
             box-shadow:
-              0 0 9px rgba(255, 189, 232, 0.42),
-              0 0 20px rgba(232, 112, 196, 0.31),
-              inset 0 0 0 1px rgba(255, 198, 236, 0.44),
-              inset 0 0 22px rgba(90, 24, 82, 0.52);
+              0 0 9px rgba(255, 189, 232, 0.34),
+              0 0 20px rgba(232, 112, 196, 0.25),
+              inset 0 0 0 1px rgba(255, 198, 236, 0.36),
+              inset 0 0 22px rgba(90, 24, 82, 0.44);
           }
           60% {
             border-color: rgba(173, 244, 195, 0.84);
             box-shadow:
-              0 0 9px rgba(178, 246, 199, 0.42),
-              0 0 20px rgba(76, 188, 126, 0.31),
-              inset 0 0 0 1px rgba(186, 250, 210, 0.44),
-              inset 0 0 22px rgba(12, 67, 50, 0.52);
+              0 0 9px rgba(178, 246, 199, 0.34),
+              0 0 20px rgba(76, 188, 126, 0.25),
+              inset 0 0 0 1px rgba(186, 250, 210, 0.36),
+              inset 0 0 22px rgba(12, 67, 50, 0.44);
           }
           80% {
             border-color: rgba(214, 179, 255, 0.84);
             box-shadow:
-              0 0 9px rgba(220, 191, 255, 0.42),
-              0 0 20px rgba(143, 102, 223, 0.32),
-              inset 0 0 0 1px rgba(227, 206, 255, 0.44),
-              inset 0 0 22px rgba(53, 26, 93, 0.52);
+              0 0 9px rgba(220, 191, 255, 0.34),
+              0 0 20px rgba(143, 102, 223, 0.26),
+              inset 0 0 0 1px rgba(227, 206, 255, 0.36),
+              inset 0 0 22px rgba(53, 26, 93, 0.44);
           }
           100% {
             border-color: rgba(255, 255, 255, 0.84);
             box-shadow:
-              0 0 9px rgba(196, 229, 255, 0.42),
-              0 0 20px rgba(196, 229, 255, 0.3),
-              inset 0 0 0 1px rgba(214, 236, 255, 0.45),
-              inset 0 0 22px rgba(16, 54, 104, 0.56);
+              0 0 9px rgba(196, 229, 255, 0.34),
+              0 0 20px rgba(196, 229, 255, 0.24),
+              inset 0 0 0 1px rgba(214, 236, 255, 0.37),
+              inset 0 0 22px rgba(16, 54, 104, 0.48);
           }
         }
         @keyframes rolodexNeonHighlightPulseColor {
           0% {
-            background: linear-gradient(rgba(230, 243, 255, 0.26), rgba(230, 243, 255, 0));
+            background: linear-gradient(rgba(230, 243, 255, 0.21), rgba(230, 243, 255, 0));
           }
           20% {
-            background: linear-gradient(rgba(170, 221, 255, 0.25), rgba(170, 221, 255, 0));
+            background: linear-gradient(rgba(170, 221, 255, 0.2), rgba(170, 221, 255, 0));
           }
           40% {
-            background: linear-gradient(rgba(255, 198, 236, 0.25), rgba(255, 198, 236, 0));
+            background: linear-gradient(rgba(255, 198, 236, 0.2), rgba(255, 198, 236, 0));
           }
           60% {
-            background: linear-gradient(rgba(186, 250, 210, 0.25), rgba(186, 250, 210, 0));
+            background: linear-gradient(rgba(186, 250, 210, 0.2), rgba(186, 250, 210, 0));
           }
           80% {
-            background: linear-gradient(rgba(227, 206, 255, 0.25), rgba(227, 206, 255, 0));
+            background: linear-gradient(rgba(227, 206, 255, 0.2), rgba(227, 206, 255, 0));
           }
           100% {
-            background: linear-gradient(rgba(230, 243, 255, 0.26), rgba(230, 243, 255, 0));
+            background: linear-gradient(rgba(230, 243, 255, 0.21), rgba(230, 243, 255, 0));
           }
         }
 	        @media (prefers-reduced-motion: reduce) {
