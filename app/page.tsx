@@ -1866,6 +1866,15 @@ export default function Page() {
   const sidebarModuleCardBorderBottom = isElectricBlueSidebarTheme
     ? "1px solid transparent"
     : "1px solid rgba(0, 0, 0, 0.15)";
+  const counterDigitHeight = isElectricBlueSidebarTheme ? Math.round(counterTileSize * 1.24) : counterTileSize;
+  const counterDigitWidth = isElectricBlueSidebarTheme
+    ? Math.round(counterDigitHeight * 0.76)
+    : Math.round(counterTileSize * 0.73);
+  const counterDigitSpacing = isElectricBlueSidebarTheme ? Math.max(4, counterTileSpacing + 1) : counterTileSpacing;
+  const counterDigitNumberFontSize = isElectricBlueSidebarTheme
+    ? Math.round(counterNumberFontSize * 1.16)
+    : counterNumberFontSize;
+  const neonSyncStartOffset = useMemo(() => `-${(Math.random() * 96).toFixed(3)}s`, []);
   const syncStatusTextColor =
     isBlueSidebarTheme
       ? syncState === "error"
@@ -8930,6 +8939,7 @@ export default function Page() {
         color: "#111",
         position: "relative",
         overflowX: isMobileLayout ? "hidden" : undefined,
+        "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
       }}
     >
       {showStartupSplash ? (
@@ -9662,6 +9672,7 @@ export default function Page() {
               flex: 1,
               overflow: "hidden",
               overflowY: "auto",
+              "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
             }}
           >
           {/* Logo header with stats */}
@@ -9700,29 +9711,66 @@ export default function Page() {
 
           {/* Rolodex Counter */}
           {!loading && (
-            <div style={{ padding: "10px 10px 0 10px", display: "flex", justifyContent: "center" }}>
+            <div
+              style={{
+                padding: "10px 10px 0 10px",
+                display: "flex",
+                justifyContent: "center",
+                width: "100%",
+              }}
+            >
               <RolodexCounter 
                 value={shows.length} 
-                digitHeight={counterTileSize}
-                digitWidth={Math.round(counterTileSize * 0.73)}
-                spacing={counterTileSpacing}
-                numberFontSize={counterNumberFontSize}
+                className={isElectricBlueSidebarTheme ? "rolodexCounterNeonSync" : ""}
+                digitHeight={counterDigitHeight}
+                digitWidth={counterDigitWidth}
+                spacing={counterDigitSpacing}
+                numberFontSize={counterDigitNumberFontSize}
                 labelFontSize={counterLabelFontSize}
                 labelFontWeight={counterLabelFontWeight}
                 labelTop={counterLabelTop}
                 labelLeft={counterLabelLeft}
                 counterTop={counterTop}
-                counterLeft={counterLeft}
+                counterLeft={isElectricBlueSidebarTheme ? 0 : counterLeft}
                 labelColor={currentTheme.rolodexLabelColor}
-                commaColor={currentTheme.rolodexColor}
-                digitNumberColor={currentTheme.rolodexDigitColor}
-                digitTileBackground={currentTheme.rolodexTileBg}
-                digitTileBorder={currentTheme.rolodexTileBorder}
+                commaColor={isElectricBlueSidebarTheme ? "rgba(236, 248, 255, 0.95)" : currentTheme.rolodexColor}
+                digitNumberColor={isElectricBlueSidebarTheme ? "rgba(236, 248, 255, 0.98)" : currentTheme.rolodexDigitColor}
+                digitTileBackground={
+                  isElectricBlueSidebarTheme
+                    ? "linear-gradient(180deg, rgba(7, 10, 16, 0.98) 0%, rgba(0, 0, 0, 0.97) 100%)"
+                    : currentTheme.rolodexTileBg
+                }
+                digitTileBorder={isElectricBlueSidebarTheme ? "rgba(255, 255, 255, 0.84)" : currentTheme.rolodexTileBorder}
+                digitTileShadow={
+                  isElectricBlueSidebarTheme
+                    ? "0 0 9px rgba(196, 229, 255, 0.42), 0 0 20px rgba(196, 229, 255, 0.3), inset 0 0 0 1px rgba(214, 236, 255, 0.45), inset 0 0 22px rgba(16, 54, 104, 0.56)"
+                    : undefined
+                }
+                digitHighlightBackground={
+                  isElectricBlueSidebarTheme
+                    ? "linear-gradient(rgba(230, 243, 255, 0.26), rgba(230, 243, 255, 0))"
+                    : undefined
+                }
+                digitNumberTextShadow={
+                  isElectricBlueSidebarTheme
+                    ? "0 0 3px rgba(244, 252, 255, 0.95), 0 0 10px rgba(196, 229, 255, 0.8), 0 0 18px rgba(132, 188, 255, 0.56)"
+                    : undefined
+                }
+                showLabel={!isElectricBlueSidebarTheme}
               />
             </div>
           )}
 
-          <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 6, flex: 1, marginTop: 12 }}>
+          <div
+            style={{
+              padding: "0 8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: isElectricBlueSidebarTheme ? 9 : 6,
+              flex: 1,
+              marginTop: 12,
+            }}
+          >
             {/* Library Module */}
             <div
               className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
@@ -13138,18 +13186,19 @@ export default function Page() {
                 justifyContent: "center",
               }}
             >
-              <span
-                style={{
-                  fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
-                  fontSize: 24,
-                  fontWeight: 500,
+	              <span
+	                className={isElectricBlueSidebarTheme ? "headerTitleNeonSync" : ""}
+	                style={{
+	                  fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
+	                  fontSize: 24,
+	                  fontWeight: 500,
                   lineHeight: 1,
                   letterSpacing: "0.01em",
-                  color: isElectricBlueThemeActive ? "rgba(237, 243, 252, 0.92)" : "rgba(76, 52, 34, 0.55)",
-                  textShadow:
-                    isElectricBlueThemeActive
-                      ? "0 1px 0 rgba(180, 209, 246, 0.3), 0 -1px 0 rgba(9, 17, 32, 0.58), 0 0 1px rgba(132, 181, 247, 0.3)"
-                      : "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
+	                  color: isElectricBlueThemeActive ? "rgba(237, 243, 252, 0.92)" : "rgba(76, 52, 34, 0.55)",
+	                  textShadow:
+	                    isElectricBlueThemeActive
+	                      ? "0 1px 0 rgba(180, 209, 246, 0.3), 0 -1px 0 rgba(9, 17, 32, 0.58), 0 0 1px rgba(132, 181, 247, 0.3)"
+	                      : "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
                   mixBlendMode: isElectricBlueThemeActive ? "normal" : "multiply",
                   opacity: isElectricBlueThemeActive ? 0.98 : 0.9,
                   transform: "translateY(-2.5px)",
@@ -15501,6 +15550,7 @@ export default function Page() {
           opacity: 0.86;
           transform: scale(1);
           animation: moduleNeonPulseColor 96s ease-in-out infinite;
+          animation-delay: var(--neon-sync-offset, 0s);
         }
         .sidebarModuleCard.neon:hover::before {
           opacity: 0.98;
@@ -15550,8 +15600,148 @@ export default function Page() {
               0 0 4px rgba(196, 229, 255, 0.32);
           }
         }
-        @media (prefers-reduced-motion: reduce) {
-          .sidebarModuleCard.neon::before {
+        :global(.rolodexCounterNeonSync .rolodexCounterComma),
+        :global(.rolodexCounterNeonSync .rolodexCounterDigitNumber) {
+          animation: rolodexNeonDigitPulseColor 96s ease-in-out infinite;
+          animation-delay: var(--neon-sync-offset, 0s);
+        }
+        :global(.rolodexCounterNeonSync .rolodexCounterTile) {
+          animation: rolodexNeonTilePulseColor 96s ease-in-out infinite;
+          animation-delay: var(--neon-sync-offset, 0s);
+        }
+	        :global(.rolodexCounterNeonSync .rolodexCounterTileHighlight) {
+	          animation: rolodexNeonHighlightPulseColor 96s ease-in-out infinite;
+	          animation-delay: var(--neon-sync-offset, 0s);
+	        }
+	        .headerTitleNeonSync {
+	          animation: rolodexNeonDigitPulseColor 96s ease-in-out infinite;
+	          animation-delay: var(--neon-sync-offset, 0s);
+	        }
+	        @keyframes rolodexNeonDigitPulseColor {
+          0% {
+            color: rgba(236, 248, 255, 0.98);
+            text-shadow:
+              0 0 3px rgba(244, 252, 255, 0.95),
+              0 0 10px rgba(196, 229, 255, 0.8),
+              0 0 18px rgba(132, 188, 255, 0.56);
+          }
+          20% {
+            color: rgba(214, 237, 255, 0.98);
+            text-shadow:
+              0 0 3px rgba(226, 242, 255, 0.95),
+              0 0 10px rgba(163, 214, 255, 0.84),
+              0 0 18px rgba(79, 152, 255, 0.58);
+          }
+          40% {
+            color: rgba(255, 216, 241, 0.98);
+            text-shadow:
+              0 0 3px rgba(255, 226, 244, 0.94),
+              0 0 10px rgba(255, 189, 232, 0.83),
+              0 0 18px rgba(232, 112, 196, 0.58);
+          }
+          60% {
+            color: rgba(222, 251, 232, 0.98);
+            text-shadow:
+              0 0 3px rgba(233, 255, 241, 0.94),
+              0 0 10px rgba(178, 246, 199, 0.82),
+              0 0 18px rgba(76, 188, 126, 0.58);
+          }
+          80% {
+            color: rgba(232, 217, 255, 0.98);
+            text-shadow:
+              0 0 3px rgba(243, 228, 255, 0.95),
+              0 0 10px rgba(220, 191, 255, 0.84),
+              0 0 18px rgba(143, 102, 223, 0.58);
+          }
+          100% {
+            color: rgba(236, 248, 255, 0.98);
+            text-shadow:
+              0 0 3px rgba(244, 252, 255, 0.95),
+              0 0 10px rgba(196, 229, 255, 0.8),
+              0 0 18px rgba(132, 188, 255, 0.56);
+          }
+        }
+        @keyframes rolodexNeonTilePulseColor {
+          0% {
+            border-color: rgba(255, 255, 255, 0.84);
+            box-shadow:
+              0 0 9px rgba(196, 229, 255, 0.42),
+              0 0 20px rgba(196, 229, 255, 0.3),
+              inset 0 0 0 1px rgba(214, 236, 255, 0.45),
+              inset 0 0 22px rgba(16, 54, 104, 0.56);
+          }
+          20% {
+            border-color: rgba(168, 214, 255, 0.84);
+            box-shadow:
+              0 0 9px rgba(176, 221, 255, 0.42),
+              0 0 20px rgba(79, 152, 255, 0.32),
+              inset 0 0 0 1px rgba(170, 216, 255, 0.44),
+              inset 0 0 22px rgba(14, 47, 97, 0.56);
+          }
+          40% {
+            border-color: rgba(255, 183, 230, 0.84);
+            box-shadow:
+              0 0 9px rgba(255, 189, 232, 0.42),
+              0 0 20px rgba(232, 112, 196, 0.31),
+              inset 0 0 0 1px rgba(255, 198, 236, 0.44),
+              inset 0 0 22px rgba(90, 24, 82, 0.52);
+          }
+          60% {
+            border-color: rgba(173, 244, 195, 0.84);
+            box-shadow:
+              0 0 9px rgba(178, 246, 199, 0.42),
+              0 0 20px rgba(76, 188, 126, 0.31),
+              inset 0 0 0 1px rgba(186, 250, 210, 0.44),
+              inset 0 0 22px rgba(12, 67, 50, 0.52);
+          }
+          80% {
+            border-color: rgba(214, 179, 255, 0.84);
+            box-shadow:
+              0 0 9px rgba(220, 191, 255, 0.42),
+              0 0 20px rgba(143, 102, 223, 0.32),
+              inset 0 0 0 1px rgba(227, 206, 255, 0.44),
+              inset 0 0 22px rgba(53, 26, 93, 0.52);
+          }
+          100% {
+            border-color: rgba(255, 255, 255, 0.84);
+            box-shadow:
+              0 0 9px rgba(196, 229, 255, 0.42),
+              0 0 20px rgba(196, 229, 255, 0.3),
+              inset 0 0 0 1px rgba(214, 236, 255, 0.45),
+              inset 0 0 22px rgba(16, 54, 104, 0.56);
+          }
+        }
+        @keyframes rolodexNeonHighlightPulseColor {
+          0% {
+            background: linear-gradient(rgba(230, 243, 255, 0.26), rgba(230, 243, 255, 0));
+          }
+          20% {
+            background: linear-gradient(rgba(170, 221, 255, 0.25), rgba(170, 221, 255, 0));
+          }
+          40% {
+            background: linear-gradient(rgba(255, 198, 236, 0.25), rgba(255, 198, 236, 0));
+          }
+          60% {
+            background: linear-gradient(rgba(186, 250, 210, 0.25), rgba(186, 250, 210, 0));
+          }
+          80% {
+            background: linear-gradient(rgba(227, 206, 255, 0.25), rgba(227, 206, 255, 0));
+          }
+          100% {
+            background: linear-gradient(rgba(230, 243, 255, 0.26), rgba(230, 243, 255, 0));
+          }
+        }
+	        @media (prefers-reduced-motion: reduce) {
+	          .sidebarModuleCard.neon::before {
+	            animation: none;
+	          }
+	          .headerTitleNeonSync {
+	            animation: none;
+	          }
+	          :global(.rolodexCounterNeonSync .rolodexCounterComma),
+	          :global(.rolodexCounterNeonSync .rolodexCounterDigitNumber),
+	          :global(.rolodexCounterNeonSync .rolodexCounterTile),
+          :global(.rolodexCounterNeonSync .rolodexCounterTileHighlight) {
             animation: none;
           }
         }

@@ -25,6 +25,11 @@ type RolodexCounterProps = {
   digitNumberColor?: string;  // color for the digit numbers
   digitTileBackground?: string; // background gradient for digit tiles
   digitTileBorder?: string;   // border color for digit tiles
+  digitTileShadow?: string;   // box shadow for digit tiles
+  digitHighlightBackground?: string; // highlight overlay background
+  digitNumberTextShadow?: string; // text shadow for digit numbers
+  showLabel?: boolean;        // show/hide "Total Media:" label
+  labelText?: string;         // custom label text
 };
 
 export function RolodexCounter({
@@ -48,7 +53,13 @@ export function RolodexCounter({
   digitNumberColor = "#8a4c4c",
   digitTileBackground = "linear-gradient(180deg, #f5f0e8 0%, #ebe4d8 100%)",
   digitTileBorder = "rgba(139,69,19,.15)",
+  digitTileShadow = "0 2px 4px rgba(0,0,0,.15), inset 0 1px 1px rgba(255,255,255,.8)",
+  digitHighlightBackground = "linear-gradient(rgba(255,255,255,.5), rgba(255,255,255,0))",
+  digitNumberTextShadow,
+  showLabel = true,
+  labelText = "Total Media:",
 }: RolodexCounterProps) {
+  const rootClassName = ["rolodexCounter", className].filter(Boolean).join(" ");
   const formatted = useMemo(() => {
     const v = Math.max(0, Math.floor(value));
     // Always pad to 4 digits
@@ -137,7 +148,7 @@ export function RolodexCounter({
 
   return (
     <div
-      className={className}
+      className={rootClassName}
       style={{
         display: "inline-flex",
         gap: spacing,
@@ -145,20 +156,24 @@ export function RolodexCounter({
       }}
     >
       {/* Total Label */}
-      <div
-        style={{
-          fontSize: labelFontSize,
-          fontWeight: labelFontWeight,
-          color: labelColor,
-          marginRight: 4,
-          transform: `translate(${labelLeft}px, ${labelTop}px)`,
-        }}
-      >
-        Total Media:
-      </div>
+      {showLabel ? (
+        <div
+          className="rolodexCounterLabel"
+          style={{
+            fontSize: labelFontSize,
+            fontWeight: labelFontWeight,
+            color: labelColor,
+            marginRight: 4,
+            transform: `translate(${labelLeft}px, ${labelTop}px)`,
+          }}
+        >
+          {labelText}
+        </div>
+      ) : null}
       
       {/* Counter digits container */}
       <div
+        className="rolodexCounterDigits"
         style={{
           display: "inline-flex",
           gap: spacing,
@@ -175,6 +190,7 @@ export function RolodexCounter({
           return (
             <div
               key={`sep-${i}`}
+              className="rolodexCounterComma"
               style={{
                 color: commaColor,
                 fontWeight: 800,
@@ -199,26 +215,28 @@ export function RolodexCounter({
         return (
           <div
             key={`digit-${i}`}
+            className="rolodexCounterTile"
             style={{
               width: digitWidth,
               height: digitHeight,
               overflow: "hidden",
               borderRadius: 7,
               background: digitTileBackground,
-              boxShadow: "0 2px 4px rgba(0,0,0,.15), inset 0 1px 1px rgba(255,255,255,.8)",
+              boxShadow: digitTileShadow,
               border: `1px solid ${digitTileBorder}`,
               position: "relative",
             }}
           >
             {/* subtle highlight at top like a "glass" */}
             <div
+              className="rolodexCounterTileHighlight"
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
                 right: 0,
                 height: "40%",
-                background: "linear-gradient(rgba(255,255,255,.5), rgba(255,255,255,0))",
+                background: digitHighlightBackground,
                 pointerEvents: "none",
               }}
             />
@@ -232,6 +250,7 @@ export function RolodexCounter({
               {wheelDigits.map((d, j) => (
                 <div
                   key={j}
+                  className="rolodexCounterDigitNumber"
                   style={{
                     height: digitHeight,
                     display: "flex",
@@ -241,7 +260,7 @@ export function RolodexCounter({
                     fontWeight: 900,
                     fontSize: numberFontSize,
                     letterSpacing: 0.5,
-                    textShadow: `0 1px 0 ${digitNumberColor}4D`,
+                    textShadow: digitNumberTextShadow || `0 1px 0 ${digitNumberColor}4D`,
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
