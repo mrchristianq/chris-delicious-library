@@ -8940,7 +8940,7 @@ export default function Page() {
         position: "relative",
         overflowX: isMobileLayout ? "hidden" : undefined,
         "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
-      }}
+      } as CSSProperties}
     >
       {showStartupSplash ? (
         <>
@@ -9673,7 +9673,7 @@ export default function Page() {
               overflow: "hidden",
               overflowY: "auto",
               "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
-            }}
+            } as CSSProperties}
           >
           {/* Logo header with stats */}
           <div
