@@ -562,6 +562,7 @@ const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
 const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
 const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
 const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
+const ELECTRIC_BLUE_SHELF_THEME = "/shelf-electric-blue.png";
 const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
   "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
   "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
@@ -576,6 +577,8 @@ const normalizeShelfTheme = (theme: string): string => {
   if (theme === "/shelf-weathered-oak.png") return WEATHERED_OAK_SHELF_IMAGE;
   return theme;
 };
+const ELECTRIC_BLUE_TOP_BEAM_BACKGROUND =
+  "linear-gradient(180deg, rgba(24, 50, 97, 0.92) 0%, rgba(12, 28, 56, 0.9) 100%), radial-gradient(130% 160% at 50% -50%, rgba(123, 184, 255, 0.58) 0%, rgba(123, 184, 255, 0) 62%)";
 const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
@@ -1763,10 +1766,12 @@ export default function Page() {
 
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
+  const isElectricBlueShelfTheme = shelfTheme === ELECTRIC_BLUE_SHELF_THEME;
   const currentTopHeaderImage = SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
   
   // Sidebar theme
   const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
+  const isElectricBlueThemeActive = isElectricBlueShelfTheme || sidebarTheme === "electricBlue";
   
   // Theme configurations
   const sidebarThemes = {
@@ -1824,12 +1829,45 @@ export default function Page() {
       highlightBgEnd: "rgba(31, 54, 95, 0.95)",
       highlightBorder: "rgba(121, 154, 214, 0.52)",
       activeHighlight: "rgba(89, 123, 186, 0.28)",
+    },
+    electricBlue: {
+      background:
+        "linear-gradient(180deg, rgba(19, 40, 78, 0.82) 0%, rgba(10, 23, 48, 0.8) 100%), linear-gradient(180deg, rgba(10, 22, 44, 0.76) 0%, rgba(7, 16, 34, 0.76) 100%)",
+      primaryColor: "#8ec4ff",
+      secondaryColor: "#e8f4ff",
+      textColor: "rgba(234, 243, 255, 0.94)",
+      arrowColor: "rgba(190, 224, 255, 0.78)",
+      rolodexColor: "#3f78d8",
+      rolodexDigitColor: "#2a61c7",
+      rolodexLabelColor: "#dff0ff",
+      rolodexTileBg: "linear-gradient(180deg, #f4f8ff 0%, #e4efff 100%)",
+      rolodexTileBorder: "rgba(136,181,242,.45)",
+      countBubbleColor: "#4f7fd4",
+      syncedTextColor: "#d8eaff",
+      highlightBg: "rgba(49, 85, 146, 0.94)",
+      highlightBgEnd: "rgba(34, 64, 118, 0.96)",
+      highlightBorder: "rgba(144, 192, 255, 0.6)",
+      activeHighlight: "rgba(108, 159, 230, 0.34)",
     }
   };
   
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
+  const isBlueSidebarTheme = sidebarTheme === "darkBlue" || sidebarTheme === "electricBlue";
+  const isElectricBlueSidebarTheme = sidebarTheme === "electricBlue";
+  const sidebarModuleCardBackground = isElectricBlueSidebarTheme
+    ? "linear-gradient(180deg, rgba(33, 67, 122, 0.44) 0%, rgba(18, 36, 73, 0.5) 100%)"
+    : "rgba(255, 255, 255, 0.125)";
+  const sidebarModuleCardShadow = isElectricBlueSidebarTheme
+    ? "0 0 10px rgba(110, 190, 255, 0.42), 0 0 18px rgba(68, 141, 247, 0.28), -16px 0 26px rgba(0, 0, 0, 0.22), -6px 0 10px rgba(0, 0, 0, 0.16), 0 6px 12px rgba(0, 0, 0, 0.18), 0 3px 6px rgba(0, 0, 0, 0.13), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 30px rgba(7, 20, 44, 0.34)"
+    : "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)";
+  const sidebarModuleCardBorder = isElectricBlueSidebarTheme
+    ? "1px solid transparent"
+    : "1px solid rgba(255, 255, 255, 0.5)";
+  const sidebarModuleCardBorderBottom = isElectricBlueSidebarTheme
+    ? "1px solid transparent"
+    : "1px solid rgba(0, 0, 0, 0.15)";
   const syncStatusTextColor =
-    sidebarTheme === "darkBlue"
+    isBlueSidebarTheme
       ? syncState === "error"
         ? "#ffd4d4"
         : syncState === "ok"
@@ -4689,7 +4727,7 @@ export default function Page() {
       { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
       { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
       { key: "sidebarTheme", value: sidebarTheme, category: "Themes", description: "Sidebar Theme" },
-      { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Wood Type" },
+      { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Theme" },
       { key: "showInsetGuide", value: showInsetGuide, category: "Cover Sizes", description: "Show inset frame guide" },
       { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
     ];
@@ -5132,7 +5170,7 @@ export default function Page() {
   const updateShelfTheme = (value: string) => {
     const normalizedValue = normalizeShelfTheme(value);
     setShelfTheme(normalizedValue);
-    saveSetting("shelfTheme", normalizedValue, "Themes", "Shelf Wood Type");
+    saveSetting("shelfTheme", normalizedValue, "Themes", "Shelf Theme");
     const shelfThemeNames: Record<string, string> = {
       "/shelves-light-single2.png": "Default (Light Oak)",
       "/shelf-dark-walnut.png": "Dark Walnut",
@@ -5142,6 +5180,7 @@ export default function Page() {
       "/shelf-teak.png": "Teak",
       "/shelf_white_oak.png": "White Oak",
       "/shelf-reclaimed-oak.png": "Reclaimed Oak",
+      [ELECTRIC_BLUE_SHELF_THEME]: "Electric Blue",
     };
     setThemeSaveNotice(`Saved theme: ${shelfThemeNames[normalizedValue] || shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
   };
@@ -5153,6 +5192,7 @@ export default function Page() {
       standard: "Standard",
       winterGray: "Winter Gray",
       darkBlue: "Dark Blue",
+      electricBlue: "Electric Blue",
     };
     setThemeSaveNotice(`Saved theme: ${sidebarThemeNames[value] || "Sidebar theme"}. This will be used next time.`);
   };
@@ -9009,11 +9049,13 @@ export default function Page() {
             height: 45,
             zIndex: 1300,
             pointerEvents: "none",
-            backgroundImage: `url(${currentTopHeaderImage})`,
-            backgroundRepeat: "repeat-x",
+            backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : `url(${currentTopHeaderImage})`,
+            backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : "repeat-x",
             backgroundPosition: "0 0",
-            backgroundSize: "auto 45px",
-            boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+            backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : "auto 45px",
+            boxShadow: isElectricBlueShelfTheme
+              ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
+              : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
           }}
         />
       ) : null}
@@ -9558,7 +9600,13 @@ export default function Page() {
               backgroundImage: `url(${shelfTheme})`,
               backgroundRepeat: "repeat-y",
               backgroundPosition: "center top",
-              backgroundSize: `100% ${SHELF_HEIGHT}px`,
+              backgroundSize: isElectricBlueShelfTheme
+                ? `calc(100% + 2px) ${SHELF_HEIGHT + 2}px`
+                : `100% ${SHELF_HEIGHT}px`,
+              backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : "transparent",
+              boxShadow: isElectricBlueShelfTheme
+                ? "0 0 26px rgba(58, 125, 232, 0.2), inset 0 0 0 1px rgba(7, 21, 45, 0.6)"
+                : "none",
             }}
           />
           <div
@@ -9573,11 +9621,13 @@ export default function Page() {
               height: 45,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: `url(${currentTopHeaderImage})`,
-              backgroundRepeat: "repeat-x",
+              backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : `url(${currentTopHeaderImage})`,
+              backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : "repeat-x",
               backgroundPosition: "0 0",
-              backgroundSize: "auto 45px",
-              boxShadow: "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+              backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : "auto 45px",
+              boxShadow: isElectricBlueShelfTheme
+                ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
+                : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
               transform: "translate3d(0, 0, 0) scaleX(-1)",
             }}
           />
@@ -9590,7 +9640,7 @@ export default function Page() {
               pointerEvents: "none",
               borderRadius: 16,
               overflow: "hidden",
-              opacity: sidebarTheme === "winterGray" ? 0.8 : sidebarTheme === "darkBlue" ? 0.9 : 0.84,
+              opacity: sidebarTheme === "winterGray" ? 0.8 : isBlueSidebarTheme ? 0.9 : 0.84,
               backgroundImage: currentTheme.background,
               backgroundSize: "auto, 100% 100%",
               backgroundPosition: "0 0, 0 0",
@@ -9633,7 +9683,7 @@ export default function Page() {
             {/* Logo taking full width */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={sidebarTheme === "darkBlue" ? "/logo5.png" : APP_ICON}
+              src={isBlueSidebarTheme ? "/logo5.png" : APP_ICON}
               alt={APP_TITLE}
               style={{
                 width: logoSize,
@@ -9675,12 +9725,13 @@ export default function Page() {
           <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: 6, flex: 1, marginTop: 12 }}>
             {/* Library Module */}
             <div
+              className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
               style={{
-                background: "rgba(255, 255, 255, 0.125)",
+                background: sidebarModuleCardBackground,
                 borderRadius: 16,
-                boxShadow: "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
-                border: "1px solid rgba(255, 255, 255, 0.5)",
-                borderBottom: "1px solid rgba(0, 0, 0, 0.15)",
+                boxShadow: sidebarModuleCardShadow,
+                border: sidebarModuleCardBorder,
+                borderBottom: sidebarModuleCardBorderBottom,
                 padding: "12px",
               }}
             >
@@ -9810,8 +9861,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {readingStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -9831,7 +9882,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
@@ -9842,9 +9893,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -9873,8 +9924,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {formatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -9894,7 +9945,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {format}
                               </span>
                               <span
@@ -9905,9 +9956,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -9936,8 +9987,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {seriesOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -9957,7 +10008,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {series}
                               </span>
                               <span
@@ -9968,9 +10019,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -9999,8 +10050,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10020,7 +10071,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {genre}
                               </span>
                               <span
@@ -10031,9 +10082,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10062,8 +10113,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
                     </button>
                     {wishlistOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10079,7 +10130,7 @@ export default function Page() {
                             gap: 8,
                           }}
                         >
-                          <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                          <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                             Wishlist Books
                           </span>
                           <span
@@ -10091,8 +10142,8 @@ export default function Page() {
                                   fontSize: 10,
                               textAlign: "center",
                               background: wishlistFilter ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                              color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                              border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                              color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                              border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -10181,8 +10232,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10202,7 +10253,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
@@ -10213,9 +10264,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10244,8 +10295,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10265,7 +10316,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {genre}
                               </span>
                               <span
@@ -10276,9 +10327,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10370,8 +10421,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10391,7 +10442,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
@@ -10402,9 +10453,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10433,8 +10484,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10454,7 +10505,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {status}
                               </span>
                               <span
@@ -10465,9 +10516,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10496,8 +10547,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
                     </button>
                     {tagOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10517,7 +10568,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
                                 {tag}
                               </span>
                               <span
@@ -10528,9 +10579,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10599,7 +10650,7 @@ export default function Page() {
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
-                          sidebarTheme === "darkBlue"
+                          isBlueSidebarTheme
                             ? "rgba(26, 47, 92, 0.95)"
                             : sidebarTheme === "winterGray"
                               ? currentTheme.countBubbleColor
@@ -10630,8 +10681,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", width: "fit-content", maxWidth: "100%" }}>
@@ -10651,7 +10702,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -10660,9 +10711,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10691,8 +10742,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {gameStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10712,7 +10763,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -10721,9 +10772,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10752,8 +10803,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10773,7 +10824,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -10782,9 +10833,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10813,8 +10864,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10834,7 +10885,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -10843,9 +10894,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10874,8 +10925,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10895,7 +10946,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -10904,9 +10955,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10935,8 +10986,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarTheme === "darkBlue" ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
-                      <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
+                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10956,7 +11007,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: sidebarTheme === "darkBlue" ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -10965,9 +11016,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (sidebarTheme === "darkBlue" ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (sidebarTheme === "darkBlue" ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: sidebarTheme === "darkBlue" ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
+                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
+                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11048,7 +11099,7 @@ export default function Page() {
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "play-next" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
-                          sidebarTheme === "darkBlue"
+                          isBlueSidebarTheme
                             ? "rgba(92, 118, 164, 0.95)"
                             : sidebarTheme === "winterGray"
                               ? currentTheme.countBubbleColor
@@ -11109,7 +11160,7 @@ export default function Page() {
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "wishlist-books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
-                          sidebarTheme === "darkBlue"
+                          isBlueSidebarTheme
                             ? "rgba(112, 88, 174, 0.95)"
                             : sidebarTheme === "winterGray"
                               ? currentTheme.countBubbleColor
@@ -11170,7 +11221,7 @@ export default function Page() {
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "watchlist-movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
-                          sidebarTheme === "darkBlue"
+                          isBlueSidebarTheme
                             ? "rgba(56, 142, 173, 0.95)"
                             : sidebarTheme === "winterGray"
                               ? currentTheme.countBubbleColor
@@ -11231,7 +11282,7 @@ export default function Page() {
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "watchlist-tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
-                          sidebarTheme === "darkBlue"
+                          isBlueSidebarTheme
                             ? "rgba(56, 142, 173, 0.95)"
                             : sidebarTheme === "winterGray"
                               ? currentTheme.countBubbleColor
@@ -11291,7 +11342,7 @@ export default function Page() {
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
                         background:
-                          sidebarTheme === "darkBlue"
+                          isBlueSidebarTheme
                             ? "rgba(112, 88, 174, 0.95)"
                             : sidebarTheme === "winterGray"
                               ? currentTheme.countBubbleColor
@@ -11576,12 +11627,13 @@ export default function Page() {
 
             {/* DISCOVER Module */}
             <div
+              className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
               style={{
-                background: "rgba(255, 255, 255, 0.125)",
+                background: sidebarModuleCardBackground,
                 borderRadius: 16,
-                boxShadow: "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)",
-                border: "1px solid rgba(255, 255, 255, 0.5)",
-                borderBottom: "1px solid rgba(0, 0, 0, 0.15)",
+                boxShadow: sidebarModuleCardShadow,
+                border: sidebarModuleCardBorder,
+                borderBottom: sidebarModuleCardBorderBottom,
                 padding: "12px",
               }}
             >
@@ -11761,11 +11813,43 @@ export default function Page() {
                   >
                     Dark Blue
                   </button>
+                  <button
+                    onClick={() => updateSidebarTheme("electricBlue")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: sidebarTheme === "electricBlue" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: sidebarTheme === "electricBlue" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: sidebarTheme === "electricBlue" ? 600 : 400,
+                    }}
+                  >
+                    Electric Blue
+                  </button>
                 </div>
                 
-                {/* Shelf Wood Type Section */}
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A", marginTop: 8 }}>SHELF WOOD TYPE</div>
+                {/* Shelf Theme Section */}
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A", marginTop: 8 }}>SHELF THEME</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    onClick={() => updateShelfTheme(ELECTRIC_BLUE_SHELF_THEME)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? 600 : 400,
+                    }}
+                  >
+                    Electric Blue
+                  </button>
                   <button
                     onClick={() => updateShelfTheme("/shelves-light-single2.png")}
                     style={{
@@ -12886,6 +12970,17 @@ export default function Page() {
             {/* Synced Module at Bottom */}
             <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
               <div
+                className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
+                style={{
+                  background: sidebarModuleCardBackground,
+                  borderRadius: 16,
+                  boxShadow: sidebarModuleCardShadow,
+                  border: sidebarModuleCardBorder,
+                  borderBottom: sidebarModuleCardBorderBottom,
+                  padding: "12px",
+                }}
+              >
+              <div
                 style={{
                   marginBottom: 8,
                   padding: "0 2px",
@@ -12918,9 +13013,15 @@ export default function Page() {
                   gap: 10,
                   padding: "10px 12px",
                   borderRadius: 9,
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                  border: "1px solid rgba(92, 60, 56, 0.2)",
-                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
+                  background: isElectricBlueSidebarTheme
+                    ? "linear-gradient(180deg, rgba(33, 67, 122, 0.46) 0%, rgba(19, 37, 76, 0.5) 100%)"
+                    : "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
+                  border: isElectricBlueSidebarTheme
+                    ? "1px solid rgba(186, 223, 255, 0.7)"
+                    : "1px solid rgba(92, 60, 56, 0.2)",
+                  boxShadow: isElectricBlueSidebarTheme
+                    ? "0 0 0 1px rgba(126, 191, 255, 0.24), 0 8px 16px rgba(3, 10, 22, 0.32), inset 0 1px 2px rgba(210, 236, 255, 0.34)"
+                    : "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
                   position: "relative",
                 }}
               >
@@ -12958,7 +13059,7 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: sidebarTheme === "darkBlue" ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ color: isBlueSidebarTheme ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
@@ -12983,9 +13084,9 @@ export default function Page() {
                 <button
                   onClick={() => setRefreshNonce((n) => n + 1)}
                   style={{
-                    border: "1px solid rgba(0,0,0,0.18)",
-                    background: "rgba(255,255,255,0.85)",
-                    color: "#754738",
+                    border: isElectricBlueSidebarTheme ? "1px solid rgba(151, 196, 255, 0.62)" : "1px solid rgba(0,0,0,0.18)",
+                    background: isElectricBlueSidebarTheme ? "rgba(18, 43, 82, 0.9)" : "rgba(255,255,255,0.85)",
+                    color: isElectricBlueSidebarTheme ? "rgba(224, 239, 255, 0.98)" : "#754738",
                     borderRadius: 999,
                     padding: "5px 6px",
                     cursor: "pointer",
@@ -13004,6 +13105,7 @@ export default function Page() {
                     <path d="M21 2v6h-6M3 22v-6h6M3 12c0-4.418 3.582-8 8-8 3.5 0 6.456 2.272 7.619 5.362M21 12c0 4.418-3.582 8-8 8-3.5 0-6.456-2.272-7.619-5.362" />
                   </svg>
                 </button>
+              </div>
               </div>
             </div>
           </div>
@@ -13043,11 +13145,13 @@ export default function Page() {
                   fontWeight: 500,
                   lineHeight: 1,
                   letterSpacing: "0.01em",
-                  color: "rgba(76, 52, 34, 0.55)",
+                  color: isElectricBlueThemeActive ? "rgba(237, 243, 252, 0.92)" : "rgba(76, 52, 34, 0.55)",
                   textShadow:
-                    "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
-                  mixBlendMode: "multiply",
-                  opacity: 0.9,
+                    isElectricBlueThemeActive
+                      ? "0 1px 0 rgba(180, 209, 246, 0.3), 0 -1px 0 rgba(9, 17, 32, 0.58), 0 0 1px rgba(132, 181, 247, 0.3)"
+                      : "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
+                  mixBlendMode: isElectricBlueThemeActive ? "normal" : "multiply",
+                  opacity: isElectricBlueThemeActive ? 0.98 : 0.9,
                   transform: "translateY(-2.5px)",
                   userSelect: "none",
                   whiteSpace: "nowrap",
@@ -13094,7 +13198,7 @@ export default function Page() {
             <div
               style={{
                 background: "#fff",
-                border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                 borderRadius: 9,
                 padding: 14,
                 color: "#8b0000",
@@ -13139,7 +13243,7 @@ export default function Page() {
             <div
               style={{
                 background: "#fff",
-                border: sidebarTheme === "darkBlue" ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
                 borderRadius: 9,
                 padding: 14,
                 fontWeight: 700,
@@ -14617,9 +14721,14 @@ export default function Page() {
                     backgroundImage: `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
-                    backgroundSize: "100% 100%",
+                    backgroundSize: isElectricBlueShelfTheme
+                      ? "calc(100% + 2px) calc(100% + 2px)"
+                      : "100% 100%",
+                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : "transparent",
                     borderRadius: 0,
-                    boxShadow: `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
+                    boxShadow: isElectricBlueShelfTheme
+                      ? `${shelfIndex === 0 ? "0 14px 28px rgba(4,12,24,0.52), " : "0 10px 20px rgba(4,12,24,0.4), "}0 0 22px rgba(78,150,255,0.18), inset 0 0 0 1px rgba(8,24,50,0.72), inset 0 20px 30px rgba(2,6,18,0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.32), inset 16px 0 24px rgba(2,10,24,0.42), inset -16px 0 24px rgba(2,10,24,0.42)`
+                      : `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
                   }}
                 >
                   <div
@@ -15370,13 +15479,89 @@ export default function Page() {
           height: 0;
           display: none;
         }
+        .sidebarModuleCard {
+          position: relative;
+          isolation: isolate;
+        }
+        .sidebarModuleCard > * {
+          position: relative;
+          z-index: 1;
+        }
+        .sidebarModuleCard.neon::before {
+          content: "";
+          position: absolute;
+          inset: -2px;
+          border-radius: 18px;
+          pointer-events: none;
+          z-index: 0;
+          border: 1px solid rgba(255, 255, 255, 0.82);
+          box-shadow:
+            0 0 2px rgba(255, 255, 255, 0.45),
+            0 0 4px rgba(151, 207, 255, 0.4);
+          opacity: 0.86;
+          transform: scale(1);
+          animation: moduleNeonPulseColor 96s ease-in-out infinite;
+        }
+        .sidebarModuleCard.neon:hover::before {
+          opacity: 0.98;
+          animation-duration: 72s;
+        }
+        @keyframes moduleNeonPulseColor {
+          0% {
+            transform: scale(1);
+            border-color: rgba(255, 255, 255, 0.84);
+            box-shadow:
+              0 0 2px rgba(255, 255, 255, 0.48),
+              0 0 4px rgba(196, 229, 255, 0.32);
+          }
+          20% {
+            transform: scale(1.006);
+            border-color: rgba(168, 214, 255, 0.84);
+            box-shadow:
+              0 0 2px rgba(176, 221, 255, 0.46),
+              0 0 4px rgba(79, 152, 255, 0.34);
+          }
+          40% {
+            transform: scale(1.004);
+            border-color: rgba(255, 183, 230, 0.84);
+            box-shadow:
+              0 0 2px rgba(255, 189, 232, 0.45),
+              0 0 4px rgba(232, 112, 196, 0.33);
+          }
+          60% {
+            transform: scale(1.008);
+            border-color: rgba(173, 244, 195, 0.84);
+            box-shadow:
+              0 0 2px rgba(178, 246, 199, 0.45),
+              0 0 4px rgba(76, 188, 126, 0.33);
+          }
+          80% {
+            transform: scale(1.005);
+            border-color: rgba(214, 179, 255, 0.84);
+            box-shadow:
+              0 0 2px rgba(220, 191, 255, 0.46),
+              0 0 4px rgba(143, 102, 223, 0.34);
+          }
+          100% {
+            transform: scale(1);
+            border-color: rgba(255, 255, 255, 0.84);
+            box-shadow:
+              0 0 2px rgba(255, 255, 255, 0.48),
+              0 0 4px rgba(196, 229, 255, 0.32);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .sidebarModuleCard.neon::before {
+            animation: none;
+          }
+        }
         .sideItem {
           width: 100%;
           padding: 1px 4px;
           border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
-          color: ${sidebarTheme === "darkBlue" ? "rgba(230, 239, 255, 0.92)" : "#2A2A2A"};
+          color: ${isBlueSidebarTheme ? "rgba(230, 239, 255, 0.92)" : "#2A2A2A"};
           font-size: 13px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
@@ -15384,7 +15569,7 @@ export default function Page() {
           transition: all 150ms ease;
         }
         .sideItem:hover { 
-          background: ${sidebarTheme === "darkBlue" ? "rgba(124, 160, 224, 0.14)" : "rgba(0,0,0,0.02)"};
+          background: ${isBlueSidebarTheme ? "rgba(124, 160, 224, 0.14)" : "rgba(0,0,0,0.02)"};
         }
         .sideItem.active {
           background: ${currentTheme.activeHighlight};
@@ -15400,9 +15585,9 @@ export default function Page() {
           width: 100%;
           padding: 4px 6px;
           border-radius: 8px;
-          border: ${sidebarTheme === "darkBlue" ? "1px solid rgba(142, 178, 234, 0.42)" : "1px solid rgba(0, 0, 0, 0.06)"};
-          background: ${sidebarTheme === "darkBlue" ? "rgba(19, 39, 72, 0.62)" : "rgba(255, 255, 255, 0.6)"};
-          color: ${sidebarTheme === "darkBlue" ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)"};
+          border: ${isBlueSidebarTheme ? "1px solid rgba(142, 178, 234, 0.42)" : "1px solid rgba(0, 0, 0, 0.06)"};
+          background: ${isBlueSidebarTheme ? "rgba(19, 39, 72, 0.62)" : "rgba(255, 255, 255, 0.6)"};
+          color: ${isBlueSidebarTheme ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)"};
           font-size: 12px;
           font-weight: 500;
           font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
@@ -15410,12 +15595,12 @@ export default function Page() {
           transition: background 140ms ease, border-color 140ms ease;
         }
         .sideSubItem:hover {
-          background: ${sidebarTheme === "darkBlue" ? "rgba(36, 71, 122, 0.7)" : "rgba(0, 0, 0, 0.05)"};
+          background: ${isBlueSidebarTheme ? "rgba(36, 71, 122, 0.7)" : "rgba(0, 0, 0, 0.05)"};
         }
         .sideSubItem.active {
           background: ${currentTheme.activeHighlight};
           border-color: ${currentTheme.highlightBorder};
-          color: ${sidebarTheme === "darkBlue" ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
+          color: ${isBlueSidebarTheme ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
           font-weight: 700;
         }
         .case {
