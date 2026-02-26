@@ -9740,10 +9740,10 @@ export default function Page() {
                     ? "linear-gradient(180deg, rgba(7, 10, 16, 0.98) 0%, rgba(0, 0, 0, 0.97) 100%)"
                     : currentTheme.rolodexTileBg
                 }
-                digitTileBorder={isElectricBlueSidebarTheme ? "rgba(255, 255, 255, 0.84)" : currentTheme.rolodexTileBorder}
+                digitTileBorder={isElectricBlueSidebarTheme ? "rgba(255, 255, 255, 0.94)" : currentTheme.rolodexTileBorder}
                 digitTileShadow={
                   isElectricBlueSidebarTheme
-                    ? "0 0 9px rgba(196, 229, 255, 0.34), 0 0 20px rgba(196, 229, 255, 0.24), inset 0 0 0 1px rgba(214, 236, 255, 0.37), inset 0 0 22px rgba(16, 54, 104, 0.48)"
+                    ? "0 1px 2px rgba(0, 0, 0, 0.48), 0 0 7px rgba(196, 229, 255, 0.24), inset 0 0 0 1px rgba(214, 236, 255, 0.46), inset 0 -12px 18px rgba(16, 54, 104, 0.44)"
                     : undefined
                 }
                 digitHighlightBackground={
@@ -15609,6 +15609,11 @@ export default function Page() {
         :global(.rolodexCounterNeonSync .rolodexCounterTile) {
           animation: rolodexNeonTilePulseColor 96s ease-in-out infinite;
           animation-delay: var(--neon-sync-offset, 0s);
+          outline: 1px solid rgba(236, 248, 255, 0.55);
+          outline-offset: -1px;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          will-change: border-color, box-shadow;
         }
 	        :global(.rolodexCounterNeonSync .rolodexCounterTileHighlight) {
 	          animation: rolodexNeonHighlightPulseColor 96s ease-in-out infinite;
@@ -15664,52 +15669,52 @@ export default function Page() {
         }
         @keyframes rolodexNeonTilePulseColor {
           0% {
-            border-color: rgba(255, 255, 255, 0.84);
+            border-color: rgba(255, 255, 255, 0.94);
             box-shadow:
-              0 0 9px rgba(196, 229, 255, 0.34),
-              0 0 20px rgba(196, 229, 255, 0.24),
-              inset 0 0 0 1px rgba(214, 236, 255, 0.37),
-              inset 0 0 22px rgba(16, 54, 104, 0.48);
+              0 1px 2px rgba(0, 0, 0, 0.48),
+              0 0 7px rgba(196, 229, 255, 0.24),
+              inset 0 0 0 1px rgba(214, 236, 255, 0.46),
+              inset 0 -12px 18px rgba(16, 54, 104, 0.44);
           }
           20% {
-            border-color: rgba(168, 214, 255, 0.84);
+            border-color: rgba(168, 214, 255, 0.94);
             box-shadow:
-              0 0 9px rgba(176, 221, 255, 0.34),
-              0 0 20px rgba(79, 152, 255, 0.26),
-              inset 0 0 0 1px rgba(170, 216, 255, 0.36),
-              inset 0 0 22px rgba(14, 47, 97, 0.48);
+              0 1px 2px rgba(0, 0, 0, 0.48),
+              0 0 7px rgba(79, 152, 255, 0.26),
+              inset 0 0 0 1px rgba(170, 216, 255, 0.45),
+              inset 0 -12px 18px rgba(14, 47, 97, 0.44);
           }
           40% {
-            border-color: rgba(255, 183, 230, 0.84);
+            border-color: rgba(255, 183, 230, 0.94);
             box-shadow:
-              0 0 9px rgba(255, 189, 232, 0.34),
-              0 0 20px rgba(232, 112, 196, 0.25),
-              inset 0 0 0 1px rgba(255, 198, 236, 0.36),
-              inset 0 0 22px rgba(90, 24, 82, 0.44);
+              0 1px 2px rgba(0, 0, 0, 0.48),
+              0 0 7px rgba(232, 112, 196, 0.25),
+              inset 0 0 0 1px rgba(255, 198, 236, 0.45),
+              inset 0 -12px 18px rgba(90, 24, 82, 0.4);
           }
           60% {
-            border-color: rgba(173, 244, 195, 0.84);
+            border-color: rgba(173, 244, 195, 0.94);
             box-shadow:
-              0 0 9px rgba(178, 246, 199, 0.34),
-              0 0 20px rgba(76, 188, 126, 0.25),
-              inset 0 0 0 1px rgba(186, 250, 210, 0.36),
-              inset 0 0 22px rgba(12, 67, 50, 0.44);
+              0 1px 2px rgba(0, 0, 0, 0.48),
+              0 0 7px rgba(76, 188, 126, 0.25),
+              inset 0 0 0 1px rgba(186, 250, 210, 0.45),
+              inset 0 -12px 18px rgba(12, 67, 50, 0.4);
           }
           80% {
-            border-color: rgba(214, 179, 255, 0.84);
+            border-color: rgba(214, 179, 255, 0.94);
             box-shadow:
-              0 0 9px rgba(220, 191, 255, 0.34),
-              0 0 20px rgba(143, 102, 223, 0.26),
-              inset 0 0 0 1px rgba(227, 206, 255, 0.36),
-              inset 0 0 22px rgba(53, 26, 93, 0.44);
+              0 1px 2px rgba(0, 0, 0, 0.48),
+              0 0 7px rgba(143, 102, 223, 0.26),
+              inset 0 0 0 1px rgba(227, 206, 255, 0.45),
+              inset 0 -12px 18px rgba(53, 26, 93, 0.4);
           }
           100% {
-            border-color: rgba(255, 255, 255, 0.84);
+            border-color: rgba(255, 255, 255, 0.94);
             box-shadow:
-              0 0 9px rgba(196, 229, 255, 0.34),
-              0 0 20px rgba(196, 229, 255, 0.24),
-              inset 0 0 0 1px rgba(214, 236, 255, 0.37),
-              inset 0 0 22px rgba(16, 54, 104, 0.48);
+              0 1px 2px rgba(0, 0, 0, 0.48),
+              0 0 7px rgba(196, 229, 255, 0.24),
+              inset 0 0 0 1px rgba(214, 236, 255, 0.46),
+              inset 0 -12px 18px rgba(16, 54, 104, 0.44);
           }
         }
         @keyframes rolodexNeonHighlightPulseColor {

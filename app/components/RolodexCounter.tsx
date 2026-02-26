@@ -224,6 +224,10 @@ export function RolodexCounter({
               background: digitTileBackground,
               boxShadow: digitTileShadow,
               border: `1px solid ${digitTileBorder}`,
+              boxSizing: "border-box",
+              backgroundClip: "padding-box",
+              WebkitBackfaceVisibility: "hidden",
+              backfaceVisibility: "hidden",
               position: "relative",
             }}
           >
