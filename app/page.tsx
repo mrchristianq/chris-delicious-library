@@ -5515,6 +5515,7 @@ export default function Page() {
         item: movie,
         titleLC: safeStr(movie.title).toLowerCase(),
         watchStatusNorm: safeStr(movie.watchStatus).toLowerCase().replace("cancelled", "canceled"),
+        movieStatusNorm: safeStr(movie.status || movie.movieStatus).toLowerCase().replace("cancelled", "canceled"),
         tagValue: safeStr(movie.tag),
         releaseYear: getYearToken(movie.releaseDate),
         tagTokens: Array.from(
@@ -7232,7 +7233,12 @@ export default function Page() {
       const qgBase = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
       const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
       const qsBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist" && s.showStatusNorm !== "in production");
-      const qmBase = indexedMovies.filter((m) => m.watchStatusNorm !== "wishlist");
+      const qmBase = indexedMovies.filter(
+        (m) =>
+          m.watchStatusNorm !== "wishlist" &&
+          m.watchStatusNorm !== "in production" &&
+          m.movieStatusNorm !== "in production"
+      );
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
       const qg = q ? qgBase.filter((g) => g.titleLC.includes(q)) : qgBase;
