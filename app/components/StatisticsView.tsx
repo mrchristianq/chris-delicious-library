@@ -107,6 +107,7 @@ type UnifiedStatsItem = {
   completionDate: Date | null;
   playedYears: number[];
   statusBucket: StatusBucket;
+  primaryStatusToken: string;
   rating: number | null;
   externalRating: number | null;
   genres: string[];
@@ -720,6 +721,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const formats = splitList(book.types);
       const tags = [...splitList(book.tag), ...splitList(book.tags)];
       const statusBucket = inferStatusBucket(book.status || "", Boolean(completionDate));
+      const primaryStatusToken = normalizeToken(book.status || "");
       const coverUrl = resolveCoverUrl(
         "book",
         title,
@@ -750,6 +752,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         formats,
         tags,
         statusBucket,
+        primaryStatusToken,
         coverUrl,
         audiobookMinutes,
         runtimeMinutes: 0,
@@ -766,8 +769,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const externalRating = parseRatingValue(movie.tmdbRating);
       const genres = splitList(movie.genres);
       const tags = [...splitList(movie.tag), ...splitList(movie.tags)];
+      const movieStatusRaw = firstNonEmpty([movie.watchStatus, movie.watched, movie.status, movie.movieStatus]);
       const completionHint = isTruthyToken(movie.watched) || normalizeToken(movie.watchStatus) === "watched";
-      const statusBucket = inferStatusBucket(movie.watchStatus || movie.watched || movie.status || movie.movieStatus || "", completionHint);
+      const statusBucket = inferStatusBucket(movieStatusRaw, completionHint);
+      const primaryStatusToken = normalizeToken(movieStatusRaw);
       const coverUrl = resolveCoverUrl(
         "movie",
         title,
@@ -790,6 +795,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         formats: [],
         tags,
         statusBucket,
+        primaryStatusToken,
         coverUrl,
         audiobookMinutes: 0,
         runtimeMinutes,
@@ -806,8 +812,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const externalRating = parseRatingValue(show.tmdbRating);
       const genres = splitList(show.genres);
       const tags = splitList(show.tag);
+      const showStatusRaw = firstNonEmpty([show.watchStatus, show.showStatus, show.watched]);
       const completionHint = Boolean(completionDate) || isTruthyToken(show.watched);
-      const statusBucket = inferStatusBucket(show.watchStatus || show.showStatus || show.watched || "", completionHint);
+      const statusBucket = inferStatusBucket(showStatusRaw, completionHint);
+      const primaryStatusToken = normalizeToken(showStatusRaw);
       const coverUrl = resolveCoverUrl(
         "tv",
         title,
@@ -829,6 +837,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         formats: [],
         tags,
         statusBucket,
+        primaryStatusToken,
         coverUrl,
         audiobookMinutes: 0,
         runtimeMinutes: 0,
@@ -851,8 +860,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const platforms = splitList(game.platform);
       const formats = splitList(game.format);
       const tags = splitList(game.tag);
+      const gameStatusRaw = firstNonEmpty([game.status, game.playStatus, game.gameStatus, game.completed]);
       const completionHint = isTruthyToken(game.completed) || Boolean(completionDate);
-      const statusBucket = inferStatusBucket(game.status || game.playStatus || game.gameStatus || game.completed || "", completionHint);
+      const statusBucket = inferStatusBucket(gameStatusRaw, completionHint);
+      const primaryStatusToken = normalizeToken(gameStatusRaw);
       const platformRaw = firstNonEmpty([game.platform, game.platforms]);
       const coverUrl = resolveCoverUrl(
         "game",
@@ -887,6 +898,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         formats,
         tags,
         statusBucket,
+        primaryStatusToken,
         coverUrl,
         audiobookMinutes: 0,
         runtimeMinutes: 0,
@@ -1262,21 +1274,31 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
   const yearReview = useMemo(() => {
     const getAnchorDate = (item: UnifiedStatsItem) => item.activityDate || item.completionDate || item.releaseDate;
     const isInYear = (item: UnifiedStatsItem, year: number) => getAnchorDate(item)?.getUTCFullYear() === year;
+    const selectedYearTagToken = normalizeToken(String(selectedReviewYear));
 
     const yearItems = unifiedItems.filter((item) => isInYear(item, selectedReviewYear));
     const previousYearItems = unifiedItems.filter((item) => isInYear(item, previousReviewYear));
-    const completedThisYear = unifiedItems.filter((item) => item.completionDate?.getUTCFullYear() === selectedReviewYear);
-    const completedPrevYear = unifiedItems.filter((item) => item.completionDate?.getUTCFullYear() === previousReviewYear);
+    const completedThisYear = unifiedItems.filter(
+      (item) =>
+        item.completionDate?.getUTCFullYear() === selectedReviewYear &&
+        item.statusBucket === "completed"
+    );
+    const completedPrevYear = unifiedItems.filter(
+      (item) =>
+        item.completionDate?.getUTCFullYear() === previousReviewYear &&
+        item.statusBucket === "completed"
+    );
 
     const mediaCounts: Record<StatsMediaType, number> = { book: 0, movie: 0, tv: 0, game: 0 };
     yearItems.forEach((item) => {
       mediaCounts[item.mediaType] += 1;
     });
 
-    const moviesWatched = mediaCounts.movie;
-    const movieMinutes = yearItems
-      .filter((item) => item.mediaType === "movie")
-      .reduce((sum, item) => sum + item.runtimeMinutes, 0);
+    const watchedMovieItems = yearItems.filter(
+      (item) => item.mediaType === "movie" && item.primaryStatusToken === "watched"
+    );
+    const moviesWatched = watchedMovieItems.length;
+    const movieMinutes = watchedMovieItems.reduce((sum, item) => sum + item.runtimeMinutes, 0);
     const audiobookItems = yearItems.filter((item) => item.mediaType === "book" && item.audiobookMinutes > 0);
     const audiobookMinutes = audiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0);
     const gamePlaytimeItems = unifiedItems.filter(
@@ -1286,10 +1308,29 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         item.playedYears.includes(selectedReviewYear)
     );
     const gameHours = gamePlaytimeItems.reduce((sum, item) => sum + item.gameplayHours, 0);
-    const abandonedCount = yearItems.filter((item) => item.statusBucket === "abandoned").length;
+    const abandonedTaggedItems = unifiedItems.filter(
+      (item) =>
+        item.statusBucket === "abandoned" &&
+        item.tags.some((tag) => normalizeToken(tag) === selectedYearTagToken)
+    );
+    const abandonedCount = abandonedTaggedItems.length;
 
-    const completedGames = completedThisYear.filter((item) => item.mediaType === "game").length;
-    const completedGamesPrev = completedPrevYear.filter((item) => item.mediaType === "game").length;
+    const completedGameItems = completedThisYear.filter(
+      (item) => item.mediaType === "game" && item.primaryStatusToken === "completed"
+    );
+    const completedGameItemsPrev = completedPrevYear.filter(
+      (item) => item.mediaType === "game" && item.primaryStatusToken === "completed"
+    );
+    const completedBookItems = completedThisYear.filter(
+      (item) => item.mediaType === "book" && item.primaryStatusToken === "completed"
+    );
+    const completedBookItemsPrev = completedPrevYear.filter(
+      (item) => item.mediaType === "book" && item.primaryStatusToken === "completed"
+    );
+    const completedGames = completedGameItems.length;
+    const completedGamesPrev = completedGameItemsPrev.length;
+    const completedBooks = completedBookItems.length;
+    const completedBooksPrev = completedBookItemsPrev.length;
 
     const monthMap = new Map<string, number>();
     yearItems.forEach((item) => {
@@ -1349,14 +1390,20 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       yearItems,
       previousYearItems,
       mediaCounts,
+      watchedMovieItems,
       moviesWatched,
       movieMinutes,
       audiobookMinutes,
       audiobookCount: audiobookItems.length,
       gameHours,
+      abandonedTaggedItems,
       abandonedCount,
+      completedGameItems,
       completedGames,
       completedGamesPrev,
+      completedBookItems,
+      completedBooks,
+      completedBooksPrev,
       completedTotal: completedThisYear.length,
       completedPrevTotal: completedPrevYear.length,
       busiestMonth,
@@ -1373,9 +1420,9 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const gameDelta = yearReview.completedGames - yearReview.completedGamesPrev;
     const completedDelta = yearReview.completedTotal - yearReview.completedPrevTotal;
     const abandonedRate = yearReview.yearItems.length ? (yearReview.abandonedCount / yearReview.yearItems.length) * 100 : 0;
-    const previousBooks = yearReview.previousYearItems.filter((item) => item.mediaType === "book").length;
+    const previousBooks = yearReview.completedBooksPrev;
     const previousTv = yearReview.previousYearItems.filter((item) => item.mediaType === "tv").length;
-    const bookDelta = yearReview.mediaCounts.book - previousBooks;
+    const bookDelta = yearReview.completedBooks - previousBooks;
     const tvDelta = yearReview.mediaCounts.tv - previousTv;
     const ratedItems = yearReview.yearItems.filter((item) => typeof item.rating === "number");
     const averageYearRating = ratedItems.length
@@ -1385,12 +1432,14 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       ? (yearReview.completedTotal / yearReview.yearItems.length) * 100
       : 0;
     const completedThisYearItems = yearReview.yearItems.filter(
-      (item) => item.completionDate?.getUTCFullYear() === selectedReviewYear
+      (item) =>
+        item.completionDate?.getUTCFullYear() === selectedReviewYear &&
+        item.statusBucket === "completed"
     );
-    const abandonedItems = yearReview.yearItems.filter((item) => item.statusBucket === "abandoned");
-    const booksLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "book");
+    const abandonedItems = yearReview.abandonedTaggedItems;
+    const booksLoggedItems = yearReview.completedBookItems;
     const tvLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "tv");
-    const moviesWatchedItems = yearReview.yearItems.filter((item) => item.mediaType === "movie");
+    const moviesWatchedItems = yearReview.watchedMovieItems;
     const audiobookItems = yearReview.yearItems.filter(
       (item) => item.mediaType === "book" && item.audiobookMinutes > 0
     );
@@ -1400,7 +1449,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         item.gameplayHours > 0 &&
         item.playedYears.includes(selectedReviewYear)
     );
-    const completedGamesItems = completedThisYearItems.filter((item) => item.mediaType === "game");
+    const completedGamesItems = yearReview.completedGameItems;
     const busiestMonthItems =
       yearReview.busiestMonth && !isExcludedBusiestMonthKey(yearReview.busiestMonth.key)
         ? yearReview.yearItems.filter((item) => {
@@ -1450,8 +1499,8 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         value: `${yearReview.moviesWatched}`,
         subLabel: `${formatMinutesAsHours(yearReview.movieMinutes)} watch time`,
         accent: "var(--stats-accent-2)",
-        summary: `Counts movie entries logged in ${selectedReviewYear}; watch time comes from summed movie runtime.`,
-        calculation: "Filter year items to mediaType=movie; value=count, sublabel runtime=sum(runtimeMinutes).",
+        summary: `Counts movies logged in ${selectedReviewYear} whose normalized status is exactly "watched".`,
+        calculation: 'Filter year items where mediaType=movie and primaryStatusToken=="watched"; value=count and watch time=sum(runtimeMinutes).',
         items: moviesWatchedItems,
       },
       {
@@ -1480,8 +1529,8 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         value: `${yearReview.completedGames}`,
         subLabel: gameDeltaLabel,
         accent: "var(--stats-accent-1)",
-        summary: `Counts games marked completed in ${selectedReviewYear}.`,
-        calculation: "Filter completionDate year == selected review year and mediaType=game.",
+        summary: `Counts games with status exactly "completed" and completion date in ${selectedReviewYear}.`,
+        calculation: 'Filter items where mediaType=game, primaryStatusToken=="completed", and completionDate year==selected review year.',
         items: completedGamesItems,
       },
       {
@@ -1490,8 +1539,8 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         value: `${yearReview.completedTotal}`,
         subLabel: completionDeltaLabel,
         accent: "var(--stats-accent-4)",
-        summary: `Counts all items completed in ${selectedReviewYear} and compares to ${previousReviewYear}.`,
-        calculation: "Filter items where completionDate year == selected review year.",
+        summary: `Counts items completed in ${selectedReviewYear} where status resolves to the Completed bucket, then compares to ${previousReviewYear}.`,
+        calculation: 'Filter items where completionDate year==selected review year AND statusBucket=="completed".',
         items: completedThisYearItems,
       },
       {
@@ -1500,18 +1549,19 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         value: `${yearReview.abandonedCount}`,
         subLabel: `${abandonedRate.toFixed(0)}% of yearly logs`,
         accent: "var(--stats-accent-2)",
-        summary: `Counts ${selectedReviewYear} items mapped to the Abandoned status bucket.`,
-        calculation: "Filter year items where statusBucket == abandoned.",
+        summary: `Counts items with status mapped to Abandoned and a tag matching ${selectedReviewYear}.`,
+        calculation:
+          "Filter all items where statusBucket==abandoned and tags include selected review year token; value=count.",
         items: abandonedItems,
       },
       {
         id: `YR_${selectedReviewYear}_BOOKS_LOGGED`,
         label: "Books Logged",
-        value: `${yearReview.mediaCounts.book}`,
+        value: `${yearReview.completedBooks}`,
         subLabel: bookDeltaLabel,
         accent: "var(--stats-accent-3)",
-        summary: `Counts all book entries logged in ${selectedReviewYear}.`,
-        calculation: "Filter year items where mediaType == book.",
+        summary: `Counts books with status exactly "completed" and completion date in ${selectedReviewYear}.`,
+        calculation: 'Filter items where mediaType=book, primaryStatusToken=="completed", and completionDate year==selected review year.',
         items: booksLoggedItems,
       },
       {
