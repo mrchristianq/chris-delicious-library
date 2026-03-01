@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 type StatsMediaType = "book" | "movie" | "tv" | "game";
 type StatsFilter = "all" | StatsMediaType;
@@ -129,10 +129,23 @@ type StatisticsViewProps = {
 };
 
 type SummaryMetric = {
+  id: string;
   label: string;
   value: string;
   subLabel: string;
   accent: string;
+  summary: string;
+  calculation: string;
+  items: UnifiedStatsItem[];
+};
+
+type StatisticDetail = {
+  id: string;
+  title: string;
+  value: string;
+  summary: string;
+  calculation: string;
+  items: UnifiedStatsItem[];
 };
 
 type MonthlyPoint = {
@@ -359,6 +372,16 @@ function formatMinutesAsHours(value: number): string {
 function formatScoreValue(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-";
   return (Math.round(value * 10) / 10).toFixed(1);
+}
+
+function formatDetailDate(value: Date | null): string {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(value);
 }
 
 function normalizeTitleKey(value: string): string {
@@ -643,7 +666,47 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
   const [activeTab, setActiveTab] = useState<StatsTab>("all");
   const [statsYear, setStatsYear] = useState<StatsYearFilter>(ALL_STATS_YEARS);
   const [reviewYear, setReviewYear] = useState<number>(currentYear);
+  const [activeStatDetail, setActiveStatDetail] = useState<StatisticDetail | null>(null);
   const filter: StatsFilter = activeTab === "yearReview" ? "all" : activeTab;
+
+  const sortDetailItems = (items: UnifiedStatsItem[]): UnifiedStatsItem[] => {
+    return [...items].sort((a, b) => {
+      const aDate = (a.activityDate || a.completionDate || a.releaseDate)?.getTime() || 0;
+      const bDate = (b.activityDate || b.completionDate || b.releaseDate)?.getTime() || 0;
+      if (bDate !== aDate) return bDate - aDate;
+      if (a.mediaType !== b.mediaType) return a.mediaType.localeCompare(b.mediaType);
+      return a.title.localeCompare(b.title);
+    });
+  };
+
+  const openStatisticDetail = (detail: StatisticDetail) => {
+    setActiveStatDetail({
+      ...detail,
+      items: sortDetailItems(detail.items),
+    });
+  };
+
+  const handleInteractiveKeyDown = (event: KeyboardEvent<Element>, onActivate: () => void) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onActivate();
+    }
+  };
+
+  useEffect(() => {
+    if (!activeStatDetail) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveStatDetail(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeStatDetail]);
+
+  useEffect(() => {
+    setActiveStatDetail(null);
+  }, [activeTab, statsYear, reviewYear]);
 
   const unifiedItems = useMemo<UnifiedStatsItem[]>(() => {
     const mappedBooks: UnifiedStatsItem[] = books.map((book) => {
@@ -1321,6 +1384,30 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const completionRate = yearReview.yearItems.length
       ? (yearReview.completedTotal / yearReview.yearItems.length) * 100
       : 0;
+    const completedThisYearItems = yearReview.yearItems.filter(
+      (item) => item.completionDate?.getUTCFullYear() === selectedReviewYear
+    );
+    const abandonedItems = yearReview.yearItems.filter((item) => item.statusBucket === "abandoned");
+    const booksLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "book");
+    const tvLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "tv");
+    const moviesWatchedItems = yearReview.yearItems.filter((item) => item.mediaType === "movie");
+    const audiobookItems = yearReview.yearItems.filter(
+      (item) => item.mediaType === "book" && item.audiobookMinutes > 0
+    );
+    const gamePlaytimeItems = yearReview.yearItems.filter(
+      (item) =>
+        item.mediaType === "game" &&
+        item.gameplayHours > 0 &&
+        item.playedYears.includes(selectedReviewYear)
+    );
+    const completedGamesItems = completedThisYearItems.filter((item) => item.mediaType === "game");
+    const busiestMonthItems =
+      yearReview.busiestMonth && !isExcludedBusiestMonthKey(yearReview.busiestMonth.key)
+        ? yearReview.yearItems.filter((item) => {
+            const monthDate = item.activityDate || item.completionDate;
+            return monthDate ? toMonthKey(monthDate) === yearReview.busiestMonth?.key : false;
+          })
+        : [];
     const gameDeltaLabel =
       gameDelta > 0
         ? `up ${gameDelta} vs ${previousReviewYear}`
@@ -1348,76 +1435,124 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
     return [
       {
+        id: `YR_${selectedReviewYear}_LOGGED_THIS_YEAR`,
         label: "Logged This Year",
         value: `${yearReview.yearItems.length}`,
         subLabel: `tracked in ${selectedReviewYear}`,
         accent: "var(--stats-accent-1)",
+        summary: `Counts every item whose activity date (or fallback date) lands in ${selectedReviewYear}.`,
+        calculation: "Items where anchor date (activityDate || completionDate || releaseDate) year equals selected review year.",
+        items: yearReview.yearItems,
       },
       {
+        id: `YR_${selectedReviewYear}_MOVIES_WATCHED`,
         label: "Movies Watched",
         value: `${yearReview.moviesWatched}`,
         subLabel: `${formatMinutesAsHours(yearReview.movieMinutes)} watch time`,
         accent: "var(--stats-accent-2)",
+        summary: `Counts movie entries logged in ${selectedReviewYear}; watch time comes from summed movie runtime.`,
+        calculation: "Filter year items to mediaType=movie; value=count, sublabel runtime=sum(runtimeMinutes).",
+        items: moviesWatchedItems,
       },
       {
+        id: `YR_${selectedReviewYear}_AUDIOBOOK_TIME`,
         label: "Audiobook Time",
         value: formatMinutesAsHours(yearReview.audiobookMinutes),
         subLabel: `${yearReview.audiobookCount} audiobook entries`,
         accent: "var(--stats-accent-3)",
+        summary: "Totals audiobook listening duration for books that include audiobook duration metadata.",
+        calculation: "Filter year books with audiobookMinutes>0; value=sum(audiobookMinutes).",
+        items: audiobookItems,
       },
       {
+        id: `YR_${selectedReviewYear}_GAME_HOURS`,
         label: "Game Hours",
         value: formatHours(yearReview.gameHours),
         subLabel: "logged playtime",
         accent: "var(--stats-accent-4)",
+        summary: `Totals gameplay hours for games with playtime data tagged as played in ${selectedReviewYear}.`,
+        calculation: "Filter games where gameplayHours>0 and playedYears includes selected review year; value=sum(gameplayHours).",
+        items: gamePlaytimeItems,
       },
       {
+        id: `YR_${selectedReviewYear}_GAMES_COMPLETED`,
         label: "Games Completed",
         value: `${yearReview.completedGames}`,
         subLabel: gameDeltaLabel,
         accent: "var(--stats-accent-1)",
+        summary: `Counts games marked completed in ${selectedReviewYear}.`,
+        calculation: "Filter completionDate year == selected review year and mediaType=game.",
+        items: completedGamesItems,
       },
       {
+        id: `YR_${selectedReviewYear}_COMPLETION_MOMENTUM`,
         label: "Completion Momentum",
         value: `${yearReview.completedTotal}`,
         subLabel: completionDeltaLabel,
         accent: "var(--stats-accent-4)",
+        summary: `Counts all items completed in ${selectedReviewYear} and compares to ${previousReviewYear}.`,
+        calculation: "Filter items where completionDate year == selected review year.",
+        items: completedThisYearItems,
       },
       {
+        id: `YR_${selectedReviewYear}_ABANDONED_MEDIA`,
         label: "Abandoned Media",
         value: `${yearReview.abandonedCount}`,
         subLabel: `${abandonedRate.toFixed(0)}% of yearly logs`,
         accent: "var(--stats-accent-2)",
+        summary: `Counts ${selectedReviewYear} items mapped to the Abandoned status bucket.`,
+        calculation: "Filter year items where statusBucket == abandoned.",
+        items: abandonedItems,
       },
       {
+        id: `YR_${selectedReviewYear}_BOOKS_LOGGED`,
         label: "Books Logged",
         value: `${yearReview.mediaCounts.book}`,
         subLabel: bookDeltaLabel,
         accent: "var(--stats-accent-3)",
+        summary: `Counts all book entries logged in ${selectedReviewYear}.`,
+        calculation: "Filter year items where mediaType == book.",
+        items: booksLoggedItems,
       },
       {
+        id: `YR_${selectedReviewYear}_TV_LOGGED`,
         label: "TV Logged",
         value: `${yearReview.mediaCounts.tv}`,
         subLabel: tvDeltaLabel,
         accent: "var(--stats-accent-1)",
+        summary: `Counts all TV entries logged in ${selectedReviewYear}.`,
+        calculation: "Filter year items where mediaType == tv.",
+        items: tvLoggedItems,
       },
       {
+        id: `YR_${selectedReviewYear}_AVERAGE_RATING`,
         label: "Average Rating",
         value: averageYearRating ? averageYearRating.toFixed(1) : "-",
         subLabel: `${ratedItems.length} rated titles`,
         accent: "var(--stats-accent-4)",
+        summary: "Shows the average of personal ratings for rated items in the selected review year.",
+        calculation: "Mean of rating for year items where rating is numeric.",
+        items: ratedItems,
       },
       {
+        id: `YR_${selectedReviewYear}_COMPLETION_RATE`,
         label: "Completion Rate",
         value: `${completionRate.toFixed(0)}%`,
         subLabel: `${yearReview.completedTotal} completed`,
         accent: "var(--stats-accent-2)",
+        summary: "Percent of yearly logged items that were completed in the selected review year.",
+        calculation: "completionRate = completedThisYearCount / yearItemsCount * 100.",
+        items: yearReview.yearItems,
       },
       {
+        id: `YR_${selectedReviewYear}_BUSIEST_MONTH`,
         label: "Busiest Month",
         value: yearReview.busiestMonth ? `${yearReview.busiestMonth.count}` : "0",
         subLabel: yearReview.busiestMonth ? yearReview.busiestMonth.label : "no month data",
         accent: "var(--stats-accent-3)",
+        summary: "Month with the highest number of logged items in the selected review year.",
+        calculation: "Group year items by month key from activityDate || completionDate, then choose max count.",
+        items: busiestMonthItems,
       },
     ];
   }, [previousReviewYear, selectedReviewYear, yearReview]);
@@ -1426,9 +1561,28 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const total = filteredItems.length;
     const completed = statusCounts.completed;
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
+    const ratedItems = filteredItems.filter((item) => typeof item.rating === "number" && Number.isFinite(item.rating));
+    const genreItems = filteredItems.filter((item) => item.genres.length > 0);
+    const scopeLabel =
+      filter === "all"
+        ? selectedStatsYear === ALL_STATS_YEARS
+          ? "all media across all years"
+          : `all media in ${selectedStatsYear}`
+        : selectedStatsYear === ALL_STATS_YEARS
+          ? `${MEDIA_LABELS[filter]} across all years`
+          : `${MEDIA_LABELS[filter]} in ${selectedStatsYear}`;
+    const scopeId =
+      filter === "all"
+        ? selectedStatsYear === ALL_STATS_YEARS
+          ? "ALL_ALL_YEARS"
+          : `ALL_${selectedStatsYear}`
+        : selectedStatsYear === ALL_STATS_YEARS
+          ? `${filter.toUpperCase()}_ALL_YEARS`
+          : `${filter.toUpperCase()}_${selectedStatsYear}`;
 
     return [
       {
+        id: `BASE_${scopeId}_LIBRARY_SIZE`,
         label: "Library Size",
         value: `${total}`,
         subLabel:
@@ -1440,27 +1594,42 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               ? `${MEDIA_LABELS[filter]} across all years`
               : `${MEDIA_LABELS[filter]} in ${selectedStatsYear}`,
         accent: "var(--stats-accent-1)",
+        summary: `Counts all items in scope: ${scopeLabel}.`,
+        calculation: "Count(filteredItems).",
+        items: filteredItems,
       },
       {
+        id: `BASE_${scopeId}_COMPLETION`,
         label: "Completion",
         value: `${completionRate.toFixed(0)}%`,
         subLabel: `${completed} completed`,
         accent: "var(--stats-accent-2)",
+        summary: `Completion ratio for ${scopeLabel}.`,
+        calculation: "completion % = completedCount / totalCount * 100, where completed=statusBucket=completed.",
+        items: filteredItems.filter((item) => item.statusBucket === "completed"),
       },
       {
+        id: `BASE_${scopeId}_AVERAGE_RATING`,
         label: "Average Rating",
         value: averageRating ? averageRating.toFixed(1) : "-",
         subLabel: `${ratingValues.length} rated titles`,
         accent: "var(--stats-accent-3)",
+        summary: `Average personal rating for rated items in ${scopeLabel}.`,
+        calculation: "Mean(filteredItems.rating where rating is numeric).",
+        items: ratedItems,
       },
       {
+        id: `BASE_${scopeId}_GENRE_SPREAD`,
         label: "Genre Spread",
         value: `${genreCounts.size}`,
         subLabel: "distinct genres",
         accent: "var(--stats-accent-4)",
+        summary: `Distinct genre count across ${scopeLabel}.`,
+        calculation: "Count distinct genre strings across filteredItems.genres.",
+        items: genreItems,
       },
     ];
-  }, [averageRating, filter, filteredItems.length, genreCounts.size, ratingValues.length, selectedStatsYear, statusCounts.completed]);
+  }, [averageRating, filter, filteredItems, genreCounts.size, ratingValues.length, selectedStatsYear, statusCounts.completed]);
 
   const filterOptions: Array<{ key: StatsTab; label: string }> = [
     { key: "all", label: "Everything" },
@@ -1560,7 +1729,32 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             {yearReviewMetrics.map((metric, index) => (
               <article
                 key={`${metric.label}-${selectedReviewYear}`}
-                className="metricCard"
+                className="metricCard metricCardInteractive"
+                role="button"
+                tabIndex={0}
+                aria-label={`Open details for ${metric.label}`}
+                onClick={() =>
+                  openStatisticDetail({
+                    id: metric.id,
+                    title: metric.label,
+                    value: metric.value,
+                    summary: metric.summary,
+                    calculation: metric.calculation,
+                    items: metric.items,
+                  })
+                }
+                onKeyDown={(event) =>
+                  handleInteractiveKeyDown(event, () =>
+                    openStatisticDetail({
+                      id: metric.id,
+                      title: metric.label,
+                      value: metric.value,
+                      summary: metric.summary,
+                      calculation: metric.calculation,
+                      items: metric.items,
+                    })
+                  )
+                }
                 style={{
                   animationDelay: `${index * 80}ms`,
                   ["--metric-accent" as string]: metric.accent,
@@ -1574,7 +1768,34 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           </div>
 
           <div className="statsGrid">
-            <article className="statsCard spanTwo">
+            <article
+              className="statsCard spanTwo statsCardInteractive"
+              role="button"
+              tabIndex={0}
+              aria-label="Open details for Year in Review storyline"
+              onClick={() =>
+                openStatisticDetail({
+                  id: `YR_${selectedReviewYear}_STORYLINE`,
+                  title: `${selectedReviewYear} Storyline`,
+                  value: `${yearReview.yearItems.length}`,
+                  summary: `All items logged in ${selectedReviewYear} using the Year in Review anchor date logic.`,
+                  calculation: "Items where (activityDate || completionDate || releaseDate) is in selected review year.",
+                  items: yearReview.yearItems,
+                })
+              }
+              onKeyDown={(event) =>
+                handleInteractiveKeyDown(event, () =>
+                  openStatisticDetail({
+                    id: `YR_${selectedReviewYear}_STORYLINE`,
+                    title: `${selectedReviewYear} Storyline`,
+                    value: `${yearReview.yearItems.length}`,
+                    summary: `All items logged in ${selectedReviewYear} using the Year in Review anchor date logic.`,
+                    calculation: "Items where (activityDate || completionDate || releaseDate) is in selected review year.",
+                    items: yearReview.yearItems,
+                  })
+                )
+              }
+            >
               <div className="cardHeader">
                 <h2>Storyline</h2>
                 <span>{yearReview.yearItems.length} logged</span>
@@ -1591,18 +1812,113 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     : "No monthly activity trend is available for this year yet."}
                 </p>
                 <div className="yearStoryChips">
-                  <div className="yearStoryChip">
+                  <div
+                    className="yearStoryChip yearStoryChipInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open details for leading genre"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_STORY_LEADING_GENRE`,
+                        title: "Storyline: Leading Genre",
+                        value: yearReview.topGenre ? yearReview.topGenre.name : "-",
+                        summary: "Most frequent genre among items logged this review year.",
+                        calculation: "Count genre occurrences across yearReview.yearItems and take highest count.",
+                        items: yearReview.topGenre
+                          ? yearReview.yearItems.filter((item) => item.genres.includes(yearReview.topGenre?.name || ""))
+                          : [],
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_STORY_LEADING_GENRE`,
+                          title: "Storyline: Leading Genre",
+                          value: yearReview.topGenre ? yearReview.topGenre.name : "-",
+                          summary: "Most frequent genre among items logged this review year.",
+                          calculation: "Count genre occurrences across yearReview.yearItems and take highest count.",
+                          items: yearReview.topGenre
+                            ? yearReview.yearItems.filter((item) => item.genres.includes(yearReview.topGenre?.name || ""))
+                            : [],
+                        })
+                      );
+                    }}
+                  >
                     <span>Leading Genre</span>
                     <strong>{yearReview.topGenre ? yearReview.topGenre.name : "-"}</strong>
                   </div>
-                  <div className="yearStoryChip">
+                  <div
+                    className="yearStoryChip yearStoryChipInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open details for media mix"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_STORY_MEDIA_MIX`,
+                        title: "Storyline: Media Mix",
+                        value: `${yearReview.mediaCounts.book}B / ${yearReview.mediaCounts.movie}M / ${yearReview.mediaCounts.tv}TV / ${yearReview.mediaCounts.game}G`,
+                        summary: "All items in the selected review year, segmented by media type.",
+                        calculation: "Count yearReview.yearItems by mediaType (book/movie/tv/game).",
+                        items: yearReview.yearItems,
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_STORY_MEDIA_MIX`,
+                          title: "Storyline: Media Mix",
+                          value: `${yearReview.mediaCounts.book}B / ${yearReview.mediaCounts.movie}M / ${yearReview.mediaCounts.tv}TV / ${yearReview.mediaCounts.game}G`,
+                          summary: "All items in the selected review year, segmented by media type.",
+                          calculation: "Count yearReview.yearItems by mediaType (book/movie/tv/game).",
+                          items: yearReview.yearItems,
+                        })
+                      );
+                    }}
+                  >
                     <span>Media Mix</span>
                     <strong>
                       {yearReview.mediaCounts.book}B / {yearReview.mediaCounts.movie}M / {yearReview.mediaCounts.tv}TV /{" "}
                       {yearReview.mediaCounts.game}G
                     </strong>
                   </div>
-                  <div className="yearStoryChip">
+                  <div
+                    className="yearStoryChip yearStoryChipInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open details for games completed vs ${previousReviewYear}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_STORY_GAMES_VS_${previousReviewYear}`,
+                        title: `Storyline: Games Completed vs ${previousReviewYear}`,
+                        value: `${yearReview.completedGames}`,
+                        summary: `Games completed in ${selectedReviewYear} compared against ${previousReviewYear}.`,
+                        calculation: "Filter year items where mediaType=game and completionDate year equals selected review year.",
+                        items: yearReview.yearItems.filter(
+                          (item) => item.mediaType === "game" && item.completionDate?.getUTCFullYear() === selectedReviewYear
+                        ),
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation();
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_STORY_GAMES_VS_${previousReviewYear}`,
+                          title: `Storyline: Games Completed vs ${previousReviewYear}`,
+                          value: `${yearReview.completedGames}`,
+                          summary: `Games completed in ${selectedReviewYear} compared against ${previousReviewYear}.`,
+                          calculation: "Filter year items where mediaType=game and completionDate year equals selected review year.",
+                          items: yearReview.yearItems.filter(
+                            (item) => item.mediaType === "game" && item.completionDate?.getUTCFullYear() === selectedReviewYear
+                          ),
+                        })
+                      );
+                    }}
+                  >
                     <span>vs {previousReviewYear}</span>
                     <strong>
                       {yearReview.completedGames === yearReview.completedGamesPrev
@@ -1622,7 +1938,34 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 <span>{yearReview.topRated?.rating ? `${yearReview.topRated.rating.toFixed(1)}/10` : "-"}</span>
               </div>
               {yearReview.topRated ? (
-                <div className="yearSpotlightBody">
+                <div
+                  className="yearSpotlightBody yearSpotlightBodyInteractive"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open details for top rated pick ${yearReview.topRated.title}`}
+                  onClick={() =>
+                    openStatisticDetail({
+                      id: `YR_${selectedReviewYear}_TOP_RATED_PICK`,
+                      title: "Top Rated Pick",
+                      value: yearReview.topRated?.rating ? `${yearReview.topRated.rating.toFixed(1)}/10` : "-",
+                      summary: "Highest-rated item in the selected review year.",
+                      calculation: "Sort rated year items by rating desc, then date desc, then title; pick first.",
+                      items: yearReview.topRated ? [yearReview.topRated] : [],
+                    })
+                  }
+                  onKeyDown={(event) =>
+                    handleInteractiveKeyDown(event, () =>
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_TOP_RATED_PICK`,
+                        title: "Top Rated Pick",
+                        value: yearReview.topRated?.rating ? `${yearReview.topRated.rating.toFixed(1)}/10` : "-",
+                        summary: "Highest-rated item in the selected review year.",
+                        calculation: "Sort rated year items by rating desc, then date desc, then title; pick first.",
+                        items: yearReview.topRated ? [yearReview.topRated] : [],
+                      })
+                    )
+                  }
+                >
                   <div className="yearSpotlightCover">
                     {yearReview.topRated.coverUrl ? (
                       <img src={yearReview.topRated.coverUrl} alt={`${yearReview.topRated.title} cover`} loading="lazy" />
@@ -1646,7 +1989,34 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 <span>{yearReview.longestAudiobook ? formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes) : "-"}</span>
               </div>
               {yearReview.longestAudiobook ? (
-                <div className="yearSpotlightBody">
+                <div
+                  className="yearSpotlightBody yearSpotlightBodyInteractive"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open details for longest audiobook ${yearReview.longestAudiobook.title}`}
+                  onClick={() =>
+                    openStatisticDetail({
+                      id: `YR_${selectedReviewYear}_LONGEST_AUDIOBOOK`,
+                      title: "Longest Audiobook",
+                      value: formatMinutesAsHours(yearReview.longestAudiobook?.audiobookMinutes || 0),
+                      summary: "Book with the greatest audiobook duration in the selected review year.",
+                      calculation: "Filter year books with audiobookMinutes>0, sort descending by audiobookMinutes, pick first.",
+                      items: yearReview.longestAudiobook ? [yearReview.longestAudiobook] : [],
+                    })
+                  }
+                  onKeyDown={(event) =>
+                    handleInteractiveKeyDown(event, () =>
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_LONGEST_AUDIOBOOK`,
+                        title: "Longest Audiobook",
+                        value: formatMinutesAsHours(yearReview.longestAudiobook?.audiobookMinutes || 0),
+                        summary: "Book with the greatest audiobook duration in the selected review year.",
+                        calculation: "Filter year books with audiobookMinutes>0, sort descending by audiobookMinutes, pick first.",
+                        items: yearReview.longestAudiobook ? [yearReview.longestAudiobook] : [],
+                      })
+                    )
+                  }
+                >
                   <div className="yearSpotlightCover">
                     {yearReview.longestAudiobook.coverUrl ? (
                       <img src={yearReview.longestAudiobook.coverUrl} alt={`${yearReview.longestAudiobook.title} cover`} loading="lazy" />
@@ -1670,7 +2040,34 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 <span>{yearReview.mostPlayedGame ? formatHours(yearReview.mostPlayedGame.gameplayHours) : "-"}</span>
               </div>
               {yearReview.mostPlayedGame ? (
-                <div className="yearSpotlightBody">
+                <div
+                  className="yearSpotlightBody yearSpotlightBodyInteractive"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open details for most played game ${yearReview.mostPlayedGame.title}`}
+                  onClick={() =>
+                    openStatisticDetail({
+                      id: `YR_${selectedReviewYear}_MOST_PLAYED_GAME`,
+                      title: "Most Played Game",
+                      value: formatHours(yearReview.mostPlayedGame?.gameplayHours || 0),
+                      summary: "Game with the highest logged playtime in the selected review year.",
+                      calculation: "Filter year games where playedYears includes selected year and gameplayHours>0, sort desc by gameplayHours, pick first.",
+                      items: yearReview.mostPlayedGame ? [yearReview.mostPlayedGame] : [],
+                    })
+                  }
+                  onKeyDown={(event) =>
+                    handleInteractiveKeyDown(event, () =>
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_MOST_PLAYED_GAME`,
+                        title: "Most Played Game",
+                        value: formatHours(yearReview.mostPlayedGame?.gameplayHours || 0),
+                        summary: "Game with the highest logged playtime in the selected review year.",
+                        calculation: "Filter year games where playedYears includes selected year and gameplayHours>0, sort desc by gameplayHours, pick first.",
+                        items: yearReview.mostPlayedGame ? [yearReview.mostPlayedGame] : [],
+                      })
+                    )
+                  }
+                >
                   <div className="yearSpotlightCover">
                     {yearReview.mostPlayedGame.coverUrl ? (
                       <img src={yearReview.mostPlayedGame.coverUrl} alt={`${yearReview.mostPlayedGame.title} cover`} loading="lazy" />
@@ -1694,7 +2091,34 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 <span>{yearReview.lowestRated?.rating ? `${yearReview.lowestRated.rating.toFixed(1)}/10` : "-"}</span>
               </div>
               {yearReview.lowestRated ? (
-                <div className="yearSpotlightBody">
+                <div
+                  className="yearSpotlightBody yearSpotlightBodyInteractive"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open details for lowest rated item ${yearReview.lowestRated.title}`}
+                  onClick={() =>
+                    openStatisticDetail({
+                      id: `YR_${selectedReviewYear}_LOWEST_RATED_ITEM`,
+                      title: "Lowest Rated Item",
+                      value: yearReview.lowestRated?.rating ? `${yearReview.lowestRated.rating.toFixed(1)}/10` : "-",
+                      summary: "Lowest-rated item in the selected review year.",
+                      calculation: "Sort rated year items by rating asc, then date desc, then title; pick first.",
+                      items: yearReview.lowestRated ? [yearReview.lowestRated] : [],
+                    })
+                  }
+                  onKeyDown={(event) =>
+                    handleInteractiveKeyDown(event, () =>
+                      openStatisticDetail({
+                        id: `YR_${selectedReviewYear}_LOWEST_RATED_ITEM`,
+                        title: "Lowest Rated Item",
+                        value: yearReview.lowestRated?.rating ? `${yearReview.lowestRated.rating.toFixed(1)}/10` : "-",
+                        summary: "Lowest-rated item in the selected review year.",
+                        calculation: "Sort rated year items by rating asc, then date desc, then title; pick first.",
+                        items: yearReview.lowestRated ? [yearReview.lowestRated] : [],
+                      })
+                    )
+                  }
+                >
                   <div className="yearSpotlightCover">
                     {yearReview.lowestRated.coverUrl ? (
                       <img src={yearReview.lowestRated.coverUrl} alt={`${yearReview.lowestRated.title} cover`} loading="lazy" />
@@ -1712,7 +2136,34 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               )}
             </article>
 
-            <article className="statsCard spanFull">
+            <article
+              className="statsCard spanFull statsCardInteractive"
+              role="button"
+              tabIndex={0}
+              aria-label={`Open details for Top 20 rated in ${selectedReviewYear}`}
+              onClick={() =>
+                openStatisticDetail({
+                  id: `YR_${selectedReviewYear}_TOP20_RATED`,
+                  title: `Top 20 Rated in ${selectedReviewYear}`,
+                  value: `${yearReview.topRatedItems.length}`,
+                  summary: "Top-rated items in the selected review year using personal rating.",
+                  calculation: "Sort rated year items by rating desc, then date desc, then title; take top 20.",
+                  items: yearReview.topRatedItems,
+                })
+              }
+              onKeyDown={(event) =>
+                handleInteractiveKeyDown(event, () =>
+                  openStatisticDetail({
+                    id: `YR_${selectedReviewYear}_TOP20_RATED`,
+                    title: `Top 20 Rated in ${selectedReviewYear}`,
+                    value: `${yearReview.topRatedItems.length}`,
+                    summary: "Top-rated items in the selected review year using personal rating.",
+                    calculation: "Sort rated year items by rating desc, then date desc, then title; take top 20.",
+                    items: yearReview.topRatedItems,
+                  })
+                )
+              }
+            >
               <div className="cardHeader">
                 <h2>Top 20 Rated in {selectedReviewYear}</h2>
                 <span>{yearReview.topRatedItems.length} ranked</span>
@@ -1720,7 +2171,37 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               {yearReview.topRatedItems.length > 0 ? (
                 <div className="yearTopRatedGrid">
                   {yearReview.topRatedItems.map((item, index) => (
-                    <figure key={`${index + 1}-${item.mediaType}-${item.title}`} className="yearTopRatedTile" title={`${index + 1}. ${item.title} (${MEDIA_LABELS[item.mediaType]})`}>
+                    <figure
+                      key={`${index + 1}-${item.mediaType}-${item.title}`}
+                      className="yearTopRatedTile yearTopRatedTileInteractive"
+                      title={`${index + 1}. ${item.title} (${MEDIA_LABELS[item.mediaType]})`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
+                          title: `Top 20 Item #${index + 1}`,
+                          value: item.rating ? `${item.rating.toFixed(1)}/10` : "-",
+                          summary: "Single item from the Year in Review top-20 rated list.",
+                          calculation: "Selected index from sorted year top-rated list.",
+                          items: [item],
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                        handleInteractiveKeyDown(event, () =>
+                          openStatisticDetail({
+                            id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
+                            title: `Top 20 Item #${index + 1}`,
+                            value: item.rating ? `${item.rating.toFixed(1)}/10` : "-",
+                            summary: "Single item from the Year in Review top-20 rated list.",
+                            calculation: "Selected index from sorted year top-rated list.",
+                            items: [item],
+                          })
+                        );
+                      }}
+                    >
                       <div className="yearTopRatedRank">#{index + 1}</div>
                       {item.coverUrl ? (
                         <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
@@ -1748,7 +2229,32 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         {metrics.map((metric, index) => (
           <article
             key={metric.label}
-            className="metricCard"
+            className="metricCard metricCardInteractive"
+            role="button"
+            tabIndex={0}
+            aria-label={`Open details for ${metric.label}`}
+            onClick={() =>
+              openStatisticDetail({
+                id: metric.id,
+                title: metric.label,
+                value: metric.value,
+                summary: metric.summary,
+                calculation: metric.calculation,
+                items: metric.items,
+              })
+            }
+            onKeyDown={(event) =>
+              handleInteractiveKeyDown(event, () =>
+                openStatisticDetail({
+                  id: metric.id,
+                  title: metric.label,
+                  value: metric.value,
+                  summary: metric.summary,
+                  calculation: metric.calculation,
+                  items: metric.items,
+                })
+              )
+            }
             style={{
               animationDelay: `${index * 80}ms`,
               ["--metric-accent" as string]: metric.accent,
@@ -1772,8 +2278,40 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             <div className="monthChart">
               {monthlySeries.map((month) => {
                 const monthParts = getMonthPartsFromKey(month.key);
+                const monthItems = filteredItems.filter((item) => {
+                  if (!item.completionDate) return false;
+                  return toMonthKey(item.completionDate) === month.key;
+                });
                 return (
-                  <div key={month.key} className="monthColumn">
+                  <div
+                    key={month.key}
+                    className="monthColumn monthColumnInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open details for ${month.label}`}
+                    onClick={() =>
+                      openStatisticDetail({
+                        id: `MONTH_${month.key}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                        title: `Activity by Month: ${month.label}`,
+                        value: `${month.total}`,
+                        summary: `Completed items counted in ${month.label} for the current statistics scope.`,
+                        calculation: "Filter items where completionDate month/year equals this month key.",
+                        items: monthItems,
+                      })
+                    }
+                    onKeyDown={(event) =>
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `MONTH_${month.key}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Activity by Month: ${month.label}`,
+                          value: `${month.total}`,
+                          summary: `Completed items counted in ${month.label} for the current statistics scope.`,
+                          calculation: "Filter items where completionDate month/year equals this month key.",
+                          items: monthItems,
+                        })
+                      )
+                    }
+                  >
                     <div className="monthBar" title={`${month.label}: ${month.total}`}>
                       {(filter === "all"
                         ? (Object.keys(month.counts) as StatsMediaType[])
@@ -1836,7 +2374,35 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               </div>
               <div className="legendList compact">
                 {topGenres.map((genre, index) => (
-                  <div key={genre.name} className="legendListItem">
+                  <div
+                    key={genre.name}
+                    className="legendListItem legendListItemInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open details for genre ${genre.name}`}
+                    onClick={() =>
+                      openStatisticDetail({
+                        id: `GENRE_${genre.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`,
+                        title: `Genre Orbit: ${genre.name}`,
+                        value: `${genre.value}`,
+                        summary: `Items in scope tagged with genre "${genre.name}".`,
+                        calculation: "Filter items where genres list contains the selected genre.",
+                        items: filteredItems.filter((item) => item.genres.includes(genre.name)),
+                      })
+                    }
+                    onKeyDown={(event) =>
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `GENRE_${genre.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`,
+                          title: `Genre Orbit: ${genre.name}`,
+                          value: `${genre.value}`,
+                          summary: `Items in scope tagged with genre "${genre.name}".`,
+                          calculation: "Filter items where genres list contains the selected genre.",
+                          items: filteredItems.filter((item) => item.genres.includes(genre.name)),
+                        })
+                      )
+                    }
+                  >
                     <span className="legendSwatch" style={{ background: DONUT_COLORS[index % DONUT_COLORS.length] }} />
                     <span className="legendName">{genre.name}</span>
                     <span className="legendValue">{genre.value}</span>
@@ -1861,7 +2427,35 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 const total = Math.max(1, filteredItems.length);
                 const pct = (entry.value / total) * 100;
                 return (
-                  <div key={entry.bucket} className="barRow">
+                  <div
+                    key={entry.bucket}
+                    className="barRow barRowInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open details for ${STATUS_LABELS[entry.bucket]} status`}
+                    onClick={() =>
+                      openStatisticDetail({
+                        id: `STATUS_${entry.bucket.toUpperCase()}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                        title: `Status Pulse: ${STATUS_LABELS[entry.bucket]}`,
+                        value: `${entry.value}`,
+                        summary: `Items in the ${STATUS_LABELS[entry.bucket]} status bucket for the current scope.`,
+                        calculation: "Filter items where inferred statusBucket equals selected bucket.",
+                        items: filteredItems.filter((item) => item.statusBucket === entry.bucket),
+                      })
+                    }
+                    onKeyDown={(event) =>
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `STATUS_${entry.bucket.toUpperCase()}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Status Pulse: ${STATUS_LABELS[entry.bucket]}`,
+                          value: `${entry.value}`,
+                          summary: `Items in the ${STATUS_LABELS[entry.bucket]} status bucket for the current scope.`,
+                          calculation: "Filter items where inferred statusBucket equals selected bucket.",
+                          items: filteredItems.filter((item) => item.statusBucket === entry.bucket),
+                        })
+                      )
+                    }
+                  >
                     <div className="barRowLabel">{STATUS_LABELS[entry.bucket]}</div>
                     <div className="barTrack">
                       <div className="barFill" style={{ width: `${pct}%`, background: STATUS_COLORS[entry.bucket] }} />
@@ -1886,8 +2480,43 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             <div className="ratingsChart">
               {ratingBuckets.map((bucket) => {
                 const pct = ratingValues.length ? (bucket.value / ratingValues.length) * 100 : 0;
+                const bucketValue = Number.parseInt(bucket.name, 10);
+                const bucketItems = filteredItems.filter((item) => {
+                  if (typeof item.rating !== "number" || !Number.isFinite(item.rating)) return false;
+                  const rounded = Math.max(1, Math.min(10, Math.round(item.rating)));
+                  return rounded === bucketValue;
+                });
                 return (
-                  <div key={bucket.name} className="ratingCol" title={`${bucket.name}: ${bucket.value} (${pct.toFixed(1)}%)`}>
+                  <div
+                    key={bucket.name}
+                    className="ratingCol ratingColInteractive"
+                    title={`${bucket.name}: ${bucket.value} (${pct.toFixed(1)}%)`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open details for rating bucket ${bucket.name}`}
+                    onClick={() =>
+                      openStatisticDetail({
+                        id: `RATING_BUCKET_${bucket.name}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                        title: `Rating Profile: ${bucket.name}/10`,
+                        value: `${bucket.value}`,
+                        summary: `Items whose personal rating rounds to ${bucket.name} in this scope.`,
+                        calculation: "Round each numeric personal rating to nearest integer (1-10), then count matches for bucket.",
+                        items: bucketItems,
+                      })
+                    }
+                    onKeyDown={(event) =>
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `RATING_BUCKET_${bucket.name}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Rating Profile: ${bucket.name}/10`,
+                          value: `${bucket.value}`,
+                          summary: `Items whose personal rating rounds to ${bucket.name} in this scope.`,
+                          calculation: "Round each numeric personal rating to nearest integer (1-10), then count matches for bucket.",
+                          items: bucketItems,
+                        })
+                      )
+                    }
+                  >
                     <div className="ratingBarTrack">
                       <div className="ratingBar" style={{ height: `${pct}%` }} />
                     </div>
@@ -1921,8 +2550,39 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 {releasePointCoords.map((point) => {
                   const isPeak = releasePeakYearSet.has(point.year);
                   const isLow = !isPeak && releaseLowYearSet.has(point.year);
+                  const releaseYearItems = filteredItems.filter(
+                    (item) => item.releaseDate?.getUTCFullYear() === point.year
+                  );
                   return (
-                    <g key={`release-point-${point.year}`}>
+                    <g
+                      key={`release-point-${point.year}`}
+                      className="releasePointGroup"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open release timeline details for ${point.year}`}
+                      onClick={() =>
+                        openStatisticDetail({
+                          id: `RELEASE_YEAR_${point.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Release Timeline: ${point.year}`,
+                          value: `${point.value}`,
+                          summary: `Items with release date in ${point.year} for current scope.`,
+                          calculation: "Filter items where releaseDate year equals selected timeline year.",
+                          items: releaseYearItems,
+                        })
+                      }
+                      onKeyDown={(event) =>
+                        handleInteractiveKeyDown(event, () =>
+                          openStatisticDetail({
+                            id: `RELEASE_YEAR_${point.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                            title: `Release Timeline: ${point.year}`,
+                            value: `${point.value}`,
+                            summary: `Items with release date in ${point.year} for current scope.`,
+                            calculation: "Filter items where releaseDate year equals selected timeline year.",
+                            items: releaseYearItems,
+                          })
+                        )
+                      }
+                    >
                       <circle
                         className={`releasePoint ${isPeak ? "peak" : isLow ? "low" : ""}`}
                         cx={point.x}
@@ -1980,18 +2640,46 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               {releasePeakRows.length > 0 ? (
                 <div className="timelinePeaks" aria-label="Top release year peaks">
                   {releasePeakRows.map((entry) => (
-                    <span key={`release-peak-${entry.year}`} className="timelinePeakTag">
+                    <button
+                      key={`release-peak-${entry.year}`}
+                      type="button"
+                      className="timelinePeakTag timelineTagButton"
+                      onClick={() =>
+                        openStatisticDetail({
+                          id: `RELEASE_PEAK_${entry.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Release Peak Year: ${entry.year}`,
+                          value: `${entry.value}`,
+                          summary: `Release-year peak entry for ${entry.year} in current scope.`,
+                          calculation: "Top years by count of items where releaseDate year equals each year.",
+                          items: filteredItems.filter((item) => item.releaseDate?.getUTCFullYear() === entry.year),
+                        })
+                      }
+                    >
                       {entry.year}: {entry.value}
-                    </span>
+                    </button>
                   ))}
                 </div>
               ) : null}
               {releaseLowRows.length > 0 ? (
                 <div className="timelineLows" aria-label="Lowest release year counts">
                   {releaseLowRows.map((entry) => (
-                    <span key={`release-low-${entry.year}`} className="timelineLowTag">
+                    <button
+                      key={`release-low-${entry.year}`}
+                      type="button"
+                      className="timelineLowTag timelineTagButton"
+                      onClick={() =>
+                        openStatisticDetail({
+                          id: `RELEASE_LOW_${entry.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Release Low Year: ${entry.year}`,
+                          value: `${entry.value}`,
+                          summary: `Release-year low entry for ${entry.year} in current scope.`,
+                          calculation: "Lowest non-zero years by count of items where releaseDate year equals each year.",
+                          items: filteredItems.filter((item) => item.releaseDate?.getUTCFullYear() === entry.year),
+                        })
+                      }
+                    >
                       {entry.year}: {entry.value}
-                    </span>
+                    </button>
                   ))}
                 </div>
               ) : null}
@@ -2012,8 +2700,57 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               {topDimension.rows.map((row) => {
                 const max = Math.max(1, ...topDimension.rows.map((entry) => entry.value));
                 const pct = (row.value / max) * 100;
+                const rowItems = (() => {
+                  if (topDimension.label === "Top Platforms") {
+                    return filteredItems.filter((item) => item.platforms.includes(row.name));
+                  }
+                  if (topDimension.label === "Top Formats") {
+                    return filteredItems.filter((item) => item.formats.includes(row.name));
+                  }
+                  if (topDimension.label === "Top Tags") {
+                    return filteredItems.filter((item) => item.tags.includes(row.name));
+                  }
+                  if (topDimension.label === "Top Genres") {
+                    return filteredItems.filter((item) => item.genres.includes(row.name));
+                  }
+                  if (topDimension.label === "Media Mix") {
+                    if (row.name === "Books") return filteredItems.filter((item) => item.mediaType === "book");
+                    if (row.name === "Movies") return filteredItems.filter((item) => item.mediaType === "movie");
+                    if (row.name === "TV Shows") return filteredItems.filter((item) => item.mediaType === "tv");
+                    if (row.name === "Games") return filteredItems.filter((item) => item.mediaType === "game");
+                  }
+                  return [];
+                })();
                 return (
-                  <div key={row.name} className="barRow">
+                  <div
+                    key={row.name}
+                    className="barRow barRowInteractive"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open details for ${topDimension.label} ${row.name}`}
+                    onClick={() =>
+                      openStatisticDetail({
+                        id: `GROUP_${topDimension.label.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_${row.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`,
+                        title: `${topDimension.label}: ${row.name}`,
+                        value: `${row.value}`,
+                        summary: `Items matching group "${row.name}" in ${topDimension.label}.`,
+                        calculation: "Group current-scope items by the section dimension and return the selected bucket.",
+                        items: rowItems,
+                      })
+                    }
+                    onKeyDown={(event) =>
+                      handleInteractiveKeyDown(event, () =>
+                        openStatisticDetail({
+                          id: `GROUP_${topDimension.label.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_${row.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`,
+                          title: `${topDimension.label}: ${row.name}`,
+                          value: `${row.value}`,
+                          summary: `Items matching group "${row.name}" in ${topDimension.label}.`,
+                          calculation: "Group current-scope items by the section dimension and return the selected bucket.",
+                          items: rowItems,
+                        })
+                      )
+                    }
+                  >
                     <div className="barRowLabel">{row.name}</div>
                     <div className="barTrack">
                       <div className="barFill gradient" style={{ width: `${pct}%` }} />
@@ -2038,25 +2775,111 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
               <div className="highlightLabel">
                 {selectedStatsYear === ALL_STATS_YEARS ? "Logged (all years)" : `Logged in ${selectedStatsYear}`}
               </div>
-              <div className="highlightValue">{highlightStats.yearLogged}</div>
+              <button
+                type="button"
+                className="highlightValueButton"
+                onClick={() =>
+                  openStatisticDetail({
+                    id: `HIGHLIGHT_LOGGED_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                    title: selectedStatsYear === ALL_STATS_YEARS ? "Logged (all years)" : `Logged in ${selectedStatsYear}`,
+                    value: `${highlightStats.yearLogged}`,
+                    summary: "Count of items logged in the selected stats scope.",
+                    calculation:
+                      selectedStatsYear === ALL_STATS_YEARS
+                        ? "Count all filtered items."
+                        : "Count filtered items where activityDate year matches selected year, plus games with playedYears containing selected year.",
+                    items:
+                      selectedStatsYear === ALL_STATS_YEARS
+                        ? filteredItems
+                        : filteredItems.filter((item) => {
+                            const activityInYear = item.activityDate?.getUTCFullYear() === selectedStatsYear;
+                            const playedInYear = item.mediaType === "game" && item.playedYears.includes(selectedStatsYear);
+                            return activityInYear || playedInYear;
+                          }),
+                  })
+                }
+              >
+                {highlightStats.yearLogged}
+              </button>
             </div>
             <div className="highlightItem">
               <div className="highlightLabel">
                 {selectedStatsYear === ALL_STATS_YEARS ? "Completed (all years)" : `Completed in ${selectedStatsYear}`}
               </div>
-              <div className="highlightValue">{highlightStats.yearCompleted}</div>
+              <button
+                type="button"
+                className="highlightValueButton"
+                onClick={() =>
+                  openStatisticDetail({
+                    id: `HIGHLIGHT_COMPLETED_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                    title: selectedStatsYear === ALL_STATS_YEARS ? "Completed (all years)" : `Completed in ${selectedStatsYear}`,
+                    value: `${highlightStats.yearCompleted}`,
+                    summary: "Count of items with a completion date in the selected scope.",
+                    calculation:
+                      selectedStatsYear === ALL_STATS_YEARS
+                        ? "Count filtered items where completionDate exists."
+                        : "Count filtered items where completionDate year equals selected year.",
+                    items:
+                      selectedStatsYear === ALL_STATS_YEARS
+                        ? filteredItems.filter((item) => Boolean(item.completionDate))
+                        : filteredItems.filter((item) => item.completionDate?.getUTCFullYear() === selectedStatsYear),
+                  })
+                }
+              >
+                {highlightStats.yearCompleted}
+              </button>
             </div>
             <div className="highlightItem">
               <div className="highlightLabel">Busiest month</div>
-              <div className="highlightValue">
+              <button
+                type="button"
+                className="highlightValueButton"
+                onClick={() =>
+                  openStatisticDetail({
+                    id: `HIGHLIGHT_BUSIEST_MONTH_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                    title: "Busiest month",
+                    value:
+                      highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
+                        ? highlightStats.bestMonth.label
+                        : "-",
+                    summary: "Month with the highest completion count in the current stats scope.",
+                    calculation:
+                      "Group monthlySeries by month key using completionDate and choose highest total (excluding protected month keys).",
+                    items:
+                      highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
+                        ? filteredItems.filter((item) => {
+                            if (!item.completionDate) return false;
+                            return toMonthKey(item.completionDate) === highlightStats.bestMonth?.key;
+                          })
+                        : [],
+                  })
+                }
+              >
                 {highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
                   ? highlightStats.bestMonth.label
                   : "-"}
-              </div>
+              </button>
             </div>
             <div className="highlightItem">
               <div className="highlightLabel">Leading genre</div>
-              <div className="highlightValue">{highlightStats.topGenre ? highlightStats.topGenre.name : "-"}</div>
+              <button
+                type="button"
+                className="highlightValueButton"
+                onClick={() =>
+                  openStatisticDetail({
+                    id: `HIGHLIGHT_LEADING_GENRE_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                    title: "Leading genre",
+                    value: highlightStats.topGenre ? highlightStats.topGenre.name : "-",
+                    summary: "Most frequent genre in the current stats scope.",
+                    calculation: "Count genre occurrences across filtered items and select the highest.",
+                    items: highlightStats.topGenre
+                      ? filteredItems.filter((item) => item.genres.includes(highlightStats.topGenre?.name || ""))
+                      : [],
+                  })
+                }
+              >
+                {highlightStats.topGenre ? highlightStats.topGenre.name : "-"}
+              </button>
             </div>
           </div>
         </article>
@@ -2078,8 +2901,32 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     {topMyRatedItems.map((item, index) => (
                       <figure
                         key={`my-${item.mediaType}-${item.title}-${index + 1}`}
-                        className="topRatedTile"
+                        className="topRatedTile topRatedTileInteractive"
                         title={`${index + 1}. ${item.title}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() =>
+                          openStatisticDetail({
+                            id: `TOP10_MY_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                            title: `Top Rated by Me #${index + 1}`,
+                            value: formatScoreValue(item.rating),
+                            summary: "Individual entry from the Top 10 Rated by Me list.",
+                            calculation: "Rank by personal rating desc with date/title tie-breakers.",
+                            items: [item],
+                          })
+                        }
+                        onKeyDown={(event) =>
+                          handleInteractiveKeyDown(event, () =>
+                            openStatisticDetail({
+                              id: `TOP10_MY_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                              title: `Top Rated by Me #${index + 1}`,
+                              value: formatScoreValue(item.rating),
+                              summary: "Individual entry from the Top 10 Rated by Me list.",
+                              calculation: "Rank by personal rating desc with date/title tie-breakers.",
+                              items: [item],
+                            })
+                          )
+                        }
                       >
                         <div className="topRatedScore">{formatScoreValue(item.rating)}</div>
                         {item.coverUrl ? (
@@ -2109,8 +2956,32 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     {topExternalRatedItems.map((item, index) => (
                       <figure
                         key={`ext-${item.mediaType}-${item.title}-${index + 1}`}
-                        className="topRatedTile"
+                        className="topRatedTile topRatedTileInteractive"
                         title={`${index + 1}. ${item.title}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() =>
+                          openStatisticDetail({
+                            id: `TOP10_EXTERNAL_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                            title: `Top External Rated #${index + 1}`,
+                            value: formatScoreValue(item.externalRating),
+                            summary: "Individual entry from the Top 10 external rating list.",
+                            calculation: "Rank by external rating desc with date/title tie-breakers.",
+                            items: [item],
+                          })
+                        }
+                        onKeyDown={(event) =>
+                          handleInteractiveKeyDown(event, () =>
+                            openStatisticDetail({
+                              id: `TOP10_EXTERNAL_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                              title: `Top External Rated #${index + 1}`,
+                              value: formatScoreValue(item.externalRating),
+                              summary: "Individual entry from the Top 10 external rating list.",
+                              calculation: "Rank by external rating desc with date/title tie-breakers.",
+                              items: [item],
+                            })
+                          )
+                        }
                       >
                         <div className="topRatedScore">{formatScoreValue(item.externalRating)}</div>
                         {item.coverUrl ? (
@@ -2135,6 +3006,86 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       </div>
         </div>
       )}
+
+      {activeStatDetail ? (
+        <div
+          className="statDetailOverlay"
+          role="presentation"
+          onClick={() => setActiveStatDetail(null)}
+        >
+          <div
+            className="statDetailDialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Statistic details for ${activeStatDetail.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="statDetailHeader">
+              <div className="statDetailHeaderMain">
+                <div className="statDetailId">ID: {activeStatDetail.id}</div>
+                <h3>{activeStatDetail.title}</h3>
+                <div className="statDetailValue">{activeStatDetail.value}</div>
+              </div>
+              <button
+                type="button"
+                className="statDetailClose"
+                onClick={() => setActiveStatDetail(null)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="statDetailSummaryGrid">
+              <div className="statDetailSummaryCard">
+                <div className="statDetailSummaryLabel">What This Tracks</div>
+                <p>{activeStatDetail.summary}</p>
+              </div>
+              <div className="statDetailSummaryCard">
+                <div className="statDetailSummaryLabel">How It Is Calculated</div>
+                <p>{activeStatDetail.calculation}</p>
+              </div>
+            </div>
+
+            <div className="statDetailItemsHeader">
+              Matching Items <span>{activeStatDetail.items.length}</span>
+            </div>
+
+            <div className="statDetailItemsList">
+              {activeStatDetail.items.length > 0 ? (
+                activeStatDetail.items.map((item, index) => {
+                  const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
+                  const anchorLabel = item.activityDate
+                    ? "Activity"
+                    : item.completionDate
+                      ? "Completed"
+                      : "Release";
+                  return (
+                    <div
+                      key={`${activeStatDetail.id}-${item.mediaType}-${item.title}-${index}`}
+                      className="statDetailItemRow"
+                    >
+                      <div className="statDetailItemRank">{index + 1}</div>
+                      <div className="statDetailItemMain">
+                        <div className="statDetailItemTitle">{item.title}</div>
+                        <div className="statDetailItemMeta">
+                          <span>{MEDIA_LABELS[item.mediaType]}</span>
+                          <span>{STATUS_LABELS[item.statusBucket]}</span>
+                          <span>
+                            {anchorLabel}: {formatDetailDate(anchorDate)}
+                          </span>
+                          <span>Rating: {typeof item.rating === "number" ? item.rating.toFixed(1) : "-"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="cardEmpty">No matching items for this statistic.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style jsx>{`
         .statsRoot {
@@ -2357,6 +3308,21 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           gap: 4px;
         }
 
+        .yearStoryChipInteractive {
+          cursor: pointer;
+          transition: background 120ms ease, border-color 120ms ease;
+        }
+
+        .yearStoryChipInteractive:hover {
+          background: rgba(19, 40, 74, 0.72);
+          border-color: rgba(155, 198, 255, 0.52);
+        }
+
+        .yearStoryChipInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.95);
+          outline-offset: 2px;
+        }
+
         .yearStoryChip span {
           color: rgba(182, 206, 237, 0.8);
           font-size: 10px;
@@ -2378,6 +3344,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           align-items: center;
           flex: 1;
           min-height: 0;
+        }
+
+        .yearSpotlightBodyInteractive {
+          cursor: pointer;
+          border-radius: 10px;
+          padding: 4px;
+          transition: background 120ms ease;
+        }
+
+        .yearSpotlightBodyInteractive:hover {
+          background: rgba(118, 171, 246, 0.12);
+        }
+
+        .yearSpotlightBodyInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.95);
+          outline-offset: 2px;
         }
 
         .yearSpotlightCover {
@@ -2442,6 +3424,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           gap: 5px;
           min-width: 0;
           position: relative;
+        }
+
+        .yearTopRatedTileInteractive {
+          cursor: pointer;
+          border-radius: 10px;
+          padding: 2px;
+          transition: background 120ms ease;
+        }
+
+        .yearTopRatedTileInteractive:hover {
+          background: rgba(115, 169, 245, 0.14);
+        }
+
+        .yearTopRatedTileInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.95);
+          outline-offset: 2px;
         }
 
         .yearTopRatedRank {
@@ -2552,6 +3550,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           position: relative;
         }
 
+        .topRatedTileInteractive {
+          cursor: pointer;
+          border-radius: 10px;
+          padding: 2px;
+          transition: background 120ms ease;
+        }
+
+        .topRatedTileInteractive:hover {
+          background: rgba(115, 169, 245, 0.14);
+        }
+
+        .topRatedTileInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.95);
+          outline-offset: 2px;
+        }
+
         .topRatedTile img {
           width: 100%;
           aspect-ratio: 3 / 4;
@@ -2637,6 +3651,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           animation: statsFadeRise 420ms ease both;
         }
 
+        .metricCardInteractive {
+          cursor: pointer;
+          transition: transform 130ms ease, box-shadow 130ms ease, border-color 130ms ease;
+        }
+
+        .metricCardInteractive:hover {
+          transform: translateY(-2px);
+          border-color: rgba(157, 196, 250, 0.58);
+          box-shadow: inset 0 1px 0 rgba(190, 220, 255, 0.2), 0 14px 28px rgba(1, 10, 27, 0.38);
+        }
+
+        .metricCardInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.9);
+          outline-offset: 2px;
+        }
+
         .metricCard::before {
           content: "";
           display: block;
@@ -2688,6 +3718,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           display: flex;
           flex-direction: column;
           min-height: 210px;
+        }
+
+        .statsCardInteractive {
+          cursor: pointer;
+          transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+        }
+
+        .statsCardInteractive:hover {
+          transform: translateY(-1px);
+          border-color: rgba(159, 200, 255, 0.62);
+          box-shadow: inset 0 1px 0 rgba(204, 230, 255, 0.2), 0 16px 32px rgba(0, 12, 29, 0.4);
+        }
+
+        .statsCardInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.95);
+          outline-offset: 2px;
         }
 
         .statsCard.spanTwo {
@@ -2751,6 +3797,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           height: 100%;
           min-height: 0;
           gap: 6px;
+        }
+
+        .monthColumnInteractive {
+          cursor: pointer;
+          border-radius: 10px;
+          padding: 4px 3px;
+          transition: background 120ms ease;
+        }
+
+        .monthColumnInteractive:hover {
+          background: rgba(122, 168, 239, 0.14);
+        }
+
+        .monthColumnInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.9);
+          outline-offset: 1px;
         }
 
         .monthBar {
@@ -2899,6 +3961,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           color: rgba(205, 224, 248, 0.92);
         }
 
+        .legendListItemInteractive {
+          cursor: pointer;
+          border-radius: 8px;
+          padding: 4px 5px;
+          transition: background 120ms ease;
+        }
+
+        .legendListItemInteractive:hover {
+          background: rgba(112, 162, 240, 0.14);
+        }
+
+        .legendListItemInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.9);
+          outline-offset: 1px;
+        }
+
         .legendName {
           overflow: hidden;
           text-overflow: ellipsis;
@@ -2926,6 +4004,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           grid-template-columns: minmax(70px, 100px) 1fr auto;
           align-items: center;
           gap: 8px;
+        }
+
+        .barRowInteractive {
+          cursor: pointer;
+          border-radius: 8px;
+          padding: 3px 5px;
+          transition: background 120ms ease;
+        }
+
+        .barRowInteractive:hover {
+          background: rgba(110, 158, 235, 0.14);
+        }
+
+        .barRowInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.9);
+          outline-offset: 1px;
         }
 
         .barRowLabel {
@@ -2980,6 +4074,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           gap: 4px;
         }
 
+        .ratingColInteractive {
+          cursor: pointer;
+          border-radius: 8px;
+          padding: 4px 2px;
+          transition: background 120ms ease;
+        }
+
+        .ratingColInteractive:hover {
+          background: rgba(117, 171, 247, 0.14);
+        }
+
+        .ratingColInteractive:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.9);
+          outline-offset: 1px;
+        }
+
         .ratingBarTrack {
           width: 100%;
           height: 124px;
@@ -3021,6 +4131,15 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           fill: rgba(255, 207, 140, 0.92);
           stroke: rgba(12, 26, 56, 0.72);
           stroke-width: 1.1;
+        }
+
+        .releasePointGroup {
+          cursor: pointer;
+        }
+
+        .releasePointGroup:focus-visible .releasePoint {
+          stroke: rgba(177, 220, 255, 0.98);
+          stroke-width: 2;
         }
 
         .releasePoint.peak {
@@ -3120,6 +4239,15 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           background: linear-gradient(165deg, rgba(90, 165, 219, 0.28), rgba(111, 203, 237, 0.18));
         }
 
+        .timelineTagButton {
+          cursor: pointer;
+        }
+
+        .timelineTagButton:focus-visible {
+          outline: 2px solid rgba(180, 222, 255, 0.96);
+          outline-offset: 2px;
+        }
+
         .highlightsGrid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -3145,6 +4273,209 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           font-weight: 900;
           color: #ffffff;
           line-height: 1.15;
+        }
+
+        .highlightValueButton {
+          margin-top: 5px;
+          border: none;
+          background: transparent;
+          color: #ffffff;
+          font-size: 20px;
+          font-weight: 900;
+          line-height: 1.15;
+          padding: 0;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .highlightValueButton:hover {
+          color: #d7efff;
+        }
+
+        .highlightValueButton:focus-visible {
+          outline: 2px solid rgba(157, 208, 255, 0.9);
+          outline-offset: 3px;
+          border-radius: 6px;
+        }
+
+        .statDetailOverlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2500;
+          background: rgba(3, 9, 20, 0.6);
+          backdrop-filter: blur(3px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 14px;
+        }
+
+        .statDetailDialog {
+          width: min(980px, 100%);
+          max-height: min(88vh, 860px);
+          overflow: auto;
+          border-radius: 16px;
+          border: 1px solid rgba(123, 177, 245, 0.46);
+          background: linear-gradient(165deg, rgba(15, 33, 65, 0.97), rgba(7, 18, 38, 0.98));
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .statDetailHeader {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          border-bottom: 1px solid rgba(111, 158, 230, 0.36);
+          padding-bottom: 10px;
+        }
+
+        .statDetailHeaderMain {
+          min-width: 0;
+        }
+
+        .statDetailId {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          color: rgba(157, 201, 255, 0.9);
+        }
+
+        .statDetailHeaderMain h3 {
+          margin: 6px 0 0 0;
+          font-size: 18px;
+          font-weight: 900;
+          color: #f3f9ff;
+        }
+
+        .statDetailValue {
+          margin-top: 4px;
+          font-size: 28px;
+          line-height: 1;
+          font-weight: 900;
+          color: #fff;
+        }
+
+        .statDetailClose {
+          border: 1px solid rgba(152, 196, 250, 0.7);
+          background: linear-gradient(160deg, rgba(42, 90, 164, 0.92), rgba(25, 58, 109, 0.92));
+          color: #e9f4ff;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          padding: 6px 10px;
+          cursor: pointer;
+        }
+
+        .statDetailSummaryGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .statDetailSummaryCard {
+          border: 1px solid rgba(118, 162, 233, 0.35);
+          border-radius: 10px;
+          background: rgba(9, 21, 44, 0.78);
+          padding: 10px;
+          min-height: 78px;
+        }
+
+        .statDetailSummaryLabel {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: rgba(161, 203, 255, 0.9);
+        }
+
+        .statDetailSummaryCard p {
+          margin: 7px 0 0 0;
+          font-size: 12px;
+          color: rgba(215, 231, 251, 0.94);
+          line-height: 1.42;
+        }
+
+        .statDetailItemsHeader {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          color: rgba(177, 214, 255, 0.9);
+        }
+
+        .statDetailItemsHeader span {
+          color: #f8fcff;
+        }
+
+        .statDetailItemsList {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-height: 120px;
+        }
+
+        .statDetailItemRow {
+          display: grid;
+          grid-template-columns: 28px 1fr;
+          gap: 8px;
+          border: 1px solid rgba(121, 169, 238, 0.33);
+          border-radius: 10px;
+          background: rgba(9, 21, 44, 0.7);
+          padding: 8px 9px;
+        }
+
+        .statDetailItemRank {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 10px;
+          font-weight: 900;
+          color: rgba(239, 249, 255, 0.98);
+          border: 1px solid rgba(142, 191, 255, 0.52);
+          background: rgba(28, 63, 118, 0.8);
+        }
+
+        .statDetailItemMain {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .statDetailItemTitle {
+          font-size: 13px;
+          font-weight: 800;
+          color: #f7fbff;
+          line-height: 1.25;
+        }
+
+        .statDetailItemMeta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .statDetailItemMeta span {
+          display: inline-flex;
+          align-items: center;
+          border: 1px solid rgba(120, 166, 236, 0.34);
+          border-radius: 999px;
+          padding: 2px 7px;
+          font-size: 10px;
+          font-weight: 700;
+          color: rgba(201, 223, 249, 0.94);
+          background: rgba(12, 30, 60, 0.65);
         }
 
         @keyframes statsFadeRise {
@@ -3223,6 +4554,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
           .barRow {
             grid-template-columns: minmax(60px, 78px) 1fr auto;
+          }
+
+          .statDetailSummaryGrid {
+            grid-template-columns: minmax(0, 1fr);
           }
 
           .releaseSvg {
