@@ -375,6 +375,13 @@ function formatScoreValue(value: number | null | undefined): string {
   return (Math.round(value * 10) / 10).toFixed(1);
 }
 
+function formatStarRowFive(valueOutOfFive: number): string {
+  const clamped = Math.max(0, Math.min(5, valueOutOfFive));
+  const filled = Math.round(clamped);
+  const empty = 5 - filled;
+  return `${"★".repeat(filled)}${"☆".repeat(empty)}`;
+}
+
 function formatDetailDate(value: Date | null): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat("en-US", {
@@ -1653,6 +1660,15 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
     const ratedItems = filteredItems.filter((item) => typeof item.rating === "number" && Number.isFinite(item.rating));
     const genreItems = filteredItems.filter((item) => item.genres.length > 0);
+    const isBookScope = filter === "book";
+    const averageRatingDisplay =
+      typeof averageRating === "number" && Number.isFinite(averageRating)
+        ? (() => {
+            if (!isBookScope) return averageRating.toFixed(1);
+            const fiveScaleAverage = averageRating > 5 ? averageRating / 2 : averageRating;
+            return `${formatStarRowFive(fiveScaleAverage)} ${fiveScaleAverage.toFixed(1)}/5`;
+          })()
+        : "-";
     const scopeLabel =
       filter === "all"
         ? selectedStatsYear === ALL_STATS_YEARS
@@ -1701,11 +1717,15 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       {
         id: `BASE_${scopeId}_AVERAGE_RATING`,
         label: "Average Rating",
-        value: averageRating ? averageRating.toFixed(1) : "-",
+        value: averageRatingDisplay,
         subLabel: `${ratingValues.length} rated titles`,
         accent: "var(--stats-accent-3)",
-        summary: `Average personal rating for rated items in ${scopeLabel}.`,
-        calculation: "Mean(filteredItems.rating where rating is numeric).",
+        summary: isBookScope
+          ? `Average personal rating for rated books in ${scopeLabel}, shown as a 5-star value.`
+          : `Average personal rating for rated items in ${scopeLabel}.`,
+        calculation: isBookScope
+          ? "Mean(filteredItems.rating where rating is numeric); for books, display as /5 with stars."
+          : "Mean(filteredItems.rating where rating is numeric).",
         items: ratedItems,
       },
       {
