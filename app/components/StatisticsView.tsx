@@ -438,6 +438,46 @@ function parseDateValue(value: unknown): Date | null {
     return null;
   }
 
+  // Preserve explicit calendar dates and ignore timezone offsets/time fragments
+  // so month bucketing remains aligned with the entered date.
+  const isoDateMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+  if (isoDateMatch) {
+    const year = Number(isoDateMatch[1]);
+    const month = Number(isoDateMatch[2]);
+    const day = Number(isoDateMatch[3]);
+    if (
+      Number.isFinite(year) &&
+      Number.isFinite(month) &&
+      Number.isFinite(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= 31
+    ) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+    return null;
+  }
+
+  const usDateMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T\s].*)?$/);
+  if (usDateMatch) {
+    const month = Number(usDateMatch[1]);
+    const day = Number(usDateMatch[2]);
+    const year = Number(usDateMatch[3]);
+    if (
+      Number.isFinite(year) &&
+      Number.isFinite(month) &&
+      Number.isFinite(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= 31
+    ) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+    return null;
+  }
+
   const ms = Date.parse(raw);
   if (Number.isNaN(ms)) return null;
   return new Date(ms);
