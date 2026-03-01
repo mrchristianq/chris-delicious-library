@@ -712,7 +712,7 @@ function parseTagValues(raw?: string): string[] {
 const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
 const ABANDONED_STATUS_VALUES = new Set(["abandoned", "dropped", "drop", "quit", "dnf"]);
 const NOW_PLAYING_GAME_STATUS_VALUES = new Set(["now playing"]);
-const NOW_PLAYING_TV_STATUS_VALUES = new Set(["currently watching"]);
+const NOW_PLAYING_TV_STATUS_VALUES = new Set(["currently watching", "watching"]);
 const NOW_PLAYING_MOVIE_STATUS_VALUES = new Set(["watching"]);
 const NOW_PLAYING_BOOK_STATUS_VALUES = new Set(["reading"]);
 const PLAY_NEXT_STATUS_VALUES = new Set(["queued", "replay"]);
@@ -11329,13 +11329,15 @@ export default function Page() {
 	                        alignItems: "center",
 	                        justifyContent: "center",
 	                        fontSize: sidebarFontSize,
-	                        fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-	                        background:
-	                          isBlueSidebarTheme
-	                            ? "rgba(117, 90, 34, 0.95)"
-	                            : sidebarTheme === "winterGray"
-	                              ? currentTheme.countBubbleColor
-	                              : "#333",
+                        fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        background:
+                          isBlueSidebarTheme
+                            ? isElectricBlueSidebarTheme
+                              ? "rgba(64, 219, 255, 0.94)"
+                              : "rgba(92, 118, 164, 0.95)"
+                            : sidebarTheme === "winterGray"
+                              ? currentTheme.countBubbleColor
+                              : "#333",
 	                        color: "#fff",
 	                      }}
 	                    >
