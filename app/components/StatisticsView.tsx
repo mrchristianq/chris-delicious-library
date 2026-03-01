@@ -537,7 +537,7 @@ function formatMonthFromKey(key: string): string {
   const year = Number(yearStr);
   const month = Number(monthStr);
   if (!Number.isFinite(year) || !Number.isFinite(month)) return key;
-  const stamp = new Date(Date.UTC(year, month - 1, 1));
+  const stamp = new Date(year, month - 1, 1);
   return `${monthLabelFormatter.format(stamp)} '${String(year).slice(-2)}`;
 }
 
@@ -548,7 +548,7 @@ function getMonthPartsFromKey(key: string): { month: string; year: string } {
   if (!Number.isFinite(year) || !Number.isFinite(month)) {
     return { month: key, year: "" };
   }
-  const stamp = new Date(Date.UTC(year, month - 1, 1));
+  const stamp = new Date(year, month - 1, 1);
   return {
     month: monthLabelFormatter.format(stamp),
     year: `'${String(year).slice(-2)}`,
