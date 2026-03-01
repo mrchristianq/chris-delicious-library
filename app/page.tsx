@@ -393,6 +393,9 @@ const WISHLIST_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:wishlist";
 const READ_NEXT_SORT_FIELD_SETTING_KEY = "viewSortField:wishlist-books";
 const READ_NEXT_SORT_ORDER_SETTING_KEY = "viewSortOrder:wishlist-books";
 const READ_NEXT_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:wishlist-books";
+const NOW_PLAYING_SORT_FIELD_SETTING_KEY = "viewSortField:now-playing";
+const NOW_PLAYING_SORT_ORDER_SETTING_KEY = "viewSortOrder:now-playing";
+const NOW_PLAYING_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:now-playing";
 const PLAY_NEXT_SORT_FIELD_SETTING_KEY = "viewSortField:play-next";
 const PLAY_NEXT_SORT_ORDER_SETTING_KEY = "viewSortOrder:play-next";
 const PLAY_NEXT_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:play-next";
@@ -708,6 +711,10 @@ function parseTagValues(raw?: string): string[] {
 
 const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
 const ABANDONED_STATUS_VALUES = new Set(["abandoned", "dropped", "drop", "quit", "dnf"]);
+const NOW_PLAYING_GAME_STATUS_VALUES = new Set(["now playing"]);
+const NOW_PLAYING_TV_STATUS_VALUES = new Set(["currently watching"]);
+const NOW_PLAYING_MOVIE_STATUS_VALUES = new Set(["watching"]);
+const NOW_PLAYING_BOOK_STATUS_VALUES = new Set(["reading"]);
 const PLAY_NEXT_STATUS_VALUES = new Set(["queued", "replay"]);
 
 function isMovieWatchedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
@@ -1474,7 +1481,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
 type LibraryNavKey = Exclude<NavKey, "statistics">;
 
 function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
@@ -1678,6 +1685,7 @@ export default function Page() {
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
   const [wishlistManualOrderKeys, setWishlistManualOrderKeys] = useState<string[]>([]);
   const [readNextManualOrderKeys, setReadNextManualOrderKeys] = useState<string[]>([]);
+  const [nowPlayingManualOrderKeys, setNowPlayingManualOrderKeys] = useState<string[]>([]);
   const [playNextManualOrderKeys, setPlayNextManualOrderKeys] = useState<string[]>([]);
   const [watchlistMoviesManualOrderKeys, setWatchlistMoviesManualOrderKeys] = useState<string[]>([]);
   const [watchlistTvManualOrderKeys, setWatchlistTvManualOrderKeys] = useState<string[]>([]);
@@ -4552,6 +4560,7 @@ export default function Page() {
   useEffect(() => {
     if (
       nav !== "wishlist" &&
+      nav !== "now-playing" &&
       nav !== "play-next" &&
       nav !== "wishlist-books" &&
       nav !== "watchlist-movies" &&
@@ -4570,6 +4579,12 @@ export default function Page() {
       sortFieldSettingKey = WISHLIST_SORT_FIELD_SETTING_KEY;
       sortOrderSettingKey = WISHLIST_SORT_ORDER_SETTING_KEY;
       manualSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
+    } else if (nav === "now-playing") {
+      sortFieldSettingKey = NOW_PLAYING_SORT_FIELD_SETTING_KEY;
+      sortOrderSettingKey = NOW_PLAYING_SORT_ORDER_SETTING_KEY;
+      manualSettingKey = NOW_PLAYING_MANUAL_ORDER_SETTING_KEY;
+      fallbackSortField = MANUAL_SORT_FIELD;
+      fallbackSortOrder = "Asc";
     } else if (nav === "wishlist-books") {
       sortFieldSettingKey = READ_NEXT_SORT_FIELD_SETTING_KEY;
       sortOrderSettingKey = READ_NEXT_SORT_ORDER_SETTING_KEY;
@@ -4617,7 +4632,9 @@ export default function Page() {
         const normalized = parsed
           .map((entry) => safeStr(entry))
           .filter(Boolean);
-        if (nav === "play-next") {
+        if (nav === "now-playing") {
+          setNowPlayingManualOrderKeys(normalized);
+        } else if (nav === "play-next") {
           setPlayNextManualOrderKeys(normalized);
         } else if (nav === "wishlist-books") {
           setReadNextManualOrderKeys(normalized);
@@ -4631,7 +4648,9 @@ export default function Page() {
       }
     } catch (error) {
       const label =
-        nav === "play-next"
+        nav === "now-playing"
+          ? "now-playing"
+          : nav === "play-next"
           ? "play-next"
           : nav === "wishlist-books"
             ? "wishlist-books"
@@ -4667,6 +4686,7 @@ export default function Page() {
     const smartListSupportsManualSort = nav === "smart-custom" && Boolean(activeSmartList?.allowManualSort);
     if (
       nav === "wishlist" ||
+      nav === "now-playing" ||
       nav === "wishlist-books" ||
       nav === "play-next" ||
       nav === "watchlist-movies" ||
@@ -5655,6 +5675,84 @@ export default function Page() {
 
     return ordered;
   }, [wishlistFallbackOrderKeys, wishlistItemsByKey, wishlistManualOrderKeys]);
+
+  const nowPlayingItems = useMemo(
+    () =>
+      [
+        ...indexedBooks
+          .filter((book) => NOW_PLAYING_BOOK_STATUS_VALUES.has(normalizeStatusToken(book.statusNorm)))
+          .map((book) => ({ ...book.item, __type: "book" } as Book & { __type: "book" })),
+        ...indexedShows
+          .filter((show) =>
+            NOW_PLAYING_TV_STATUS_VALUES.has(
+              normalizeStatusToken(show.item.watchStatus || show.item.watched || show.item.showStatus)
+            )
+          )
+          .map((show) => ({ ...show.item, __type: "tv" } as Show & { __type: "tv" })),
+        ...indexedMovies
+          .filter((movie) =>
+            NOW_PLAYING_MOVIE_STATUS_VALUES.has(
+              normalizeStatusToken(
+                movie.item.watchStatus || movie.item.watched || movie.item.status || movie.item.movieStatus
+              )
+            )
+          )
+          .map((movie) => ({ ...movie.item, __type: "movie" } as Movie & { __type: "movie" })),
+        ...indexedGames
+          .filter((game) =>
+            NOW_PLAYING_GAME_STATUS_VALUES.has(
+              normalizeStatusToken(game.item.status || game.item.playStatus || game.item.gameStatus)
+            )
+          )
+          .map((game) => ({ ...game.item, __type: "game" } as Game & { __type: "game" })),
+      ] as Array<
+        | (Book & { __type: "book" })
+        | (Show & { __type: "tv" })
+        | (Movie & { __type: "movie" })
+        | (Game & { __type: "game" })
+      >,
+    [indexedBooks, indexedGames, indexedMovies, indexedShows]
+  );
+
+  const nowPlayingItemsByKey = useMemo(() => {
+    const map = new Map<
+      string,
+      | (Book & { __type: "book" })
+      | (Show & { __type: "tv" })
+      | (Movie & { __type: "movie" })
+      | (Game & { __type: "game" })
+    >();
+    nowPlayingItems.forEach((item) => {
+      map.set(getMediaItemKey(item), item);
+    });
+    return map;
+  }, [nowPlayingItems]);
+
+  const nowPlayingFallbackOrderKeys = useMemo(() => {
+    const sorted = [...nowPlayingItems].sort((a, b) => safeStr(a.title).localeCompare(safeStr(b.title)));
+    return sorted.map((item) => getMediaItemKey(item));
+  }, [nowPlayingItems]);
+
+  const resolvedNowPlayingManualOrderKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    nowPlayingManualOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!nowPlayingItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    nowPlayingFallbackOrderKeys.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (!nowPlayingItemsByKey.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+
+    return ordered;
+  }, [nowPlayingFallbackOrderKeys, nowPlayingItemsByKey, nowPlayingManualOrderKeys]);
 
   const playNextItems = useMemo(
     () =>
@@ -7286,6 +7384,26 @@ export default function Page() {
       return queryFiltered as any[];
     }
 
+    // Now Playing: mixed media with active "now playing" statuses
+    if (nav === "now-playing") {
+      const ordered =
+        sortField === MANUAL_SORT_FIELD
+          ? resolvedNowPlayingManualOrderKeys
+              .map((key) => nowPlayingItemsByKey.get(key))
+              .filter(Boolean) as Array<
+                | (Book & { __type: "book" })
+                | (Show & { __type: "tv" })
+                | (Movie & { __type: "movie" })
+                | (Game & { __type: "game" })
+              >
+          : applySorting(nowPlayingItems, sortField, sortOrder);
+
+      const queryFiltered = q
+        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : ordered;
+      return queryFiltered as any[];
+    }
+
     // Play Next: games with status "Queued" or "Replay"
     if (nav === "play-next") {
       const ordered =
@@ -7745,7 +7863,7 @@ export default function Page() {
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    activeSmartList, deferredQuery, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
+    activeSmartList, deferredQuery, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
   const watchlistTvSectionByVisibleKey = useMemo(() => {
@@ -7775,7 +7893,7 @@ export default function Page() {
 
   const persistBacklogSortSettings = useCallback(
     (
-      view: "wishlist" | "wishlist-books" | "play-next" | "watchlist-movies" | "watchlist-tv",
+      view: "wishlist" | "now-playing" | "wishlist-books" | "play-next" | "watchlist-movies" | "watchlist-tv",
       field: string,
       order: "Asc" | "Desc"
     ) => {
@@ -7783,7 +7901,11 @@ export default function Page() {
       let sortOrderKey = WISHLIST_SORT_ORDER_SETTING_KEY;
       let descriptionPrefix = "Wishlist (Backlog)";
 
-      if (view === "play-next") {
+      if (view === "now-playing") {
+        sortFieldKey = NOW_PLAYING_SORT_FIELD_SETTING_KEY;
+        sortOrderKey = NOW_PLAYING_SORT_ORDER_SETTING_KEY;
+        descriptionPrefix = "Now Playing (Backlog)";
+      } else if (view === "play-next") {
         sortFieldKey = PLAY_NEXT_SORT_FIELD_SETTING_KEY;
         sortOrderKey = PLAY_NEXT_SORT_ORDER_SETTING_KEY;
         descriptionPrefix = "Play Next (Backlog)";
@@ -7899,6 +8021,7 @@ export default function Page() {
       }
 
       const backlogView =
+        nav === "now-playing" ||
         nav === "play-next" ||
         nav === "wishlist" ||
         nav === "wishlist-books" ||
@@ -7918,7 +8041,11 @@ export default function Page() {
       let manualOrderKeys: string[] = resolvedWishlistManualOrderKeys;
       let manualOrderSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
       let descriptionPrefix = "Wishlist (Backlog)";
-      if (backlogView === "play-next") {
+      if (backlogView === "now-playing") {
+        manualOrderKeys = resolvedNowPlayingManualOrderKeys;
+        manualOrderSettingKey = NOW_PLAYING_MANUAL_ORDER_SETTING_KEY;
+        descriptionPrefix = "Now Playing (Backlog)";
+      } else if (backlogView === "play-next") {
         manualOrderKeys = resolvedPlayNextManualOrderKeys;
         manualOrderSettingKey = PLAY_NEXT_MANUAL_ORDER_SETTING_KEY;
         descriptionPrefix = "Play Next (Backlog)";
@@ -7950,6 +8077,7 @@ export default function Page() {
       nav,
       persistBacklogSortSettings,
       persistStandardViewSortSettings,
+      resolvedNowPlayingManualOrderKeys,
       resolvedPlayNextManualOrderKeys,
       resolvedReadNextManualOrderKeys,
       resolvedWatchlistMovieManualOrderKeys,
@@ -7970,6 +8098,7 @@ export default function Page() {
         return;
       }
       const backlogView =
+        nav === "now-playing" ||
         nav === "play-next" ||
         nav === "wishlist" ||
         nav === "wishlist-books" ||
@@ -7990,11 +8119,13 @@ export default function Page() {
 
   const persistBacklogManualOrder = useCallback(
     async (
-      view: "wishlist" | "wishlist-books" | "play-next" | "watchlist-movies" | "watchlist-tv",
+      view: "wishlist" | "now-playing" | "wishlist-books" | "play-next" | "watchlist-movies" | "watchlist-tv",
       nextKeys: string[]
     ) => {
       const activeItemsByKey =
-        view === "play-next"
+        view === "now-playing"
+          ? nowPlayingItemsByKey
+          : view === "play-next"
           ? playNextItemsByKey
           : view === "wishlist-books"
             ? wishlistBookItemsByKey
@@ -8013,6 +8144,8 @@ export default function Page() {
 
       if (view === "play-next") {
         setPlayNextManualOrderKeys(normalizedKeys);
+      } else if (view === "now-playing") {
+        setNowPlayingManualOrderKeys(normalizedKeys);
       } else if (view === "wishlist-books") {
         setReadNextManualOrderKeys(normalizedKeys);
       } else if (view === "watchlist-movies") {
@@ -8028,7 +8161,10 @@ export default function Page() {
 
       let manualOrderSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
       let manualOrderDescription = "Manual order keys for Wishlist (Backlog) view";
-      if (view === "play-next") {
+      if (view === "now-playing") {
+        manualOrderSettingKey = NOW_PLAYING_MANUAL_ORDER_SETTING_KEY;
+        manualOrderDescription = "Manual order keys for Now Playing (Backlog) view";
+      } else if (view === "play-next") {
         manualOrderSettingKey = PLAY_NEXT_MANUAL_ORDER_SETTING_KEY;
         manualOrderDescription = "Manual order keys for Play Next (Backlog) view";
       } else if (view === "wishlist-books") {
@@ -8120,6 +8256,7 @@ export default function Page() {
     },
     [
       gamesWriteUrl,
+      nowPlayingItemsByKey,
       persistBacklogSortSettings,
       playNextItemsByKey,
       postSheetWrite,
@@ -8134,6 +8271,7 @@ export default function Page() {
   const wishlistVisibleKeys = useMemo(() => {
     if (
       nav !== "wishlist" &&
+      nav !== "now-playing" &&
       nav !== "wishlist-books" &&
       nav !== "play-next" &&
       nav !== "watchlist-movies" &&
@@ -8182,6 +8320,7 @@ export default function Page() {
       if (sortField === MANUAL_SORT_FIELD) return;
 
       const backlogView =
+        nav === "now-playing" ||
         nav === "play-next" ||
         nav === "wishlist" ||
         nav === "wishlist-books" ||
@@ -8206,7 +8345,9 @@ export default function Page() {
 
       if (!backlogView) return;
       const sourceItems =
-        backlogView === "play-next"
+        backlogView === "now-playing"
+          ? nowPlayingItems
+          : backlogView === "play-next"
           ? playNextItems
           : backlogView === "wishlist-books"
             ? wishlistBookItems
@@ -8218,7 +8359,9 @@ export default function Page() {
       const sortedBacklogItems = applySorting(sourceItems as any[], sortField, sortOrder);
       const nextKeys = sortedBacklogItems.map((item) => getMediaItemKey(item));
       wishlistDragLatestOrderRef.current = nextKeys;
-      if (backlogView === "play-next") {
+      if (backlogView === "now-playing") {
+        setNowPlayingManualOrderKeys(nextKeys);
+      } else if (backlogView === "play-next") {
         setPlayNextManualOrderKeys(nextKeys);
       } else if (backlogView === "wishlist-books") {
         setReadNextManualOrderKeys(nextKeys);
@@ -8237,6 +8380,7 @@ export default function Page() {
       applySorting,
       manualSortableSmartListId,
       nav,
+      nowPlayingItems,
       persistBacklogSortSettings,
       playNextItems,
       sortField,
@@ -8254,6 +8398,7 @@ export default function Page() {
       if (!dragKey || !targetKey || dragKey === targetKey) return;
 
       const backlogView =
+        nav === "now-playing" ||
         nav === "play-next" ||
         nav === "wishlist" ||
         nav === "wishlist-books" ||
@@ -8303,7 +8448,9 @@ export default function Page() {
       if (!backlogView) return;
 
       const activeItemsByKey =
-        backlogView === "play-next"
+        backlogView === "now-playing"
+          ? nowPlayingItemsByKey
+          : backlogView === "play-next"
           ? playNextItemsByKey
           : backlogView === "wishlist-books"
             ? wishlistBookItemsByKey
@@ -8313,7 +8460,9 @@ export default function Page() {
               ? watchlistTvItemsByKey
               : wishlistItemsByKey;
       const activeResolvedKeys =
-        backlogView === "play-next"
+        backlogView === "now-playing"
+          ? resolvedNowPlayingManualOrderKeys
+          : backlogView === "play-next"
           ? resolvedPlayNextManualOrderKeys
           : backlogView === "wishlist-books"
             ? resolvedReadNextManualOrderKeys
@@ -8337,7 +8486,9 @@ export default function Page() {
       const baseOrder =
         wishlistDragLatestOrderRef.current && wishlistDragLatestOrderRef.current.length
           ? wishlistDragLatestOrderRef.current
-          : backlogView === "play-next"
+          : backlogView === "now-playing"
+            ? (nowPlayingManualOrderKeys.length ? nowPlayingManualOrderKeys : resolvedNowPlayingManualOrderKeys)
+            : backlogView === "play-next"
             ? (playNextManualOrderKeys.length ? playNextManualOrderKeys : resolvedPlayNextManualOrderKeys)
             : backlogView === "wishlist-books"
               ? (readNextManualOrderKeys.length ? readNextManualOrderKeys : resolvedReadNextManualOrderKeys)
@@ -8349,7 +8500,9 @@ export default function Page() {
       const nextOrder = applyReorder(baseOrder);
       if (areStringArraysEqual(nextOrder, baseOrder)) return;
       wishlistDragLatestOrderRef.current = nextOrder;
-      if (backlogView === "play-next") {
+      if (backlogView === "now-playing") {
+        setNowPlayingManualOrderKeys(nextOrder);
+      } else if (backlogView === "play-next") {
         setPlayNextManualOrderKeys(nextOrder);
       } else if (backlogView === "wishlist-books") {
         setReadNextManualOrderKeys(nextOrder);
@@ -8364,9 +8517,12 @@ export default function Page() {
     [
       manualSortableSmartListId,
       nav,
+      nowPlayingItemsByKey,
+      nowPlayingManualOrderKeys,
       playNextManualOrderKeys,
       playNextItemsByKey,
       readNextManualOrderKeys,
+      resolvedNowPlayingManualOrderKeys,
       resolvedPlayNextManualOrderKeys,
       resolvedReadNextManualOrderKeys,
       resolvedWatchlistMovieManualOrderKeys,
@@ -8503,6 +8659,7 @@ export default function Page() {
       setDraggingWishlistKey(null);
 
       const backlogView =
+        nav === "now-playing" ||
         nav === "play-next" ||
         nav === "wishlist" ||
         nav === "wishlist-books" ||
@@ -8522,7 +8679,9 @@ export default function Page() {
         const finalOrder =
           latestDragOrder && latestDragOrder.length
             ? latestDragOrder
-            : backlogView === "play-next"
+            : backlogView === "now-playing"
+              ? (nowPlayingManualOrderKeys.length ? nowPlayingManualOrderKeys : resolvedNowPlayingManualOrderKeys)
+              : backlogView === "play-next"
               ? (playNextManualOrderKeys.length ? playNextManualOrderKeys : resolvedPlayNextManualOrderKeys)
               : backlogView === "wishlist-books"
                 ? (readNextManualOrderKeys.length ? readNextManualOrderKeys : resolvedReadNextManualOrderKeys)
@@ -8544,10 +8703,12 @@ export default function Page() {
     [
       manualSortableSmartListId,
       nav,
+      nowPlayingManualOrderKeys,
       persistBacklogManualOrder,
       persistSmartListManualOrder,
       playNextManualOrderKeys,
       readNextManualOrderKeys,
+      resolvedNowPlayingManualOrderKeys,
       resolvedPlayNextManualOrderKeys,
       resolvedReadNextManualOrderKeys,
       resolvedWatchlistMovieManualOrderKeys,
@@ -8565,6 +8726,7 @@ export default function Page() {
     (event: React.PointerEvent<HTMLDivElement>, itemKey: string) => {
       if (
         nav !== "wishlist" &&
+        nav !== "now-playing" &&
         nav !== "wishlist-books" &&
         nav !== "play-next" &&
         nav !== "watchlist-movies" &&
@@ -8720,6 +8882,19 @@ export default function Page() {
       const isBacklog = normalizeStatus(b.status) === "backlog";
       return isWishlist || isBacklog;
     }).length;
+    const nowPlayingItemsCount =
+      allBooks.filter((b) => NOW_PLAYING_BOOK_STATUS_VALUES.has(normalizeStatus(b.status))).length +
+      allShows.filter((s) =>
+        NOW_PLAYING_TV_STATUS_VALUES.has(normalizeStatus(s.watchStatus || s.watched || s.showStatus))
+      ).length +
+      allMovies.filter((m) =>
+        NOW_PLAYING_MOVIE_STATUS_VALUES.has(
+          normalizeStatus(m.watchStatus || m.watched || m.status || m.movieStatus)
+        )
+      ).length +
+      allGames.filter((g) =>
+        NOW_PLAYING_GAME_STATUS_VALUES.has(normalizeStatus(g.status || g.playStatus || g.gameStatus))
+      ).length;
     const playNextGames = allGames.filter((g) =>
       PLAY_NEXT_STATUS_VALUES.has(normalizeStatus(g.status || g.playStatus || g.gameStatus))
     ).length;
@@ -8735,6 +8910,7 @@ export default function Page() {
       tv: allShows.filter((s) => normalizeStatus(s.watchStatus) !== "backlog").length,
       books: allBooks.filter((b) => hasOwnedOwnership(b.ownership)).length,
       games: allGames.filter((g) => !hasWishlistOwnership(g.ownership)).length,
+      nowPlaying: nowPlayingItemsCount,
       playNext: playNextGames,
       wishlistBooks,
       wishlist: wishlistGames,
@@ -8923,6 +9099,7 @@ export default function Page() {
     { key: "games", label: "Games", count: stats.games },
   ];
   const mobileBacklogMenuItems: Array<{ key: NavKey; label: string; count?: number }> = [
+    { key: "now-playing", label: "Now Playing", count: stats.nowPlaying },
     { key: "play-next", label: "Play Next", count: stats.playNext },
     { key: "wishlist-books", label: "Read Next", count: stats.wishlistBooks },
     { key: "watchlist-movies", label: "Watchlist Movies", count: stats.watchlistMovies },
@@ -11107,10 +11284,71 @@ export default function Page() {
                   <span />
                 </div>
 
-                <button
-                  onClick={() => {
-                    setNav("play-next");
-                    setOpenSection((s) => (s === "play-next" ? null : "play-next"));
+	                <button
+	                  onClick={() => {
+	                    setNav("now-playing");
+	                    setOpenSection((s) => (s === "now-playing" ? null : "now-playing"));
+	                  }}
+	                  className={`sideItem ${nav === "now-playing" ? "active" : ""}`}
+	                  style={{
+	                    width: "100%",
+	                    textAlign: "left",
+	                    display: "flex",
+	                    alignItems: "center",
+	                    justifyContent: "space-between",
+	                    gap: 8,
+	                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+	                  }}
+	                >
+	                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+	                    <span
+	                      aria-hidden
+	                      style={{
+	                        width: 18,
+	                        height: 14,
+	                        borderRadius: 4,
+	                        background: nav === "now-playing" ? "rgba(0,0,0,0.05)" : "transparent",
+	                        display: "inline-flex",
+	                        alignItems: "center",
+	                        justifyContent: "center",
+	                        flex: "0 0 auto",
+	                        overflow: "visible",
+	                      }}
+	                    >
+	                      <img src={getSidebarIconSrc("now-playing", "/icon-current.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "now-playing")} title={uploadingSidebarIconKey === "now-playing" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
+	                    </span>
+	                    Now Playing
+	                  </span>
+	                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+	                    <span
+	                      style={{
+	                        width: 38,
+	                        height: 18,
+	                        borderRadius: 999,
+	                        display: "inline-flex",
+	                        alignItems: "center",
+	                        justifyContent: "center",
+	                        fontSize: sidebarFontSize,
+	                        fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+	                        background:
+	                          isBlueSidebarTheme
+	                            ? "rgba(117, 90, 34, 0.95)"
+	                            : sidebarTheme === "winterGray"
+	                              ? currentTheme.countBubbleColor
+	                              : "#333",
+	                        color: "#fff",
+	                      }}
+	                    >
+	                      {stats.nowPlaying}
+	                    </span>
+	                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+	                  </span>
+	                </button>
+
+	                <button
+	                  onClick={() => {
+	                    setNav("play-next");
+	                    setOpenSection((s) => (s === "play-next" ? null : "play-next"));
                   }}
                   className={`sideItem ${nav === "play-next" ? "active" : ""}`}
                   style={{
@@ -13448,14 +13686,14 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-                  {(nav === "home" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      {nav === "wishlist" || nav === "play-next" ? <option value="CompletedDate">Date Completed</option> : null}
-                      {nav === "wishlist" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
-                    </>
-	                  )}
+	                  {(nav === "home" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
+	                    <>
+	                      <option value="Title">Title</option>
+	                      <option value="ReleaseDate">Release Date</option>
+	                      {nav === "wishlist" || nav === "play-next" ? <option value="CompletedDate">Date Completed</option> : null}
+	                      {nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
+	                    </>
+		                  )}
 	                </select>
 	              </label>
 	              <label
@@ -13472,7 +13710,7 @@ export default function Page() {
 	                <select
 	                  value={sortOrder}
                   onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
-                  disabled={(nav === "wishlist" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
+	                  disabled={(nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
 	                  style={{
 	                    width: "100%",
 	                    padding: "9px 10px",
@@ -14967,6 +15205,7 @@ export default function Page() {
                           : null;
                       const isWishlistCase =
                         nav === "wishlist" ||
+                        nav === "now-playing" ||
                         nav === "wishlist-books" ||
                         nav === "play-next" ||
                         nav === "watchlist-movies" ||
