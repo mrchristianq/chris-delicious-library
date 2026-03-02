@@ -896,11 +896,24 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const mappedGames: UnifiedStatsItem[] = games.map((game) => {
       const title = safeText(game.title) || "Untitled Game";
       const releaseDate = parseDateValue(game.releaseDate) || parseDateValue(game.releaseDateAlt);
-      const completionDate = parseDateValue(game.dateCompleted) || parseDateValue(game.yearPlayed);
+      const dateAdded = parseDateValue(game.dateAdded);
+      const yearPlayedDate = parseDateValue(game.yearPlayed);
+      const explicitCompletionDate = parseDateValue(game.dateCompleted);
+      const gameStatusRaw = firstNonEmpty([game.status, game.playStatus, game.gameStatus, game.completed]);
+      const primaryStatusToken = normalizeToken(gameStatusRaw);
+      const statusIndicatesCompleted =
+        primaryStatusToken === "completed" ||
+        primaryStatusToken === "finished" ||
+        primaryStatusToken === "done" ||
+        primaryStatusToken === "beat" ||
+        primaryStatusToken === "beaten";
+      const completionDate =
+        explicitCompletionDate ||
+        (statusIndicatesCompleted || isTruthyToken(game.completed) ? yearPlayedDate : null);
       const activityDate =
-        parseDateValue(game.dateAdded) ||
+        dateAdded ||
         completionDate ||
-        parseDateValue(game.yearPlayed) ||
+        yearPlayedDate ||
         releaseDate;
       const rating = parseRatingValue(game.myRating, "ten");
       const externalRating = parseRatingValue(firstNonEmpty([game.igdbRating, game.rating]));
@@ -908,10 +921,9 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const platforms = splitList(game.platform);
       const formats = splitList(game.format);
       const tags = [...splitList(game.tag), ...splitList(game.tags), ...splitList(game.yearPlayed)];
-      const gameStatusRaw = firstNonEmpty([game.status, game.playStatus, game.gameStatus, game.completed]);
-      const completionHint = isTruthyToken(game.completed) || Boolean(completionDate);
+      const completionHint =
+        isTruthyToken(game.completed) || Boolean(explicitCompletionDate) || statusIndicatesCompleted;
       const statusBucket = inferStatusBucket(gameStatusRaw, completionHint);
-      const primaryStatusToken = normalizeToken(gameStatusRaw);
       const platformRaw = firstNonEmpty([game.platform, game.platforms]);
       const coverUrl = resolveCoverUrl(
         "game",
