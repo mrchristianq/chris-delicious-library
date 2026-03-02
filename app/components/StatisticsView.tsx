@@ -394,6 +394,14 @@ function formatPersonalRatingDisplay(
   return `${(Math.round(item.rating * 10) / 10).toFixed(1)}/10`;
 }
 
+function getComparablePersonalRating(item: Pick<UnifiedStatsItem, "mediaType" | "rating"> | null | undefined): number {
+  if (!item || typeof item.rating !== "number" || !Number.isFinite(item.rating) || item.rating <= 0) return 0;
+  if (item.mediaType === "book" && item.rating <= 5) {
+    return item.rating * 2;
+  }
+  return item.rating;
+}
+
 function formatDetailDate(value: Date | null): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat("en-US", {
@@ -709,8 +717,8 @@ function compareRankedItems(
   b: UnifiedStatsItem,
   scoreKey: "rating" | "externalRating"
 ): number {
-  const aScore = a[scoreKey] || 0;
-  const bScore = b[scoreKey] || 0;
+  const aScore = scoreKey === "rating" ? getComparablePersonalRating(a) : a[scoreKey] || 0;
+  const bScore = scoreKey === "rating" ? getComparablePersonalRating(b) : b[scoreKey] || 0;
   const scoreDelta = bScore - aScore;
   if (scoreDelta !== 0) return scoreDelta;
 
@@ -1438,7 +1446,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
     const topRatedItems = [...ratedYearItems]
       .sort((a, b) => {
-        const ratingDelta = (b.rating || 0) - (a.rating || 0);
+        const ratingDelta = getComparablePersonalRating(b) - getComparablePersonalRating(a);
         if (ratingDelta !== 0) return ratingDelta;
         const aDate = a.completionDate?.getTime() || 0;
         const bDate = b.completionDate?.getTime() || 0;
@@ -1449,7 +1457,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const topRated = topRatedItems[0] || null;
     const lowestRated = [...ratedYearItems]
       .sort((a, b) => {
-        const ratingDelta = (a.rating || 0) - (b.rating || 0);
+        const ratingDelta = getComparablePersonalRating(a) - getComparablePersonalRating(b);
         if (ratingDelta !== 0) return ratingDelta;
         const aDate = a.completionDate?.getTime() || 0;
         const bDate = b.completionDate?.getTime() || 0;
@@ -2086,7 +2094,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       title: "Top Rated Pick",
                       value: formatPersonalRatingDisplay(yearReview.topRated),
                       summary: "Highest-rated item in the selected review year.",
-                      calculation: "Sort rated year items by rating desc, then date desc, then title; pick first.",
+                      calculation: "Sort rated year items by normalized rating desc (books mapped from /5 to /10), then date desc, then title; pick first.",
                       items: yearReview.topRated ? [yearReview.topRated] : [],
                     })
                   }
@@ -2097,7 +2105,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                         title: "Top Rated Pick",
                         value: formatPersonalRatingDisplay(yearReview.topRated),
                         summary: "Highest-rated item in the selected review year.",
-                        calculation: "Sort rated year items by rating desc, then date desc, then title; pick first.",
+                        calculation: "Sort rated year items by normalized rating desc (books mapped from /5 to /10), then date desc, then title; pick first.",
                         items: yearReview.topRated ? [yearReview.topRated] : [],
                       })
                     )
@@ -2239,7 +2247,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       title: "Lowest Rated Item",
                       value: formatPersonalRatingDisplay(yearReview.lowestRated),
                       summary: "Lowest-rated item in the selected review year.",
-                      calculation: "Sort rated year items by rating asc, then date desc, then title; pick first.",
+                      calculation: "Sort rated year items by normalized rating asc (books mapped from /5 to /10), then date desc, then title; pick first.",
                       items: yearReview.lowestRated ? [yearReview.lowestRated] : [],
                     })
                   }
@@ -2250,7 +2258,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                         title: "Lowest Rated Item",
                         value: formatPersonalRatingDisplay(yearReview.lowestRated),
                         summary: "Lowest-rated item in the selected review year.",
-                        calculation: "Sort rated year items by rating asc, then date desc, then title; pick first.",
+                        calculation: "Sort rated year items by normalized rating asc (books mapped from /5 to /10), then date desc, then title; pick first.",
                         items: yearReview.lowestRated ? [yearReview.lowestRated] : [],
                       })
                     )
@@ -2284,7 +2292,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                   title: `Top 20 Rated in ${selectedReviewYear}`,
                   value: `${yearReview.topRatedItems.length}`,
                   summary: "Top-rated items in the selected review year using personal rating.",
-                  calculation: "Sort rated year items by rating desc, then date desc, then title; take top 20.",
+                  calculation: "Sort rated year items by normalized rating desc (books mapped from /5 to /10), then date desc, then title; take top 20.",
                   items: yearReview.topRatedItems,
                 })
               }
@@ -2295,7 +2303,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     title: `Top 20 Rated in ${selectedReviewYear}`,
                     value: `${yearReview.topRatedItems.length}`,
                     summary: "Top-rated items in the selected review year using personal rating.",
-                    calculation: "Sort rated year items by rating desc, then date desc, then title; take top 20.",
+                    calculation: "Sort rated year items by normalized rating desc (books mapped from /5 to /10), then date desc, then title; take top 20.",
                     items: yearReview.topRatedItems,
                   })
                 )
