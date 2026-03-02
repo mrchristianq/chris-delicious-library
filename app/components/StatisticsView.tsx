@@ -383,6 +383,17 @@ function formatStarRowFive(valueOutOfFive: number): string {
   return `${"★".repeat(filled)}${"☆".repeat(empty)}`;
 }
 
+function formatPersonalRatingDisplay(
+  item: Pick<UnifiedStatsItem, "mediaType" | "rating"> | null | undefined
+): string {
+  if (!item || typeof item.rating !== "number" || !Number.isFinite(item.rating) || item.rating <= 0) return "-";
+  if (item.mediaType === "book") {
+    const valueOutOfFive = item.rating > 5 ? item.rating / 2 : item.rating;
+    return `${(Math.round(valueOutOfFive * 10) / 10).toFixed(1)}/5`;
+  }
+  return `${(Math.round(item.rating * 10) / 10).toFixed(1)}/10`;
+}
+
 function formatDetailDate(value: Date | null): string {
   if (!value) return "-";
   return new Intl.DateTimeFormat("en-US", {
@@ -774,13 +785,14 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         "book",
         title,
         [
+          // Prefer concrete metadata/poster candidates first; local GitHub fallback last.
+          book.metadataCoverUrl,
+          book.posterUrl,
+          book.posterUrlFallback,
           book.customImageUrl,
+          book.imageUrl,
           book.cover,
           book.githubCoverUrl,
-          book.posterUrl,
-          book.metadataCoverUrl,
-          book.imageUrl,
-          book.posterUrlFallback,
         ],
         coverOverrides
       );
@@ -2060,7 +2072,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Top Rated Pick</h2>
-                <span>{yearReview.topRated?.rating ? `${yearReview.topRated.rating.toFixed(1)}/10` : "-"}</span>
+                <span>{formatPersonalRatingDisplay(yearReview.topRated)}</span>
               </div>
               {yearReview.topRated ? (
                 <div
@@ -2072,7 +2084,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     openStatisticDetail({
                       id: `YR_${selectedReviewYear}_TOP_RATED_PICK`,
                       title: "Top Rated Pick",
-                      value: yearReview.topRated?.rating ? `${yearReview.topRated.rating.toFixed(1)}/10` : "-",
+                      value: formatPersonalRatingDisplay(yearReview.topRated),
                       summary: "Highest-rated item in the selected review year.",
                       calculation: "Sort rated year items by rating desc, then date desc, then title; pick first.",
                       items: yearReview.topRated ? [yearReview.topRated] : [],
@@ -2083,7 +2095,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       openStatisticDetail({
                         id: `YR_${selectedReviewYear}_TOP_RATED_PICK`,
                         title: "Top Rated Pick",
-                        value: yearReview.topRated?.rating ? `${yearReview.topRated.rating.toFixed(1)}/10` : "-",
+                        value: formatPersonalRatingDisplay(yearReview.topRated),
                         summary: "Highest-rated item in the selected review year.",
                         calculation: "Sort rated year items by rating desc, then date desc, then title; pick first.",
                         items: yearReview.topRated ? [yearReview.topRated] : [],
@@ -2213,7 +2225,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Lowest Rated Item</h2>
-                <span>{yearReview.lowestRated?.rating ? `${yearReview.lowestRated.rating.toFixed(1)}/10` : "-"}</span>
+                <span>{formatPersonalRatingDisplay(yearReview.lowestRated)}</span>
               </div>
               {yearReview.lowestRated ? (
                 <div
@@ -2225,7 +2237,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                     openStatisticDetail({
                       id: `YR_${selectedReviewYear}_LOWEST_RATED_ITEM`,
                       title: "Lowest Rated Item",
-                      value: yearReview.lowestRated?.rating ? `${yearReview.lowestRated.rating.toFixed(1)}/10` : "-",
+                      value: formatPersonalRatingDisplay(yearReview.lowestRated),
                       summary: "Lowest-rated item in the selected review year.",
                       calculation: "Sort rated year items by rating asc, then date desc, then title; pick first.",
                       items: yearReview.lowestRated ? [yearReview.lowestRated] : [],
@@ -2236,7 +2248,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       openStatisticDetail({
                         id: `YR_${selectedReviewYear}_LOWEST_RATED_ITEM`,
                         title: "Lowest Rated Item",
-                        value: yearReview.lowestRated?.rating ? `${yearReview.lowestRated.rating.toFixed(1)}/10` : "-",
+                        value: formatPersonalRatingDisplay(yearReview.lowestRated),
                         summary: "Lowest-rated item in the selected review year.",
                         calculation: "Sort rated year items by rating asc, then date desc, then title; pick first.",
                         items: yearReview.lowestRated ? [yearReview.lowestRated] : [],
@@ -2307,7 +2319,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                         openStatisticDetail({
                           id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
                           title: `Top 20 Item #${index + 1}`,
-                          value: item.rating ? `${item.rating.toFixed(1)}/10` : "-",
+                          value: formatPersonalRatingDisplay(item),
                           summary: "Single item from the Year in Review top-20 rated list.",
                           calculation: "Selected index from sorted year top-rated list.",
                           items: [item],
@@ -2319,7 +2331,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                           openStatisticDetail({
                             id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
                             title: `Top 20 Item #${index + 1}`,
-                            value: item.rating ? `${item.rating.toFixed(1)}/10` : "-",
+                            value: formatPersonalRatingDisplay(item),
                             summary: "Single item from the Year in Review top-20 rated list.",
                             calculation: "Selected index from sorted year top-rated list.",
                             items: [item],
@@ -2336,7 +2348,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       <figcaption>
                         <span className="yearTopRatedTitle">{item.title}</span>
                         <span className="yearTopRatedMeta">
-                          {item.rating ? `${item.rating.toFixed(1)}/10` : "-"} · {MEDIA_LABELS[item.mediaType]}
+                          {formatPersonalRatingDisplay(item)} · {MEDIA_LABELS[item.mediaType]}
                         </span>
                       </figcaption>
                     </figure>
@@ -3198,7 +3210,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                           <span>
                             {anchorLabel}: {formatDetailDate(anchorDate)}
                           </span>
-                          <span>Rating: {typeof item.rating === "number" ? item.rating.toFixed(1) : "-"}</span>
+                          <span>Rating: {formatPersonalRatingDisplay(item)}</span>
                         </div>
                       </div>
                     </div>
