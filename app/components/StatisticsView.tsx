@@ -1381,7 +1381,12 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     );
     const moviesWatched = watchedMovieItems.length;
     const movieMinutes = watchedMovieItems.reduce((sum, item) => sum + item.runtimeMinutes, 0);
-    const audiobookItems = yearItems.filter((item) => item.mediaType === "book" && item.audiobookMinutes > 0);
+    const audiobookItems = completedThisYear.filter(
+      (item) =>
+        item.mediaType === "book" &&
+        item.primaryStatusToken === "completed" &&
+        item.audiobookMinutes > 0
+    );
     const audiobookMinutes = audiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0);
     const gamePlaytimeItems = unifiedItems.filter(
       (item) =>
@@ -1475,8 +1480,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       watchedMovieItems,
       moviesWatched,
       movieMinutes,
+      audiobookItems,
       audiobookMinutes,
       audiobookCount: audiobookItems.length,
+      gamePlaytimeItems,
       gameHours,
       abandonedTaggedItems,
       abandonedCount,
@@ -1503,10 +1510,15 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     const completedDelta = yearReview.completedTotal - yearReview.completedPrevTotal;
     const abandonedRate = yearReview.yearItems.length ? (yearReview.abandonedCount / yearReview.yearItems.length) * 100 : 0;
     const previousBooks = yearReview.completedBooksPrev;
+    const previousMovies = yearReview.previousYearItems.filter((item) => item.mediaType === "movie").length;
     const previousTv = yearReview.previousYearItems.filter((item) => item.mediaType === "tv").length;
+    const previousGames = yearReview.previousYearItems.filter((item) => item.mediaType === "game").length;
     const bookDelta = yearReview.completedBooks - previousBooks;
+    const movieDelta = yearReview.mediaCounts.movie - previousMovies;
     const tvDelta = yearReview.mediaCounts.tv - previousTv;
+    const gamesDelta = yearReview.mediaCounts.game - previousGames;
     const ratedItems = yearReview.yearItems.filter((item) => typeof item.rating === "number");
+    const ratedCoverage = yearReview.yearItems.length ? (ratedItems.length / yearReview.yearItems.length) * 100 : 0;
     const averageYearRating = ratedItems.length
       ? ratedItems.reduce((sum, item) => sum + (item.rating || 0), 0) / ratedItems.length
       : null;
@@ -1520,17 +1532,12 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
     );
     const abandonedItems = yearReview.abandonedTaggedItems;
     const booksLoggedItems = yearReview.completedBookItems;
+    const moviesLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "movie");
     const tvLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "tv");
+    const gamesLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "game");
     const moviesWatchedItems = yearReview.watchedMovieItems;
-    const audiobookItems = yearReview.yearItems.filter(
-      (item) => item.mediaType === "book" && item.audiobookMinutes > 0
-    );
-    const gamePlaytimeItems = yearReview.yearItems.filter(
-      (item) =>
-        item.mediaType === "game" &&
-        item.gameplayHours > 0 &&
-        item.playedYears.includes(selectedReviewYear)
-    );
+    const audiobookItems = yearReview.audiobookItems;
+    const gamePlaytimeItems = yearReview.gamePlaytimeItems;
     const completedGamesItems = yearReview.completedGameItems;
     const busiestMonthItems =
       yearReview.busiestMonth && !isExcludedBusiestMonthKey(yearReview.busiestMonth.key)
@@ -1563,6 +1570,18 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         : tvDelta < 0
           ? `down ${Math.abs(tvDelta)} vs ${previousReviewYear}`
           : `same as ${previousReviewYear}`;
+    const movieDeltaLabel =
+      movieDelta > 0
+        ? `up ${movieDelta} vs ${previousReviewYear}`
+        : movieDelta < 0
+          ? `down ${Math.abs(movieDelta)} vs ${previousReviewYear}`
+          : `same as ${previousReviewYear}`;
+    const gamesDeltaLabel =
+      gamesDelta > 0
+        ? `up ${gamesDelta} vs ${previousReviewYear}`
+        : gamesDelta < 0
+          ? `down ${Math.abs(gamesDelta)} vs ${previousReviewYear}`
+          : `same as ${previousReviewYear}`;
 
     return [
       {
@@ -1591,8 +1610,9 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         value: formatMinutesAsHours(yearReview.audiobookMinutes),
         subLabel: `${yearReview.audiobookCount} audiobook entries`,
         accent: "var(--stats-accent-3)",
-        summary: "Totals audiobook listening duration for books that include audiobook duration metadata.",
-        calculation: "Filter year books with audiobookMinutes>0; value=sum(audiobookMinutes).",
+        summary: `Totals audiobook listening duration for books completed in ${selectedReviewYear}.`,
+        calculation:
+          'Filter items where mediaType=book, primaryStatusToken=="completed", completionDate year==selected review year, and audiobookMinutes>0; value=sum(audiobookMinutes).',
         items: audiobookItems,
       },
       {
@@ -1685,6 +1705,36 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         summary: "Month with the highest number of logged items in the selected review year.",
         calculation: "Group year items by month key from activityDate || completionDate, then choose max count.",
         items: busiestMonthItems,
+      },
+      {
+        id: `YR_${selectedReviewYear}_MOVIES_LOGGED`,
+        label: "Movies Logged",
+        value: `${yearReview.mediaCounts.movie}`,
+        subLabel: movieDeltaLabel,
+        accent: "var(--stats-accent-1)",
+        summary: `Counts all movie entries logged in ${selectedReviewYear}.`,
+        calculation: "Filter year items where mediaType == movie.",
+        items: moviesLoggedItems,
+      },
+      {
+        id: `YR_${selectedReviewYear}_GAMES_LOGGED`,
+        label: "Games Logged",
+        value: `${yearReview.mediaCounts.game}`,
+        subLabel: gamesDeltaLabel,
+        accent: "var(--stats-accent-4)",
+        summary: `Counts all game entries logged in ${selectedReviewYear}.`,
+        calculation: "Filter year items where mediaType == game.",
+        items: gamesLoggedItems,
+      },
+      {
+        id: `YR_${selectedReviewYear}_RATED_TITLES`,
+        label: "Rated Titles",
+        value: `${ratedItems.length}`,
+        subLabel: `${ratedCoverage.toFixed(0)}% of yearly logs`,
+        accent: "var(--stats-accent-2)",
+        summary: `Counts logged items in ${selectedReviewYear} that have a personal rating.`,
+        calculation: "Filter year items where rating is numeric.",
+        items: ratedItems,
       },
     ];
   }, [previousReviewYear, selectedReviewYear, yearReview]);
@@ -2145,7 +2195,8 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       title: "Longest Audiobook",
                       value: formatMinutesAsHours(yearReview.longestAudiobook?.audiobookMinutes || 0),
                       summary: "Book with the greatest audiobook duration in the selected review year.",
-                      calculation: "Filter year books with audiobookMinutes>0, sort descending by audiobookMinutes, pick first.",
+                      calculation:
+                        'Filter items where mediaType=book, primaryStatusToken=="completed", completionDate year==selected review year, and audiobookMinutes>0; sort descending by audiobookMinutes, pick first.',
                       items: yearReview.longestAudiobook ? [yearReview.longestAudiobook] : [],
                     })
                   }
@@ -2156,7 +2207,8 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                         title: "Longest Audiobook",
                         value: formatMinutesAsHours(yearReview.longestAudiobook?.audiobookMinutes || 0),
                         summary: "Book with the greatest audiobook duration in the selected review year.",
-                        calculation: "Filter year books with audiobookMinutes>0, sort descending by audiobookMinutes, pick first.",
+                        calculation:
+                          'Filter items where mediaType=book, primaryStatusToken=="completed", completionDate year==selected review year, and audiobookMinutes>0; sort descending by audiobookMinutes, pick first.',
                         items: yearReview.longestAudiobook ? [yearReview.longestAudiobook] : [],
                       })
                     )
