@@ -709,6 +709,10 @@ function parseTagValues(raw?: string): string[] {
     .filter(Boolean);
 }
 
+function parseGameTagValues(game: Pick<Game, "tag" | "yearPlayed">): string[] {
+  return [...parseTagValues(game.tag), ...parseTagValues(game.yearPlayed)];
+}
+
 const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
 const ABANDONED_STATUS_VALUES = new Set(["abandoned", "dropped", "drop", "quit", "dnf"]);
 const NOW_PLAYING_GAME_STATUS_VALUES = new Set(["now playing"]);
@@ -5564,7 +5568,7 @@ export default function Page() {
         yearPlayedValue: safeStr(game.yearPlayed),
         completedYear: getYearToken(game.dateCompleted) || getYearToken(game.yearPlayed),
         releaseYear: getYearToken(game.releaseDate) || getYearToken(game.releaseDateAlt),
-        tagTokens: Array.from(new Set(parseTagValues(game.tag).map((tag) => normalizeTagToken(tag)).filter(Boolean))),
+        tagTokens: Array.from(new Set(parseGameTagValues(game).map((tag) => normalizeTagToken(tag)).filter(Boolean))),
         platformValues: safeStr(game.platform)
           .split(",")
           .map((part) => part.trim())
@@ -7179,6 +7183,7 @@ export default function Page() {
     });
     allGames.forEach((game) => {
       collect(game.tag);
+      collect(game.yearPlayed);
     });
 
     return Array.from(byToken.entries())
@@ -9113,12 +9118,15 @@ export default function Page() {
     { key: "abandoned", label: "Abandoned" },
   ];
   const showStartupSplash = !splashMinDurationDone || !initialLoadSettled;
+  const useElectricBlueStatsBackdrop = nav === "statistics" && isElectricBlueThemeActive;
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#f4f1ea",
+        background: useElectricBlueStatsBackdrop
+          ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
+          : "#f4f1ea",
         color: "#111",
         position: "relative",
         overflowX: isMobileLayout ? "hidden" : undefined,
@@ -13415,6 +13423,7 @@ export default function Page() {
             position: "relative",
             marginLeft: isMobileLayout ? 0 : "-1px",
             minWidth: 0,
+            background: useElectricBlueStatsBackdrop ? "rgba(6, 14, 30, 0.66)" : "transparent",
           }}
         >
           {nav !== "statistics" ? (

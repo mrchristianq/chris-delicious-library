@@ -86,6 +86,7 @@ type GameStatsItem = {
   igdbRating?: string;
   rating?: string;
   tag?: string;
+  tags?: string;
   posterUrl?: string;
   metadataCoverUrl?: string;
   posterUrlFallback?: string;
@@ -906,7 +907,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const genres = splitList(game.genres);
       const platforms = splitList(game.platform);
       const formats = splitList(game.format);
-      const tags = splitList(game.tag);
+      const tags = [...splitList(game.tag), ...splitList(game.tags), ...splitList(game.yearPlayed)];
       const gameStatusRaw = firstNonEmpty([game.status, game.playStatus, game.gameStatus, game.completed]);
       const completionHint = isTruthyToken(game.completed) || Boolean(completionDate);
       const statusBucket = inferStatusBucket(gameStatusRaw, completionHint);

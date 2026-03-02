@@ -819,6 +819,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       : Array.from(
           new Set([
             ...splitTags(firstNonEmpty(sourceItem, ["tags", "Tags", "tag", "Tag"])),
+            ...(itemType === "game" ? splitTags(firstNonEmpty(sourceItem, ["yearPlayed", "Year Played"])) : []),
           ])
         );
   const infoRows = buildInfoRows(sourceItem, itemType);
