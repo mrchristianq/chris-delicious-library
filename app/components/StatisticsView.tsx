@@ -899,6 +899,8 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const dateAdded = parseDateValue(game.dateAdded);
       const yearPlayedDate = parseDateValue(game.yearPlayed);
       const explicitCompletionDate = parseDateValue(game.dateCompleted);
+      const explicitGameStatusRaw = firstNonEmpty([game.status, game.playStatus, game.gameStatus]);
+      const hasExplicitGameStatus = Boolean(normalizeToken(explicitGameStatusRaw));
       const gameStatusRaw = firstNonEmpty([game.status, game.playStatus, game.gameStatus, game.completed]);
       const primaryStatusToken = normalizeToken(gameStatusRaw);
       const statusIndicatesCompleted =
@@ -907,9 +909,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         primaryStatusToken === "done" ||
         primaryStatusToken === "beat" ||
         primaryStatusToken === "beaten";
+      const completedFlagOnly = !hasExplicitGameStatus && isTruthyToken(game.completed);
       const completionDate =
         explicitCompletionDate ||
-        (statusIndicatesCompleted || isTruthyToken(game.completed) ? yearPlayedDate : null);
+        (statusIndicatesCompleted || completedFlagOnly ? yearPlayedDate : null);
       const activityDate =
         dateAdded ||
         completionDate ||
@@ -921,8 +924,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       const platforms = splitList(game.platform);
       const formats = splitList(game.format);
       const tags = [...splitList(game.tag), ...splitList(game.tags), ...splitList(game.yearPlayed)];
-      const completionHint =
-        isTruthyToken(game.completed) || Boolean(explicitCompletionDate) || statusIndicatesCompleted;
+      const completionHint = statusIndicatesCompleted || completedFlagOnly;
       const statusBucket = inferStatusBucket(gameStatusRaw, completionHint);
       const platformRaw = firstNonEmpty([game.platform, game.platforms]);
       const coverUrl = resolveCoverUrl(
