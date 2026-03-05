@@ -1599,6 +1599,7 @@ export default function Page() {
   const [syncState, setSyncState] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [syncMsg, setSyncMsg] = useState<string>("");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [settingSyncConflicts, setSettingSyncConflicts] = useState<string[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -2523,16 +2524,16 @@ export default function Page() {
       }
     });
     if (Object.keys(fromSheet).length) {
-      setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+      setCoverOverrides((prev) => ({ ...prev, ...fromSheet }));
     }
     if (Object.keys(popupModesFromSheet).length) {
-      setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
+      setPopupCoverModes((prev) => ({ ...prev, ...popupModesFromSheet }));
     }
     if (Object.keys(overlayFromSheet).length) {
-      setOverlayFrameOverrides((prev) => ({ ...overlayFromSheet, ...prev }));
+      setOverlayFrameOverrides((prev) => ({ ...prev, ...overlayFromSheet }));
     }
     if (Object.keys(sidebarIconFromSheet).length) {
-      setSidebarIconOverrides((prev) => ({ ...sidebarIconFromSheet, ...prev }));
+      setSidebarIconOverrides((prev) => ({ ...prev, ...sidebarIconFromSheet }));
     }
   }, [settingsRows]);
 
@@ -3722,9 +3723,9 @@ export default function Page() {
 
   // Settings helper functions
   // CORE SETTING FUNCTIONS - These provide automatic persistence for ALL settings
-  // 
+  //
   // getSetting(key, defaultValue):
-  //   - Reads from Google Sheet first (source of truth)
+  //   - Reads from Google Sheet first (source of truth for consistency)
   //   - Falls back to localStorage if not in sheet
   //   - Falls back to defaultValue if nowhere else
   //   - Automatically type-converts: "true" → true, "100" → 100, etc.
@@ -3745,8 +3746,14 @@ export default function Page() {
       return str;
     };
 
-    // Prefer local cache first so recently changed values persist across app restarts
-    // even if the published sheet CSV lags behind writes.
+    // Prefer sheet value first for cross-device consistency.
+    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
+    if (setting) {
+      const rawValue = safeStr(setting["Value"]);
+      return rawValue === "" ? defaultValue : parseStoredValue(rawValue);
+    }
+
+    // Fallback to local cache only if the key is not present in sheet.
     try {
       if (settingsCacheRef.current === null) {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
@@ -3758,15 +3765,94 @@ export default function Page() {
     } catch (e) {
       console.warn("Failed to read from localStorage:", e);
     }
-
-    // Fallback to settingsRows (sheet values)
-    const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
-    if (setting && setting["Value"] !== undefined && setting["Value"] !== "") {
-      return parseStoredValue(setting["Value"]);
-    }
     
     return defaultValue;
   }, [settingsRows]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cdlSettingsCache");
+      if (!raw) {
+        setSettingSyncConflicts([]);
+        return;
+      }
+
+      const localCache = JSON.parse(raw);
+      if (!localCache || typeof localCache !== "object") {
+        setSettingSyncConflicts([]);
+        return;
+      }
+
+      const normalizeForConflict = (value: unknown) => {
+        const str = String(value ?? "").trim();
+        if (!str) return "";
+        try {
+          return JSON.stringify(JSON.parse(str));
+        } catch {
+          return str;
+        }
+      };
+
+      const conflicts = settingsRows.reduce((keys: string[], row) => {
+        const key = safeStr(row["Key"]);
+        if (!key) return keys;
+        const localValue = normalizeForConflict(localCache[key]);
+        if (!localValue) return keys;
+        const sheetValue = normalizeForConflict(row["Value"]);
+        if (localValue === sheetValue) return keys;
+        keys.push(key);
+        return keys;
+      }, []);
+
+      setSettingSyncConflicts(conflicts);
+    } catch (e) {
+      console.warn("Failed to detect setting sync conflicts:", e);
+      setSettingSyncConflicts([]);
+    }
+  }, [settingsRows]);
+
+  const clearSettingSyncConflicts = useCallback(() => {
+    if (!settingSyncConflicts.length) return;
+
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+
+      const cache = settingsCacheRef.current;
+      if (!cache || typeof cache !== "object") {
+        setSettingSyncConflicts([]);
+        return;
+      }
+
+      const nextCache = { ...cache };
+      let mutated = false;
+      settingSyncConflicts.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(nextCache, key)) {
+          delete nextCache[key];
+          mutated = true;
+        }
+      });
+
+      settingsCacheRef.current = nextCache;
+      localStorage.setItem("cdlSettingsCache", JSON.stringify(nextCache));
+
+      setSettingSyncConflicts([]);
+
+      if (mutated) {
+        setSyncState("ok");
+        setSyncMsg("Cleared conflicting local settings.");
+        setLastSyncAt(Date.now());
+        setTimeout(() => {
+          setSyncMsg("Synced");
+        }, 1200);
+      }
+    } catch (e) {
+      console.warn("Failed to clear setting sync conflicts:", e);
+      setSyncState("error");
+      setSyncMsg("Failed to clear local settings cache.");
+    }
+  }, [settingSyncConflicts]);
 
   const flushPendingSettingsSheetWrites = useCallback(async () => {
     if (!settingsWriteUrl) return;
@@ -13262,6 +13348,44 @@ export default function Page() {
                     }}
                   >
                     {syncMsg}
+                  </div>
+                ) : null}
+                {settingSyncConflicts.length ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(255, 122, 122, 0.45)",
+                      background: "linear-gradient(180deg, rgba(114, 35, 35, 0.7) 0%, rgba(82, 24, 24, 0.75) 100%)",
+                      color: "#ffd8d8",
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 4 }}>
+                      {settingSyncConflicts.length} setting sync conflict{settingSyncConflicts.length === 1 ? "" : "s"} detected
+                    </div>
+                    <div style={{ fontSize: 10, marginBottom: 8, lineHeight: 1.35, opacity: 0.9 }}>
+                      {`Local ${settingSyncConflicts.length === 1 ? "value" : "values"} for ${settingSyncConflicts[0]}${
+                        settingSyncConflicts.length > 1 ? ", etc." : ""
+                      } differ from this device's sheet values.`
+                    }
+                    </div>
+                    <button
+                      onClick={clearSettingSyncConflicts}
+                      style={{
+                        width: "100%",
+                        border: "1px solid rgba(255, 185, 185, 0.68)",
+                        background: "linear-gradient(180deg, rgba(160, 56, 56, 0.9) 0%, rgba(130, 44, 44, 0.9) 100%)",
+                        color: "#fff",
+                        borderRadius: 7,
+                        padding: "7px 10px",
+                        cursor: "pointer",
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Clear conflicting local cache values
+                    </button>
                   </div>
                 ) : null}
 
