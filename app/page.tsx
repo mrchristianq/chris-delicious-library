@@ -5811,8 +5811,10 @@ export default function Page() {
         watchStatusNorm: safeStr(show.watchStatus).toLowerCase().replace("cancelled", "canceled"),
         showStatusNorm: safeStr(show.showStatus).toLowerCase().replace("cancelled", "canceled"),
         tagValue: safeStr(show.tag),
+        completedYear: getYearToken(show.dateCompleted),
         firstAirYear: getYearToken(show.firstAirDate),
         tagYears: getYearTokens(show.tag),
+        watchYears: Array.from(new Set([getYearToken(show.dateCompleted), ...getYearTokens(show.tag)].filter(Boolean))),
         tagTokens: Array.from(new Set(parseTagValues(show.tag).map((tag) => normalizeTagToken(tag)).filter(Boolean))),
         tags: safeStr(show.tag)
           .split(",")
@@ -7293,6 +7295,8 @@ export default function Page() {
         const individualTags = show.tag.split(',').map(t => t.trim()).filter(Boolean);
         individualTags.forEach(t => tags.add(t));
       }
+      const completedYear = getYearToken(show.dateCompleted);
+      if (completedYear) tags.add(completedYear);
     });
     return Array.from(tags).sort();
   }, [allShows]);
@@ -7301,13 +7305,17 @@ export default function Page() {
     const counts: Record<string, number> = {};
     for (const t of tvTags) counts[t] = 0;
     for (const show of allShows) {
+      const showTags = new Set<string>();
       if (show.tag) {
         const individualTags = show.tag.split(',').map(t => t.trim()).filter(Boolean);
-        individualTags.forEach(tag => {
-          const match = tvTags.find(t => t === tag);
-          if (match) counts[match] += 1;
-        });
+        individualTags.forEach(tag => showTags.add(tag));
       }
+      const completedYear = getYearToken(show.dateCompleted);
+      if (completedYear) showTags.add(completedYear);
+      showTags.forEach(tag => {
+        const match = tvTags.find(t => t === tag);
+        if (match) counts[match] += 1;
+      });
     }
     return counts;
   }, [allShows, tvTags]);
@@ -7423,7 +7431,7 @@ export default function Page() {
     });
     indexedShows.forEach((show) => {
       if (show.firstAirYear) tvFirstAirYears.add(show.firstAirYear);
-      show.tagYears.forEach((year) => tvTagYears.add(year));
+      show.watchYears.forEach((year) => tvTagYears.add(year));
     });
     indexedGames.forEach((game) => {
       if (game.completedYear) gameCompletedYears.add(game.completedYear);
@@ -7962,8 +7970,8 @@ export default function Page() {
       
       // TV Shows: Use Tags column
       const qs = q 
-        ? indexedShows.filter((s) => s.titleLC.includes(q) && s.tagValue === currentYear)
-        : indexedShows.filter((s) => s.tagValue === currentYear);
+        ? indexedShows.filter((s) => s.titleLC.includes(q) && s.watchYears.includes(currentYear))
+        : indexedShows.filter((s) => s.watchYears.includes(currentYear));
       
       // Movies: Use Tags column
       const qm = q 
@@ -8051,7 +8059,7 @@ export default function Page() {
               hasYearFilter("tv") &&
               !matchesYearFilter("tv", {
                 tv_first_air_date: show.firstAirYear ? [show.firstAirYear] : [],
-                tv_tag: show.tagYears || [],
+                tv_tag: show.watchYears || [],
               })
             ) {
               return false;
@@ -8143,7 +8151,7 @@ export default function Page() {
       ? filteredByWatch.filter((s) => s.showStatusNorm === showStatusNorm)
       : filteredByWatch;
     const filteredByTag = tagFilter
-      ? filteredByShow.filter((s) => s.tags.includes(tagFilter))
+      ? filteredByShow.filter((s) => s.tags.includes(tagFilter) || s.watchYears.includes(tagFilter))
       : filteredByShow;
     const filteredByQuery = q ? filteredByTag.filter((s) => s.titleLC.includes(q)) : filteredByTag;
 
