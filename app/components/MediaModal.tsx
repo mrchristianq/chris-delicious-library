@@ -95,7 +95,7 @@ const GAME_FORMAT_FALLBACK_OPTIONS = ["Digital", "Physical", "Cloud", "Subscript
 const SHOW_EDIT_FIELDS: ShowEditField[] = [
   { key: "watchStatus", label: "Watch Status" },
   { key: "showStatus", label: "Show Status" },
-  { key: "dateCompleted", label: "Date Completed" },
+  { key: "dateCompleted", label: "Completed Date" },
   { key: "year", label: "Year" },
   { key: "tmdbId", label: "TMDB ID" },
   { key: "firstAirDate", label: "First Air Date" },
@@ -139,7 +139,7 @@ const GAME_EDIT_FIELDS: GameEditField[] = [
   { key: "ownership", label: "Ownership" },
   { key: "backlog", label: "Backlog" },
   { key: "completed", label: "Completed" },
-  { key: "dateCompleted", label: "Date Completed" },
+  { key: "dateCompleted", label: "Completed Date" },
   { key: "yearPlayed", label: "Year Played" },
   { key: "dateAdded", label: "Date Added" },
   { key: "genres", label: "Genres" },
@@ -165,6 +165,13 @@ type ResyncPreview = {
   baseValues: Record<string, string>;
   updates: Record<string, string>;
   changes: ResyncDiffRow[];
+};
+
+type SaveResultDialog = {
+  tone: "success" | "error";
+  title: string;
+  message: string;
+  details: string[];
 };
 
 const RESYNC_SOURCE_LABELS: Record<MediaItemType, string> = {
@@ -246,14 +253,29 @@ function getMediaItemFingerprint(item: Record<string, any>): string {
           : "movie";
 
   if (mediaType === "book") {
-    return `book:${safeStr(item.googleBooksVolumeId)}:${safeStr(item.openLibraryWorkKey)}:${safeStr(item.isbn)}:${safeStr(item.title).toLowerCase()}`;
+    const googleBooksVolumeId = safeStr(item.googleBooksVolumeId);
+    const openLibraryWorkKey = safeStr(item.openLibraryWorkKey);
+    const isbn = safeStr(item.isbn);
+    if (googleBooksVolumeId || openLibraryWorkKey || isbn) {
+      return `book:${googleBooksVolumeId}:${openLibraryWorkKey}:${isbn}`;
+    }
+    return `book:${safeStr(item.title).toLowerCase()}`;
   }
 
   if (mediaType === "game") {
-    return `game:${safeStr(item.igdbId)}:${safeStr(item.igdbIdOverride)}:${safeStr(item.title).toLowerCase()}`;
+    const igdbId = safeStr(item.igdbId);
+    const igdbIdOverride = safeStr(item.igdbIdOverride);
+    if (igdbId || igdbIdOverride) {
+      return `game:${igdbId}:${igdbIdOverride}`;
+    }
+    return `game:${safeStr(item.title).toLowerCase()}`;
   }
 
-  return `${mediaType}:${safeStr(item.tmdbId)}:${safeStr(item.title).toLowerCase()}`;
+  const tmdbId = safeStr(item.tmdbId);
+  if (tmdbId) {
+    return `${mediaType}:${tmdbId}`;
+  }
+  return `${mediaType}:${safeStr(item.title).toLowerCase()}`;
 }
 
 function normalizeDateInputValue(value: string): string {
@@ -317,6 +339,106 @@ function splitCommaList(value: string): string[] {
     .split(/[,|]/g)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function formatEditFieldLabel(key: string): string {
+  const spaced = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  if (!spaced) return key;
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function getEditableFieldLabels(itemType: MediaItemType): Record<string, string> {
+  const fields =
+    itemType === "book"
+      ? BOOK_EDIT_FIELDS
+      : itemType === "tv"
+        ? SHOW_EDIT_FIELDS
+        : itemType === "movie"
+          ? MOVIE_EDIT_FIELDS
+          : GAME_EDIT_FIELDS;
+
+  const labelMap = fields.reduce<Record<string, string>>((acc, field) => {
+    acc[field.key] = field.label;
+    return acc;
+  }, {});
+
+  labelMap.title = "Title";
+  if (itemType === "book") {
+    labelMap.subtitle = "Subtitle";
+  }
+
+  return labelMap;
+}
+
+function buildEditableValuesForItem(itemType: MediaItemType, item: Record<string, any>): Record<string, string> {
+  if (itemType === "book") return buildBookEditValues(item);
+  if (itemType === "tv") return buildShowEditValues(item);
+  if (itemType === "movie") return buildMovieEditValues(item);
+  return buildGameEditValues(item);
+}
+
+function getChangedFieldLabels(itemType: MediaItemType, item: Record<string, any>, nextValues: Record<string, string>): string[] {
+  const previousValues = normalizeDateEditableValues(buildEditableValuesForItem(itemType, item));
+  const submittedValues = normalizeDateEditableValues({ ...nextValues });
+  const labelMap = getEditableFieldLabels(itemType);
+
+  return Object.keys(submittedValues)
+    .filter((key) => safeStr(submittedValues[key]) !== safeStr(previousValues[key]))
+    .map((key) => labelMap[key] || formatEditFieldLabel(key));
+}
+
+function summarizeChangedFieldLabels(changedFieldLabels: string[], prefix: string, emptyMessage: string): string {
+  if (!changedFieldLabels.length) return emptyMessage;
+  const visibleLabels = changedFieldLabels.slice(0, 6);
+  const remainder = changedFieldLabels.length - visibleLabels.length;
+  if (remainder > 0) {
+    return `${prefix}: ${visibleLabels.join(", ")} and ${remainder} more.`;
+  }
+  return `${prefix}: ${visibleLabels.join(", ")}.`;
+}
+
+function buildSaveResultDialog(
+  itemType: MediaItemType,
+  item: Record<string, any>,
+  values: Record<string, string>,
+  tone: "success" | "error",
+  errorMessage?: string
+): SaveResultDialog {
+  const itemTitle = safeStr(values.title) || safeStr(item.title) || "This item";
+  const changedFieldLabels = getChangedFieldLabels(itemType, item, values);
+
+  if (tone === "success") {
+    return {
+      tone,
+      title: "Save successful",
+      message: `"${itemTitle}" was saved to the spreadsheet.`,
+      details: [
+        summarizeChangedFieldLabels(
+          changedFieldLabels,
+          "Updated fields",
+          "No field differences were detected, but the spreadsheet accepted the save request."
+        ),
+        "The spreadsheet write endpoint returned success.",
+      ],
+    };
+  }
+
+  return {
+    tone,
+    title: "Save failed",
+    message: `"${itemTitle}" was not saved to the spreadsheet.`,
+    details: [
+      safeStr(errorMessage) || "The spreadsheet write request failed before the change could be confirmed.",
+      summarizeChangedFieldLabels(
+        changedFieldLabels,
+        "Attempted fields",
+        "No field differences were detected before the save failed."
+      ),
+    ],
+  };
 }
 
 function splitCommaValues(value: string): string[] {
@@ -720,6 +842,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [resyncNotice, setResyncNotice] = React.useState<string | null>(null);
   const [resyncPreview, setResyncPreview] = React.useState<ResyncPreview | null>(null);
   const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
+  const [saveResultDialog, setSaveResultDialog] = React.useState<SaveResultDialog | null>(null);
   const currentItemFingerprint = React.useRef("");
   const saveNoticeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const coverDragDepthRef = React.useRef(0);
@@ -834,6 +957,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     if (!open || !item) {
       if (!open) {
         clearSaveNoticeTimer();
+        setSaveResultDialog(null);
         setBookSaveSuccess(null);
         setShowSaveSuccess(null);
         setMovieSaveSuccess(null);
@@ -874,6 +998,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       setGameSaveError(null);
       setGameSaveSuccess(null);
       setResyncNotice(null);
+      setSaveResultDialog(null);
     } else {
       clearSaveNoticeTimer();
     }
@@ -1000,64 +1125,80 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
   const handleSaveBook = async () => {
     if (!item || !onSaveBookEdits) return;
+    setSaveResultDialog(null);
     setBookSaveError(null);
     setBookSaveSuccess(null);
     setIsSavingBook(true);
     try {
       await onSaveBookEdits(item, bookEditValues);
       setBookSaveSuccess("Saved to Google Sheet.");
+      setSaveResultDialog(buildSaveResultDialog("book", item, bookEditValues, "success"));
       scheduleSaveNoticeClear(setBookSaveSuccess);
       setIsEditingBook(false);
     } catch (e: any) {
-      setBookSaveError(e?.message || "Failed to save book changes");
+      const errorMessage = e?.message || "Failed to save book changes";
+      setBookSaveError(errorMessage);
+      setSaveResultDialog(buildSaveResultDialog("book", item, bookEditValues, "error", errorMessage));
     } finally {
       setIsSavingBook(false);
     }
   };
   const handleSaveShow = async () => {
     if (!item || !onSaveShowEdits) return;
+    setSaveResultDialog(null);
     setShowSaveError(null);
     setShowSaveSuccess(null);
     setIsSavingShow(true);
     try {
       await onSaveShowEdits(item, showEditValues);
       setShowSaveSuccess("Saved to Google Sheet.");
+      setSaveResultDialog(buildSaveResultDialog("tv", item, showEditValues, "success"));
       scheduleSaveNoticeClear(setShowSaveSuccess);
       setIsEditingShow(false);
     } catch (e: any) {
-      setShowSaveError(e?.message || "Failed to save show changes");
+      const errorMessage = e?.message || "Failed to save show changes";
+      setShowSaveError(errorMessage);
+      setSaveResultDialog(buildSaveResultDialog("tv", item, showEditValues, "error", errorMessage));
     } finally {
       setIsSavingShow(false);
     }
   };
   const handleSaveMovie = async () => {
     if (!item || !onSaveMovieEdits) return;
+    setSaveResultDialog(null);
     setMovieSaveError(null);
     setMovieSaveSuccess(null);
     setIsSavingMovie(true);
     try {
       await onSaveMovieEdits(item, movieEditValues);
       setMovieSaveSuccess("Saved to Google Sheet.");
+      setSaveResultDialog(buildSaveResultDialog("movie", item, movieEditValues, "success"));
       scheduleSaveNoticeClear(setMovieSaveSuccess);
       setIsEditingMovie(false);
     } catch (e: any) {
-      setMovieSaveError(e?.message || "Failed to save movie changes");
+      const errorMessage = e?.message || "Failed to save movie changes";
+      setMovieSaveError(errorMessage);
+      setSaveResultDialog(buildSaveResultDialog("movie", item, movieEditValues, "error", errorMessage));
     } finally {
       setIsSavingMovie(false);
     }
   };
   const handleSaveGame = async () => {
     if (!item || !onSaveGameEdits) return;
+    setSaveResultDialog(null);
     setGameSaveError(null);
     setGameSaveSuccess(null);
     setIsSavingGame(true);
     try {
       await onSaveGameEdits(item, gameEditValues);
       setGameSaveSuccess("Saved to Google Sheet.");
+      setSaveResultDialog(buildSaveResultDialog("game", item, gameEditValues, "success"));
       scheduleSaveNoticeClear(setGameSaveSuccess);
       setIsEditingGame(false);
     } catch (e: any) {
-      setGameSaveError(e?.message || "Failed to save game changes");
+      const errorMessage = e?.message || "Failed to save game changes";
+      setGameSaveError(errorMessage);
+      setSaveResultDialog(buildSaveResultDialog("game", item, gameEditValues, "error", errorMessage));
     } finally {
       setIsSavingGame(false);
     }
@@ -1447,12 +1588,36 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           </button>
         </div>
         <div className="modalSaveNoticeStack">
-          {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
-          {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
+          {!saveResultDialog && activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
+          {!saveResultDialog && activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
           {deleteError ? <div className="bookSaveError">{deleteError}</div> : null}
           {resyncNotice ? <div className="bookSaveSuccess">{resyncNotice}</div> : null}
           {resyncError ? <div className="bookSaveError">{resyncError}</div> : null}
         </div>
+        {saveResultDialog ? (
+          <div className="saveResultDialogOverlay" onMouseDown={() => setSaveResultDialog(null)}>
+            <div
+              className={`saveResultDialogCard ${saveResultDialog.tone === "error" ? "error" : "success"}`}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="saveResultDialogEyebrow">{saveResultDialog.tone === "success" ? "Save Result" : "Save Error"}</div>
+              <div className="saveResultDialogTitle">{saveResultDialog.title}</div>
+              <div className="saveResultDialogMessage">{saveResultDialog.message}</div>
+              <div className="saveResultDialogDetails">
+                {saveResultDialog.details.map((detail, index) => (
+                  <div key={`${saveResultDialog.title}-${index}`} className="saveResultDialogDetail">
+                    {detail}
+                  </div>
+                ))}
+              </div>
+              <div className="saveResultDialogActions">
+                <button type="button" className="saveResultDialogCloseButton" onClick={() => setSaveResultDialog(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {resyncPreview ? (
           <div className="metadataDiffCard">
             <div className="metadataDiffHeader">
@@ -2235,6 +2400,102 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           gap: 6px;
           z-index: 4;
           pointer-events: none;
+        }
+
+        .saveResultDialogOverlay {
+          position: absolute;
+          inset: 0;
+          z-index: 7;
+          display: grid;
+          place-items: start center;
+          padding: 74px 16px 16px;
+          background: rgba(6, 13, 27, 0.36);
+          backdrop-filter: blur(3px);
+        }
+
+        .saveResultDialogCard {
+          width: min(520px, 100%);
+          border-radius: 18px;
+          border: 1px solid rgba(130, 193, 255, 0.52);
+          background: linear-gradient(180deg, rgba(22, 46, 82, 0.96) 0%, rgba(12, 25, 47, 0.96) 100%);
+          box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42);
+          padding: 16px;
+        }
+
+        .saveResultDialogCard.error {
+          border-color: rgba(255, 160, 160, 0.48);
+          background: linear-gradient(180deg, rgba(63, 23, 33, 0.96) 0%, rgba(36, 13, 20, 0.96) 100%);
+        }
+
+        .saveResultDialogEyebrow {
+          color: rgba(194, 215, 248, 0.85);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .saveResultDialogTitle {
+          margin-top: 4px;
+          color: #f3f8ff;
+          font-size: 22px;
+          line-height: 1.1;
+          font-weight: 800;
+        }
+
+        .saveResultDialogMessage {
+          margin-top: 10px;
+          color: #e0ecff;
+          font-size: 13px;
+          line-height: 1.45;
+          font-weight: 600;
+        }
+
+        .saveResultDialogDetails {
+          margin-top: 12px;
+          display: grid;
+          gap: 8px;
+        }
+
+        .saveResultDialogDetail {
+          border-radius: 10px;
+          border: 1px solid rgba(113, 153, 214, 0.34);
+          background: rgba(8, 18, 36, 0.48);
+          color: #d7e7ff;
+          padding: 9px 10px;
+          font-size: 12px;
+          line-height: 1.4;
+        }
+
+        .saveResultDialogCard.error .saveResultDialogDetail {
+          border-color: rgba(190, 115, 115, 0.34);
+          background: rgba(31, 10, 16, 0.44);
+          color: #ffd5d5;
+        }
+
+        .saveResultDialogActions {
+          margin-top: 14px;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .saveResultDialogCloseButton {
+          border: 1px solid rgba(130, 193, 255, 0.52);
+          border-radius: 10px;
+          background: rgba(39, 100, 186, 0.35);
+          color: #e7f3ff;
+          padding: 7px 12px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          cursor: pointer;
+        }
+
+        .saveResultDialogCard.error .saveResultDialogCloseButton {
+          border-color: rgba(255, 160, 160, 0.45);
+          background: rgba(130, 46, 46, 0.4);
+          color: #fff1f1;
         }
 
         .contentLayout {
