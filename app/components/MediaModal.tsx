@@ -229,6 +229,45 @@ const RESYNC_FIELDS: Record<MediaItemType, string[]> = {
   ],
 };
 
+function isDateEditFieldKey(key: string): boolean {
+  return key.toLowerCase().includes("date");
+}
+
+function normalizeDateInputValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const separatorMatch = trimmed.match(/^(\d{1,2})([/.-])(\d{1,2})([/.-])(\d{2,4})$/);
+  if (separatorMatch) {
+    const month = Number(separatorMatch[1]);
+    const day = Number(separatorMatch[3]);
+    const yearText = separatorMatch[4];
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      let year = Number(yearText);
+      if (yearText.length === 2) year = year <= 50 ? 2000 + year : 1900 + year;
+      if (Number.isFinite(year) && year >= 1000 && year <= 9999) {
+        return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+}
+
+function normalizeDateEditableValues(values: Record<string, string>): Record<string, string> {
+  const next = { ...values };
+  for (const key of Object.keys(next)) {
+    if (!isDateEditFieldKey(key)) continue;
+    const normalized = normalizeDateInputValue(next[key]);
+    if (normalized) next[key] = normalized;
+  }
+  return next;
+}
+
 function safeStr(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -370,7 +409,7 @@ function renderTwoStateToggle(isOn: boolean, onText: string, offText: string) {
 }
 
 function buildBookEditValues(item: Record<string, any>): Record<string, string> {
-  return {
+  const values = {
     title: firstNonEmpty(item, ["title"]),
     subtitle: firstNonEmpty(item, ["subtitle", "Subtitle"]),
     series: firstNonEmpty(item, ["series"]),
@@ -392,10 +431,12 @@ function buildBookEditValues(item: Record<string, any>): Record<string, string> 
     googleBooksVolumeId: firstNonEmpty(item, ["googleBooksVolumeId", "GoogleBooksVolumeId"]),
     description: firstNonEmpty(item, ["description", "Description"]),
   };
+
+  return normalizeDateEditableValues(values);
 }
 
 function buildShowEditValues(item: Record<string, any>): Record<string, string> {
-  return {
+  const values = {
     title: firstNonEmpty(item, ["title", "Title"]),
     year: firstNonEmpty(item, ["year", "Year"]),
     tmdbId: firstNonEmpty(item, ["tmdbId", "TMDB_ID"]),
@@ -417,10 +458,12 @@ function buildShowEditValues(item: Record<string, any>): Record<string, string> 
     tags: firstNonEmpty(item, ["tag", "tags", "Tag", "Tags"]),
     posterUrl: firstNonEmpty(item, ["posterUrl", "PosterURL", "poster", "Poster"]),
   };
+
+  return normalizeDateEditableValues(values);
 }
 
 function buildMovieEditValues(item: Record<string, any>): Record<string, string> {
-  return {
+  const values = {
     title: firstNonEmpty(item, ["title", "Title"]),
     year: firstNonEmpty(item, ["year", "Year"]),
     myRating: firstNonEmpty(item, ["myRating", "MyRating", "My Rating"]),
@@ -438,10 +481,12 @@ function buildMovieEditValues(item: Record<string, any>): Record<string, string>
     posterUrl: firstNonEmpty(item, ["posterUrl", "PosterURL"]),
     backdropUrl: firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
   };
+
+  return normalizeDateEditableValues(values);
 }
 
 function buildGameEditValues(item: Record<string, any>): Record<string, string> {
-  return {
+  const values = {
     title: firstNonEmpty(item, ["title", "Title"]),
     cover: firstNonEmpty(item, ["cover", "Cover"]),
     platform: firstNonEmpty(item, ["platform", "Platform"]),
@@ -473,6 +518,8 @@ function buildGameEditValues(item: Record<string, any>): Record<string, string> 
     igdbIdOverride: firstNonEmpty(item, ["igdbIdOverride", "IGDB_ID_Override"]),
     localCoverUrl: firstNonEmpty(item, ["localCoverUrl", "LocalCoverURL"]),
   };
+
+  return normalizeDateEditableValues(values);
 }
 
 type RatingScale = "five" | "ten";
@@ -1326,11 +1373,13 @@ export const MediaModal: React.FC<MediaModalProps> = ({
             ×
           </button>
         </div>
-        {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
-        {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
-        {deleteError ? <div className="bookSaveError">{deleteError}</div> : null}
-        {resyncNotice ? <div className="bookSaveSuccess">{resyncNotice}</div> : null}
-        {resyncError ? <div className="bookSaveError">{resyncError}</div> : null}
+        <div className="modalSaveNoticeStack">
+          {activeSaveSuccess ? <div className="bookSaveSuccess">{activeSaveSuccess}</div> : null}
+          {activeSaveError ? <div className="bookSaveError">{activeSaveError}</div> : null}
+          {deleteError ? <div className="bookSaveError">{deleteError}</div> : null}
+          {resyncNotice ? <div className="bookSaveSuccess">{resyncNotice}</div> : null}
+          {resyncError ? <div className="bookSaveError">{resyncError}</div> : null}
+        </div>
         {resyncPreview ? (
           <div className="metadataDiffCard">
             <div className="metadataDiffHeader">
@@ -1738,7 +1787,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                       </select>
                     ) : (
                       <input
-                        type="text"
+                        type={isDateEditFieldKey(field.key) ? "date" : "text"}
                         value={bookEditValues[field.key] || ""}
                         onChange={(e) => handleBookFieldChange(field.key, e.target.value)}
                         className="editInput"
@@ -1815,7 +1864,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                         </select>
                       ) : (
                         <input
-                          type="text"
+                          type={isDateEditFieldKey(field.key) ? "date" : "text"}
                           value={showEditValues[field.key] || ""}
                           onChange={(e) => handleShowFieldChange(field.key, e.target.value)}
                           className="editInput"
@@ -1892,7 +1941,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                         </select>
                       ) : (
                         <input
-                          type="text"
+                          type={isDateEditFieldKey(field.key) ? "date" : "text"}
                           value={movieEditValues[field.key] || ""}
                           onChange={(e) => handleMovieFieldChange(field.key, e.target.value)}
                           className="editInput"
@@ -1968,7 +2017,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
                           </select>
                         ) : (
                           <input
-                            type="text"
+                            type={isDateEditFieldKey(field.key) ? "date" : "text"}
                             value={gameEditValues[field.key] || ""}
                             onChange={(e) => handleGameFieldChange(field.key, e.target.value)}
                             className="editInput"
@@ -2101,6 +2150,18 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           align-items: center;
           gap: 4px;
           z-index: 2;
+        }
+
+        .modalSaveNoticeStack {
+          position: absolute;
+          top: 48px;
+          left: 12px;
+          right: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          z-index: 4;
+          pointer-events: none;
         }
 
         .contentLayout {
@@ -2506,19 +2567,30 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           line-height: 1.35;
         }
 
-        .bookSaveError {
-          margin: 6px 0 2px;
-          grid-column: 1 / -1;
-          color: #ffb6b6;
+        .bookSaveError,
+        .bookSaveSuccess {
+          margin: 0;
+          border-radius: 10px;
+          padding: 8px 10px;
           font-size: 11px;
           line-height: 1.35;
+          width: 100%;
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+          backdrop-filter: blur(2px);
+          grid-column: 1 / -1;
+          text-align: center;
+        }
+
+        .bookSaveError {
+          color: #ffb6b6;
+          background: rgba(95, 30, 30, 0.28);
+          border: 1px solid rgba(255, 160, 160, 0.45);
         }
 
         .bookSaveSuccess {
-          margin: 6px 0 2px;
-          color: #b9f5d0;
-          font-size: 11px;
-          line-height: 1.35;
+          color: #d7f0ff;
+          background: rgba(39, 100, 186, 0.35);
+          border: 1px solid rgba(130, 193, 255, 0.52);
         }
 
         .metadataDiffCard {
