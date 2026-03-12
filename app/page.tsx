@@ -2736,6 +2736,10 @@ export default function Page() {
     const matchOpenLibraryWorkKey = safeStr(updates.openLibraryWorkKey) || safeStr(item?.openLibraryWorkKey);
     const matchIsbn = safeStr(updates.isbn) || safeStr(item?.isbn);
     const matchTitle = safeStr(item?.title);
+    const fallbackGoogleBooksVolumeId = safeStr(item?.googleBooksVolumeId);
+    const fallbackOpenLibraryWorkKey = safeStr(item?.openLibraryWorkKey);
+    const fallbackIsbn = safeStr(item?.isbn);
+    const fallbackTitle = safeStr(item?.title);
 
     if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
       throw new Error("Unable to identify this book row to update.");
@@ -2808,6 +2812,52 @@ export default function Page() {
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
 
+    setBookRows((prev) =>
+      prev.map((row) => {
+        const rowGoogleBooksVolumeId = safeStr(row["GoogleBooksVolumeId"] || row["googleBooksVolumeId"]);
+        const rowOpenLibraryWorkKey = safeStr(row["OpenLibraryWorkKey"] || row["openLibraryWorkKey"]);
+        const rowIsbn = safeStr(row["ISBN"] || row["isbn"]);
+        const rowTitle = safeStr(row["Title"]);
+        const updatedTitle = safeStr(updates.title);
+        const sameItem =
+          (matchGoogleBooksVolumeId && rowGoogleBooksVolumeId === matchGoogleBooksVolumeId) ||
+          (fallbackGoogleBooksVolumeId && rowGoogleBooksVolumeId === fallbackGoogleBooksVolumeId) ||
+          (matchOpenLibraryWorkKey && rowOpenLibraryWorkKey === matchOpenLibraryWorkKey) ||
+          (fallbackOpenLibraryWorkKey && rowOpenLibraryWorkKey === fallbackOpenLibraryWorkKey) ||
+          (matchIsbn && rowIsbn === matchIsbn) ||
+          (fallbackIsbn && rowIsbn === fallbackIsbn) ||
+          (matchTitle && rowTitle.toLowerCase() === matchTitle.toLowerCase()) ||
+          (fallbackTitle && rowTitle.toLowerCase() === fallbackTitle.toLowerCase());
+
+        if (!sameItem) return row;
+
+        return {
+          ...row,
+          Title: updatedTitle || rowTitle,
+          Subtitle: safeStr(updates.subtitle),
+          Series: safeStr(updates.series),
+          Author: safeStr(updates.author),
+          Ownership: safeStr(updates.ownership),
+          Type: safeStr(updates.type),
+          Status: safeStr(updates.status),
+          CompletedDate: safeStr(updates.completedDate),
+          isbn: safeStr(updates.isbn),
+          ReleaseDate: safeStr(updates.releaseDate),
+          description: safeStr(updates.description),
+          ImageURL: safeStr(updates.imageUrl),
+          userRating: safeStr(updates.userRating),
+          "My Rating": safeStr(updates.myRating),
+          pages: safeStr(updates.pages),
+          audiobookDuration: safeStr(updates.audiobookDuration),
+          genre: safeStr(updates.genre),
+          tags: safeStr(updates.tags),
+          Tag: safeStr(updates.tags),
+          OpenLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
+          GoogleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+        };
+      })
+    );
+
     // Re-sync to pick up the canonical sheet values once published CSV refreshes.
     setRefreshNonce((n) => n + 1);
   };
@@ -2821,6 +2871,8 @@ export default function Page() {
 
     const matchTmdbId = safeStr(updates.tmdbId) || safeStr(item?.tmdbId);
     const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+    const fallbackTmdbId = safeStr(item?.tmdbId);
+    const fallbackTitle = safeStr(item?.title);
 
     if (!matchTmdbId && !matchTitle) {
       throw new Error("Unable to identify this show row to update.");
@@ -2893,6 +2945,48 @@ export default function Page() {
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
 
+    setTvRows((prev) =>
+      prev.map((row) => {
+        const rowTmdbId = safeStr(row["TMDB_ID"]);
+        const rowTitle = safeStr(row["Title"]);
+        const updatedTitle = safeStr(updates.title);
+        const updatedDateCompleted = safeStr(updates.dateCompleted);
+        const sameItem =
+          (matchTmdbId && rowTmdbId === matchTmdbId) ||
+          (fallbackTmdbId && rowTmdbId === fallbackTmdbId) ||
+          (matchTitle && rowTitle.toLowerCase() === matchTitle.toLowerCase()) ||
+          (fallbackTitle && rowTitle.toLowerCase() === fallbackTitle.toLowerCase());
+
+        if (!sameItem) return row;
+
+        return {
+          ...row,
+          Title: updatedTitle || rowTitle,
+          Year: safeStr(updates.year),
+          TMDB_ID: matchTmdbId || rowTmdbId,
+          FirstAirDate: safeStr(updates.firstAirDate),
+          LastAirDate: safeStr(updates.lastAirDate),
+          "Date Completed": updatedDateCompleted,
+          CompletedDate: updatedDateCompleted,
+          NumberOfSeasons: safeStr(updates.numberOfSeasons),
+          NumberOfEpisodes: safeStr(updates.numberOfEpisodes),
+          WatchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
+          Status: safeStr(updates.showStatus),
+          Networks: safeStr(updates.networks),
+          StreamingUS: safeStr(updates.streamingUS),
+          Genres: safeStr(updates.genres),
+          TMDB_Rating: safeStr(updates.tmdbRating),
+          MyRating: safeStr(updates.myRating),
+          BackdropURL: safeStr(updates.backdropUrl),
+          Overview: safeStr(updates.overview),
+          Ownership: safeStr(updates.ownership),
+          Tags: safeStr(updates.tags),
+          Tag: safeStr(updates.tags),
+          PosterURL: safeStr(updates.posterUrl),
+        };
+      })
+    );
+
     setRefreshNonce((n) => n + 1);
   };
 
@@ -2903,6 +2997,9 @@ export default function Page() {
 
     const matchTmdbId = safeStr(updates.tmdbId) || safeStr(item?.tmdbId);
     const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+    const fallbackTmdbId = safeStr(item?.tmdbId);
+    const fallbackTitle = safeStr(item?.title);
+    const normalizedWatchStatus = normalizeShowWatchStatusForSheet(updates.watchStatus);
 
     if (!matchTmdbId && !matchTitle) {
       throw new Error("Unable to identify this movie row to update.");
@@ -2920,7 +3017,7 @@ export default function Page() {
         MyRating: safeStr(updates.myRating),
         TMDB_Rating: safeStr(updates.tmdbRating),
         TMDB_ID: safeStr(updates.tmdbId),
-        "Watch Status": safeStr(updates.watchStatus),
+        "Watch Status": normalizedWatchStatus,
         WatchDate: safeStr(updates.watchDate),
         Tags: safeStr(updates.tags),
         ReleaseDate: safeStr(updates.releaseDate),
@@ -2949,8 +3046,8 @@ export default function Page() {
         myRating: safeStr(updates.myRating),
         tmdbRating: safeStr(updates.tmdbRating),
         tmdbId: safeStr(updates.tmdbId),
-        watched: safeStr(updates.watchStatus),
-        watchStatus: safeStr(updates.watchStatus),
+        watched: normalizedWatchStatus,
+        watchStatus: normalizedWatchStatus,
         watchDate: safeStr(updates.watchDate),
         tags: safeStr(updates.tags),
         tag: safeStr(updates.tags),
@@ -2967,6 +3064,43 @@ export default function Page() {
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
 
+    setMovieRows((prev) =>
+      prev.map((row) => {
+        const rowTmdbId = safeStr(row["TMDB_ID"] || row["tmdbId"]);
+        const rowTitle = safeStr(row["Title"]);
+        const updatedTitle = safeStr(updates.title);
+        const sameItem =
+          (matchTmdbId && rowTmdbId === matchTmdbId) ||
+          (fallbackTmdbId && rowTmdbId === fallbackTmdbId) ||
+          (matchTitle && rowTitle.toLowerCase() === matchTitle.toLowerCase()) ||
+          (fallbackTitle && rowTitle.toLowerCase() === fallbackTitle.toLowerCase());
+
+        if (!sameItem) return row;
+
+        return {
+          ...row,
+          Title: updatedTitle || rowTitle,
+          Year: safeStr(updates.year),
+          MyRating: safeStr(updates.myRating),
+          TMDB_Rating: safeStr(updates.tmdbRating),
+          TMDB_ID: safeStr(updates.tmdbId) || rowTmdbId,
+          "Watch Status": normalizedWatchStatus,
+          WatchStatus: normalizedWatchStatus,
+          WatchDate: safeStr(updates.watchDate),
+          Tags: safeStr(updates.tags),
+          Tag: safeStr(updates.tags),
+          ReleaseDate: safeStr(updates.releaseDate),
+          Runtime: safeStr(updates.runtime),
+          Status: safeStr(updates.status),
+          Genres: safeStr(updates.genres),
+          Overview: safeStr(updates.overview),
+          PosterURL: safeStr(updates.posterUrl),
+          BackdropURL: safeStr(updates.backdropUrl),
+          Ownership: safeStr(updates.ownership),
+        };
+      })
+    );
+
     setRefreshNonce((n) => n + 1);
   };
 
@@ -2977,6 +3111,8 @@ export default function Page() {
 
     const matchIgdbId = safeStr(updates.igdbId) || safeStr(item?.igdbId);
     const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+    const fallbackIgdbId = safeStr(item?.igdbId);
+    const fallbackTitle = safeStr(item?.title);
 
     if (!matchIgdbId && !matchTitle) {
       throw new Error("Unable to identify this game row to update.");
@@ -3158,6 +3294,56 @@ export default function Page() {
       };
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
+
+    setGameRows((prev) =>
+      prev.map((row) => {
+        const rowIgdbId = safeStr(row["IGDB_ID"] || row["igdbId"]);
+        const rowTitle = safeStr(row["Title"]);
+        const updatedTitle = safeStr(updates.title);
+        const sameItem =
+          (matchIgdbId && rowIgdbId === matchIgdbId) ||
+          (fallbackIgdbId && rowIgdbId === fallbackIgdbId) ||
+          (matchTitle && rowTitle.toLowerCase() === matchTitle.toLowerCase()) ||
+          (fallbackTitle && rowTitle.toLowerCase() === fallbackTitle.toLowerCase());
+
+        if (!sameItem) return row;
+
+        return {
+          ...row,
+          Title: updatedTitle || rowTitle,
+          Cover: safeStr(updates.cover),
+          Platform: safeStr(updates.platform),
+          Status: safeStr(updates.status),
+          Name: safeStr(updates.name) || updatedTitle || rowTitle,
+          ReleaseDate: safeStr(updates.releaseDate),
+          "Release Date": safeStr(updates.releaseDateAlt),
+          Platforms: safeStr(updates.platforms),
+          CoverURL: safeStr(updates.coverUrl),
+          Rating: safeStr(updates.rating),
+          "IGDB Rating": safeStr(updates.igdbRating),
+          "My Rating": safeStr(updates.myRating),
+          Ownership: safeStr(updates.ownership),
+          Format: safeStr(updates.format),
+          Backlog: normalizeGameYesNo(safeStr(updates.backlog)),
+          Completed: normalizeGameYesNo(safeStr(updates.completed)),
+          "Date Completed": safeStr(updates.dateCompleted),
+          "Year Played": safeStr(updates.yearPlayed),
+          "Date Added": safeStr(updates.dateAdded),
+          Description: safeStr(updates.description),
+          Genres: safeStr(updates.genres),
+          "Hours Played": safeStr(updates.hoursPlayed),
+          CoverCachedAt: safeStr(updates.coverCachedAt),
+          Developer: safeStr(updates.developer),
+          ScreensotsURL: safeStr(updates.screensotsUrl),
+          WishlistOrder: safeStr(updates.wishlistOrder),
+          QueuedOrder: safeStr(updates.queuedOrder),
+          IGDB_ID: safeStr(updates.igdbId) || matchIgdbId || rowIgdbId,
+          IGDB_ID_Override: safeStr(updates.igdbIdOverride),
+          LocalCoverURL: safeStr(updates.localCoverUrl),
+          Tag: safeStr(updates.tags),
+        };
+      })
+    );
 
     setRefreshNonce((n) => n + 1);
   };
