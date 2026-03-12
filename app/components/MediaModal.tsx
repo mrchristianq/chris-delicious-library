@@ -844,14 +844,14 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
   const [saveResultDialog, setSaveResultDialog] = React.useState<SaveResultDialog | null>(null);
   const currentItemFingerprint = React.useRef("");
-  const saveNoticeTimerRef = React.useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveNoticeTimerRef = React.useRef<number | null>(null);
   const coverDragDepthRef = React.useRef(0);
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const clearSaveNoticeTimer = React.useCallback(() => {
     if (saveNoticeTimerRef.current !== null) {
-      clearTimeout(saveNoticeTimerRef.current);
+      window.clearTimeout(saveNoticeTimerRef.current);
       saveNoticeTimerRef.current = null;
     }
   }, []);
