@@ -7626,18 +7626,54 @@ export default function Page() {
       ] as any[];
     }
 
+    const homeToday = new Date();
+    homeToday.setHours(23, 59, 59, 999);
+    const homeTodayMs = homeToday.getTime();
+    const homeCurrentYear = homeToday.getFullYear();
+    const isFutureReleaseDateForHome = (value?: string) => {
+      const raw = safeStr(value);
+      if (!raw) return false;
+      if (/^\d{4}$/.test(raw)) {
+        return Number(raw) > homeCurrentYear;
+      }
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) return false;
+      return parsed.getTime() > homeTodayMs;
+    };
+    const isUnreleasedStatusForHome = (value?: string) => {
+      const token = normalizeStatus(value);
+      return (
+        token === "upcoming" ||
+        token === "in production" ||
+        token === "post production" ||
+        token === "planned" ||
+        token === "announced" ||
+        token === "rumored"
+      );
+    };
+
     // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
-    // Games: exclude Wishlist ownership by default
+    // Home hides items that are still unreleased.
     if (nav === "home") {
-      const qbBase = indexedBooks.filter((b) => b.ownershipNorm === "owned");
-      const qgBase = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+      const qbBase = indexedBooks.filter((b) => b.ownershipNorm === "owned" && !isFutureReleaseDateForHome(b.item.releaseDate));
+      const qgBase = indexedGames.filter(
+        (g) => g.ownershipNorm !== "wishlist" && !isFutureReleaseDateForHome(g.item.releaseDate || g.item.releaseDateAlt)
+      );
       const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
-      const qsBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist" && s.showStatusNorm !== "in production");
+      const qsBase = indexedShows.filter(
+        (s) =>
+          s.watchStatusNorm !== "wishlist" &&
+          s.showStatusNorm !== "in production" &&
+          !isUnreleasedStatusForHome(s.item.showStatus) &&
+          !isFutureReleaseDateForHome(s.item.firstAirDate)
+      );
       const qmBase = indexedMovies.filter(
         (m) =>
           m.watchStatusNorm !== "wishlist" &&
           m.watchStatusNorm !== "in production" &&
-          m.movieStatusNorm !== "in production"
+          m.movieStatusNorm !== "in production" &&
+          !isUnreleasedStatusForHome(m.item.status || m.item.movieStatus) &&
+          !isFutureReleaseDateForHome(m.item.releaseDate)
       );
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
