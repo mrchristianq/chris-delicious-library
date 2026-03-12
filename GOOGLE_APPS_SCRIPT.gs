@@ -149,7 +149,11 @@ function doPost(e) {
 }
 
 function normalizeHeaderKey_(value) {
-  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (normalized === "datecompleted" || normalized === "datecompletd" || normalized === "completddate") {
+    return "completeddate";
+  }
+  return normalized;
 }
 
 function buildHeaderLookup_(headers) {
