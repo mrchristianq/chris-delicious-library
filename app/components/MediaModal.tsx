@@ -229,8 +229,31 @@ const RESYNC_FIELDS: Record<MediaItemType, string[]> = {
   ],
 };
 
+const SAVE_NOTICE_AUTO_DISMISS_MS = 5000;
+
 function isDateEditFieldKey(key: string): boolean {
   return key.toLowerCase().includes("date");
+}
+
+function getMediaItemFingerprint(item: Record<string, any>): string {
+  const mediaType =
+    item?.__type === "book" || item?.isbn || item?.series
+      ? "book"
+      : item?.__type === "tv" || item?.firstAirDate || item?.lastAirDate || item?.showStatus
+        ? "tv"
+        : item?.__type === "game" || item?.platform || item?.yearPlayed || item?.gameStatus
+          ? "game"
+          : "movie";
+
+  if (mediaType === "book") {
+    return `book:${safeStr(item.googleBooksVolumeId)}:${safeStr(item.openLibraryWorkKey)}:${safeStr(item.isbn)}:${safeStr(item.title).toLowerCase()}`;
+  }
+
+  if (mediaType === "game") {
+    return `game:${safeStr(item.igdbId)}:${safeStr(item.igdbIdOverride)}:${safeStr(item.title).toLowerCase()}`;
+  }
+
+  return `${mediaType}:${safeStr(item.tmdbId)}:${safeStr(item.title).toLowerCase()}`;
 }
 
 function normalizeDateInputValue(value: string): string {
@@ -697,9 +720,29 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   const [resyncNotice, setResyncNotice] = React.useState<string | null>(null);
   const [resyncPreview, setResyncPreview] = React.useState<ResyncPreview | null>(null);
   const [isCoverDropActive, setIsCoverDropActive] = React.useState(false);
+  const currentItemFingerprint = React.useRef("");
+  const saveNoticeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const coverDragDepthRef = React.useRef(0);
   const descriptionTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const clearSaveNoticeTimer = React.useCallback(() => {
+    if (saveNoticeTimerRef.current !== null) {
+      clearTimeout(saveNoticeTimerRef.current);
+      saveNoticeTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleSaveNoticeClear = React.useCallback(
+    (setter: React.Dispatch<React.SetStateAction<string | null>>) => {
+      clearSaveNoticeTimer();
+      saveNoticeTimerRef.current = window.setTimeout(() => {
+        setter(null);
+        saveNoticeTimerRef.current = null;
+      }, SAVE_NOTICE_AUTO_DISMISS_MS);
+    },
+    [clearSaveNoticeTimer]
+  );
 
   React.useEffect(() => {
     if (!open) return;
@@ -788,35 +831,61 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   }, [open, item, preferredPosterUrl, candidateUrls.join("|")]);
 
   React.useEffect(() => {
-    if (!open || !item) return;
+    if (!open || !item) {
+      if (!open) {
+        clearSaveNoticeTimer();
+        setBookSaveSuccess(null);
+        setShowSaveSuccess(null);
+        setMovieSaveSuccess(null);
+        setGameSaveSuccess(null);
+      }
+      return;
+    }
+
+    const nextFingerprint = getMediaItemFingerprint(item);
+    const isSameItem = nextFingerprint === currentItemFingerprint.current;
+
     setIsEditingBook(false);
     setIsSavingBook(false);
-    setBookSaveError(null);
-    setBookSaveSuccess(null);
     setBookEditValues(buildBookEditValues(item));
     setIsEditingShow(false);
     setIsSavingShow(false);
-    setShowSaveError(null);
-    setShowSaveSuccess(null);
     setShowEditValues(buildShowEditValues(item));
     setIsEditingMovie(false);
     setIsSavingMovie(false);
-    setMovieSaveError(null);
-    setMovieSaveSuccess(null);
     setMovieEditValues(buildMovieEditValues(item));
     setIsEditingGame(false);
     setIsSavingGame(false);
-    setGameSaveError(null);
-    setGameSaveSuccess(null);
     setGameEditValues(buildGameEditValues(item));
     setIsDeleting(false);
     setDeleteError(null);
     setIsResyncing(false);
     setIsApplyingResync(false);
     setResyncError(null);
-    setResyncNotice(null);
     setResyncPreview(null);
+
+    if (!isSameItem) {
+      setBookSaveError(null);
+      setBookSaveSuccess(null);
+      setShowSaveError(null);
+      setShowSaveSuccess(null);
+      setMovieSaveError(null);
+      setMovieSaveSuccess(null);
+      setGameSaveError(null);
+      setGameSaveSuccess(null);
+      setResyncNotice(null);
+    } else {
+      clearSaveNoticeTimer();
+    }
+
+    currentItemFingerprint.current = nextFingerprint;
   }, [open, item]);
+
+  React.useEffect(() => {
+    return () => {
+      clearSaveNoticeTimer();
+    };
+  }, [clearSaveNoticeTimer]);
 
   const autoSizeDescriptionTextarea = React.useCallback((el?: HTMLTextAreaElement | null) => {
     const target = el ?? descriptionTextareaRef.current;
@@ -937,6 +1006,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     try {
       await onSaveBookEdits(item, bookEditValues);
       setBookSaveSuccess("Saved to Google Sheet.");
+      scheduleSaveNoticeClear(setBookSaveSuccess);
       setIsEditingBook(false);
     } catch (e: any) {
       setBookSaveError(e?.message || "Failed to save book changes");
@@ -952,6 +1022,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     try {
       await onSaveShowEdits(item, showEditValues);
       setShowSaveSuccess("Saved to Google Sheet.");
+      scheduleSaveNoticeClear(setShowSaveSuccess);
       setIsEditingShow(false);
     } catch (e: any) {
       setShowSaveError(e?.message || "Failed to save show changes");
@@ -967,6 +1038,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     try {
       await onSaveMovieEdits(item, movieEditValues);
       setMovieSaveSuccess("Saved to Google Sheet.");
+      scheduleSaveNoticeClear(setMovieSaveSuccess);
       setIsEditingMovie(false);
     } catch (e: any) {
       setMovieSaveError(e?.message || "Failed to save movie changes");
@@ -982,6 +1054,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     try {
       await onSaveGameEdits(item, gameEditValues);
       setGameSaveSuccess("Saved to Google Sheet.");
+      scheduleSaveNoticeClear(setGameSaveSuccess);
       setIsEditingGame(false);
     } catch (e: any) {
       setGameSaveError(e?.message || "Failed to save game changes");

@@ -148,6 +148,37 @@ function doPost(e) {
   }
 }
 
+function normalizeHeaderKey_(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function buildHeaderLookup_(headers) {
+  const headerIndex = {};
+  const normalizedHeaderIndex = {};
+  for (var i = 0; i < headers.length; i++) {
+    const header = String(headers[i] || "").trim();
+    const normalized = normalizeHeaderKey_(header);
+    const columnNumber = i + 1;
+    headerIndex[header] = columnNumber;
+    if (normalized) {
+      if (!Object.prototype.hasOwnProperty.call(normalizedHeaderIndex, normalized)) {
+        normalizedHeaderIndex[normalized] = columnNumber;
+      }
+    }
+  }
+  return { headerIndex: headerIndex, normalizedHeaderIndex: normalizedHeaderIndex };
+}
+
+function resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, requestedHeader) {
+  if (!requestedHeader) return 0;
+  if (Object.prototype.hasOwnProperty.call(headerIndex, requestedHeader)) {
+    return headerIndex[requestedHeader];
+  }
+  var normalizedRequestedHeader = normalizeHeaderKey_(requestedHeader);
+  if (!normalizedRequestedHeader) return 0;
+  return normalizedHeaderIndex[normalizedRequestedHeader] || 0;
+}
+
 function updateBookRow_(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Books");
@@ -170,10 +201,9 @@ function updateBookRow_(payload) {
   if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Books sheet has no data rows");
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
-  const headerIndex = {};
-  for (var i = 0; i < headers.length; i++) {
-    headerIndex[headers[i]] = i + 1;
-  }
+  const headerLookup = buildHeaderLookup_(headers);
+  const headerIndex = headerLookup.headerIndex;
+  const normalizedHeaderIndex = headerLookup.normalizedHeaderIndex;
 
   var rowNum = -1;
   if (headerIndex["GoogleBooksVolumeId"] && matchGoogleBooksVolumeId) {
@@ -221,8 +251,9 @@ function updateBookRow_(payload) {
 
   for (var colName in updates) {
     if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
-    if (!headerIndex[colName]) continue;
-    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(updates[colName] || "").trim());
+    var colNumber = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, colName);
+    if (!colNumber) continue;
+    sheet.getRange(rowNum, colNumber).setValue(String(updates[colName] || "").trim());
   }
 
   return createCORSResponse("Success");
@@ -248,10 +279,9 @@ function updateShowRow_(payload) {
   if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Shows sheet has no data rows");
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
-  const headerIndex = {};
-  for (var i = 0; i < headers.length; i++) {
-    headerIndex[headers[i]] = i + 1;
-  }
+  const headerLookup = buildHeaderLookup_(headers);
+  const headerIndex = headerLookup.headerIndex;
+  const normalizedHeaderIndex = headerLookup.normalizedHeaderIndex;
 
   var rowNum = -1;
   if (headerIndex["TMDB_ID"] && matchTmdbId) {
@@ -278,8 +308,9 @@ function updateShowRow_(payload) {
 
   for (var colName in updates) {
     if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
-    if (!headerIndex[colName]) continue;
-    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(updates[colName] || "").trim());
+    var colNumber = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, colName);
+    if (!colNumber) continue;
+    sheet.getRange(rowNum, colNumber).setValue(String(updates[colName] || "").trim());
   }
 
   return createCORSResponse("Success");
@@ -305,10 +336,9 @@ function updateMovieRow_(payload) {
   if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Movies sheet has no data rows");
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
-  const headerIndex = {};
-  for (var i = 0; i < headers.length; i++) {
-    headerIndex[headers[i]] = i + 1;
-  }
+  const headerLookup = buildHeaderLookup_(headers);
+  const headerIndex = headerLookup.headerIndex;
+  const normalizedHeaderIndex = headerLookup.normalizedHeaderIndex;
 
   var rowNum = -1;
   if (headerIndex["TMDB_ID"] && matchTmdbId) {
@@ -335,8 +365,9 @@ function updateMovieRow_(payload) {
 
   for (var colName in updates) {
     if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
-    if (!headerIndex[colName]) continue;
-    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(updates[colName] || "").trim());
+    var colNumber = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, colName);
+    if (!colNumber) continue;
+    sheet.getRange(rowNum, colNumber).setValue(String(updates[colName] || "").trim());
   }
 
   return createCORSResponse("Success");
@@ -362,10 +393,9 @@ function updateGameRow_(payload) {
   if (lastRow < 2 || lastCol < 1) return createCORSResponse("Error: Games sheet has no data rows");
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
-  const headerIndex = {};
-  for (var i = 0; i < headers.length; i++) {
-    headerIndex[headers[i]] = i + 1;
-  }
+  const headerLookup = buildHeaderLookup_(headers);
+  const headerIndex = headerLookup.headerIndex;
+  const normalizedHeaderIndex = headerLookup.normalizedHeaderIndex;
 
   var rowNum = -1;
   if (headerIndex["IGDB_ID"] && matchIgdbId) {
@@ -393,8 +423,9 @@ function updateGameRow_(payload) {
   const normalizedUpdates = normalizeGameValuesForWrite_(updates, sheet, rowNum);
   for (var colName in normalizedUpdates) {
     if (!Object.prototype.hasOwnProperty.call(normalizedUpdates, colName)) continue;
-    if (!headerIndex[colName]) continue;
-    sheet.getRange(rowNum, headerIndex[colName]).setValue(String(normalizedUpdates[colName] || "").trim());
+    var colNumber = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, colName);
+    if (!colNumber) continue;
+    sheet.getRange(rowNum, colNumber).setValue(String(normalizedUpdates[colName] || "").trim());
   }
 
   return createCORSResponse("Success");
