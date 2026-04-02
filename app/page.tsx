@@ -15672,15 +15672,6 @@ export default function Page() {
                           {isGame ? (
                             <>
                               <div
-                                aria-hidden
-                                style={{
-                                  position: "absolute",
-                                  inset: 0,
-                                  background: "linear-gradient(180deg, rgba(18,18,18,0.96), rgba(8,8,8,0.96))",
-                                  pointerEvents: "none",
-                                }}
-                              />
-                              <div
                                 style={{
                                   position: "absolute",
                                   top: insetTop,
