@@ -9340,10 +9340,20 @@ export default function Page() {
       return { itemSize, visualLeft, visualWidth };
     }
 
-    // Game overlays and platform frames occupy the full case width, even when the inner
-    // cover art is inset or scaled down. Packing by the reduced cover width lets adjacent
-    // items overlap, which is most obvious in wishlist rows.
-    return { itemSize, visualLeft: 0, visualWidth: caseWidth };
+    const platformKey = gamePlatform || "Default";
+    const coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
+    const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
+    const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
+    const coverScaleX = coverScale.x / 100;
+    const coverTranslateX = platformCoverOffsetSettings.x * 0.35;
+    const coverTranslateXPx = (coverTranslateX / 100) * insetWidth;
+    const coverVisualWidth = insetWidth * coverScaleX;
+    const rawCoverLeft = insetLeft + (insetWidth - coverVisualWidth) / 2 + coverTranslateXPx;
+    const rawCoverRight = rawCoverLeft + coverVisualWidth;
+    const visualLeft = Math.max(0, rawCoverLeft);
+    const visualRight = Math.min(caseWidth, rawCoverRight);
+    const visualWidth = Math.max(1, visualRight - visualLeft);
+    return { itemSize, visualLeft, visualWidth };
   }, [
     bookHeightMultiplier,
     mobileAdjustedPosterSizeBooks,
@@ -9365,6 +9375,8 @@ export default function Page() {
     caseInsetBottomPx,
     caseInsetLeftPx,
     platformInsets,
+    platformCoverScale,
+    platformCoverOffset,
   ]);
 
   const shelves = useMemo(() => {
@@ -15659,6 +15671,15 @@ export default function Page() {
                           <div className="caseSurface">
                           {isGame ? (
                             <>
+                              <div
+                                aria-hidden
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  background: "linear-gradient(180deg, rgba(18,18,18,0.96), rgba(8,8,8,0.96))",
+                                  pointerEvents: "none",
+                                }}
+                              />
                               <div
                                 style={{
                                   position: "absolute",
