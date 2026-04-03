@@ -16053,24 +16053,25 @@ export default function Page() {
                               title={`Rating: ${ratingBadgeLabel}`}
                               style={{
                                 position: "absolute",
-                                top: ratingBadgeTopPx,
-                                right: ratingBadgeRightPx,
+                                top: Math.max(4, ratingBadgeTopPx - 1),
+                                right: Math.max(4, ratingBadgeRightPx - 1),
                                 maxWidth: Math.max(36, caseWidth - insetLeft - insetRight - 8),
                                 borderRadius: 999,
-                                border: "1px solid rgba(247, 230, 182, 0.72)",
-                                background: "linear-gradient(180deg, rgba(39, 31, 16, 0.94), rgba(22, 17, 8, 0.9))",
-                                color: "rgba(255, 241, 197, 0.98)",
+                                border: "1px solid rgba(151, 188, 245, 0.6)",
+                                background: "rgba(8, 18, 40, 0.8)",
+                                color: "#f9fcff",
                                 boxShadow: "0 2px 6px rgba(0,0,0,0.34)",
                                 padding: "2px 6px",
-                                fontSize: 8,
-                                lineHeight: 1,
+                                fontSize: 10,
+                                lineHeight: 1.1,
                                 fontWeight: 900,
-                                letterSpacing: "0.04em",
+                                letterSpacing: "0em",
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 pointerEvents: "none",
                                 zIndex: 28,
+                                backdropFilter: "blur(2px)",
                               }}
                             >
                               {ratingBadgeLabel}

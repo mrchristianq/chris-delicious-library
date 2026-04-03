@@ -394,6 +394,13 @@ function formatPersonalRatingDisplay(
   return `${(Math.round(item.rating * 10) / 10).toFixed(1)}/10`;
 }
 
+function getPersonalRatingBadgeLabel(
+  item: Pick<UnifiedStatsItem, "mediaType" | "rating"> | null | undefined
+): string | null {
+  const label = formatPersonalRatingDisplay(item);
+  return label === "-" ? null : label;
+}
+
 function getComparablePersonalRating(item: Pick<UnifiedStatsItem, "mediaType" | "rating"> | null | undefined): number {
   if (!item || typeof item.rating !== "number" || !Number.isFinite(item.rating) || item.rating <= 0) return 0;
   if (item.mediaType === "book" && item.rating <= 5) {
@@ -2173,6 +2180,11 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                   }
                 >
                   <div className="yearSpotlightCover">
+                    {getPersonalRatingBadgeLabel(yearReview.topRated) ? (
+                      <div className="statsCoverRatingBadge">
+                        {getPersonalRatingBadgeLabel(yearReview.topRated)}
+                      </div>
+                    ) : null}
                     {yearReview.topRated.coverUrl ? (
                       <img src={yearReview.topRated.coverUrl} alt={`${yearReview.topRated.title} cover`} loading="lazy" />
                     ) : (
@@ -2328,6 +2340,11 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                   }
                 >
                   <div className="yearSpotlightCover">
+                    {getPersonalRatingBadgeLabel(yearReview.lowestRated) ? (
+                      <div className="statsCoverRatingBadge">
+                        {getPersonalRatingBadgeLabel(yearReview.lowestRated)}
+                      </div>
+                    ) : null}
                     {yearReview.lowestRated.coverUrl ? (
                       <img src={yearReview.lowestRated.coverUrl} alt={`${yearReview.lowestRated.title} cover`} loading="lazy" />
                     ) : (
@@ -2411,6 +2428,11 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       }}
                     >
                       <div className="yearTopRatedRank">#{index + 1}</div>
+                      {getPersonalRatingBadgeLabel(item) ? (
+                        <div className="statsCoverRatingBadge">
+                          {getPersonalRatingBadgeLabel(item)}
+                        </div>
+                      ) : null}
                       {item.coverUrl ? (
                         <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
                       ) : (
@@ -2497,6 +2519,11 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       }}
                     >
                       <div className="yearTopRatedRank">#{index + 1}</div>
+                      {getPersonalRatingBadgeLabel(item) ? (
+                        <div className="statsCoverRatingBadge">
+                          {getPersonalRatingBadgeLabel(item)}
+                        </div>
+                      ) : null}
                       {item.coverUrl ? (
                         <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
                       ) : (
@@ -3361,12 +3388,19 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       <div className="statDetailItemRank">{index + 1}</div>
                       <div className="statDetailItemCover">
                         {item.coverUrl ? (
-                          <img
-                            src={item.coverUrl}
-                            alt={`Cover for ${item.title}`}
-                            className="statDetailItemCoverImage"
-                            loading="lazy"
-                          />
+                          <>
+                            <img
+                              src={item.coverUrl}
+                              alt={`Cover for ${item.title}`}
+                              className="statDetailItemCoverImage"
+                              loading="lazy"
+                            />
+                            {getPersonalRatingBadgeLabel(item) ? (
+                              <div className="statsCoverRatingBadge statDetailItemCoverBadge">
+                                {getPersonalRatingBadgeLabel(item)}
+                              </div>
+                            ) : null}
+                          </>
                         ) : (
                           <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
                             {item.mediaType.toUpperCase()}
@@ -3671,6 +3705,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         }
 
         .yearSpotlightCover {
+          position: relative;
           width: 100%;
           aspect-ratio: 3 / 4;
           border-radius: 10px;
@@ -3775,6 +3810,22 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           background: rgba(9, 19, 41, 0.76);
           box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
           display: block;
+        }
+
+        .statsCoverRatingBadge {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          z-index: 2;
+          font-size: 10px;
+          font-weight: 900;
+          color: #f9fcff;
+          background: rgba(8, 18, 40, 0.8);
+          border: 1px solid rgba(151, 188, 245, 0.6);
+          border-radius: 999px;
+          padding: 2px 6px;
+          line-height: 1.1;
+          backdrop-filter: blur(2px);
         }
 
         .yearTopRatedTile figcaption {
@@ -4762,8 +4813,16 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         }
 
         .statDetailItemCover {
+          position: relative;
           width: 42px;
           align-self: start;
+        }
+
+        .statDetailItemCoverBadge {
+          top: 2px;
+          right: 2px;
+          font-size: 7px;
+          padding: 1px 4px;
         }
 
         .statDetailItemCoverImage,
