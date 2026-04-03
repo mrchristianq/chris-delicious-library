@@ -2149,7 +2149,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Top Rated Pick</h2>
-                <span>{formatPersonalRatingDisplay(yearReview.topRated)}</span>
+                <span>{getPersonalRatingBadgeLabel(yearReview.topRated) || "-"}</span>
               </div>
               {yearReview.topRated ? (
                 <div
@@ -2309,7 +2309,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Lowest Rated Item</h2>
-                <span>{formatPersonalRatingDisplay(yearReview.lowestRated)}</span>
+                <span>{getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-"}</span>
               </div>
               {yearReview.lowestRated ? (
                 <div
@@ -2442,7 +2442,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       <figcaption>
                         <span className="yearTopRatedTitle">{item.title}</span>
                         <span className="yearTopRatedMeta">
-                          {formatPersonalRatingDisplay(item)} · {MEDIA_LABELS[item.mediaType]}
+                          {getPersonalRatingBadgeLabel(item) || "-"} · {MEDIA_LABELS[item.mediaType]}
                         </span>
                       </figcaption>
                     </figure>
@@ -2533,7 +2533,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       <figcaption>
                         <span className="yearTopRatedTitle">{item.title}</span>
                         <span className="yearTopRatedMeta">
-                          {formatPersonalRatingDisplay(item)} · {MEDIA_LABELS[item.mediaType]}
+                          {getPersonalRatingBadgeLabel(item) || "-"} · {MEDIA_LABELS[item.mediaType]}
                         </span>
                       </figcaption>
                     </figure>
