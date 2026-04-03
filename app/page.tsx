@@ -731,6 +731,28 @@ function isMovieAbandonedStatus(movie: Pick<Movie, "watchStatus" | "watched">): 
   return ABANDONED_STATUS_VALUES.has(status);
 }
 
+function parsePersonalRatingValue(value: unknown): number | null {
+  const parsed = Number.parseFloat(safeStr(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatItemPersonalRatingBadge(item: any): string | null {
+  const mediaType = getMediaType(item);
+  const rating = parsePersonalRatingValue(
+    item?.myRating ??
+      item?.["My Rating"] ??
+      item?.["MyRating"] ??
+      item?.userRating ??
+      item?.personalRating
+  );
+  if (rating === null) return null;
+  if (mediaType === "book") {
+    const valueOutOfFive = rating > 5 ? rating / 2 : rating;
+    return `${(Math.round(valueOutOfFive * 10) / 10).toFixed(1)}/5`;
+  }
+  return `${(Math.round(rating * 10) / 10).toFixed(1)}/10`;
+}
+
 function parseManualOrderValue(value: unknown): number | null {
   const parsed = Number.parseFloat(safeStr(value));
   return Number.isFinite(parsed) ? parsed : null;
@@ -15543,6 +15565,40 @@ export default function Page() {
                         insetTop + (insetHeightPx - coverVisualHeightPx) / 2 + coverTranslateYPx;
                       const selectedCoverUrl = getDisplayCoverUrl(show);
                       const statusIndicator = getStatusIndicator(show);
+                      const ratingBadgeLabel = formatItemPersonalRatingBadge(show);
+                      const completedStatusToken = (() => {
+                        if (show.__type === "book") return normalizeStatusToken(show.status);
+                        if (show.__type === "tv") {
+                          return normalizeStatusToken(show.watchStatus || show.watched || show.showStatus || show.status);
+                        }
+                        if (show.__type === "movie") {
+                          return normalizeStatusToken(show.watchStatus || show.watched || show.status || show.movieStatus);
+                        }
+                        return normalizeStatusToken(show.status || show.playStatus || show.gameStatus || show.completed);
+                      })();
+                      const isCompletedForRatingBadge =
+                        show.__type === "tv"
+                          ? Boolean(safeStr(show.dateCompleted)) ||
+                            completedStatusToken === "completed" ||
+                            completedStatusToken === "watched" ||
+                            completedStatusToken === "true" ||
+                            completedStatusToken === "yes" ||
+                            completedStatusToken === "1"
+                          : show.__type === "movie"
+                            ? isMovieWatched(show as Movie) ||
+                              completedStatusToken === "completed" ||
+                              completedStatusToken === "watched"
+                            : show.__type === "game"
+                              ? completedStatusToken === "completed" ||
+                                completedStatusToken === "watched" ||
+                                completedStatusToken === "true" ||
+                                completedStatusToken === "yes" ||
+                                completedStatusToken === "1"
+                              : completedStatusToken === "completed" || completedStatusToken === "watched";
+                      const shouldShowRatingBadge =
+                        showStatusIndicators &&
+                        isCompletedForRatingBadge &&
+                        Boolean(ratingBadgeLabel);
                       const statusRegionLeftPx = coverVisualLeftPx;
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
@@ -15561,6 +15617,8 @@ export default function Page() {
                         insetTop,
                         Math.min(caseHeight - insetBottom - statusDotPixelSize, statusDotTopPx)
                       );
+                      const ratingBadgeTopPx = Math.max(4, insetTop + 4);
+                      const ratingBadgeRightPx = Math.max(4, insetRight + 4);
                       const itemKey = getMediaItemKey(show);
                       const tvWatchlistSectionKey =
                         nav === "watchlist-tv" && show.__type === "tv"
@@ -15986,6 +16044,36 @@ export default function Page() {
                               }}
                             >
                               {tvWatchlistBadgeLabel}
+                            </div>
+                          ) : null}
+
+                          {shouldShowRatingBadge ? (
+                            <div
+                              aria-label={`Rating: ${ratingBadgeLabel}`}
+                              title={`Rating: ${ratingBadgeLabel}`}
+                              style={{
+                                position: "absolute",
+                                top: ratingBadgeTopPx,
+                                right: ratingBadgeRightPx,
+                                maxWidth: Math.max(36, caseWidth - insetLeft - insetRight - 8),
+                                borderRadius: 999,
+                                border: "1px solid rgba(247, 230, 182, 0.72)",
+                                background: "linear-gradient(180deg, rgba(39, 31, 16, 0.94), rgba(22, 17, 8, 0.9))",
+                                color: "rgba(255, 241, 197, 0.98)",
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.34)",
+                                padding: "2px 6px",
+                                fontSize: 8,
+                                lineHeight: 1,
+                                fontWeight: 900,
+                                letterSpacing: "0.04em",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                pointerEvents: "none",
+                                zIndex: 28,
+                              }}
+                            >
+                              {ratingBadgeLabel}
                             </div>
                           ) : null}
 

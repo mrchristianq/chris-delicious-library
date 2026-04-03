@@ -1459,6 +1459,16 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
         return a.title.localeCompare(b.title);
       })
       .slice(0, 20);
+    const bottomRatedItems = [...ratedYearItems]
+      .sort((a, b) => {
+        const ratingDelta = getComparablePersonalRating(a) - getComparablePersonalRating(b);
+        if (ratingDelta !== 0) return ratingDelta;
+        const aDate = a.completionDate?.getTime() || 0;
+        const bDate = b.completionDate?.getTime() || 0;
+        if (bDate !== aDate) return bDate - aDate;
+        return a.title.localeCompare(b.title);
+      })
+      .slice(0, 20);
     const topRated = topRatedItems[0] || null;
     const lowestRated = [...ratedYearItems]
       .sort((a, b) => {
@@ -1502,6 +1512,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
       longestAudiobook,
       mostPlayedGame,
       topRatedItems,
+      bottomRatedItems,
     };
   }, [previousReviewYear, selectedReviewYear, unifiedItems]);
 
@@ -2418,6 +2429,92 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                 <div className="cardEmpty">No rated items available for {selectedReviewYear}.</div>
               )}
             </article>
+
+            <article
+              className="statsCard spanFull statsCardInteractive"
+              role="button"
+              tabIndex={0}
+              aria-label={`Open details for Bottom 20 rated in ${selectedReviewYear}`}
+              onClick={() =>
+                openStatisticDetail({
+                  id: `YR_${selectedReviewYear}_BOTTOM20_RATED`,
+                  title: `Bottom 20 Rated in ${selectedReviewYear}`,
+                  value: `${yearReview.bottomRatedItems.length}`,
+                  summary: "Lowest-rated items in the selected review year using personal rating.",
+                  calculation: "Sort rated year items by normalized rating asc (books mapped from /5 to /10), then date desc, then title; take bottom 20.",
+                  items: yearReview.bottomRatedItems,
+                })
+              }
+              onKeyDown={(event) =>
+                handleInteractiveKeyDown(event, () =>
+                  openStatisticDetail({
+                    id: `YR_${selectedReviewYear}_BOTTOM20_RATED`,
+                    title: `Bottom 20 Rated in ${selectedReviewYear}`,
+                    value: `${yearReview.bottomRatedItems.length}`,
+                    summary: "Lowest-rated items in the selected review year using personal rating.",
+                    calculation: "Sort rated year items by normalized rating asc (books mapped from /5 to /10), then date desc, then title; take bottom 20.",
+                    items: yearReview.bottomRatedItems,
+                  })
+                )
+              }
+            >
+              <div className="cardHeader">
+                <h2>Bottom 20 Rated in {selectedReviewYear}</h2>
+                <span>{yearReview.bottomRatedItems.length} ranked</span>
+              </div>
+              {yearReview.bottomRatedItems.length > 0 ? (
+                <div className="yearTopRatedGrid">
+                  {yearReview.bottomRatedItems.map((item, index) => (
+                    <figure
+                      key={`${index + 1}-${item.mediaType}-${item.title}-bottom`}
+                      className="yearTopRatedTile yearTopRatedTileInteractive"
+                      title={`${index + 1}. ${item.title} (${MEDIA_LABELS[item.mediaType]})`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
+                          title: `Bottom 20 Item #${index + 1}`,
+                          value: formatPersonalRatingDisplay(item),
+                          summary: "Single item from the Year in Review bottom-20 rated list.",
+                          calculation: "Selected index from sorted year bottom-rated list.",
+                          items: [item],
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                        handleInteractiveKeyDown(event, () =>
+                          openStatisticDetail({
+                            id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
+                            title: `Bottom 20 Item #${index + 1}`,
+                            value: formatPersonalRatingDisplay(item),
+                            summary: "Single item from the Year in Review bottom-20 rated list.",
+                            calculation: "Selected index from sorted year bottom-rated list.",
+                            items: [item],
+                          })
+                        );
+                      }}
+                    >
+                      <div className="yearTopRatedRank">#{index + 1}</div>
+                      {item.coverUrl ? (
+                        <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                      ) : (
+                        <div className="yearSpotlightFallback">No Cover</div>
+                      )}
+                      <figcaption>
+                        <span className="yearTopRatedTitle">{item.title}</span>
+                        <span className="yearTopRatedMeta">
+                          {formatPersonalRatingDisplay(item)} · {MEDIA_LABELS[item.mediaType]}
+                        </span>
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <div className="cardEmpty">No rated items available for {selectedReviewYear}.</div>
+              )}
+            </article>
           </div>
         </>
       ) : (
@@ -3262,6 +3359,20 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
                       className="statDetailItemRow"
                     >
                       <div className="statDetailItemRank">{index + 1}</div>
+                      <div className="statDetailItemCover">
+                        {item.coverUrl ? (
+                          <img
+                            src={item.coverUrl}
+                            alt={`Cover for ${item.title}`}
+                            className="statDetailItemCoverImage"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
+                            {item.mediaType.toUpperCase()}
+                          </div>
+                        )}
+                      </div>
                       <div className="statDetailItemMain">
                         <div className="statDetailItemTitle">{item.title}</div>
                         <div className="statDetailItemMeta">
@@ -4622,7 +4733,7 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
 
         .statDetailItemRow {
           display: grid;
-          grid-template-columns: 28px 1fr;
+          grid-template-columns: 28px 42px minmax(0, 1fr);
           gap: 8px;
           border: 1px solid rgba(121, 169, 238, 0.33);
           border-radius: 10px;
@@ -4648,6 +4759,36 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           display: flex;
           flex-direction: column;
           gap: 4px;
+        }
+
+        .statDetailItemCover {
+          width: 42px;
+          align-self: start;
+        }
+
+        .statDetailItemCoverImage,
+        .statDetailItemCoverPlaceholder {
+          display: block;
+          width: 42px;
+          aspect-ratio: 2 / 3;
+          border-radius: 8px;
+          border: 1px solid rgba(130, 176, 244, 0.3);
+          background: rgba(15, 33, 63, 0.9);
+          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+        }
+
+        .statDetailItemCoverImage {
+          object-fit: cover;
+        }
+
+        .statDetailItemCoverPlaceholder {
+          display: grid;
+          place-items: center;
+          padding: 4px;
+          font-size: 8px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          color: rgba(196, 220, 251, 0.72);
         }
 
         .statDetailItemTitle {
