@@ -746,11 +746,8 @@ function formatItemPersonalRatingBadge(item: any): string | null {
       item?.personalRating
   );
   if (rating === null) return null;
-  if (mediaType === "book") {
-    const valueOutOfFive = rating > 5 ? rating / 2 : rating;
-    return `${(Math.round(valueOutOfFive * 10) / 10).toFixed(1)}/5`;
-  }
-  return `${(Math.round(rating * 10) / 10).toFixed(1)}/10`;
+  const tenScaleValue = mediaType === "book" && rating <= 5 ? rating * 2 : rating;
+  return `${(Math.round(tenScaleValue * 10) / 10).toFixed(1)}`;
 }
 
 function parseManualOrderValue(value: unknown): number | null {

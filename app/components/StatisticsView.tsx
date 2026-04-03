@@ -397,8 +397,9 @@ function formatPersonalRatingDisplay(
 function getPersonalRatingBadgeLabel(
   item: Pick<UnifiedStatsItem, "mediaType" | "rating"> | null | undefined
 ): string | null {
-  const label = formatPersonalRatingDisplay(item);
-  return label === "-" ? null : label;
+  if (!item || typeof item.rating !== "number" || !Number.isFinite(item.rating) || item.rating <= 0) return null;
+  const tenScaleValue = item.mediaType === "book" && item.rating <= 5 ? item.rating * 2 : item.rating;
+  return (Math.round(tenScaleValue * 10) / 10).toFixed(1);
 }
 
 function getComparablePersonalRating(item: Pick<UnifiedStatsItem, "mediaType" | "rating"> | null | undefined): number {
