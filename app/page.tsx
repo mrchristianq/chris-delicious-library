@@ -566,6 +566,9 @@ const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
 const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
 const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
 const ELECTRIC_BLUE_SHELF_THEME = "/shelf-electric-blue.png";
+const SIMPLE_SHELF_THEME = "simpleShelf";
+const SIMPLE_SHELF_BACKGROUND = "#12363c";
+const SIMPLE_SHELF_HEADER_BACKGROUND = "#0d2a2f";
 const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
   "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
   "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
@@ -1805,7 +1808,10 @@ export default function Page() {
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   const isElectricBlueShelfTheme = shelfTheme === ELECTRIC_BLUE_SHELF_THEME;
-  const currentTopHeaderImage = SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
+  const isSimpleShelfTheme = shelfTheme === SIMPLE_SHELF_THEME;
+  const currentTopHeaderImage = isSimpleShelfTheme
+    ? ""
+    : SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
   
   // Sidebar theme
   const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
@@ -2064,6 +2070,12 @@ export default function Page() {
   const mobileAdjustedPosterSizeMovies = Math.max(54, Math.round(posterSizeMovies * mobileCoverRenderScale));
   const mobileAdjustedPosterSizeBooks = Math.max(56, Math.round(posterSizeBooks * mobileCoverRenderScale));
   const mobileAdjustedPosterSizeGames = Math.max(54, Math.round(posterSizeGames * mobileCoverRenderScale));
+  const simpleShelfPosterSize = Math.max(
+    mobileAdjustedPosterSizeTv,
+    mobileAdjustedPosterSizeMovies,
+    mobileAdjustedPosterSizeBooks,
+    mobileAdjustedPosterSizeGames
+  );
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
   const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
     tv: 100,
@@ -5513,6 +5525,7 @@ export default function Page() {
     setShelfTheme(normalizedValue);
     saveSetting("shelfTheme", normalizedValue, "Themes", "Shelf Theme");
     const shelfThemeNames: Record<string, string> = {
+      [SIMPLE_SHELF_THEME]: "Simple Shelf",
       "/shelves-light-single2.png": "Default (Light Oak)",
       "/shelf-dark-walnut.png": "Dark Walnut",
       "/shelf-weathered-oak.png": "Weathered Oak",
@@ -9301,15 +9314,25 @@ export default function Page() {
     const isBook = item.__type === "book";
     const isMovie = item.__type === "movie";
     const isGame = item.__type === "game";
-    const itemSize = isBook
-      ? mobileAdjustedPosterSizeBooks
-      : isMovie
-        ? mobileAdjustedPosterSizeMovies
-        : isGame
-          ? mobileAdjustedPosterSizeGames
-          : mobileAdjustedPosterSizeTv;
+    const itemSize = isSimpleShelfTheme
+      ? simpleShelfPosterSize
+      : isBook
+        ? mobileAdjustedPosterSizeBooks
+        : isMovie
+          ? mobileAdjustedPosterSizeMovies
+          : isGame
+            ? mobileAdjustedPosterSizeGames
+            : mobileAdjustedPosterSizeTv;
     const caseWidth = itemSize;
-    const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
+    const caseHeight = isSimpleShelfTheme
+      ? Math.round(itemSize * 1.5)
+      : isBook
+        ? Math.round(itemSize * bookHeightMultiplier)
+        : Math.round(itemSize * 1.5);
+
+    if (isSimpleShelfTheme) {
+      return { itemSize, visualLeft: 0, visualWidth: caseWidth };
+    }
 
     const gamePlatformRaw = isGame ? safeStr(item?.__renderPlatform || item?.platform) : undefined;
     const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
@@ -9374,6 +9397,8 @@ export default function Page() {
     const visualWidth = Math.max(1, visualRight - visualLeft);
     return { itemSize, visualLeft, visualWidth };
   }, [
+    isSimpleShelfTheme,
+    simpleShelfPosterSize,
     bookHeightMultiplier,
     mobileAdjustedPosterSizeBooks,
     mobileAdjustedPosterSizeGames,
@@ -9478,8 +9503,10 @@ export default function Page() {
         minHeight: "100vh",
         background: useElectricBlueStatsBackdrop
           ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
-          : "#f4f1ea",
-        color: "#111",
+          : isSimpleShelfTheme
+            ? SIMPLE_SHELF_BACKGROUND
+            : "#f4f1ea",
+        color: isSimpleShelfTheme ? "rgba(235, 244, 246, 0.95)" : "#111",
         position: "relative",
         overflowX: isMobileLayout ? "hidden" : undefined,
         "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
@@ -9602,13 +9629,19 @@ export default function Page() {
             height: 45,
             zIndex: 1300,
             pointerEvents: "none",
-            backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : `url(${currentTopHeaderImage})`,
-            backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : "repeat-x",
+            background: isElectricBlueShelfTheme
+              ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND
+              : isSimpleShelfTheme
+                ? SIMPLE_SHELF_HEADER_BACKGROUND
+                : `url(${currentTopHeaderImage})`,
+            backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
             backgroundPosition: "0 0",
-            backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : "auto 45px",
+            backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
             boxShadow: isElectricBlueShelfTheme
               ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
-              : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+              : isSimpleShelfTheme
+                ? "inset 0 -1px 0 rgba(255, 255, 255, 0.08)"
+                : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
           }}
         />
       ) : null}
@@ -10150,16 +10183,20 @@ export default function Page() {
               bottom: 0,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: `url(${shelfTheme})`,
+              backgroundImage: isSimpleShelfTheme ? "none" : `url(${shelfTheme})`,
               backgroundRepeat: "repeat-y",
               backgroundPosition: "center top",
               backgroundSize: isElectricBlueShelfTheme
                 ? `calc(100% + 2px) ${SHELF_HEIGHT + 2}px`
-                : `100% ${SHELF_HEIGHT}px`,
-              backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : "transparent",
+                : isSimpleShelfTheme
+                  ? "auto"
+                  : `100% ${SHELF_HEIGHT}px`,
+              backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfTheme ? SIMPLE_SHELF_BACKGROUND : "transparent",
               boxShadow: isElectricBlueShelfTheme
                 ? "0 0 26px rgba(58, 125, 232, 0.2), inset 0 0 0 1px rgba(7, 21, 45, 0.6)"
-                : "none",
+                : isSimpleShelfTheme
+                  ? "none"
+                  : "none",
             }}
           />
           <div
@@ -10174,13 +10211,16 @@ export default function Page() {
               height: 45,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : `url(${currentTopHeaderImage})`,
-              backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : "repeat-x",
+              backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfTheme ? "none" : `url(${currentTopHeaderImage})`,
+              backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
               backgroundPosition: "0 0",
-              backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : "auto 45px",
+              backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
+              backgroundColor: isSimpleShelfTheme ? SIMPLE_SHELF_HEADER_BACKGROUND : "transparent",
               boxShadow: isElectricBlueShelfTheme
                 ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
-                : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+                : isSimpleShelfTheme
+                  ? "inset 0 -1px 0 rgba(255, 255, 255, 0.08)"
+                  : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
               transform: "translate3d(0, 0, 0) scaleX(-1)",
             }}
           />
@@ -12489,6 +12529,22 @@ export default function Page() {
                 {/* Shelf Theme Section */}
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A", marginTop: 8 }}>SHELF THEME</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    onClick={() => updateShelfTheme(SIMPLE_SHELF_THEME)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: shelfTheme === SIMPLE_SHELF_THEME ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      borderRadius: 8,
+                      background: shelfTheme === SIMPLE_SHELF_THEME ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: shelfTheme === SIMPLE_SHELF_THEME ? 600 : 400,
+                    }}
+                  >
+                    Simple Shelf
+                  </button>
                   <button
                     onClick={() => updateShelfTheme(ELECTRIC_BLUE_SHELF_THEME)}
                     style={{
@@ -15413,17 +15469,21 @@ export default function Page() {
                     position: "relative",
                     height: SHELF_HEIGHT,
                     overflow: "hidden",
-                    backgroundImage: `url(${shelfTheme})`,
-                    backgroundRepeat: "no-repeat",
+                    backgroundImage: isSimpleShelfTheme ? "none" : `url(${shelfTheme})`,
+                    backgroundRepeat: isSimpleShelfTheme ? "repeat" : "no-repeat",
                     backgroundPosition: "center",
                     backgroundSize: isElectricBlueShelfTheme
                       ? "calc(100% + 2px) calc(100% + 2px)"
-                      : "100% 100%",
-                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : "transparent",
+                      : isSimpleShelfTheme
+                        ? "auto"
+                        : "100% 100%",
+                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : isSimpleShelfTheme ? SIMPLE_SHELF_BACKGROUND : "transparent",
                     borderRadius: 0,
                     boxShadow: isElectricBlueShelfTheme
                       ? `${shelfIndex === 0 ? "0 14px 28px rgba(4,12,24,0.52), " : "0 10px 20px rgba(4,12,24,0.4), "}0 0 22px rgba(78,150,255,0.18), inset 0 0 0 1px rgba(8,24,50,0.72), inset 0 20px 30px rgba(2,6,18,0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.32), inset 16px 0 24px rgba(2,10,24,0.42), inset -16px 0 24px rgba(2,10,24,0.42)`
-                      : `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
+                      : isSimpleShelfTheme
+                        ? "none"
+                        : `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
                   }}
                 >
                   <div
@@ -15441,19 +15501,29 @@ export default function Page() {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
-                      const gamePlatformRaw = isGame ? safeStr((show as any).__renderPlatform || show.platform) : undefined;
+                      const renderableGame = isGame ? (show as Game & { __renderPlatform?: string }) : null;
+                      const gamePlatformRaw = renderableGame ? safeStr(renderableGame.__renderPlatform || renderableGame.platform) : undefined;
                       // Determine primary platform from the row to keep shelf rendering deterministic.
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const { itemSize, visualLeft, visualWidth } = getItemVisualLayout(show);
                       const x = Math.round(runningVisualX - visualLeft);
                       runningVisualX += visualWidth + gap;
                       const caseWidth = itemSize;
-                      const caseHeight = isBook ? Math.round(itemSize * bookHeightMultiplier) : Math.round(itemSize * 1.5);
+                      const caseHeight = isSimpleShelfTheme
+                        ? Math.round(itemSize * 1.5)
+                        : isBook
+                          ? Math.round(itemSize * bookHeightMultiplier)
+                          : Math.round(itemSize * 1.5);
 
                       // Use appropriate insets based on item type
                       // For games, look up platform-specific insets or use Default
                       let insetTopVal, insetRightVal, insetBottomVal, insetLeftVal;
-                      if (isBook) {
+                      if (isSimpleShelfTheme) {
+                        insetTopVal = 0;
+                        insetRightVal = 0;
+                        insetBottomVal = 0;
+                        insetLeftVal = 0;
+                      } else if (isBook) {
                         insetTopVal = bookInsetTopPx;
                         insetRightVal = bookInsetRightPx;
                         insetBottomVal = bookInsetBottomPx;
@@ -15489,7 +15559,15 @@ export default function Page() {
                       let coverOffsetX = 0;
                       let coverOffsetY = 0;
                       
-                      if (isGame) {
+                      if (isSimpleShelfTheme) {
+                        overlayWidth = 100;
+                        overlayHeight = 100;
+                        overlayTop = 0;
+                        overlayLeft = 0;
+                        coverScale = { x: 100, y: 100 };
+                        coverOffsetX = 0;
+                        coverOffsetY = 0;
+                      } else if (isGame) {
                         const platformKey = gamePlatform || "Default";
                         const defaultOverlay = platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
                         const platformOverlay = platformOverlaySettings[platformKey];
@@ -15600,6 +15678,11 @@ export default function Page() {
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
+                      const coverContainerRadius = isSimpleShelfTheme ? 18 : 0;
+                      const coverTransform = isSimpleShelfTheme
+                        ? undefined
+                        : `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`;
+                      const gamePosterFit = isSimpleShelfTheme ? "cover" : gameCoverFit;
                       const statusDotLeftPx = Math.round(
                         statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX
                       );
@@ -15701,6 +15784,9 @@ export default function Page() {
                             overflow: "visible",
                             cursor: isWishlistCase ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
                             opacity: isWishlistPointerDragging ? 0.94 : 1,
+                            filter: isSimpleShelfTheme
+                              ? "drop-shadow(0 12px 18px rgba(0, 0, 0, 0.34))"
+                              : undefined,
                             zIndex: isWishlistCase ? (isWishlistPointerDragging ? 60 : draggingWishlistKey ? 2 : undefined) : undefined,
                             transition: isWishlistCase
                               ? isWishlistPointerDragging
@@ -15723,7 +15809,12 @@ export default function Page() {
                           onMouseMove={handleCaseMouseMove}
                           onMouseLeave={handleCaseMouseLeave}
                         >
-                          <div className="caseSurface">
+                          <div
+                            className="caseSurface"
+                            style={{
+                              borderRadius: coverContainerRadius,
+                            }}
+                          >
                           {isGame ? (
                             <>
                               <div
@@ -15733,9 +15824,9 @@ export default function Page() {
                                   right: insetRight,
                                   bottom: insetBottom,
                                   left: insetLeft,
-                                  overflow: "hidden",
-                                  borderRadius: 0,
-                                  background: "transparent",
+                                  overflow: isSimpleShelfTheme ? "hidden" : "hidden",
+                                  borderRadius: coverContainerRadius,
+                                  background: isSimpleShelfTheme ? "rgba(255,255,255,0.06)" : "transparent",
                                 }}
                               >
                                 {showInsetGuide ? (
@@ -15761,10 +15852,10 @@ export default function Page() {
                                     style={{
                                       width: "100%",
                                       height: "100%",
-                                      objectFit: gameCoverFit,
+                                      objectFit: gamePosterFit,
                                       objectPosition: "center",
                                       display: "block",
-                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transform: coverTransform,
                                       transformOrigin: "center",
                                     }}
                                     onError={e => {
@@ -15811,7 +15902,7 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
-                                {selectedCoverUrl && gameCoverFit === "cover" ? (
+                                {selectedCoverUrl && !isSimpleShelfTheme && gameCoverFit === "cover" ? (
                                   <div
                                     aria-hidden
                                     className="case-reflection"
@@ -15822,7 +15913,7 @@ export default function Page() {
                                       zIndex: 2,
                                       background:
                                         "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
-                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transform: coverTransform,
                                       transformOrigin: "center",
                                     }}
                                   />
@@ -15830,42 +15921,44 @@ export default function Page() {
 
                               </div>
 
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: `${50 + overlayTop}%`,
-                                  left: `${50 + overlayLeft}%`,
-                                  width: "100%",
-                                  height: "100%",
-                                  transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
-                                  pointerEvents: "none",
-                                }}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={gameOverlaySrc}
-                                  onError={(e) => {
-                                    const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
-                                    if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== gameOverlayExpectedSrc) {
-                                      e.currentTarget.dataset.fallbackTried = "1";
-                                      e.currentTarget.src = gameOverlayExpectedSrc;
-                                      return;
-                                    }
-                                    if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
-                                      e.currentTarget.src = GAME_FRAME_IMAGE;
-                                    }
-                                  }}
-                                  alt=""
+                              {!isSimpleShelfTheme ? (
+                                <div
                                   style={{
                                     position: "absolute",
-                                    inset: 0,
-                                    objectFit: "fill",
+                                    top: `${50 + overlayTop}%`,
+                                    left: `${50 + overlayLeft}%`,
+                                    width: "100%",
+                                    height: "100%",
+                                    transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
                                     pointerEvents: "none",
-                                    userSelect: "none",
                                   }}
-                                  draggable={false}
-                                />
-                              </div>
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={gameOverlaySrc}
+                                    onError={(e) => {
+                                      const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                      if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== gameOverlayExpectedSrc) {
+                                        e.currentTarget.dataset.fallbackTried = "1";
+                                        e.currentTarget.src = gameOverlayExpectedSrc;
+                                        return;
+                                      }
+                                      if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
+                                        e.currentTarget.src = GAME_FRAME_IMAGE;
+                                      }
+                                    }}
+                                    alt=""
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      objectFit: "fill",
+                                      pointerEvents: "none",
+                                      userSelect: "none",
+                                    }}
+                                    draggable={false}
+                                  />
+                                </div>
+                              ) : null}
                             </>
                           ) : (
                             <>
@@ -15878,9 +15971,9 @@ export default function Page() {
                                   left: insetLeft,
                                   // Allow cover translation/scale to move beyond raw inset bounds so it can
                                   // align with resized/repositioned overlays without hard clipping at inset edge.
-                                  overflow: "visible",
-                                  borderRadius: 0,
-                                  background: "transparent",
+                                  overflow: isSimpleShelfTheme ? "hidden" : "visible",
+                                  borderRadius: coverContainerRadius,
+                                  background: isSimpleShelfTheme ? "rgba(255,255,255,0.06)" : "transparent",
                                 }}
                               >
                                 {showInsetGuide ? (
@@ -15909,7 +16002,7 @@ export default function Page() {
                                       objectFit: "cover",
                                       objectPosition: "center",
                                       display: "block",
-                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transform: coverTransform,
                                       transformOrigin: "center",
                                     }}
                                     onError={e => {
@@ -15956,7 +16049,7 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
-                                {selectedCoverUrl ? (
+                                {selectedCoverUrl && !isSimpleShelfTheme ? (
                                   <div
                                     aria-hidden
                                     className="case-reflection"
@@ -15967,7 +16060,7 @@ export default function Page() {
                                       zIndex: 2,
                                       background:
                                         "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
-                                      transform: `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`,
+                                      transform: coverTransform,
                                       transformOrigin: "center",
                                     }}
                                   />
@@ -15975,39 +16068,40 @@ export default function Page() {
 
                               </div>
 
-                              {/* Case frame overlay */}
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: `${50 + overlayTop}%`,
-                                  left: `${50 + overlayLeft}%`,
-                                  width: "100%",
-                                  height: "100%",
-                                  transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
-                                  pointerEvents: "none",
-                                }}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={nonGameOverlaySrc}
-                                  onError={(e) => {
-                                    const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
-                                    if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
-                                      e.currentTarget.dataset.fallbackTried = "1";
-                                      e.currentTarget.src = nonGameOverlayExpectedSrc;
-                                    }
-                                  }}
-                                  alt=""
+                              {!isSimpleShelfTheme ? (
+                                <div
                                   style={{
                                     position: "absolute",
-                                    inset: 0,
-                                    objectFit: "fill",
+                                    top: `${50 + overlayTop}%`,
+                                    left: `${50 + overlayLeft}%`,
+                                    width: "100%",
+                                    height: "100%",
+                                    transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
                                     pointerEvents: "none",
-                                    userSelect: "none",
                                   }}
-                                  draggable={false}
-                                />
-                              </div>
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={nonGameOverlaySrc}
+                                    onError={(e) => {
+                                      const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
+                                      if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
+                                        e.currentTarget.dataset.fallbackTried = "1";
+                                        e.currentTarget.src = nonGameOverlayExpectedSrc;
+                                      }
+                                    }}
+                                    alt=""
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      objectFit: "fill",
+                                      pointerEvents: "none",
+                                      userSelect: "none",
+                                    }}
+                                    draggable={false}
+                                  />
+                                </div>
+                              ) : null}
                             </>
                           )}
 
