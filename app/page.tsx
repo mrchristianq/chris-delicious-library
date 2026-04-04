@@ -15860,7 +15860,7 @@ export default function Page() {
                             cursor: isWishlistCase ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
                             opacity: isWishlistPointerDragging ? 0.94 : 1,
                             filter: isSimpleShelfTheme
-                              ? "drop-shadow(0 12px 18px rgba(0, 0, 0, 0.34))"
+                              ? "none"
                               : undefined,
                             zIndex: isWishlistCase ? (isWishlistPointerDragging ? 60 : draggingWishlistKey ? 2 : undefined) : undefined,
                             transition: isWishlistCase
