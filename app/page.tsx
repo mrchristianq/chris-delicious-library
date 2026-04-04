@@ -667,16 +667,6 @@ function normalizeHexColor(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BACKG
   return fallback;
 }
 
-function shadeHexColor(value: string, multiplier: number): string {
-  const normalized = normalizeHexColor(value);
-  const channelValues = normalized
-    .slice(1)
-    .match(/.{2}/g)
-    ?.map((channel) => Math.max(0, Math.min(255, Math.round(Number.parseInt(channel, 16) * multiplier))));
-  if (!channelValues || channelValues.length !== 3) return normalized;
-  return `#${channelValues.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-}
-
 function sortYearValues(values: string[]): string[] {
   return [...values]
     .filter((value): value is string => /^\d{4}$/.test(value))
@@ -1833,10 +1823,6 @@ export default function Page() {
   const [simpleShelfBackgroundColor, setSimpleShelfBackgroundColor] = useState<string>(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   const isElectricBlueShelfTheme = shelfTheme === ELECTRIC_BLUE_SHELF_THEME;
   const isSimpleShelfTheme = shelfTheme === SIMPLE_SHELF_THEME;
-  const simpleShelfHeaderBackground = useMemo(
-    () => shadeHexColor(simpleShelfBackgroundColor, 0.72),
-    [simpleShelfBackgroundColor]
-  );
   const currentTopHeaderImage = isSimpleShelfTheme
     ? ""
     : SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
@@ -1996,6 +1982,8 @@ export default function Page() {
   const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
   const shelfGap = isSimpleShelfTheme ? Math.max(0, gap - (isMobileLayout ? 2 : 4)) : gap;
+  const shelfSidePadding = isSimpleShelfTheme ? shelfGap : SHELF_SIDE_PADDING;
+  const shelfBottomOffset = isSimpleShelfTheme ? shelfGap : LIP_FROM_BOTTOM;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
   const statusDotPixelSize = useMemo(
     () =>
@@ -2087,7 +2075,7 @@ export default function Page() {
   const [mobileCoverScalePct, setMobileCoverScalePct] = useState<number>(100);
   const mobileCoverScaleFactor = isMobileLayout ? mobileCoverScalePct / 100 : 1;
   const mobileShelfWidthForDefaultCoverSizing = stageWidth > 0 ? stageWidth : viewportW;
-  const mobileUsableWidthForDefaultCoverSizing = Math.max(0, mobileShelfWidthForDefaultCoverSizing - SHELF_SIDE_PADDING * 2);
+  const mobileUsableWidthForDefaultCoverSizing = Math.max(0, mobileShelfWidthForDefaultCoverSizing - shelfSidePadding * 2);
   const mobileDefaultCoversPerRow = 4;
   const mobileMaxPosterSizeForDefaultRows =
     isMobileLayout && mobileUsableWidthForDefaultCoverSizing > 0
@@ -2109,6 +2097,8 @@ export default function Page() {
     mobileAdjustedPosterSizeBooks,
     mobileAdjustedPosterSizeGames
   );
+  const simpleShelfCaseHeight = Math.round(simpleShelfPosterSize * 1.5);
+  const shelfRowHeight = isSimpleShelfTheme ? simpleShelfCaseHeight + shelfGap * 2 : SHELF_HEIGHT;
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
   const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
     tv: 100,
@@ -9342,7 +9332,7 @@ export default function Page() {
           : nav === "games" || nav === "play-next"
             ? mobileAdjustedPosterSizeGames
             : mobileAdjustedPosterSizeTv;
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
+    const usable = Math.max(0, stageWidth - shelfSidePadding * 2);
     return Math.max(1, Math.floor((usable + shelfGap) / (size + shelfGap)));
   }, [
     isSimpleShelfTheme,
@@ -9351,6 +9341,7 @@ export default function Page() {
     mobileAdjustedPosterSizeMovies,
     mobileAdjustedPosterSizeTv,
     nav,
+    shelfSidePadding,
     shelfGap,
     simpleShelfPosterSize,
     stageWidth,
@@ -9470,7 +9461,7 @@ export default function Page() {
   ]);
 
   const shelves = useMemo(() => {
-    const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
+    const usable = Math.max(0, stageWidth - shelfSidePadding * 2);
     const out: any[][] = [];
     // Pack every shelf by rendered visual width so row edges stay consistent across all views.
     let currentShelf: any[] = [];
@@ -9494,26 +9485,26 @@ export default function Page() {
     if (currentShelf.length > 0) out.push(currentShelf);
 
     const headerOffset = 140;
-    const minShelves = Math.max(1, Math.ceil(Math.max(0, viewportH - headerOffset) / SHELF_HEIGHT));
+    const minShelves = Math.max(1, Math.ceil(Math.max(0, viewportH - headerOffset) / shelfRowHeight));
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, viewportH, SHELF_HEIGHT, stageWidth, shelfGap, getItemVisualLayout]);
+  }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout]);
 
   const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
 
   const shelfRenderWindow = useMemo(() => {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
-    const start = Math.max(0, Math.floor(localScroll / SHELF_HEIGHT) - 2);
-    const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / SHELF_HEIGHT) + 2);
+    const start = Math.max(0, Math.floor(localScroll / shelfRowHeight) - 2);
+    const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / shelfRowHeight) + 2);
     return {
       start,
       end,
-      padTop: start * SHELF_HEIGHT,
-      padBottom: Math.max(0, (shelves.length - end) * SHELF_HEIGHT),
+      padTop: start * shelfRowHeight,
+      padBottom: Math.max(0, (shelves.length - end) * shelfRowHeight),
     };
-  }, [shelves.length, windowScrollY, stageTopAbs, viewportH, SHELF_HEIGHT]);
+  }, [shelves.length, windowScrollY, stageTopAbs, viewportH, shelfRowHeight]);
 
   const visibleShelves = useMemo(
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
@@ -9675,18 +9666,15 @@ export default function Page() {
             height: 45,
             zIndex: 1300,
             pointerEvents: "none",
-            background: isElectricBlueShelfTheme
-              ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND
-              : isSimpleShelfTheme
-                ? simpleShelfHeaderBackground
-                : `url(${currentTopHeaderImage})`,
+            backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfTheme ? "none" : `url(${currentTopHeaderImage})`,
             backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
             backgroundPosition: "0 0",
             backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
+            backgroundColor: isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
             boxShadow: isElectricBlueShelfTheme
               ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
               : isSimpleShelfTheme
-                ? "inset 0 -1px 0 rgba(255, 255, 255, 0.08)"
+                ? "none"
                 : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
           }}
         />
@@ -10233,10 +10221,10 @@ export default function Page() {
               backgroundRepeat: "repeat-y",
               backgroundPosition: "center top",
               backgroundSize: isElectricBlueShelfTheme
-                ? `calc(100% + 2px) ${SHELF_HEIGHT + 2}px`
+                ? `calc(100% + 2px) ${shelfRowHeight + 2}px`
                 : isSimpleShelfTheme
                   ? "auto"
-                  : `100% ${SHELF_HEIGHT}px`,
+                  : `100% ${shelfRowHeight}px`,
               backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
               boxShadow: isElectricBlueShelfTheme
                 ? "0 0 26px rgba(58, 125, 232, 0.2), inset 0 0 0 1px rgba(7, 21, 45, 0.6)"
@@ -10261,11 +10249,11 @@ export default function Page() {
               backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
               backgroundPosition: "0 0",
               backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
-              backgroundColor: isSimpleShelfTheme ? simpleShelfHeaderBackground : "transparent",
+              backgroundColor: isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
               boxShadow: isElectricBlueShelfTheme
                 ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
                 : isSimpleShelfTheme
-                  ? "inset 0 -1px 0 rgba(255, 255, 255, 0.08)"
+                  ? "none"
                   : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
               transform: "translate3d(0, 0, 0) scaleX(-1)",
             }}
@@ -15541,7 +15529,7 @@ export default function Page() {
                   </div>
                 </div>
               {smartListBuilderOpen ? (
-                <div style={{ height: Math.max(0, shelves.length * SHELF_HEIGHT) }} />
+                <div style={{ height: Math.max(0, shelves.length * shelfRowHeight) }} />
               ) : (
                 <>
               {shelfRenderWindow.padTop > 0 ? (
@@ -15554,7 +15542,7 @@ export default function Page() {
                   key={`shelf-${shelfIndex}`}
                   style={{
                     position: "relative",
-                    height: SHELF_HEIGHT,
+                    height: shelfRowHeight,
                     overflow: "hidden",
                     backgroundImage: isSimpleShelfTheme ? "none" : `url(${shelfTheme})`,
                     backgroundRepeat: isSimpleShelfTheme ? "repeat" : "no-repeat",
@@ -15564,7 +15552,7 @@ export default function Page() {
                       : isSimpleShelfTheme
                         ? "auto"
                         : "100% 100%",
-                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
+                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : "transparent",
                     borderRadius: 0,
                     boxShadow: isElectricBlueShelfTheme
                       ? `${shelfIndex === 0 ? "0 14px 28px rgba(4,12,24,0.52), " : "0 10px 20px rgba(4,12,24,0.4), "}0 0 22px rgba(78,150,255,0.18), inset 0 0 0 1px rgba(8,24,50,0.72), inset 0 20px 30px rgba(2,6,18,0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.32), inset 16px 0 24px rgba(2,10,24,0.42), inset -16px 0 24px rgba(2,10,24,0.42)`
@@ -15576,8 +15564,8 @@ export default function Page() {
                   <div
                     style={{
                       position: "absolute",
-                      left: SHELF_SIDE_PADDING,
-                      right: SHELF_SIDE_PADDING,
+                      left: shelfSidePadding,
+                      right: shelfSidePadding,
                       top: 0,
                       bottom: 0,
                     }}
@@ -15865,7 +15853,7 @@ export default function Page() {
                             position: isWishlistPointerDragging ? "fixed" : "absolute",
                             left: dragLeft,
                             top: isWishlistPointerDragging ? dragTop : undefined,
-                            bottom: isWishlistPointerDragging ? undefined : LIP_FROM_BOTTOM,
+                            bottom: isWishlistPointerDragging ? undefined : shelfBottomOffset,
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
@@ -16334,7 +16322,7 @@ export default function Page() {
             </div>
 
             <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-              View: {nav} · Shelves: {shelves.length} · {postersPerShelf} per shelf · lip offset {LIP_FROM_BOTTOM}px
+              View: {nav} · Shelves: {shelves.length} · {postersPerShelf} per shelf · edge gap {shelfBottomOffset}px
             </div>
           </div>
           </>

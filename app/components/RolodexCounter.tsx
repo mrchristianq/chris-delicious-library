@@ -4,6 +4,22 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function getBackgroundLayerStyle(backgroundValue: string) {
+  const trimmed = backgroundValue.trim();
+  if (!trimmed) {
+    return { backgroundImage: "none", backgroundColor: "transparent" };
+  }
+
+  const usesImageLayer =
+    trimmed.includes("gradient(") ||
+    trimmed.includes("url(") ||
+    trimmed.includes("image-set(");
+
+  return usesImageLayer
+    ? { backgroundImage: trimmed, backgroundColor: "transparent" }
+    : { backgroundImage: "none", backgroundColor: trimmed };
+}
+
 type RolodexCounterProps = {
   value: number;              // total items
   digitHeight?: number;       // px height of each digit row
@@ -221,7 +237,7 @@ export function RolodexCounter({
               height: digitHeight,
               overflow: "hidden",
               borderRadius: 7,
-              background: digitTileBackground,
+              ...getBackgroundLayerStyle(digitTileBackground),
               boxShadow: digitTileShadow,
               border: `1px solid ${digitTileBorder}`,
               boxSizing: "border-box",
