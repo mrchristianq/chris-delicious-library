@@ -567,8 +567,7 @@ const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
 const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
 const ELECTRIC_BLUE_SHELF_THEME = "/shelf-electric-blue.png";
 const SIMPLE_SHELF_THEME = "simpleShelf";
-const SIMPLE_SHELF_BACKGROUND = "#12363c";
-const SIMPLE_SHELF_HEADER_BACKGROUND = "#0d2a2f";
+const DEFAULT_SIMPLE_SHELF_BACKGROUND = "#12363c";
 const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
   "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
   "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
@@ -652,6 +651,30 @@ function getGameFrameSourceDimensions(platform?: string): { width: number; heigh
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
+}
+
+function normalizeHexColor(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND): string {
+  const raw = safeStr(value);
+  if (!raw) return fallback;
+  const withHash = raw.startsWith("#") ? raw : `#${raw}`;
+  if (/^#[0-9a-fA-F]{6}$/.test(withHash)) {
+    return withHash.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(withHash)) {
+    const [, r, g, b] = withHash;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return fallback;
+}
+
+function shadeHexColor(value: string, multiplier: number): string {
+  const normalized = normalizeHexColor(value);
+  const channelValues = normalized
+    .slice(1)
+    .match(/.{2}/g)
+    ?.map((channel) => Math.max(0, Math.min(255, Math.round(Number.parseInt(channel, 16) * multiplier))));
+  if (!channelValues || channelValues.length !== 3) return normalized;
+  return `#${channelValues.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function sortYearValues(values: string[]): string[] {
@@ -1807,8 +1830,13 @@ export default function Page() {
 
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
+  const [simpleShelfBackgroundColor, setSimpleShelfBackgroundColor] = useState<string>(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   const isElectricBlueShelfTheme = shelfTheme === ELECTRIC_BLUE_SHELF_THEME;
   const isSimpleShelfTheme = shelfTheme === SIMPLE_SHELF_THEME;
+  const simpleShelfHeaderBackground = useMemo(
+    () => shadeHexColor(simpleShelfBackgroundColor, 0.72),
+    [simpleShelfBackgroundColor]
+  );
   const currentTopHeaderImage = isSimpleShelfTheme
     ? ""
     : SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
@@ -1942,8 +1970,12 @@ export default function Page() {
       const cache = settingsCacheRef.current || {};
       const cachedSidebarTheme = safeStr(cache["sidebarTheme"]);
       const cachedShelfTheme = safeStr(cache["shelfTheme"]);
+      const cachedSimpleShelfBackgroundColor = safeStr(cache["simpleShelfBackgroundColor"]);
       if (cachedSidebarTheme) setSidebarTheme(cachedSidebarTheme);
       if (cachedShelfTheme) setShelfTheme(normalizeShelfTheme(cachedShelfTheme));
+      if (cachedSimpleShelfBackgroundColor) {
+        setSimpleShelfBackgroundColor(normalizeHexColor(cachedSimpleShelfBackgroundColor));
+      }
     } catch (e) {
       console.warn("Failed to apply cached theme settings on mount:", e);
     }
@@ -1963,6 +1995,7 @@ export default function Page() {
   const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
   const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
+  const shelfGap = isSimpleShelfTheme ? Math.max(0, gap - (isMobileLayout ? 2 : 4)) : gap;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
   const statusDotPixelSize = useMemo(
     () =>
@@ -2058,7 +2091,7 @@ export default function Page() {
   const mobileDefaultCoversPerRow = 4;
   const mobileMaxPosterSizeForDefaultRows =
     isMobileLayout && mobileUsableWidthForDefaultCoverSizing > 0
-      ? Math.floor((mobileUsableWidthForDefaultCoverSizing + gap) / mobileDefaultCoversPerRow - gap)
+      ? Math.floor((mobileUsableWidthForDefaultCoverSizing + shelfGap) / mobileDefaultCoversPerRow - shelfGap)
       : 0;
   const defaultLargestPosterSize = Math.max(posterSizeTv, posterSizeMovies, posterSizeBooks, posterSizeGames);
   const mobileAutoFitScale =
@@ -4617,6 +4650,7 @@ export default function Page() {
     
     setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
     setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
+    setSimpleShelfBackgroundColor(normalizeHexColor(getSetting("simpleShelfBackgroundColor", DEFAULT_SIMPLE_SHELF_BACKGROUND)));
   }, [getSetting, settingsRows]);
 
   const persistSmartLists = useCallback(
@@ -5081,6 +5115,7 @@ export default function Page() {
       { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
       { key: "sidebarTheme", value: sidebarTheme, category: "Themes", description: "Sidebar Theme" },
       { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Theme" },
+      { key: "simpleShelfBackgroundColor", value: simpleShelfBackgroundColor, category: "Themes", description: "Simple Shelf Background Color" },
       { key: "showInsetGuide", value: showInsetGuide, category: "Cover Sizes", description: "Show inset frame guide" },
       { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
     ];
@@ -5265,6 +5300,7 @@ export default function Page() {
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
         setShelfTheme(normalizeShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE)));
+        setSimpleShelfBackgroundColor(normalizeHexColor(getStr("simpleShelfBackgroundColor", DEFAULT_SIMPLE_SHELF_BACKGROUND)));
         setSidebarTheme(getStr("sidebarTheme", "darkBlue"));
         setShowStatusIndicators(getBool("showStatusIndicators", false));
       }, 100);
@@ -5537,6 +5573,13 @@ export default function Page() {
       [ELECTRIC_BLUE_SHELF_THEME]: "Electric Blue",
     };
     setThemeSaveNotice(`Saved theme: ${shelfThemeNames[normalizedValue] || shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
+  };
+
+  const updateSimpleShelfBackgroundColor = (value: string) => {
+    const normalizedColor = normalizeHexColor(value);
+    setSimpleShelfBackgroundColor(normalizedColor);
+    saveSetting("simpleShelfBackgroundColor", normalizedColor, "Themes", "Simple Shelf Background Color");
+    setThemeSaveNotice(`Saved Simple Shelf background: ${normalizedColor.toUpperCase()}. This will be used next time.`);
   };
   
   const updateSidebarTheme = (value: string) => {
@@ -9290,8 +9333,9 @@ export default function Page() {
   }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
   const postersPerShelf = useMemo(() => {
-    const size =
-      nav === "books"
+    const size = isSimpleShelfTheme
+      ? simpleShelfPosterSize
+      : nav === "books"
         ? mobileAdjustedPosterSizeBooks
         : nav === "movies"
           ? mobileAdjustedPosterSizeMovies
@@ -9299,14 +9343,16 @@ export default function Page() {
             ? mobileAdjustedPosterSizeGames
             : mobileAdjustedPosterSizeTv;
     const usable = Math.max(0, stageWidth - SHELF_SIDE_PADDING * 2);
-    return Math.max(1, Math.floor((usable + gap) / (size + gap)));
+    return Math.max(1, Math.floor((usable + shelfGap) / (size + shelfGap)));
   }, [
-    gap,
+    isSimpleShelfTheme,
     mobileAdjustedPosterSizeBooks,
     mobileAdjustedPosterSizeGames,
     mobileAdjustedPosterSizeMovies,
     mobileAdjustedPosterSizeTv,
     nav,
+    shelfGap,
+    simpleShelfPosterSize,
     stageWidth,
   ]);
 
@@ -9433,7 +9479,7 @@ export default function Page() {
     for (let i = 0; i < shows.length; i++) {
       const show = shows[i];
       const { visualWidth } = getItemVisualLayout(show);
-      const itemWidth = visualWidth + (currentShelf.length > 0 ? gap : 0);
+      const itemWidth = visualWidth + (currentShelf.length > 0 ? shelfGap : 0);
 
       if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
         out.push(currentShelf);
@@ -9452,7 +9498,7 @@ export default function Page() {
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, viewportH, SHELF_HEIGHT, stageWidth, gap, getItemVisualLayout]);
+  }, [shows, viewportH, SHELF_HEIGHT, stageWidth, shelfGap, getItemVisualLayout]);
 
   const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
 
@@ -9504,7 +9550,7 @@ export default function Page() {
         background: useElectricBlueStatsBackdrop
           ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
           : isSimpleShelfTheme
-            ? SIMPLE_SHELF_BACKGROUND
+            ? simpleShelfBackgroundColor
             : "#f4f1ea",
         color: isSimpleShelfTheme ? "rgba(235, 244, 246, 0.95)" : "#111",
         position: "relative",
@@ -9632,7 +9678,7 @@ export default function Page() {
             background: isElectricBlueShelfTheme
               ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND
               : isSimpleShelfTheme
-                ? SIMPLE_SHELF_HEADER_BACKGROUND
+                ? simpleShelfHeaderBackground
                 : `url(${currentTopHeaderImage})`,
             backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
             backgroundPosition: "0 0",
@@ -10191,7 +10237,7 @@ export default function Page() {
                 : isSimpleShelfTheme
                   ? "auto"
                   : `100% ${SHELF_HEIGHT}px`,
-              backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfTheme ? SIMPLE_SHELF_BACKGROUND : "transparent",
+              backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
               boxShadow: isElectricBlueShelfTheme
                 ? "0 0 26px rgba(58, 125, 232, 0.2), inset 0 0 0 1px rgba(7, 21, 45, 0.6)"
                 : isSimpleShelfTheme
@@ -10215,7 +10261,7 @@ export default function Page() {
               backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
               backgroundPosition: "0 0",
               backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
-              backgroundColor: isSimpleShelfTheme ? SIMPLE_SHELF_HEADER_BACKGROUND : "transparent",
+              backgroundColor: isSimpleShelfTheme ? simpleShelfHeaderBackground : "transparent",
               boxShadow: isElectricBlueShelfTheme
                 ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
                 : isSimpleShelfTheme
@@ -12673,6 +12719,47 @@ export default function Page() {
                   >
                     Reclaimed Oak
                   </button>
+                </div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    border: shelfTheme === SIMPLE_SHELF_THEME ? `1px solid ${currentTheme.primaryColor}55` : "1px solid rgba(0,0,0,0.08)",
+                    borderRadius: 10,
+                    background: shelfTheme === SIMPLE_SHELF_THEME ? `${currentTheme.primaryColor}12` : "rgba(255,255,255,0.35)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: "#7A7A7A" }}>
+                    SIMPLE SHELF BACKGROUND
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <input
+                      type="color"
+                      value={simpleShelfBackgroundColor}
+                      onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
+                      aria-label="Simple Shelf background color"
+                      style={{
+                        width: 42,
+                        height: 32,
+                        padding: 0,
+                        border: "1px solid rgba(0,0,0,0.16)",
+                        borderRadius: 8,
+                        background: "transparent",
+                        cursor: "pointer",
+                      }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#3f3f3f" }}>
+                        {simpleShelfBackgroundColor.toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: 10, color: "#777" }}>
+                        Used when Simple Shelf is selected.
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -15477,7 +15564,7 @@ export default function Page() {
                       : isSimpleShelfTheme
                         ? "auto"
                         : "100% 100%",
-                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : isSimpleShelfTheme ? SIMPLE_SHELF_BACKGROUND : "transparent",
+                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
                     borderRadius: 0,
                     boxShadow: isElectricBlueShelfTheme
                       ? `${shelfIndex === 0 ? "0 14px 28px rgba(4,12,24,0.52), " : "0 10px 20px rgba(4,12,24,0.4), "}0 0 22px rgba(78,150,255,0.18), inset 0 0 0 1px rgba(8,24,50,0.72), inset 0 20px 30px rgba(2,6,18,0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.32), inset 16px 0 24px rgba(2,10,24,0.42), inset -16px 0 24px rgba(2,10,24,0.42)`
@@ -15507,7 +15594,7 @@ export default function Page() {
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const { itemSize, visualLeft, visualWidth } = getItemVisualLayout(show);
                       const x = Math.round(runningVisualX - visualLeft);
-                      runningVisualX += visualWidth + gap;
+                      runningVisualX += visualWidth + shelfGap;
                       const caseWidth = itemSize;
                       const caseHeight = isSimpleShelfTheme
                         ? Math.round(itemSize * 1.5)
