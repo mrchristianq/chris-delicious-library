@@ -621,23 +621,90 @@ function getRelativeLuminance(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BA
   return 0.2126 * linearR + 0.7152 * linearG + 0.0722 * linearB;
 }
 
-function getComplementaryTextHex(
-  value: unknown,
+function getContrastRatio(
+  firstColor: unknown,
+  secondColor: unknown,
+  fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND
+): number {
+  const firstLuminance = getRelativeLuminance(firstColor, fallback);
+  const secondLuminance = getRelativeLuminance(secondColor, fallback);
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getReadableTextHex(
+  backgrounds: unknown[],
   fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND
 ): string {
-  const normalized = normalizeHexColor(value, fallback);
-  const { r, g, b } = hexToRgb(normalized, fallback);
-  const inverseHex = rgbToHex(255 - r, 255 - g, 255 - b);
-  const isLightBackground = getRelativeLuminance(normalized, fallback) >= 0.5;
-  return isLightBackground
-    ? mixHexColors(inverseHex, "#000000", 0.52, inverseHex)
-    : mixHexColors(inverseHex, "#ffffff", 0.52, inverseHex);
+  const normalizedBackgrounds = (backgrounds.length ? backgrounds : [fallback]).map((value) =>
+    normalizeHexColor(value, fallback)
+  );
+  const referenceBackground = normalizedBackgrounds[0];
+  const averageLuminance =
+    normalizedBackgrounds.reduce(
+      (sum, value) => sum + getRelativeLuminance(value, referenceBackground),
+      0
+    ) / normalizedBackgrounds.length;
+  const isLightBackground = averageLuminance >= 0.5;
+  const preferredAnchor = isLightBackground ? "#12161d" : "#f6f7fb";
+  const candidateWeights = isLightBackground
+    ? [0.76, 0.84, 0.9, 0.96]
+    : [0.78, 0.86, 0.92, 0.97];
+  const fallbackCandidate = isLightBackground ? "#111111" : "#fbfcff";
+  const targetContrast = isLightBackground ? 6.8 : 5.8;
+
+  let bestCandidate = fallbackCandidate;
+  let bestContrast = 0;
+
+  for (const weight of candidateWeights) {
+    const candidate = mixHexColors(referenceBackground, preferredAnchor, weight, referenceBackground);
+    const minimumContrast = normalizedBackgrounds.reduce((lowestContrast, background) => {
+      return Math.min(lowestContrast, getContrastRatio(candidate, background, referenceBackground));
+    }, Number.POSITIVE_INFINITY);
+
+    if (minimumContrast > bestContrast) {
+      bestContrast = minimumContrast;
+      bestCandidate = candidate;
+    }
+
+    if (minimumContrast >= targetContrast) {
+      return candidate;
+    }
+  }
+
+  const fallbackContrast = normalizedBackgrounds.reduce((lowestContrast, background) => {
+    return Math.min(lowestContrast, getContrastRatio(fallbackCandidate, background, referenceBackground));
+  }, Number.POSITIVE_INFINITY);
+
+  return fallbackContrast > bestContrast ? fallbackCandidate : bestCandidate;
 }
 
 function buildSimpleSidebarTheme(backgroundColor: string) {
   const normalizedBackground = normalizeHexColor(backgroundColor);
   const isLightBackground = getRelativeLuminance(normalizedBackground, normalizedBackground) >= 0.5;
-  const baseTextHex = getComplementaryTextHex(normalizedBackground, normalizedBackground);
+  const surfaceHighlightHex = mixHexColors(
+    normalizedBackground,
+    "#ffffff",
+    isLightBackground ? 0.14 : 0.1,
+    normalizedBackground
+  );
+  const surfaceMidHex = mixHexColors(
+    normalizedBackground,
+    "#ffffff",
+    isLightBackground ? 0.06 : 0.08,
+    normalizedBackground
+  );
+  const surfaceShadowHex = mixHexColors(
+    normalizedBackground,
+    "#000000",
+    isLightBackground ? 0.08 : 0.16,
+    normalizedBackground
+  );
+  const baseTextHex = getReadableTextHex(
+    [normalizedBackground, surfaceHighlightHex, surfaceMidHex, surfaceShadowHex],
+    normalizedBackground
+  );
   const emphasizedTextHex = mixHexColors(
     baseTextHex,
     isLightBackground ? "#000000" : "#ffffff",
@@ -663,9 +730,10 @@ function buildSimpleSidebarTheme(backgroundColor: string) {
     isLightBackground ? 0.16 : 0.62,
     baseTextHex
   );
+  const surfaceBackground = `linear-gradient(180deg, ${hexToRgba(surfaceHighlightHex, isLightBackground ? 0.24 : 0.18, surfaceHighlightHex)} 0%, ${hexToRgba(surfaceMidHex, isLightBackground ? 0.36 : 0.26, surfaceMidHex)} 50%, ${hexToRgba(surfaceHighlightHex, isLightBackground ? 0.24 : 0.18, surfaceHighlightHex)} 100%), radial-gradient(160% 135% at 50% 50%, ${hexToRgba(surfaceShadowHex, 0, surfaceShadowHex)} 0%, ${hexToRgba(surfaceShadowHex, isLightBackground ? 0.04 : 0.1, surfaceShadowHex)} 78%, ${hexToRgba(surfaceShadowHex, isLightBackground ? 0.08 : 0.16, surfaceShadowHex)} 100%), linear-gradient(180deg, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 0%, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 100%)`;
 
   return {
-    background: `linear-gradient(180deg, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 0%, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 100%)`,
+    background: surfaceBackground,
     primaryColor: hexToRgba(baseTextHex, isLightBackground ? 0.86 : 0.94, baseTextHex),
     secondaryColor: hexToRgba(emphasizedTextHex, 0.98, emphasizedTextHex),
     textColor: hexToRgba(baseTextHex, isLightBackground ? 0.9 : 0.94, baseTextHex),
@@ -1846,15 +1914,20 @@ export default function Page() {
   // Shelf theme
   const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
   const [simpleShelfBackgroundColor, setSimpleShelfBackgroundColor] = useState<string>(DEFAULT_SIMPLE_SHELF_BACKGROUND);
+  const MOBILE_LAYOUT_MAX_WIDTH = 980;
+  const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
+  const useSimpleMobileTheme = isMobileLayout;
   const isElectricBlueShelfTheme = shelfTheme === ELECTRIC_BLUE_SHELF_THEME;
   const isSimpleShelfTheme = shelfTheme === SIMPLE_SHELF_THEME;
-  const currentTopHeaderImage = isSimpleShelfTheme
+  const isSimpleShelfPresentation = isSimpleShelfTheme || useSimpleMobileTheme;
+  const isElectricBlueShelfPresentation = isElectricBlueShelfTheme && !useSimpleMobileTheme;
+  const currentTopHeaderImage = isSimpleShelfPresentation
     ? ""
     : SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
   
   // Sidebar theme
   const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
-  const isElectricBlueThemeActive = isElectricBlueShelfTheme || sidebarTheme === "electricBlue";
+  const isElectricBlueThemeActive = !useSimpleMobileTheme && (isElectricBlueShelfTheme || sidebarTheme === "electricBlue");
   
   // Theme configurations
   const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
@@ -1940,6 +2013,7 @@ export default function Page() {
   const simpleSidebarIsLight = simpleSidebarTheme.isLightBackground;
   const simpleSidebarTextHex = simpleSidebarTheme.baseTextHex;
   const simpleSidebarOverlayBase = simpleSidebarTheme.overlayBaseHex;
+  const simplePresentationBackground = simpleSidebarTheme.background;
   const isBlueSidebarTheme = sidebarTheme === "darkBlue" || sidebarTheme === "electricBlue";
   const isSimpleSidebarTheme = sidebarTheme === "simple";
   const isDarkSidebarTheme = isBlueSidebarTheme || isSimpleSidebarTheme;
@@ -2080,7 +2154,7 @@ export default function Page() {
   const sidebarAccentButtonShadow = isSimpleSidebarTheme
     ? "none"
     : "0 10px 22px rgba(4, 12, 26, 0.3), inset 0 1px 0 rgba(188, 220, 255, 0.22)";
-  const isSimpleHeaderTheme = isSimpleShelfTheme;
+  const isSimpleHeaderTheme = isSimpleShelfPresentation;
   const simpleHeaderTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.78 : 0.86, simpleSidebarTextHex);
   const simpleHeaderStrongTextColor = hexToRgba(simpleSidebarTextHex, 0.94, simpleSidebarTextHex);
   const simpleHeaderMutedTextColor = hexToRgba(simpleSidebarTextHex, 0.72, simpleSidebarTextHex);
@@ -2098,6 +2172,94 @@ export default function Page() {
   const simpleHeaderStatusOnColor = simpleSidebarIsLight ? "#2f8f5b" : "#6fd88b";
   const simpleHeaderStatusOffColor = simpleSidebarIsLight ? "#b23b3b" : "#f07a7a";
   const simpleHeaderIconFilter = simpleSidebarIsLight ? "brightness(0) opacity(0.62)" : "brightness(0) invert(1) opacity(0.62)";
+  const mobilePanelBackground = simplePresentationBackground;
+  const mobilePanelBorder = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.24, simpleSidebarTextHex)}`;
+  const mobilePanelDivider = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.12 : 0.18, simpleSidebarTextHex)}`;
+  const mobilePanelCardBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.05 : 0.12, simpleSidebarOverlayBase);
+  const mobilePanelCardBorder = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.14 : 0.18, simpleSidebarTextHex)}`;
+  const mobilePanelSectionLabelColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.62 : 0.68, simpleSidebarTextHex);
+  const mobilePanelTextColor = simpleHeaderStrongTextColor;
+  const mobilePanelMutedTextColor = simpleHeaderMutedTextColor;
+  const mobilePanelButtonBackground = simpleHeaderBackground;
+  const mobilePanelButtonBorder = simpleHeaderBorderColor;
+  const mobilePanelButtonTextColor = simpleHeaderStrongTextColor;
+  const mobilePanelActiveButtonBackground = simpleHeaderAccentBackground;
+  const mobilePanelActiveButtonBorder = simpleHeaderAccentBorder;
+  const mobilePanelActiveButtonTextColor = simpleHeaderStrongTextColor;
+  const mobilePanelCountBackground = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.12 : 0.18, simpleSidebarTextHex);
+  const mobilePanelCountTextColor = simpleHeaderStrongTextColor;
+  const mobilePanelLeftShadow = simpleSidebarIsLight
+    ? "18px 0 34px rgba(0,0,0,0.18)"
+    : "18px 0 34px rgba(0,0,0,0.34)";
+  const mobilePanelRightShadow = simpleSidebarIsLight
+    ? "-18px 0 34px rgba(0,0,0,0.18)"
+    : "-18px 0 34px rgba(0,0,0,0.34)";
+  const mobilePanelSectionHeadingStyle: CSSProperties = {
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    color: mobilePanelSectionLabelColor,
+  };
+  const mobilePanelCardStyle: CSSProperties = {
+    border: mobilePanelCardBorder,
+    borderRadius: 10,
+    background: mobilePanelCardBackground,
+    padding: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  };
+  const mobilePanelButtonStyle: CSSProperties = {
+    width: "100%",
+    border: mobilePanelButtonBorder,
+    background: mobilePanelButtonBackground,
+    color: mobilePanelButtonTextColor,
+    borderRadius: 10,
+    padding: "9px 10px",
+    fontSize: 13,
+    fontWeight: 700,
+    textAlign: "left",
+    cursor: "pointer",
+  };
+  const mobilePanelPrimaryButtonStyle: CSSProperties = {
+    ...mobilePanelButtonStyle,
+    border: mobilePanelActiveButtonBorder,
+    background: mobilePanelActiveButtonBackground,
+    color: mobilePanelActiveButtonTextColor,
+    fontWeight: 800,
+  };
+  const mobilePanelCountBadgeStyle: CSSProperties = {
+    minWidth: 22,
+    height: 18,
+    borderRadius: 999,
+    padding: "0 6px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 10,
+    fontWeight: 800,
+    color: mobilePanelCountTextColor,
+    background: mobilePanelCountBackground,
+  };
+  const mobilePanelSelectStyle: CSSProperties = {
+    width: "100%",
+    padding: "9px 10px",
+    borderRadius: 9,
+    border: mobilePanelButtonBorder,
+    background: mobilePanelButtonBackground,
+    color: mobilePanelButtonTextColor,
+    fontSize: 14,
+    fontWeight: 600,
+    outline: "none",
+    cursor: "pointer",
+  };
+  const getMobileMenuButtonStyle = (active: boolean): CSSProperties => ({
+    ...mobilePanelButtonStyle,
+    border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+    background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+    color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+    fontWeight: active ? 800 : 700,
+  });
   const counterDigitHeight = isElectricBlueSidebarTheme ? Math.round(counterTileSize * 1.24) : counterTileSize;
   const counterDigitWidth = isElectricBlueSidebarTheme
     ? Math.round(counterDigitHeight * 0.76)
@@ -2152,13 +2314,12 @@ export default function Page() {
   const SETTINGS_WINDOW_START_Y = 84;
   const SETTINGS_WINDOW_Z_INDEX = 9000;
   const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
-  const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
   const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
-  const shelfGap = isSimpleShelfTheme ? Math.max(0, gap - (isMobileLayout ? 2 : 4)) : gap;
-  const simpleShelfVerticalPadding = isSimpleShelfTheme ? Math.max(0, Math.round(shelfGap * 0.5)) : 0;
-  const shelfSidePadding = isSimpleShelfTheme ? shelfGap : SHELF_SIDE_PADDING;
-  const shelfBottomOffset = isSimpleShelfTheme ? simpleShelfVerticalPadding : LIP_FROM_BOTTOM;
+  const shelfGap = isSimpleShelfPresentation ? Math.max(0, gap - (isMobileLayout ? 2 : 4)) : gap;
+  const simpleShelfVerticalPadding = isSimpleShelfPresentation ? Math.max(0, Math.round(shelfGap * 0.5)) : 0;
+  const shelfSidePadding = isSimpleShelfPresentation ? shelfGap : SHELF_SIDE_PADDING;
+  const shelfBottomOffset = isSimpleShelfPresentation ? simpleShelfVerticalPadding : LIP_FROM_BOTTOM;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
   const statusDotPixelSize = useMemo(
     () =>
@@ -2273,7 +2434,7 @@ export default function Page() {
     mobileAdjustedPosterSizeGames
   );
   const simpleShelfCaseHeight = Math.round(simpleShelfPosterSize * 1.5);
-  const shelfRowHeight = isSimpleShelfTheme ? simpleShelfCaseHeight + simpleShelfVerticalPadding * 2 : SHELF_HEIGHT;
+  const shelfRowHeight = isSimpleShelfPresentation ? simpleShelfCaseHeight + simpleShelfVerticalPadding * 2 : SHELF_HEIGHT;
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
   const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
     tv: 100,
@@ -9499,7 +9660,7 @@ export default function Page() {
   }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
   const postersPerShelf = useMemo(() => {
-    const size = isSimpleShelfTheme
+    const size = isSimpleShelfPresentation
       ? simpleShelfPosterSize
       : nav === "books"
         ? mobileAdjustedPosterSizeBooks
@@ -9511,7 +9672,7 @@ export default function Page() {
     const usable = Math.max(0, stageWidth - shelfSidePadding * 2);
     return Math.max(1, Math.floor((usable + shelfGap) / (size + shelfGap)));
   }, [
-    isSimpleShelfTheme,
+    isSimpleShelfPresentation,
     mobileAdjustedPosterSizeBooks,
     mobileAdjustedPosterSizeGames,
     mobileAdjustedPosterSizeMovies,
@@ -9527,7 +9688,7 @@ export default function Page() {
     const isBook = item.__type === "book";
     const isMovie = item.__type === "movie";
     const isGame = item.__type === "game";
-    const itemSize = isSimpleShelfTheme
+    const itemSize = isSimpleShelfPresentation
       ? simpleShelfPosterSize
       : isBook
         ? mobileAdjustedPosterSizeBooks
@@ -9537,13 +9698,13 @@ export default function Page() {
             ? mobileAdjustedPosterSizeGames
             : mobileAdjustedPosterSizeTv;
     const caseWidth = itemSize;
-    const caseHeight = isSimpleShelfTheme
+    const caseHeight = isSimpleShelfPresentation
       ? Math.round(itemSize * 1.5)
       : isBook
         ? Math.round(itemSize * bookHeightMultiplier)
         : Math.round(itemSize * 1.5);
 
-    if (isSimpleShelfTheme) {
+    if (isSimpleShelfPresentation) {
       return { itemSize, visualLeft: 0, visualWidth: caseWidth };
     }
 
@@ -9610,7 +9771,7 @@ export default function Page() {
     const visualWidth = Math.max(1, visualRight - visualLeft);
     return { itemSize, visualLeft, visualWidth };
   }, [
-    isSimpleShelfTheme,
+    isSimpleShelfPresentation,
     simpleShelfPosterSize,
     bookHeightMultiplier,
     mobileAdjustedPosterSizeBooks,
@@ -9716,10 +9877,10 @@ export default function Page() {
         minHeight: "100vh",
         background: useElectricBlueStatsBackdrop
           ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
-          : isSimpleShelfTheme
-            ? simpleShelfBackgroundColor
+          : isSimpleShelfPresentation
+            ? simplePresentationBackground
             : "#f4f1ea",
-        color: isSimpleShelfTheme ? "rgba(235, 244, 246, 0.95)" : "#111",
+        color: isSimpleShelfPresentation ? simpleHeaderStrongTextColor : "#111",
         position: "relative",
         overflowX: isMobileLayout ? "hidden" : undefined,
         "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
@@ -9842,14 +10003,14 @@ export default function Page() {
             height: 45,
             zIndex: 1300,
             pointerEvents: "none",
-            backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfTheme ? "none" : `url(${currentTopHeaderImage})`,
-            backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
+            backgroundImage: isElectricBlueShelfPresentation ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfPresentation ? simplePresentationBackground : `url(${currentTopHeaderImage})`,
+            backgroundRepeat: isElectricBlueShelfPresentation ? "no-repeat, no-repeat" : isSimpleShelfPresentation ? "no-repeat" : "repeat-x",
             backgroundPosition: "0 0",
-            backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
-            backgroundColor: isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
-            boxShadow: isElectricBlueShelfTheme
+            backgroundSize: isElectricBlueShelfPresentation ? "100% 100%, 100% 100%" : isSimpleShelfPresentation ? "100% 100%" : "auto 45px",
+            backgroundColor: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+            boxShadow: isElectricBlueShelfPresentation
               ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
-              : isSimpleShelfTheme
+              : isSimpleShelfPresentation
                 ? "none"
                 : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
           }}
@@ -9883,10 +10044,9 @@ export default function Page() {
             bottom: 0,
             width: "min(90vw, 360px)",
             zIndex: 2500,
-            background:
-              "linear-gradient(180deg, rgba(18, 34, 61, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%)",
-            borderRight: "1px solid rgba(146, 181, 235, 0.45)",
-            boxShadow: "18px 0 34px rgba(0,0,0,0.34)",
+            background: mobilePanelBackground,
+            borderRight: mobilePanelBorder,
+            boxShadow: mobilePanelLeftShadow,
             display: "flex",
             flexDirection: "column",
           }}
@@ -9897,47 +10057,35 @@ export default function Page() {
               alignItems: "center",
               justifyContent: "space-between",
               padding: "10px 12px",
-              borderBottom: "1px solid rgba(146, 181, 235, 0.35)",
-              background: "rgba(14, 30, 58, 0.78)",
+              borderBottom: mobilePanelDivider,
+              background: mobilePanelCardBackground,
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 800, color: "rgba(226, 239, 255, 0.97)", letterSpacing: "0.03em" }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: mobilePanelTextColor, letterSpacing: "0.03em" }}>
               MENU
             </span>
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(false)}
               style={{
-                border: "1px solid rgba(146, 181, 235, 0.5)",
-                background: "rgba(20, 42, 79, 0.9)",
-                color: "rgba(236, 246, 255, 0.96)",
+                ...mobilePanelButtonStyle,
+                width: "auto",
                 borderRadius: 8,
                 padding: "4px 8px",
                 fontSize: 11,
                 fontWeight: 700,
-                cursor: "pointer",
               }}
             >
               Close
             </button>
           </div>
-          <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div
-              style={{
-                border: "1px solid rgba(146, 181, 235, 0.35)",
-                borderRadius: 10,
-                background: "rgba(10, 24, 46, 0.68)",
-                padding: 10,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
+          <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={mobilePanelCardStyle}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>
+                <span style={mobilePanelSectionHeadingStyle}>
                   COVER SIZE
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(226, 239, 255, 0.97)" }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: mobilePanelTextColor }}>
                   {`${mobileCoverScalePct}%`}
                 </span>
               </div>
@@ -9952,7 +10100,7 @@ export default function Page() {
                 style={{ width: "100%" }}
               />
             </div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>LIBRARY</div>
+            <div style={mobilePanelSectionHeadingStyle}>LIBRARY</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileLibraryMenuItems.map((item) => {
                 const active = nav === item.key;
@@ -9962,37 +10110,15 @@ export default function Page() {
                     type="button"
                     onClick={() => handleMobileNavSelect(item.key)}
                     style={{
-                      width: "100%",
-                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
-                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
-                      color: "rgba(232, 243, 255, 0.97)",
-                      borderRadius: 10,
-                      padding: "9px 10px",
-                      fontSize: 13,
-                      fontWeight: active ? 800 : 700,
+                      ...getMobileMenuButtonStyle(active),
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      cursor: "pointer",
                     }}
                   >
                     <span>{item.label}</span>
                     {typeof item.count === "number" ? (
-                      <span
-                        style={{
-                          minWidth: 22,
-                          height: 18,
-                          borderRadius: 999,
-                          padding: "0 6px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: "#fff",
-                          background: "#4f6f98",
-                        }}
-                      >
+                      <span style={mobilePanelCountBadgeStyle}>
                         {item.count}
                       </span>
                     ) : null}
@@ -10001,7 +10127,7 @@ export default function Page() {
               })}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>BACKLOG</div>
+            <div style={mobilePanelSectionHeadingStyle}>BACKLOG</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileBacklogMenuItems.map((item) => {
                 const active = nav === item.key;
@@ -10011,37 +10137,15 @@ export default function Page() {
                     type="button"
                     onClick={() => handleMobileNavSelect(item.key)}
                     style={{
-                      width: "100%",
-                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
-                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
-                      color: "rgba(232, 243, 255, 0.97)",
-                      borderRadius: 10,
-                      padding: "9px 10px",
-                      fontSize: 13,
-                      fontWeight: active ? 800 : 700,
+                      ...getMobileMenuButtonStyle(active),
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      cursor: "pointer",
                     }}
                   >
                     <span>{item.label}</span>
                     {typeof item.count === "number" ? (
-                      <span
-                        style={{
-                          minWidth: 22,
-                          height: 18,
-                          borderRadius: 999,
-                          padding: "0 6px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: "#fff",
-                          background: "#4f6f98",
-                        }}
-                      >
+                      <span style={mobilePanelCountBadgeStyle}>
                         {item.count}
                       </span>
                     ) : null}
@@ -10050,7 +10154,7 @@ export default function Page() {
               })}
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>SMART LISTS</div>
+            <div style={mobilePanelSectionHeadingStyle}>SMART LISTS</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileSmartListMenuItems.map((item) => {
                 const active = nav === item.key;
@@ -10060,16 +10164,8 @@ export default function Page() {
                     type="button"
                     onClick={() => handleMobileNavSelect(item.key)}
                     style={{
-                      width: "100%",
-                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
-                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
-                      color: "rgba(232, 243, 255, 0.97)",
-                      borderRadius: 10,
-                      padding: "9px 10px",
-                      fontSize: 13,
-                      fontWeight: active ? 800 : 700,
+                      ...getMobileMenuButtonStyle(active),
                       textAlign: "left",
-                      cursor: "pointer",
                     }}
                   >
                     {item.label}
@@ -10084,16 +10180,8 @@ export default function Page() {
                     type="button"
                     onClick={() => handleMobileSmartListSelect(smartList)}
                     style={{
-                      width: "100%",
-                      border: active ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
-                      background: active ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
-                      color: "rgba(232, 243, 255, 0.97)",
-                      borderRadius: 10,
-                      padding: "9px 10px",
-                      fontSize: 13,
-                      fontWeight: active ? 800 : 700,
+                      ...getMobileMenuButtonStyle(active),
                       textAlign: "left",
-                      cursor: "pointer",
                     }}
                   >
                     {smartList.name}
@@ -10107,38 +10195,19 @@ export default function Page() {
                   setMobileSidebarOpen(false);
                   setMobileSettingsOpen(false);
                 }}
-                style={{
-                  width: "100%",
-                  border: "1px solid rgba(153, 203, 255, 0.75)",
-                  background: "rgba(46, 92, 146, 0.62)",
-                  color: "rgba(236, 246, 255, 0.98)",
-                  borderRadius: 10,
-                  padding: "9px 10px",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
+                style={mobilePanelPrimaryButtonStyle}
               >
                 + Add Smart List
               </button>
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>DISCOVER</div>
+            <div style={mobilePanelSectionHeadingStyle}>DISCOVER</div>
             <button
               type="button"
               onClick={openStatisticsView}
               style={{
-                width: "100%",
-                border: nav === "statistics" ? "1px solid rgba(153, 203, 255, 0.9)" : "1px solid rgba(146, 181, 235, 0.45)",
-                background: nav === "statistics" ? "rgba(46, 92, 146, 0.62)" : "rgba(12, 28, 54, 0.72)",
-                color: "rgba(232, 243, 255, 0.97)",
-                borderRadius: 10,
-                padding: "9px 10px",
-                fontSize: 13,
-                fontWeight: nav === "statistics" ? 800 : 700,
+                ...getMobileMenuButtonStyle(nav === "statistics"),
                 textAlign: "left",
-                cursor: "pointer",
               }}
             >
               Statistics
@@ -10155,10 +10224,9 @@ export default function Page() {
             bottom: 0,
             width: "min(90vw, 340px)",
             zIndex: 2500,
-            background:
-              "linear-gradient(180deg, rgba(18, 34, 61, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%)",
-            borderLeft: "1px solid rgba(146, 181, 235, 0.45)",
-            boxShadow: "-18px 0 34px rgba(0,0,0,0.34)",
+            background: mobilePanelBackground,
+            borderLeft: mobilePanelBorder,
+            boxShadow: mobilePanelRightShadow,
             display: "flex",
             flexDirection: "column",
           }}
@@ -10169,25 +10237,23 @@ export default function Page() {
               alignItems: "center",
               justifyContent: "space-between",
               padding: "10px 12px",
-              borderBottom: "1px solid rgba(146, 181, 235, 0.35)",
-              background: "rgba(14, 30, 58, 0.78)",
+              borderBottom: mobilePanelDivider,
+              background: mobilePanelCardBackground,
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 800, color: "rgba(226, 239, 255, 0.97)", letterSpacing: "0.03em" }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: mobilePanelTextColor, letterSpacing: "0.03em" }}>
               SETTINGS
             </span>
             <button
               type="button"
               onClick={() => setMobileSettingsOpen(false)}
               style={{
-                border: "1px solid rgba(146, 181, 235, 0.5)",
-                background: "rgba(20, 42, 79, 0.9)",
-                color: "rgba(236, 246, 255, 0.96)",
+                ...mobilePanelButtonStyle,
+                width: "auto",
                 borderRadius: 8,
                 padding: "4px 8px",
                 fontSize: 11,
                 fontWeight: 700,
-                cursor: "pointer",
               }}
             >
               Close
@@ -10198,16 +10264,11 @@ export default function Page() {
               type="button"
               onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
               style={{
-                width: "100%",
-                border: "1px solid rgba(146, 181, 235, 0.45)",
-                background: showStatusIndicators ? "rgba(55, 102, 66, 0.65)" : "rgba(12, 28, 54, 0.72)",
-                color: "rgba(232, 243, 255, 0.97)",
-                borderRadius: 10,
-                padding: "9px 10px",
-                fontSize: 13,
-                fontWeight: 700,
+                ...mobilePanelButtonStyle,
+                border: showStatusIndicators ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                background: showStatusIndicators ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                color: showStatusIndicators ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
                 textAlign: "left",
-                cursor: "pointer",
               }}
             >
               Status Indicators: {showStatusIndicators ? "On" : "Off"}
@@ -10215,34 +10276,41 @@ export default function Page() {
             <button
               type="button"
               onClick={clearAllFilters}
-              style={{
-                width: "100%",
-                border: "1px solid rgba(146, 181, 235, 0.45)",
-                background: "rgba(12, 28, 54, 0.72)",
-                color: "rgba(232, 243, 255, 0.97)",
-                borderRadius: 10,
-                padding: "9px 10px",
-                fontSize: 13,
-                fontWeight: 700,
-                textAlign: "left",
-                cursor: "pointer",
-              }}
+              style={mobilePanelButtonStyle}
             >
               Clear All Filters
             </button>
+            <div style={mobilePanelCardStyle}>
+              <div style={mobilePanelSectionHeadingStyle}>SIMPLE BACKGROUND</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input
+                  type="color"
+                  value={simpleShelfBackgroundColor}
+                  onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
+                  aria-label="Simple mobile background color"
+                  style={{
+                    width: 42,
+                    height: 32,
+                    padding: 0,
+                    border: mobilePanelButtonBorder,
+                    borderRadius: 8,
+                    background: "transparent",
+                    cursor: "pointer",
+                  }}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: mobilePanelTextColor }}>
+                    {simpleShelfBackgroundColor.toUpperCase()}
+                  </span>
+                      <span style={{ fontSize: 10, color: mobilePanelMutedTextColor }}>
+                    Used to generate the Simple mobile and shelf gradient.
+                  </span>
+                </div>
+              </div>
+            </div>
             {nav === "watchlist-tv" ? (
-              <div
-                style={{
-                  border: "1px solid rgba(146, 181, 235, 0.35)",
-                  borderRadius: 10,
-                  background: "rgba(10, 24, 46, 0.68)",
-                  padding: 10,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(178, 203, 241, 0.9)" }}>
+              <div style={mobilePanelCardStyle}>
+                <div style={mobilePanelSectionHeadingStyle}>
                   TV WATCHLIST
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -10255,9 +10323,9 @@ export default function Page() {
                         type="button"
                         onClick={() => setWatchlistTvSectionFilter(sectionKey)}
                         style={{
-                          border: active ? `1px solid ${sectionMeta.badgeBorder}` : "1px solid rgba(146, 181, 235, 0.45)",
-                          background: active ? sectionMeta.badgeBackground : "rgba(12, 28, 54, 0.72)",
-                          color: active ? sectionMeta.badgeColor : "rgba(232, 243, 255, 0.97)",
+                          border: active ? `1px solid ${sectionMeta.badgeBorder}` : mobilePanelButtonBorder,
+                          background: active ? sectionMeta.badgeBackground : mobilePanelButtonBackground,
+                          color: active ? sectionMeta.badgeColor : mobilePanelButtonTextColor,
                           borderRadius: 999,
                           padding: "4px 8px",
                           fontSize: 11,
@@ -10281,18 +10349,7 @@ export default function Page() {
                 setMobileSettingsOpen(false);
                 setMobileSidebarOpen(false);
               }}
-              style={{
-                width: "100%",
-                border: "1px solid rgba(146, 181, 235, 0.45)",
-                background: "rgba(12, 28, 54, 0.72)",
-                color: "rgba(232, 243, 255, 0.97)",
-                borderRadius: 10,
-                padding: "9px 10px",
-                fontSize: 13,
-                fontWeight: 700,
-                textAlign: "left",
-                cursor: "pointer",
-              }}
+              style={mobilePanelButtonStyle}
             >
               Sort
             </button>
@@ -10307,18 +10364,7 @@ export default function Page() {
                 setMobileSettingsOpen(false);
                 setMobileSidebarOpen(false);
               }}
-              style={{
-                width: "100%",
-                border: "1px solid rgba(146, 181, 235, 0.45)",
-                background: "rgba(12, 28, 54, 0.72)",
-                color: "rgba(232, 243, 255, 0.97)",
-                borderRadius: 10,
-                padding: "9px 10px",
-                fontSize: 13,
-                fontWeight: 700,
-                textAlign: "left",
-                cursor: "pointer",
-              }}
+              style={mobilePanelButtonStyle}
             >
               Add New Item
             </button>
@@ -10329,18 +10375,7 @@ export default function Page() {
                 setMobileSidebarOpen(false);
                 openSettingsPopup();
               }}
-              style={{
-                width: "100%",
-                border: "1px solid rgba(153, 203, 255, 0.75)",
-                background: "rgba(46, 92, 146, 0.62)",
-                color: "rgba(236, 246, 255, 0.98)",
-                borderRadius: 10,
-                padding: "9px 10px",
-                fontSize: 13,
-                fontWeight: 800,
-                textAlign: "left",
-                cursor: "pointer",
-              }}
+              style={mobilePanelPrimaryButtonStyle}
             >
               Advanced Settings
             </button>
@@ -10393,18 +10428,18 @@ export default function Page() {
               bottom: 0,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: isSimpleShelfTheme ? "none" : `url(${shelfTheme})`,
+              backgroundImage: isSimpleShelfPresentation ? simplePresentationBackground : `url(${shelfTheme})`,
               backgroundRepeat: "repeat-y",
               backgroundPosition: "center top",
-              backgroundSize: isElectricBlueShelfTheme
+              backgroundSize: isElectricBlueShelfPresentation
                 ? `calc(100% + 2px) ${shelfRowHeight + 2}px`
-                : isSimpleShelfTheme
-                  ? "auto"
+                : isSimpleShelfPresentation
+                  ? "100% 100%"
                   : `100% ${shelfRowHeight}px`,
-              backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
-              boxShadow: isElectricBlueShelfTheme
+              backgroundColor: isElectricBlueShelfPresentation ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+              boxShadow: isElectricBlueShelfPresentation
                 ? "0 0 26px rgba(58, 125, 232, 0.2), inset 0 0 0 1px rgba(7, 21, 45, 0.6)"
-                : isSimpleShelfTheme
+                : isSimpleShelfPresentation
                   ? "none"
                   : "none",
             }}
@@ -10421,14 +10456,14 @@ export default function Page() {
               height: 45,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: isElectricBlueShelfTheme ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfTheme ? "none" : `url(${currentTopHeaderImage})`,
-              backgroundRepeat: isElectricBlueShelfTheme ? "no-repeat, no-repeat" : isSimpleShelfTheme ? "repeat" : "repeat-x",
+              backgroundImage: isElectricBlueShelfPresentation ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfPresentation ? simplePresentationBackground : `url(${currentTopHeaderImage})`,
+              backgroundRepeat: isElectricBlueShelfPresentation ? "no-repeat, no-repeat" : isSimpleShelfPresentation ? "no-repeat" : "repeat-x",
               backgroundPosition: "0 0",
-              backgroundSize: isElectricBlueShelfTheme ? "100% 100%, 100% 100%" : isSimpleShelfTheme ? "auto" : "auto 45px",
-              backgroundColor: isSimpleShelfTheme ? simpleShelfBackgroundColor : "transparent",
-              boxShadow: isElectricBlueShelfTheme
+              backgroundSize: isElectricBlueShelfPresentation ? "100% 100%, 100% 100%" : isSimpleShelfPresentation ? "100% 100%" : "auto 45px",
+              backgroundColor: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+              boxShadow: isElectricBlueShelfPresentation
                 ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
-                : isSimpleShelfTheme
+                : isSimpleShelfPresentation
                   ? "none"
                   : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
               transform: "translate3d(0, 0, 0) scaleX(-1)",
@@ -12952,7 +12987,7 @@ export default function Page() {
                         {simpleShelfBackgroundColor.toUpperCase()}
                       </span>
                       <span style={{ fontSize: 10, color: sidebarThemePanelTextColor }}>
-                        Used when Simple Shelf or Simple Sidebar is selected.
+                        Used for the Simple shelf, sidebar, and mobile gradient.
                       </span>
                     </div>
                   </div>
@@ -14335,10 +14370,10 @@ export default function Page() {
 	                flexDirection: "column",
 	                gap: 10,
 	                background: isMobileLayout
-	                  ? "linear-gradient(180deg, rgba(18, 34, 61, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%)"
+	                  ? mobilePanelBackground
 	                  : "rgba(248, 244, 236, 0.98)",
 	                border: isMobileLayout
-	                  ? "1px solid rgba(146, 181, 235, 0.45)"
+	                  ? mobilePanelBorder
 	                  : "1px solid rgba(58, 37, 24, 0.38)",
 	                borderRadius: 14,
 	                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
@@ -14351,18 +14386,18 @@ export default function Page() {
 	                  alignItems: "center",
 	                  justifyContent: "space-between",
 	                  paddingBottom: 8,
-	                  borderBottom: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.35)" : "1px solid rgba(0,0,0,0.12)",
+	                  borderBottom: isMobileLayout ? mobilePanelDivider : "1px solid rgba(0,0,0,0.12)",
 	                }}
 	              >
-	                <span style={{ fontSize: 14, fontWeight: 800, color: isMobileLayout ? "rgba(226, 239, 255, 0.97)" : "#5c3c38" }}>
+	                <span style={{ fontSize: 14, fontWeight: 800, color: isMobileLayout ? mobilePanelTextColor : "#5c3c38" }}>
 	                  Sort
 	                </span>
 	                <button
 	                  onClick={() => setSortPopupOpen(false)}
 	                  style={{
-	                    border: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.5)" : "1px solid rgba(0,0,0,0.2)",
-	                    background: isMobileLayout ? "rgba(20, 42, 79, 0.9)" : "rgba(255,255,255,0.85)",
-	                    color: isMobileLayout ? "rgba(236, 246, 255, 0.96)" : "#5c3c38",
+	                    border: isMobileLayout ? mobilePanelButtonBorder : "1px solid rgba(0,0,0,0.2)",
+	                    background: isMobileLayout ? mobilePanelButtonBackground : "rgba(255,255,255,0.85)",
+	                    color: isMobileLayout ? mobilePanelButtonTextColor : "#5c3c38",
 	                    borderRadius: 8,
 	                    padding: "4px 8px",
 	                    cursor: "pointer",
@@ -14380,7 +14415,7 @@ export default function Page() {
 	                  gap: 6,
 	                  fontSize: 11,
 	                  fontWeight: 700,
-	                  color: isMobileLayout ? "rgba(178, 203, 241, 0.9)" : "#8A8A8A",
+	                  color: isMobileLayout ? mobilePanelSectionLabelColor : "#8A8A8A",
 	                }}
 	              >
 	                SORT BY
@@ -14388,16 +14423,18 @@ export default function Page() {
 	                  value={sortField}
                   onChange={(e) => handleSortFieldChange(e.target.value)}
 	                  style={{
-	                    width: "100%",
-	                    padding: "9px 10px",
-	                    borderRadius: 9,
-	                    border: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.5)" : "1px solid rgba(0,0,0,0.2)",
-	                    background: isMobileLayout ? "rgba(12, 28, 54, 0.76)" : "rgba(255,255,255,0.9)",
-	                    color: isMobileLayout ? "rgba(232, 243, 255, 0.97)" : "#3a2f28",
-	                    fontSize: 14,
-	                    fontWeight: 600,
-	                    outline: "none",
-                    cursor: "pointer",
+	                    ...(isMobileLayout ? mobilePanelSelectStyle : {
+	                      width: "100%",
+	                      padding: "9px 10px",
+	                      borderRadius: 9,
+	                      border: "1px solid rgba(0,0,0,0.2)",
+	                      background: "rgba(255,255,255,0.9)",
+	                      color: "#3a2f28",
+	                      fontSize: 14,
+	                      fontWeight: 600,
+	                      outline: "none",
+	                      cursor: "pointer",
+	                    }),
                   }}
                 >
                   {nav === "books" && (
@@ -14453,7 +14490,7 @@ export default function Page() {
 	                  gap: 6,
 	                  fontSize: 11,
 	                  fontWeight: 700,
-	                  color: isMobileLayout ? "rgba(178, 203, 241, 0.9)" : "#8A8A8A",
+	                  color: isMobileLayout ? mobilePanelSectionLabelColor : "#8A8A8A",
 	                }}
 	              >
 	                ORDER
@@ -14462,16 +14499,18 @@ export default function Page() {
                   onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
 	                  disabled={(nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
 	                  style={{
-	                    width: "100%",
-	                    padding: "9px 10px",
-	                    borderRadius: 9,
-	                    border: isMobileLayout ? "1px solid rgba(146, 181, 235, 0.5)" : "1px solid rgba(0,0,0,0.2)",
-	                    background: isMobileLayout ? "rgba(12, 28, 54, 0.76)" : "rgba(255,255,255,0.9)",
-	                    color: isMobileLayout ? "rgba(232, 243, 255, 0.97)" : "#3a2f28",
-	                    fontSize: 14,
-	                    fontWeight: 600,
-	                    outline: "none",
-                    cursor: "pointer",
+	                    ...(isMobileLayout ? mobilePanelSelectStyle : {
+	                      width: "100%",
+	                      padding: "9px 10px",
+	                      borderRadius: 9,
+	                      border: "1px solid rgba(0,0,0,0.2)",
+	                      background: "rgba(255,255,255,0.9)",
+	                      color: "#3a2f28",
+	                      fontSize: 14,
+	                      fontWeight: 600,
+	                      outline: "none",
+	                      cursor: "pointer",
+	                    }),
                   }}
                 >
                   <option value="Asc">Asc</option>
@@ -15794,19 +15833,19 @@ export default function Page() {
                     position: "relative",
                     height: shelfRowHeight,
                     overflow: "hidden",
-                    backgroundImage: isSimpleShelfTheme ? "none" : `url(${shelfTheme})`,
-                    backgroundRepeat: isSimpleShelfTheme ? "repeat" : "no-repeat",
+                    backgroundImage: isSimpleShelfPresentation ? simplePresentationBackground : `url(${shelfTheme})`,
+                    backgroundRepeat: isSimpleShelfPresentation ? "no-repeat" : "no-repeat",
                     backgroundPosition: "center",
-                    backgroundSize: isElectricBlueShelfTheme
+                    backgroundSize: isElectricBlueShelfPresentation
                       ? "calc(100% + 2px) calc(100% + 2px)"
-                      : isSimpleShelfTheme
-                        ? "auto"
+                      : isSimpleShelfPresentation
+                        ? "100% 100%"
                         : "100% 100%",
-                    backgroundColor: isElectricBlueShelfTheme ? "rgba(5, 13, 30, 0.9)" : "transparent",
+                    backgroundColor: isElectricBlueShelfPresentation ? "rgba(5, 13, 30, 0.9)" : isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
                     borderRadius: 0,
-                    boxShadow: isElectricBlueShelfTheme
+                    boxShadow: isElectricBlueShelfPresentation
                       ? `${shelfIndex === 0 ? "0 14px 28px rgba(4,12,24,0.52), " : "0 10px 20px rgba(4,12,24,0.4), "}0 0 22px rgba(78,150,255,0.18), inset 0 0 0 1px rgba(8,24,50,0.72), inset 0 20px 30px rgba(2,6,18,0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.32), inset 16px 0 24px rgba(2,10,24,0.42), inset -16px 0 24px rgba(2,10,24,0.42)`
-                      : isSimpleShelfTheme
+                      : isSimpleShelfPresentation
                         ? "none"
                         : `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
                   }}
@@ -15834,7 +15873,7 @@ export default function Page() {
                       const x = Math.round(runningVisualX - visualLeft);
                       runningVisualX += visualWidth + shelfGap;
                       const caseWidth = itemSize;
-                      const caseHeight = isSimpleShelfTheme
+                      const caseHeight = isSimpleShelfPresentation
                         ? Math.round(itemSize * 1.5)
                         : isBook
                           ? Math.round(itemSize * bookHeightMultiplier)
@@ -15843,7 +15882,7 @@ export default function Page() {
                       // Use appropriate insets based on item type
                       // For games, look up platform-specific insets or use Default
                       let insetTopVal, insetRightVal, insetBottomVal, insetLeftVal;
-                      if (isSimpleShelfTheme) {
+                      if (isSimpleShelfPresentation) {
                         insetTopVal = 0;
                         insetRightVal = 0;
                         insetBottomVal = 0;
@@ -15884,7 +15923,7 @@ export default function Page() {
                       let coverOffsetX = 0;
                       let coverOffsetY = 0;
                       
-                      if (isSimpleShelfTheme) {
+                      if (isSimpleShelfPresentation) {
                         overlayWidth = 100;
                         overlayHeight = 100;
                         overlayTop = 0;
@@ -16003,11 +16042,11 @@ export default function Page() {
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
-                      const coverContainerRadius = isSimpleShelfTheme ? 18 : 0;
-                      const coverTransform = isSimpleShelfTheme
+                      const coverContainerRadius = isSimpleShelfPresentation ? 18 : 0;
+                      const coverTransform = isSimpleShelfPresentation
                         ? undefined
                         : `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`;
-                      const gamePosterFit = isSimpleShelfTheme ? "cover" : gameCoverFit;
+                      const gamePosterFit = isSimpleShelfPresentation ? "cover" : gameCoverFit;
                       const statusDotLeftPx = Math.round(
                         statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX
                       );
@@ -16109,7 +16148,7 @@ export default function Page() {
                             overflow: "visible",
                             cursor: isWishlistCase ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
                             opacity: isWishlistPointerDragging ? 0.94 : 1,
-                            filter: isSimpleShelfTheme
+                            filter: isSimpleShelfPresentation
                               ? "none"
                               : undefined,
                             zIndex: isWishlistCase ? (isWishlistPointerDragging ? 60 : draggingWishlistKey ? 2 : undefined) : undefined,
@@ -16149,9 +16188,9 @@ export default function Page() {
                                   right: insetRight,
                                   bottom: insetBottom,
                                   left: insetLeft,
-                                  overflow: isSimpleShelfTheme ? "hidden" : "hidden",
+                                  overflow: isSimpleShelfPresentation ? "hidden" : "hidden",
                                   borderRadius: coverContainerRadius,
-                                  background: isSimpleShelfTheme ? "rgba(255,255,255,0.06)" : "transparent",
+                                  background: isSimpleShelfPresentation ? "rgba(255,255,255,0.06)" : "transparent",
                                 }}
                               >
                                 {showInsetGuide ? (
@@ -16227,7 +16266,7 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
-                                {selectedCoverUrl && !isSimpleShelfTheme && gameCoverFit === "cover" ? (
+                                {selectedCoverUrl && !isSimpleShelfPresentation && gameCoverFit === "cover" ? (
                                   <div
                                     aria-hidden
                                     className="case-reflection"
@@ -16246,7 +16285,7 @@ export default function Page() {
 
                               </div>
 
-                              {!isSimpleShelfTheme ? (
+                              {!isSimpleShelfPresentation ? (
                                 <div
                                   style={{
                                     position: "absolute",
@@ -16296,9 +16335,9 @@ export default function Page() {
                                   left: insetLeft,
                                   // Allow cover translation/scale to move beyond raw inset bounds so it can
                                   // align with resized/repositioned overlays without hard clipping at inset edge.
-                                  overflow: isSimpleShelfTheme ? "hidden" : "visible",
+                                  overflow: isSimpleShelfPresentation ? "hidden" : "visible",
                                   borderRadius: coverContainerRadius,
-                                  background: isSimpleShelfTheme ? "rgba(255,255,255,0.06)" : "transparent",
+                                  background: isSimpleShelfPresentation ? "rgba(255,255,255,0.06)" : "transparent",
                                 }}
                               >
                                 {showInsetGuide ? (
@@ -16374,7 +16413,7 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
-                                {selectedCoverUrl && !isSimpleShelfTheme ? (
+                                {selectedCoverUrl && !isSimpleShelfPresentation ? (
                                   <div
                                     aria-hidden
                                     className="case-reflection"
@@ -16393,7 +16432,7 @@ export default function Page() {
 
                               </div>
 
-                              {!isSimpleShelfTheme ? (
+                              {!isSimpleShelfPresentation ? (
                                 <div
                                   style={{
                                     position: "absolute",
