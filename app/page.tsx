@@ -694,26 +694,45 @@ function getReadableTextHex(
 function buildSimpleSidebarTheme(backgroundColor: string) {
   const normalizedBackground = normalizeHexColor(backgroundColor);
   const isLightBackground = getRelativeLuminance(normalizedBackground, normalizedBackground) >= 0.5;
+  const surfaceGlowHex = mixHexColors(
+    normalizedBackground,
+    "#ffffff",
+    isLightBackground ? 0.34 : 0.24,
+    normalizedBackground
+  );
   const surfaceHighlightHex = mixHexColors(
     normalizedBackground,
     "#ffffff",
-    isLightBackground ? 0.14 : 0.1,
+    isLightBackground ? 0.22 : 0.16,
     normalizedBackground
   );
   const surfaceMidHex = mixHexColors(
     normalizedBackground,
     "#ffffff",
-    isLightBackground ? 0.06 : 0.08,
+    isLightBackground ? 0.08 : 0.1,
     normalizedBackground
   );
   const surfaceShadowHex = mixHexColors(
     normalizedBackground,
     "#000000",
-    isLightBackground ? 0.08 : 0.16,
+    isLightBackground ? 0.18 : 0.28,
+    normalizedBackground
+  );
+  const surfaceDeepShadowHex = mixHexColors(
+    normalizedBackground,
+    "#000000",
+    isLightBackground ? 0.26 : 0.42,
     normalizedBackground
   );
   const baseTextHex = getReadableTextHex(
-    [normalizedBackground, surfaceHighlightHex, surfaceMidHex, surfaceShadowHex],
+    [
+      surfaceGlowHex,
+      surfaceHighlightHex,
+      normalizedBackground,
+      surfaceMidHex,
+      surfaceShadowHex,
+      surfaceDeepShadowHex,
+    ],
     normalizedBackground
   );
   const emphasizedTextHex = mixHexColors(
@@ -741,7 +760,7 @@ function buildSimpleSidebarTheme(backgroundColor: string) {
     isLightBackground ? 0.16 : 0.62,
     baseTextHex
   );
-  const surfaceBackground = `linear-gradient(180deg, ${hexToRgba(surfaceHighlightHex, isLightBackground ? 0.24 : 0.18, surfaceHighlightHex)} 0%, ${hexToRgba(surfaceMidHex, isLightBackground ? 0.36 : 0.26, surfaceMidHex)} 50%, ${hexToRgba(surfaceHighlightHex, isLightBackground ? 0.24 : 0.18, surfaceHighlightHex)} 100%), radial-gradient(160% 135% at 50% 50%, ${hexToRgba(surfaceShadowHex, 0, surfaceShadowHex)} 0%, ${hexToRgba(surfaceShadowHex, isLightBackground ? 0.04 : 0.1, surfaceShadowHex)} 78%, ${hexToRgba(surfaceShadowHex, isLightBackground ? 0.08 : 0.16, surfaceShadowHex)} 100%), linear-gradient(180deg, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 0%, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 100%)`;
+  const surfaceBackground = `radial-gradient(140% 105% at 50% -12%, ${hexToRgba(surfaceGlowHex, isLightBackground ? 0.62 : 0.42, surfaceGlowHex)} 0%, ${hexToRgba(surfaceGlowHex, isLightBackground ? 0.2 : 0.12, surfaceGlowHex)} 34%, ${hexToRgba(surfaceGlowHex, 0, surfaceGlowHex)} 64%), radial-gradient(170% 135% at 50% 118%, ${hexToRgba(surfaceDeepShadowHex, isLightBackground ? 0.2 : 0.36, surfaceDeepShadowHex)} 0%, ${hexToRgba(surfaceDeepShadowHex, isLightBackground ? 0.08 : 0.16, surfaceDeepShadowHex)} 34%, ${hexToRgba(surfaceDeepShadowHex, 0, surfaceDeepShadowHex)} 70%), linear-gradient(180deg, ${hexToRgba(surfaceHighlightHex, 0.99, surfaceHighlightHex)} 0%, ${hexToRgba(surfaceMidHex, 0.98, surfaceMidHex)} 32%, ${hexToRgba(normalizedBackground, 0.99, normalizedBackground)} 60%, ${hexToRgba(surfaceShadowHex, 0.99, surfaceShadowHex)} 100%)`;
 
   return {
     background: surfaceBackground,
