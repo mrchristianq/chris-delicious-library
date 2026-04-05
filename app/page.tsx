@@ -2304,7 +2304,6 @@ export default function Page() {
   }, []);
 
   // Layout tuning
-  const MOBILE_LAYOUT_MAX_WIDTH = 980;
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
