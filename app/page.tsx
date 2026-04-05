@@ -16058,7 +16058,22 @@ export default function Page() {
               {smartListBuilderOpen ? (
                 <div style={{ height: Math.max(0, shelves.length * shelfRowHeight) }} />
               ) : (
-                <>
+                <div style={{ position: "relative" }}>
+              {isSimpleShelfPresentation ? (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    pointerEvents: "none",
+                    backgroundImage: simplePresentationBackground,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center top",
+                    backgroundSize: "100% 100%",
+                    backgroundColor: simpleShelfBackgroundColor,
+                  }}
+                />
+              ) : null}
               {shelfRenderWindow.padTop > 0 ? (
                 <div style={{ height: shelfRenderWindow.padTop }} />
               ) : null}
@@ -16071,15 +16086,15 @@ export default function Page() {
                     position: "relative",
                     height: shelfRowHeight,
                     overflow: "hidden",
-                    backgroundImage: isSimpleShelfPresentation ? simplePresentationBackground : `url(${shelfTheme})`,
-                    backgroundRepeat: isSimpleShelfPresentation ? "no-repeat" : "no-repeat",
+                    backgroundImage: isSimpleShelfPresentation ? "none" : `url(${shelfTheme})`,
+                    backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
                     backgroundSize: isElectricBlueShelfPresentation
                       ? "calc(100% + 2px) calc(100% + 2px)"
                       : isSimpleShelfPresentation
-                        ? "100% 100%"
+                        ? "auto"
                         : "100% 100%",
-                    backgroundColor: isElectricBlueShelfPresentation ? "rgba(5, 13, 30, 0.9)" : isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+                    backgroundColor: isElectricBlueShelfPresentation ? "rgba(5, 13, 30, 0.9)" : "transparent",
                     borderRadius: 0,
                     boxShadow: isElectricBlueShelfPresentation
                       ? `${shelfIndex === 0 ? "0 14px 28px rgba(4,12,24,0.52), " : "0 10px 20px rgba(4,12,24,0.4), "}0 0 22px rgba(78,150,255,0.18), inset 0 0 0 1px rgba(8,24,50,0.72), inset 0 20px 30px rgba(2,6,18,0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.32), inset 16px 0 24px rgba(2,10,24,0.42), inset -16px 0 24px rgba(2,10,24,0.42)`
@@ -16844,7 +16859,7 @@ export default function Page() {
               {insetEditorOpen && shelfRenderWindow.padBottom > 0 ? (
                 <div style={{ height: shelfRenderWindow.padBottom }} />
               ) : null}
-                </>
+                </div>
               )}
             </div>
 
