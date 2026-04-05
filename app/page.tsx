@@ -225,6 +225,8 @@ type SmartListYearSourceOption = {
 
 const APP_TITLE = "Chris’ Delicious Library";
 const APP_VERSION = "5.3.4";
+const STATIC_SITE_WRITE_MESSAGE =
+  "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const SPLASH_MIN_DURATION_MS = 1500;
 const MANUAL_SORT_FIELD = "Manual";
 const SMART_LISTS_SETTING_KEY = "smartLists:v1";
@@ -1670,6 +1672,7 @@ export default function Page() {
     process.env.NEXT_PUBLIC_TV_WRITE_URL;
   const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
   const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
+  const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
   const writeConfigChecks = useMemo(
     () => [
       {
@@ -1726,6 +1729,26 @@ export default function Page() {
   const wishlistDragVisualPendingRef = useRef<WishlistPointerDrag | null>(null);
   const wishlistDragLatestOrderRef = useRef<string[] | null>(null);
   const smartListNameInputRef = useRef<string>("");
+
+  const getCachedSettingValue = useCallback((key: string): string | number | boolean | undefined => {
+    if (typeof window === "undefined") return undefined;
+
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      const cache = settingsCacheRef.current;
+      if (!cache || cache[key] === undefined || cache[key] === "") return undefined;
+      return parseStoredSettingValue(cache[key]);
+    } catch (e) {
+      console.warn(`Failed to read cached setting: ${key}`, e);
+      return undefined;
+    }
+  }, []);
+  const getCachedNumericSetting = useCallback((key: string): number | undefined => {
+    const value = getCachedSettingValue(key);
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  }, [getCachedSettingValue]);
   
   // Debounce timers for settings persistence
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
@@ -3130,6 +3153,29 @@ export default function Page() {
     setUploadingCoverForKey(itemKey);
     setCoverUploadError(null);
     try {
+      if (isStaticSiteBuild) {
+        const localUrl = await fileToDataUrl(file);
+        setCoverOverrides((prev) => {
+          const next = { ...prev, [itemKey]: localUrl };
+          try {
+            localStorage.setItem("cdlCoverOverrides", JSON.stringify(next));
+          } catch (e) {
+            console.warn("Failed to persist cover overrides locally:", e);
+          }
+          return next;
+        });
+        setModalItem((prev: any) =>
+          prev ? buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: localUrl }) : prev
+        );
+        setSyncState("ok");
+        setSyncMsg("Cover saved locally");
+        setLastSyncAt(Date.now());
+        setTimeout(() => {
+          setSyncMsg("Synced");
+        }, 1200);
+        return;
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("itemKey", itemKey);
@@ -3199,6 +3245,10 @@ export default function Page() {
   };
 
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+    if (isStaticSiteBuild) {
+      throw new Error(STATIC_SITE_WRITE_MESSAGE);
+    }
+
     const res = await fetch("/api/sheets-write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3213,7 +3263,7 @@ export default function Page() {
         fallbackMessage;
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [isStaticSiteBuild]);
 
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
     if (!booksWriteUrl) {
@@ -9957,25 +10007,6 @@ export default function Page() {
   const showStartupSplash = !splashMinDurationDone || !initialLoadSettled;
   const useElectricBlueStatsBackdrop = nav === "statistics" && isElectricBlueThemeActive;
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics";
-  const getCachedSettingValue = useCallback((key: string): string | number | boolean | undefined => {
-    if (typeof window === "undefined") return undefined;
-
-    try {
-      if (settingsCacheRef.current === null) {
-        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
-      }
-      const cache = settingsCacheRef.current;
-      if (!cache || cache[key] === undefined || cache[key] === "") return undefined;
-      return parseStoredSettingValue(cache[key]);
-    } catch (e) {
-      console.warn(`Failed to read cached setting: ${key}`, e);
-      return undefined;
-    }
-  }, []);
-  const getCachedNumericSetting = useCallback((key: string): number | undefined => {
-    const value = getCachedSettingValue(key);
-    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-  }, [getCachedSettingValue]);
 
   return (
     <div

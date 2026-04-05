@@ -74,6 +74,8 @@ const BOOK_EDIT_FIELDS: BookEditField[] = [
 const BOOK_STATUS_OPTIONS = ["Reading", "Completed", "Backlog", "Abandoned", "Paused", "Wishlist"];
 const BOOK_OWNERSHIP_OPTIONS = ["Owned", "Ripped", "Wishlist", "Borrowed"];
 const BOOK_TYPE_OPTIONS = ["Physical", "eBook", "Audiobook", "Graphic Novel"];
+const STATIC_SITE_RESYNC_MESSAGE =
+  "Metadata resync isn't available on the GitHub Pages version of the library.";
 const SHOW_WATCH_STATUS_OPTIONS = [
   "Watching",
   "Completed",
@@ -813,6 +815,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   popupCoverMode,
   onPopupCoverModeChange,
 }) => {
+  const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
   const [posterIndex, setPosterIndex] = React.useState(0);
   const [isEditingBook, setIsEditingBook] = React.useState(false);
   const [isSavingBook, setIsSavingBook] = React.useState(false);
@@ -1326,6 +1329,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
     if (!lookupId && !fallbackQuery) {
       setResyncError("Unable to resync: missing metadata identifier and title.");
+      return;
+    }
+    if (isStaticSiteBuild) {
+      setResyncError(STATIC_SITE_RESYNC_MESSAGE);
       return;
     }
 

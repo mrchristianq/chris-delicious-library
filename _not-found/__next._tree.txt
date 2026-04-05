@@ -1,0 +1,2 @@
+:HL["/chris-delicious-library/_next/static/chunks/4e998bd134c654eb.css","style"]
+0:{"buildId":"a2RooGPHfQeVd5wnX8wsD","tree":{"name":"","paramType":null,"paramKey":"","hasRuntimePrefetch":false,"slots":{"children":{"name":"/chris-delicious-library/_not-found","paramType":null,"paramKey":"/chris-delicious-library/_not-found","hasRuntimePrefetch":false,"slots":{"children":{"name":"__PAGE__","paramType":null,"paramKey":"__PAGE__","hasRuntimePrefetch":false,"slots":null,"isRootLayout":false}},"isRootLayout":false}},"isRootLayout":true},"staleTime":300}

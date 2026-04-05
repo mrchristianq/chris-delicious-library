@@ -44,6 +44,8 @@ const SHOW_WATCH_STATUS_OPTIONS = ["Watching", "Completed", "Backlog", "Abandone
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"];
 const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Abandoned"];
 const MOVIE_STATUS_OPTIONS = ["Released", "Upcoming", "In Production", "Canceled"];
+const STATIC_SITE_SEARCH_MESSAGE =
+  "Search isn't available on the GitHub Pages version. You can still add the item manually.";
 
 function safeStr(value: unknown): string {
   return String(value ?? "").trim();
@@ -194,6 +196,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   gameOwnershipOptions = [],
   gameFormatOptions = [],
 }) => {
+  const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
   const [type, setType] = useState<AddMediaType>("book");
   const [query, setQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -249,6 +252,11 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
     const q = safeStr(query);
     if (!q) {
       setSearchError("Enter a title to search.");
+      return;
+    }
+    if (isStaticSiteBuild) {
+      setResults([]);
+      setSearchError(STATIC_SITE_SEARCH_MESSAGE);
       return;
     }
     setSearchLoading(true);
