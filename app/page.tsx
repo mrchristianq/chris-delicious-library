@@ -552,6 +552,15 @@ function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
 }
 
+function parseStoredSettingValue(value: unknown): string | number | boolean {
+  const str = String(value ?? "");
+  const numValue = Number(str);
+  if (!Number.isNaN(numValue) && str !== "") return numValue;
+  if (str === "true") return true;
+  if (str === "false") return false;
+  return str;
+}
+
 function normalizeHexColor(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND): string {
   const raw = safeStr(value);
   if (!raw) return fallback;
@@ -2092,20 +2101,44 @@ export default function Page() {
   const sidebarOptionActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : `${currentTheme.primaryColor}1A`;
   const simpleShelfColorPanelBorder =
     shelfTheme === SIMPLE_SHELF_THEME
-      ? isSimpleSidebarTheme
-        ? `1px solid ${currentTheme.highlightBorder}`
-        : `1px solid ${currentTheme.primaryColor}55`
+      ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.16 : 0.22, simpleSidebarTextHex)}`
       : isDarkSidebarTheme
         ? "1px solid rgba(232, 243, 245, 0.12)"
         : "1px solid rgba(0,0,0,0.08)";
   const simpleShelfColorPanelBackground =
     shelfTheme === SIMPLE_SHELF_THEME
-      ? isSimpleSidebarTheme
-        ? currentTheme.activeHighlight
-        : `${currentTheme.primaryColor}12`
+      ? `linear-gradient(180deg, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.04 : 0.08, simpleSidebarOverlayBase)} 0%, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.12 : 0.18, simpleSidebarOverlayBase)} 100%), ${simplePresentationBackground}`
       : isDarkSidebarTheme
         ? "rgba(255,255,255,0.04)"
         : "rgba(255,255,255,0.35)";
+  const simpleShelfColorPanelTitleColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.7 : 0.76, simpleSidebarTextHex);
+  const simpleShelfColorPanelTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.94 : 0.96, simpleSidebarTextHex);
+  const simpleShelfColorPanelMutedTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.72 : 0.78, simpleSidebarTextHex);
+  const simpleShelfColorSwatchStyle: CSSProperties = {
+    width: 50,
+    height: 40,
+    padding: 4,
+    borderRadius: 10,
+    border: `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.26, simpleSidebarTextHex)}`,
+    background: `linear-gradient(180deg, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.03 : 0.08, simpleSidebarOverlayBase)} 0%, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.08 : 0.16, simpleSidebarOverlayBase)} 100%), ${simplePresentationBackground}`,
+    boxShadow: simpleSidebarIsLight
+      ? "inset 0 1px 0 rgba(255,255,255,0.36)"
+      : "inset 0 1px 0 rgba(255,255,255,0.08)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  };
+  const simpleShelfColorInputStyle: CSSProperties = {
+    width: 42,
+    height: 32,
+    padding: 0,
+    border: "1px solid rgba(0,0,0,0.16)",
+    borderRadius: 8,
+    background: "transparent",
+    cursor: "pointer",
+    display: "block",
+  };
   const sidebarItemHoverBackground = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarOverlayBase, 0.06, simpleSidebarOverlayBase)
     : isDarkSidebarTheme
@@ -2157,7 +2190,6 @@ export default function Page() {
   const isSimpleHeaderTheme = isSimpleShelfPresentation;
   const simpleHeaderTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.78 : 0.86, simpleSidebarTextHex);
   const simpleHeaderStrongTextColor = hexToRgba(simpleSidebarTextHex, 0.94, simpleSidebarTextHex);
-  const simpleHeaderMutedTextColor = hexToRgba(simpleSidebarTextHex, 0.72, simpleSidebarTextHex);
   const simpleHeaderBorderColor = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.22, simpleSidebarTextHex)}`;
   const simpleHeaderBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.08 : 0.16, simpleSidebarOverlayBase);
   const simpleHeaderElevatedBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.12 : 0.22, simpleSidebarOverlayBase);
@@ -2172,6 +2204,15 @@ export default function Page() {
   const simpleHeaderStatusOnColor = simpleSidebarIsLight ? "#2f8f5b" : "#6fd88b";
   const simpleHeaderStatusOffColor = simpleSidebarIsLight ? "#b23b3b" : "#f07a7a";
   const simpleHeaderIconFilter = simpleSidebarIsLight ? "brightness(0) opacity(0.62)" : "brightness(0) invert(1) opacity(0.62)";
+  const topSafeInset = "env(safe-area-inset-top, 0px)";
+  const bottomSafeInset = "env(safe-area-inset-bottom, 0px)";
+  const MOBILE_BOTTOM_DOCK_HEIGHT = 56;
+  const MOBILE_BOTTOM_DOCK_SIDE_MARGIN = 12;
+  const MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN = 10;
+  const MOBILE_BOTTOM_DOCK_PANEL_GAP = 10;
+  const mobileBottomDockBottom = `calc(${bottomSafeInset} + ${MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN}px)`;
+  const mobileBottomDockReservedSpace = `calc(${bottomSafeInset} + ${MOBILE_BOTTOM_DOCK_HEIGHT + MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN + MOBILE_BOTTOM_DOCK_PANEL_GAP}px)`;
+  const mobileContentBottomPadding = `calc(40px + ${bottomSafeInset} + ${MOBILE_BOTTOM_DOCK_HEIGHT + MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN + MOBILE_BOTTOM_DOCK_PANEL_GAP}px)`;
   const mobilePanelBackground = simplePresentationBackground;
   const mobilePanelBorder = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.24, simpleSidebarTextHex)}`;
   const mobilePanelDivider = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.12 : 0.18, simpleSidebarTextHex)}`;
@@ -2179,7 +2220,6 @@ export default function Page() {
   const mobilePanelCardBorder = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.14 : 0.18, simpleSidebarTextHex)}`;
   const mobilePanelSectionLabelColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.62 : 0.68, simpleSidebarTextHex);
   const mobilePanelTextColor = simpleHeaderStrongTextColor;
-  const mobilePanelMutedTextColor = simpleHeaderMutedTextColor;
   const mobilePanelButtonBackground = simpleHeaderBackground;
   const mobilePanelButtonBorder = simpleHeaderBorderColor;
   const mobilePanelButtonTextColor = simpleHeaderStrongTextColor;
@@ -2227,6 +2267,56 @@ export default function Page() {
     background: mobilePanelActiveButtonBackground,
     color: mobilePanelActiveButtonTextColor,
     fontWeight: 800,
+  };
+  const mobileBottomDockStyle: CSSProperties = {
+    position: "fixed",
+    left: MOBILE_BOTTOM_DOCK_SIDE_MARGIN,
+    right: MOBILE_BOTTOM_DOCK_SIDE_MARGIN,
+    bottom: mobileBottomDockBottom,
+    height: MOBILE_BOTTOM_DOCK_HEIGHT,
+    zIndex: 2510,
+    border: mobilePanelBorder,
+    borderRadius: 18,
+    background: `linear-gradient(180deg, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.05 : 0.1, simpleSidebarOverlayBase)} 0%, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.14 : 0.2, simpleSidebarOverlayBase)} 100%), ${mobilePanelBackground}`,
+    boxShadow: simpleSidebarIsLight
+      ? "0 16px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.28)"
+      : "0 18px 34px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.08)",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 10px",
+  };
+  const mobileBottomDockIconButtonStyle: CSSProperties = {
+    width: 40,
+    height: 40,
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: mobilePanelButtonBorder,
+    background: mobilePanelButtonBackground,
+    color: mobilePanelButtonTextColor,
+    borderRadius: 12,
+    boxShadow: simpleSidebarIsLight
+      ? "0 6px 14px rgba(0,0,0,0.14)"
+      : "0 8px 18px rgba(0,0,0,0.24)",
+    cursor: "pointer",
+  };
+  const mobileBottomDockSearchStyle: CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    height: 40,
+    display: "flex",
+    alignItems: "center",
+    borderRadius: 12,
+    border: mobilePanelButtonBorder,
+    background: mobilePanelButtonBackground,
+    boxShadow: simpleSidebarIsLight
+      ? "0 6px 14px rgba(0,0,0,0.1)"
+      : "0 8px 18px rgba(0,0,0,0.2)",
+    paddingLeft: 10,
+    paddingRight: 10,
+    gap: 6,
   };
   const mobilePanelCountBadgeStyle: CSSProperties = {
     minWidth: 22,
@@ -2293,15 +2383,19 @@ export default function Page() {
       const cachedSidebarTheme = safeStr(cache["sidebarTheme"]);
       const cachedShelfTheme = safeStr(cache["shelfTheme"]);
       const cachedSimpleShelfBackgroundColor = safeStr(cache["simpleShelfBackgroundColor"]);
+      const cachedMobileCoverScalePct = getCachedNumericSetting("mobileCoverScalePct");
       if (cachedSidebarTheme) setSidebarTheme(cachedSidebarTheme);
       if (cachedShelfTheme) setShelfTheme(normalizeShelfTheme(cachedShelfTheme));
       if (cachedSimpleShelfBackgroundColor) {
         setSimpleShelfBackgroundColor(normalizeHexColor(cachedSimpleShelfBackgroundColor));
       }
+      if (cachedMobileCoverScalePct !== undefined) {
+        setMobileCoverScalePct(Math.max(70, Math.min(125, cachedMobileCoverScalePct)));
+      }
     } catch (e) {
       console.warn("Failed to apply cached theme settings on mount:", e);
     }
-  }, []);
+  }, [getCachedNumericSetting]);
 
   // Layout tuning
   const SIDEBAR_WIDTH = 260;
@@ -2319,7 +2413,6 @@ export default function Page() {
   const simpleShelfVerticalPadding = isSimpleShelfPresentation ? Math.max(0, Math.round(shelfGap * 0.5)) : 0;
   const shelfSidePadding = isSimpleShelfPresentation ? shelfGap : SHELF_SIDE_PADDING;
   const shelfBottomOffset = isSimpleShelfPresentation ? simpleShelfVerticalPadding : LIP_FROM_BOTTOM;
-  const topSafeInset = "env(safe-area-inset-top, 0px)";
   const statusDotPixelSize = useMemo(
     () =>
       Math.round(
@@ -4329,20 +4422,11 @@ export default function Page() {
   //   - Even if Google Sheet is down, data is protected in localStorage
   //
   const getSetting = useCallback((key: string, defaultValue: any) => {
-    const parseStoredValue = (value: unknown) => {
-      const str = String(value ?? "");
-      const numValue = Number(str);
-      if (!isNaN(numValue) && str !== "") return numValue;
-      if (str === "true") return true;
-      if (str === "false") return false;
-      return str;
-    };
-
     // Prefer sheet value first for cross-device consistency.
     const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
     if (setting) {
       const rawValue = safeStr(setting["Value"]);
-      return rawValue === "" ? defaultValue : parseStoredValue(rawValue);
+      return rawValue === "" ? defaultValue : parseStoredSettingValue(rawValue);
     }
 
     // Fallback to local cache only if the key is not present in sheet.
@@ -4352,7 +4436,7 @@ export default function Page() {
       }
       const settingsCache = settingsCacheRef.current;
       if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
-        return parseStoredValue(settingsCache[key]);
+        return parseStoredSettingValue(settingsCache[key]);
       }
     } catch (e) {
       console.warn("Failed to read from localStorage:", e);
@@ -4746,7 +4830,10 @@ export default function Page() {
     setPosterSizeTv(getSetting("posterSizeTv", 100));
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
-    setMobileCoverScalePct(Math.max(70, Math.min(125, getSetting("mobileCoverScalePct", 100))));
+    const cachedMobileCoverScalePct = getCachedNumericSetting("mobileCoverScalePct");
+    setMobileCoverScalePct(
+      Math.max(70, Math.min(125, cachedMobileCoverScalePct ?? Number(getSetting("mobileCoverScalePct", 100))))
+    );
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
     setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
@@ -4976,7 +5063,7 @@ export default function Page() {
     setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
     setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
     setSimpleShelfBackgroundColor(normalizeHexColor(getSetting("simpleShelfBackgroundColor", DEFAULT_SIMPLE_SHELF_BACKGROUND)));
-  }, [getSetting, settingsRows]);
+  }, [getCachedNumericSetting, getSetting, settingsRows]);
 
   const persistSmartLists = useCallback(
     (nextLists: SmartList[]) => {
@@ -9869,6 +9956,26 @@ export default function Page() {
   ];
   const showStartupSplash = !splashMinDurationDone || !initialLoadSettled;
   const useElectricBlueStatsBackdrop = nav === "statistics" && isElectricBlueThemeActive;
+  const mobileBottomDockVisible = isMobileLayout && nav !== "statistics";
+  const getCachedSettingValue = useCallback((key: string): string | number | boolean | undefined => {
+    if (typeof window === "undefined") return undefined;
+
+    try {
+      if (settingsCacheRef.current === null) {
+        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+      }
+      const cache = settingsCacheRef.current;
+      if (!cache || cache[key] === undefined || cache[key] === "") return undefined;
+      return parseStoredSettingValue(cache[key]);
+    } catch (e) {
+      console.warn(`Failed to read cached setting: ${key}`, e);
+      return undefined;
+    }
+  }, []);
+  const getCachedNumericSetting = useCallback((key: string): number | undefined => {
+    const value = getCachedSettingValue(key);
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  }, [getCachedSettingValue]);
 
   return (
     <div
@@ -10024,7 +10131,10 @@ export default function Page() {
           }}
           style={{
             position: "fixed",
-            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: mobileBottomDockVisible ? mobileBottomDockReservedSpace : 0,
             border: "none",
             margin: 0,
             padding: 0,
@@ -10040,7 +10150,7 @@ export default function Page() {
             position: "fixed",
             top: "calc(env(safe-area-inset-top, 0px) + 45px)",
             left: 0,
-            bottom: 0,
+            bottom: mobileBottomDockVisible ? mobileBottomDockReservedSpace : 0,
             width: "min(90vw, 360px)",
             zIndex: 2500,
             background: mobilePanelBackground,
@@ -10220,7 +10330,7 @@ export default function Page() {
             position: "fixed",
             top: "calc(env(safe-area-inset-top, 0px) + 45px)",
             right: 0,
-            bottom: 0,
+            bottom: mobileBottomDockVisible ? mobileBottomDockReservedSpace : 0,
             width: "min(90vw, 340px)",
             zIndex: 2500,
             background: mobilePanelBackground,
@@ -10279,29 +10389,29 @@ export default function Page() {
             >
               Clear All Filters
             </button>
-            <div style={mobilePanelCardStyle}>
-              <div style={mobilePanelSectionHeadingStyle}>SIMPLE BACKGROUND</div>
+            <div
+              style={{
+                ...mobilePanelCardStyle,
+                border: simpleShelfColorPanelBorder,
+                background: simpleShelfColorPanelBackground,
+              }}
+            >
+              <div style={{ ...mobilePanelSectionHeadingStyle, color: simpleShelfColorPanelTitleColor }}>SIMPLE BACKGROUND</div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <input
-                  type="color"
-                  value={simpleShelfBackgroundColor}
-                  onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
-                  aria-label="Simple mobile background color"
-                  style={{
-                    width: 42,
-                    height: 32,
-                    padding: 0,
-                    border: mobilePanelButtonBorder,
-                    borderRadius: 8,
-                    background: "transparent",
-                    cursor: "pointer",
-                  }}
-                />
+                <div style={simpleShelfColorSwatchStyle}>
+                  <input
+                    type="color"
+                    value={simpleShelfBackgroundColor}
+                    onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
+                    aria-label="Simple mobile background color"
+                    style={simpleShelfColorInputStyle}
+                  />
+                </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: mobilePanelTextColor }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: simpleShelfColorPanelTextColor }}>
                     {simpleShelfBackgroundColor.toUpperCase()}
                   </span>
-                      <span style={{ fontSize: 10, color: mobilePanelMutedTextColor }}>
+                  <span style={{ fontSize: 10, color: simpleShelfColorPanelMutedTextColor }}>
                     Used to generate the Simple mobile and shelf gradient.
                   </span>
                 </div>
@@ -10379,6 +10489,91 @@ export default function Page() {
               Advanced Settings
             </button>
           </div>
+        </div>
+      ) : null}
+      {mobileBottomDockVisible ? (
+        <div style={mobileBottomDockStyle}>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSettingsOpen(false);
+              setMobileSidebarOpen((prev) => !prev);
+            }}
+            title={mobileSidebarOpen ? "Close menu" : "Open menu"}
+            aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileSidebarOpen}
+            style={{
+              ...mobileBottomDockIconButtonStyle,
+              border: mobileSidebarOpen ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+              background: mobileSidebarOpen ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+              color: mobileSidebarOpen ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+          <div style={mobileBottomDockSearchStyle}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{ display: "block", flexShrink: 0, color: mobilePanelButtonTextColor, opacity: 0.72 }}
+            >
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => {
+                setMobileSidebarOpen(false);
+                setMobileSettingsOpen(false);
+              }}
+              placeholder="Search..."
+              aria-label="Search library"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: "100%",
+                border: "none",
+                background: "transparent",
+                color: mobilePanelTextColor,
+                fontSize: 13,
+                fontWeight: 700,
+                outline: "none",
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              setMobileSettingsOpen((prev) => !prev);
+            }}
+            title={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
+            aria-label={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
+            aria-expanded={mobileSettingsOpen}
+            style={{
+              ...mobileBottomDockIconButtonStyle,
+              border: mobileSettingsOpen ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+              background: mobileSettingsOpen ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+              color: mobileSettingsOpen ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
+            </svg>
+          </button>
         </div>
       ) : null}
       {/* Main layout: Sidebar + Content */}
@@ -12962,30 +13157,24 @@ export default function Page() {
                     gap: 8,
                   }}
                 >
-                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: sidebarThemePanelSectionColor }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: simpleShelfColorPanelTitleColor }}>
                     SIMPLE SHELF BACKGROUND
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <input
-                      type="color"
-                      value={simpleShelfBackgroundColor}
-                      onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
-                      aria-label="Simple Shelf background color"
-                      style={{
-                        width: 42,
-                        height: 32,
-                        padding: 0,
-                        border: "1px solid rgba(0,0,0,0.16)",
-                        borderRadius: 8,
-                        background: "transparent",
-                        cursor: "pointer",
-                      }}
-                    />
+                    <div style={simpleShelfColorSwatchStyle}>
+                      <input
+                        type="color"
+                        value={simpleShelfBackgroundColor}
+                        onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
+                        aria-label="Simple Shelf background color"
+                        style={simpleShelfColorInputStyle}
+                      />
+                    </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarThemeOptionTextColor }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: simpleShelfColorPanelTextColor }}>
                         {simpleShelfBackgroundColor.toUpperCase()}
                       </span>
-                      <span style={{ fontSize: 10, color: sidebarThemePanelTextColor }}>
+                      <span style={{ fontSize: 10, color: simpleShelfColorPanelMutedTextColor }}>
                         Used for the Simple shelf, sidebar, and mobile gradient.
                       </span>
                     </div>
@@ -14185,7 +14374,7 @@ export default function Page() {
         <main
           style={{
             width: "100%",
-            padding: "0 0 40px 0",
+            padding: isMobileLayout ? `0 0 ${mobileContentBottomPadding} 0` : "0 0 40px 0",
             boxSizing: "border-box",
             position: "relative",
             marginLeft: isMobileLayout ? 0 : "-1px",
@@ -15371,14 +15560,14 @@ export default function Page() {
 		                  }}
 		                >
 		                  <div
-		                    style={{
-		                      position: "absolute",
-		                      inset: 0,
-		                      zIndex: 1401,
-		                      display: "flex",
-		                      flexDirection: "row",
-		                      alignItems: "center",
-		                      justifyContent: "space-between",
+			                    style={{
+			                      position: "absolute",
+			                      inset: 0,
+			                      zIndex: 1401,
+			                      display: isMobileLayout ? "none" : "flex",
+			                      flexDirection: "row",
+			                      alignItems: "center",
+			                      justifyContent: "space-between",
 		                      paddingLeft: isMobileLayout ? 6 : 10,
 		                      paddingRight: isMobileLayout ? 6 : 10,
 		                      gap: 5,
