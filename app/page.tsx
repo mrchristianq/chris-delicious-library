@@ -667,6 +667,132 @@ function normalizeHexColor(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BACKG
   return fallback;
 }
 
+function hexToRgba(value: unknown, alpha: number, fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND): string {
+  const normalized = normalizeHexColor(value, fallback);
+  const r = Number.parseInt(normalized.slice(1, 3), 16);
+  const g = Number.parseInt(normalized.slice(3, 5), 16);
+  const b = Number.parseInt(normalized.slice(5, 7), 16);
+  const clampedAlpha = Math.max(0, Math.min(1, alpha));
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
+}
+
+function hexToRgb(
+  value: unknown,
+  fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND
+): { r: number; g: number; b: number } {
+  const normalized = normalizeHexColor(value, fallback);
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const clampChannel = (channel: number) => Math.max(0, Math.min(255, Math.round(channel)));
+  return `#${[r, g, b]
+    .map((channel) => clampChannel(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function mixHexColors(
+  firstColor: unknown,
+  secondColor: unknown,
+  secondWeight = 0.5,
+  fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND
+): string {
+  const first = hexToRgb(firstColor, fallback);
+  const second = hexToRgb(secondColor, fallback);
+  const clampedWeight = Math.max(0, Math.min(1, secondWeight));
+  const firstWeight = 1 - clampedWeight;
+  return rgbToHex(
+    first.r * firstWeight + second.r * clampedWeight,
+    first.g * firstWeight + second.g * clampedWeight,
+    first.b * firstWeight + second.b * clampedWeight
+  );
+}
+
+function getRelativeLuminance(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND): number {
+  const { r, g, b } = hexToRgb(value, fallback);
+  const toLinear = (channel: number) => {
+    const srgb = channel / 255;
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  };
+  const [linearR, linearG, linearB] = [r, g, b].map(toLinear);
+  return 0.2126 * linearR + 0.7152 * linearG + 0.0722 * linearB;
+}
+
+function getComplementaryTextHex(
+  value: unknown,
+  fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND
+): string {
+  const normalized = normalizeHexColor(value, fallback);
+  const { r, g, b } = hexToRgb(normalized, fallback);
+  const inverseHex = rgbToHex(255 - r, 255 - g, 255 - b);
+  const isLightBackground = getRelativeLuminance(normalized, fallback) >= 0.5;
+  return isLightBackground
+    ? mixHexColors(inverseHex, "#000000", 0.52, inverseHex)
+    : mixHexColors(inverseHex, "#ffffff", 0.52, inverseHex);
+}
+
+function buildSimpleSidebarTheme(backgroundColor: string) {
+  const normalizedBackground = normalizeHexColor(backgroundColor);
+  const isLightBackground = getRelativeLuminance(normalizedBackground, normalizedBackground) >= 0.5;
+  const baseTextHex = getComplementaryTextHex(normalizedBackground, normalizedBackground);
+  const emphasizedTextHex = mixHexColors(
+    baseTextHex,
+    isLightBackground ? "#000000" : "#ffffff",
+    isLightBackground ? 0.14 : 0.08,
+    baseTextHex
+  );
+  const overlayBaseHex = isLightBackground ? "#000000" : "#ffffff";
+  const tileStartHex = mixHexColors(
+    normalizedBackground,
+    isLightBackground ? "#ffffff" : "#000000",
+    isLightBackground ? 0.3 : 0.12,
+    normalizedBackground
+  );
+  const tileEndHex = mixHexColors(
+    normalizedBackground,
+    isLightBackground ? "#ffffff" : "#000000",
+    isLightBackground ? 0.14 : 0.28,
+    normalizedBackground
+  );
+  const countBubbleHex = mixHexColors(
+    baseTextHex,
+    "#000000",
+    isLightBackground ? 0.16 : 0.62,
+    baseTextHex
+  );
+
+  return {
+    background: `linear-gradient(180deg, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 0%, ${hexToRgba(normalizedBackground, 0.98, normalizedBackground)} 100%)`,
+    primaryColor: hexToRgba(baseTextHex, isLightBackground ? 0.86 : 0.94, baseTextHex),
+    secondaryColor: hexToRgba(emphasizedTextHex, 0.98, emphasizedTextHex),
+    textColor: hexToRgba(baseTextHex, isLightBackground ? 0.9 : 0.94, baseTextHex),
+    arrowColor: hexToRgba(baseTextHex, isLightBackground ? 0.58 : 0.62, baseTextHex),
+    rolodexColor: hexToRgba(baseTextHex, 0.92, baseTextHex),
+    rolodexDigitColor: mixHexColors(
+      normalizedBackground,
+      isLightBackground ? "#000000" : "#ffffff",
+      isLightBackground ? 0.72 : 0.18,
+      normalizedBackground
+    ),
+    rolodexLabelColor: hexToRgba(baseTextHex, 0.95, baseTextHex),
+    rolodexTileBg: `linear-gradient(180deg, ${hexToRgba(tileStartHex, 0.96, tileStartHex)} 0%, ${hexToRgba(tileEndHex, 0.94, tileEndHex)} 100%)`,
+    rolodexTileBorder: hexToRgba(baseTextHex, isLightBackground ? 0.14 : 0.22, baseTextHex),
+    countBubbleColor: countBubbleHex,
+    syncedTextColor: hexToRgba(baseTextHex, 0.9, baseTextHex),
+    highlightBg: hexToRgba(overlayBaseHex, isLightBackground ? 0.06 : 0.1, overlayBaseHex),
+    highlightBgEnd: hexToRgba(overlayBaseHex, isLightBackground ? 0.04 : 0.08, overlayBaseHex),
+    highlightBorder: hexToRgba(baseTextHex, isLightBackground ? 0.22 : 0.18, baseTextHex),
+    activeHighlight: hexToRgba(overlayBaseHex, isLightBackground ? 0.1 : 0.12, overlayBaseHex),
+    baseTextHex,
+    overlayBaseHex,
+    isLightBackground,
+  };
+}
+
 function sortYearValues(values: string[]): string[] {
   return [...values]
     .filter((value): value is string => /^\d{4}$/.test(value))
@@ -1832,6 +1958,7 @@ export default function Page() {
   const isElectricBlueThemeActive = isElectricBlueShelfTheme || sidebarTheme === "electricBlue";
   
   // Theme configurations
+  const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
   const sidebarThemes = {
     standard: {
       background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
@@ -1906,24 +2033,172 @@ export default function Page() {
       highlightBgEnd: "rgba(34, 64, 118, 0.96)",
       highlightBorder: "rgba(144, 192, 255, 0.6)",
       activeHighlight: "rgba(108, 159, 230, 0.34)",
-    }
+    },
+    simple: simpleSidebarTheme
   };
   
   const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
+  const simpleSidebarIsLight = simpleSidebarTheme.isLightBackground;
+  const simpleSidebarTextHex = simpleSidebarTheme.baseTextHex;
+  const simpleSidebarOverlayBase = simpleSidebarTheme.overlayBaseHex;
   const isBlueSidebarTheme = sidebarTheme === "darkBlue" || sidebarTheme === "electricBlue";
+  const isSimpleSidebarTheme = sidebarTheme === "simple";
+  const isDarkSidebarTheme = isBlueSidebarTheme || isSimpleSidebarTheme;
+  const sidebarHasDarkSurface = isBlueSidebarTheme || (isSimpleSidebarTheme && !simpleSidebarIsLight);
   const isElectricBlueSidebarTheme = sidebarTheme === "electricBlue";
-  const sidebarModuleCardBackground = isElectricBlueSidebarTheme
+  const usesThemeCountBubbleColor = isSimpleSidebarTheme || sidebarTheme === "winterGray";
+  const sidebarModuleStackGap = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : 6;
+  const sidebarModuleMarginTop = isSimpleSidebarTheme ? 8 : 12;
+  const sidebarPrimaryModuleMarginTop = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : 6;
+  const sidebarModuleCardPadding = isSimpleSidebarTheme ? "8px 10px" : "12px";
+  const sidebarSectionSpacing = isSimpleSidebarTheme ? 10 : 16;
+  const sidebarPrimaryModulePadding = isSimpleSidebarTheme ? "8px 10px 0" : sidebarModuleCardPadding;
+  const sidebarDiscoverModulePadding = isSimpleSidebarTheme ? `${sidebarSectionSpacing}px 10px 8px` : sidebarModuleCardPadding;
+  const sidebarModuleCardBackground = isSimpleSidebarTheme
+    ? "transparent"
+    : isElectricBlueSidebarTheme
     ? "linear-gradient(180deg, rgba(33, 67, 122, 0.44) 0%, rgba(18, 36, 73, 0.5) 100%)"
     : "rgba(255, 255, 255, 0.125)";
-  const sidebarModuleCardShadow = isElectricBlueSidebarTheme
+  const sidebarModuleCardShadow = isSimpleSidebarTheme
+    ? "none"
+    : isElectricBlueSidebarTheme
     ? "0 0 10px rgba(110, 190, 255, 0.42), 0 0 18px rgba(68, 141, 247, 0.28), -16px 0 26px rgba(0, 0, 0, 0.22), -6px 0 10px rgba(0, 0, 0, 0.16), 0 6px 12px rgba(0, 0, 0, 0.18), 0 3px 6px rgba(0, 0, 0, 0.13), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 30px rgba(7, 20, 44, 0.34)"
     : "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)";
-  const sidebarModuleCardBorder = isElectricBlueSidebarTheme
+  const sidebarModuleCardBorder = isSimpleSidebarTheme
+    ? "none"
+    : isElectricBlueSidebarTheme
     ? "1px solid transparent"
     : "1px solid rgba(255, 255, 255, 0.5)";
-  const sidebarModuleCardBorderBottom = isElectricBlueSidebarTheme
+  const sidebarModuleCardBorderBottom = isSimpleSidebarTheme
+    ? "none"
+    : isElectricBlueSidebarTheme
     ? "1px solid transparent"
     : "1px solid rgba(0, 0, 0, 0.15)";
+  const sidebarSectionFontFamily = isSimpleSidebarTheme
+    ? "\"Geist Sans\", \"Geist\", \"Segoe UI\", sans-serif"
+    : "\"Nunito\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Roboto\", sans-serif";
+  const sidebarBackplateOpacity = isSimpleSidebarTheme ? 1 : sidebarTheme === "winterGray" ? 0.8 : isDarkSidebarTheme ? 0.9 : 0.84;
+  const sidebarBackplateBackgroundSize = isSimpleSidebarTheme ? "100% 100%" : "auto, 100% 100%";
+  const sidebarBackplateBackgroundPosition = isSimpleSidebarTheme ? "0 0" : "0 0, 0 0";
+  const sidebarShellBackground = isSimpleSidebarTheme ? "transparent" : "rgba(255, 255, 255, 0.125)";
+  const sidebarShellShadow = isSimpleSidebarTheme
+    ? "none"
+    : "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)";
+  const sidebarSectionDividerColor = isSimpleSidebarTheme
+    ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.14 : 0.12, simpleSidebarTextHex)}`
+    : "1px solid rgba(0,0,0,0.06)";
+  const sidebarChevronColor = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarTextHex, 0.58, simpleSidebarTextHex)
+    : "rgba(0,0,0,0.4)";
+  const sidebarToggleColor = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarTextHex, 0.74, simpleSidebarTextHex)
+    : "rgba(0,0,0,0.5)";
+  const sidebarThemePanelTextColor = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarTextHex, 0.8, simpleSidebarTextHex)
+    : isDarkSidebarTheme
+      ? "rgba(225, 236, 238, 0.8)"
+      : "rgba(0,0,0,0.68)";
+  const sidebarThemePanelSectionColor = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarTextHex, 0.68, simpleSidebarTextHex)
+    : isDarkSidebarTheme
+      ? "rgba(200, 217, 220, 0.78)"
+      : "#8A8A8A";
+  const sidebarThemeOptionBorder = isSimpleSidebarTheme
+    ? `1px solid ${hexToRgba(simpleSidebarTextHex, 0.14, simpleSidebarTextHex)}`
+    : isDarkSidebarTheme
+      ? "1px solid rgba(232, 243, 245, 0.14)"
+      : "1px solid rgba(0,0,0,0.1)";
+  const sidebarThemeOptionBackground = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.04 : 0.06, simpleSidebarOverlayBase)
+    : isDarkSidebarTheme
+      ? "rgba(255,255,255,0.06)"
+      : "rgba(255,255,255,0.5)";
+  const sidebarThemeOptionTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? currentTheme.textColor : "#2A2A2A";
+  const smartListsExpanded = isSimpleSidebarTheme || smartListsOpen;
+  const sidebarOptionActiveBorder = isSimpleSidebarTheme ? `2px solid ${currentTheme.highlightBorder}` : `2px solid ${currentTheme.primaryColor}`;
+  const sidebarOptionActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : `${currentTheme.primaryColor}1A`;
+  const simpleShelfColorPanelBorder =
+    shelfTheme === SIMPLE_SHELF_THEME
+      ? isSimpleSidebarTheme
+        ? `1px solid ${currentTheme.highlightBorder}`
+        : `1px solid ${currentTheme.primaryColor}55`
+      : isDarkSidebarTheme
+        ? "1px solid rgba(232, 243, 245, 0.12)"
+        : "1px solid rgba(0,0,0,0.08)";
+  const simpleShelfColorPanelBackground =
+    shelfTheme === SIMPLE_SHELF_THEME
+      ? isSimpleSidebarTheme
+        ? currentTheme.activeHighlight
+        : `${currentTheme.primaryColor}12`
+      : isDarkSidebarTheme
+        ? "rgba(255,255,255,0.04)"
+        : "rgba(255,255,255,0.35)";
+  const sidebarItemHoverBackground = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarOverlayBase, 0.06, simpleSidebarOverlayBase)
+    : isDarkSidebarTheme
+      ? "rgba(124, 160, 224, 0.14)"
+      : "rgba(0,0,0,0.02)";
+  const sidebarSubItemBorderColor = isSimpleSidebarTheme
+    ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.12 : 0.08, simpleSidebarTextHex)}`
+    : isDarkSidebarTheme
+      ? "1px solid rgba(142, 178, 234, 0.42)"
+      : "1px solid rgba(0, 0, 0, 0.06)";
+  const sidebarSubItemBackground = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarOverlayBase, 0.04, simpleSidebarOverlayBase)
+    : isDarkSidebarTheme
+      ? "rgba(19, 39, 72, 0.62)"
+      : "rgba(255, 255, 255, 0.6)";
+  const sidebarSubItemHoverBackground = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarOverlayBase, 0.08, simpleSidebarOverlayBase)
+    : isDarkSidebarTheme
+      ? "rgba(36, 71, 122, 0.7)"
+      : "rgba(0, 0, 0, 0.05)";
+  const sidebarSubItemTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)";
+  const sidebarSubItemActiveTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)";
+  const sidebarSectionLabelColor = isSimpleSidebarTheme ? currentTheme.primaryColor : isDarkSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A";
+  const sidebarSectionControlColor = isSimpleSidebarTheme ? currentTheme.arrowColor : isDarkSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A";
+  const sidebarInlineMetaTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)";
+  const sidebarInlineCountActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : isDarkSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)";
+  const sidebarInlineCountBackground = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.06 : 0.1, simpleSidebarOverlayBase)
+    : isDarkSidebarTheme
+      ? "rgba(17, 40, 78, 0.68)"
+      : "rgba(0,0,0,0.06)";
+  const sidebarInlineCountColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333";
+  const sidebarInlineCountBorder = isSimpleSidebarTheme
+    ? `1px solid ${currentTheme.highlightBorder}`
+    : isDarkSidebarTheme
+      ? "1px solid rgba(146, 181, 235, 0.45)"
+      : "1px solid rgba(0,0,0,0.12)";
+  const sidebarNoticeTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : "#0a7f2e";
+  const sidebarNoticeBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : "rgba(10,127,46,0.12)";
+  const sidebarNoticeBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : "1px solid rgba(10,127,46,0.35)";
+  const sidebarAccentButtonBackground = isSimpleSidebarTheme
+    ? currentTheme.activeHighlight
+    : "linear-gradient(180deg, rgba(26, 45, 74, 0.76) 0%, rgba(16, 30, 52, 0.8) 100%)";
+  const sidebarAccentButtonBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : "1px solid rgba(118, 162, 214, 0.55)";
+  const sidebarAccentButtonColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : "rgba(222, 240, 255, 0.98)";
+  const sidebarAccentButtonShadow = isSimpleSidebarTheme
+    ? "none"
+    : "0 10px 22px rgba(4, 12, 26, 0.3), inset 0 1px 0 rgba(188, 220, 255, 0.22)";
+  const isSimpleHeaderTheme = isSimpleShelfTheme;
+  const simpleHeaderTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.78 : 0.86, simpleSidebarTextHex);
+  const simpleHeaderStrongTextColor = hexToRgba(simpleSidebarTextHex, 0.94, simpleSidebarTextHex);
+  const simpleHeaderMutedTextColor = hexToRgba(simpleSidebarTextHex, 0.72, simpleSidebarTextHex);
+  const simpleHeaderBorderColor = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.22, simpleSidebarTextHex)}`;
+  const simpleHeaderBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.08 : 0.16, simpleSidebarOverlayBase);
+  const simpleHeaderElevatedBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.12 : 0.22, simpleSidebarOverlayBase);
+  const simpleHeaderShadow = simpleSidebarIsLight
+    ? "0 3px 8px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255,255,255,0.24)"
+    : "0 3px 8px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255,255,255,0.08)";
+  const simpleHeaderAccentBackground = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.14 : 0.18, simpleSidebarTextHex);
+  const simpleHeaderAccentBorder = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.28, simpleSidebarTextHex)}`;
+  const simpleHeaderTitleShadow = simpleSidebarIsLight
+    ? `0 1px 0 rgba(255, 255, 255, 0.32), 0 0 1px ${hexToRgba(simpleSidebarTextHex, 0.18, simpleSidebarTextHex)}`
+    : `0 1px 0 rgba(255, 255, 255, 0.14), 0 -1px 0 rgba(0, 0, 0, 0.42), 0 0 1px ${hexToRgba(simpleSidebarTextHex, 0.22, simpleSidebarTextHex)}`;
+  const simpleHeaderStatusOnColor = simpleSidebarIsLight ? "#2f8f5b" : "#6fd88b";
+  const simpleHeaderStatusOffColor = simpleSidebarIsLight ? "#b23b3b" : "#f07a7a";
+  const simpleHeaderIconFilter = simpleSidebarIsLight ? "brightness(0) opacity(0.62)" : "brightness(0) invert(1) opacity(0.62)";
   const counterDigitHeight = isElectricBlueSidebarTheme ? Math.round(counterTileSize * 1.24) : counterTileSize;
   const counterDigitWidth = isElectricBlueSidebarTheme
     ? Math.round(counterDigitHeight * 0.76)
@@ -1934,7 +2209,7 @@ export default function Page() {
     : counterNumberFontSize;
   const neonSyncStartOffset = useMemo(() => `-${(Math.random() * 96).toFixed(3)}s`, []);
   const syncStatusTextColor =
-    isBlueSidebarTheme
+    sidebarHasDarkSurface
       ? syncState === "error"
         ? "#ffd4d4"
         : syncState === "ok"
@@ -1982,8 +2257,9 @@ export default function Page() {
   const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
   const shelfGap = isSimpleShelfTheme ? Math.max(0, gap - (isMobileLayout ? 2 : 4)) : gap;
+  const simpleShelfVerticalPadding = isSimpleShelfTheme ? Math.max(0, Math.round(shelfGap * 0.5)) : 0;
   const shelfSidePadding = isSimpleShelfTheme ? shelfGap : SHELF_SIDE_PADDING;
-  const shelfBottomOffset = isSimpleShelfTheme ? shelfGap : LIP_FROM_BOTTOM;
+  const shelfBottomOffset = isSimpleShelfTheme ? simpleShelfVerticalPadding : LIP_FROM_BOTTOM;
   const topSafeInset = "env(safe-area-inset-top, 0px)";
   const statusDotPixelSize = useMemo(
     () =>
@@ -2098,7 +2374,7 @@ export default function Page() {
     mobileAdjustedPosterSizeGames
   );
   const simpleShelfCaseHeight = Math.round(simpleShelfPosterSize * 1.5);
-  const shelfRowHeight = isSimpleShelfTheme ? simpleShelfCaseHeight + shelfGap * 2 : SHELF_HEIGHT;
+  const shelfRowHeight = isSimpleShelfTheme ? simpleShelfCaseHeight + simpleShelfVerticalPadding * 2 : SHELF_HEIGHT;
   const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
   const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
     tv: 100,
@@ -5576,6 +5852,7 @@ export default function Page() {
     setSidebarTheme(value);
     saveSetting("sidebarTheme", value, "Themes", "Sidebar Theme");
     const sidebarThemeNames: Record<string, string> = {
+      simple: "Simple",
       standard: "Standard",
       winterGray: "Winter Gray",
       darkBlue: "Dark Blue",
@@ -10265,12 +10542,12 @@ export default function Page() {
               inset: 6,
               zIndex: 1,
               pointerEvents: "none",
-              borderRadius: 16,
+              borderRadius: isSimpleSidebarTheme ? 12 : 16,
               overflow: "hidden",
-              opacity: sidebarTheme === "winterGray" ? 0.8 : isBlueSidebarTheme ? 0.9 : 0.84,
+              opacity: sidebarBackplateOpacity,
               backgroundImage: currentTheme.background,
-              backgroundSize: "auto, 100% 100%",
-              backgroundPosition: "0 0, 0 0",
+              backgroundSize: sidebarBackplateBackgroundSize,
+              backgroundPosition: sidebarBackplateBackgroundPosition,
             }}
           />
           {/* Transparent module bubble wrapper */}
@@ -10279,10 +10556,9 @@ export default function Page() {
             style={{
               position: "relative",
               zIndex: 2,
-              background: "rgba(255, 255, 255, 0.125)",
-              borderRadius: 16,
-              boxShadow:
-                "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)",
+              background: sidebarShellBackground,
+              borderRadius: isSimpleSidebarTheme ? 12 : 16,
+              boxShadow: sidebarShellShadow,
               border: "none",
               display: "flex",
               flexDirection: "column",
@@ -10327,7 +10603,7 @@ export default function Page() {
           </div>
 
           {/* Rolodex Counter */}
-          {!loading && (
+          {!loading && !isSimpleSidebarTheme && (
             <div
               style={{
                 padding: "10px 10px 0 10px",
@@ -10383,9 +10659,9 @@ export default function Page() {
               padding: "0 8px",
               display: "flex",
               flexDirection: "column",
-              gap: isElectricBlueSidebarTheme ? 9 : 6,
+              gap: sidebarModuleStackGap,
               flex: 1,
-              marginTop: 12,
+              marginTop: sidebarModuleMarginTop,
             }}
           >
             {/* Library Module */}
@@ -10397,8 +10673,8 @@ export default function Page() {
                 boxShadow: sidebarModuleCardShadow,
                 border: sidebarModuleCardBorder,
                 borderBottom: sidebarModuleCardBorderBottom,
-                marginTop: isElectricBlueSidebarTheme ? 9 : 6,
-                padding: "12px",
+                marginTop: sidebarPrimaryModuleMarginTop,
+                padding: sidebarPrimaryModulePadding,
               }}
             >
               <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
@@ -10409,7 +10685,7 @@ export default function Page() {
                   letterSpacing: "0.04em",
                   color: currentTheme.primaryColor,
                   marginBottom: 6,
-                  fontFamily: "Nunito, sans-serif",
+                  fontFamily: sidebarSectionFontFamily,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -10430,7 +10706,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "home" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -10452,7 +10728,7 @@ export default function Page() {
                     </span>
                     Home
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 16, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 16, fontWeight: 400 }}>›</span>
                 </button>
                 <button
                   onClick={() => {
@@ -10467,7 +10743,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -10500,13 +10776,13 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#6ba56a",
+                        background: usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#6ba56a",
                         color: "#fff",
                       }}
                     >
                       {stats.books}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -10527,8 +10803,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Reading Status</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Reading Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
                     </button>
                     {readingStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10548,7 +10824,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {status}
                               </span>
                               <span
@@ -10559,9 +10835,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10590,8 +10866,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Formats</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Formats</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
                     </button>
                     {formatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10611,7 +10887,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {format}
                               </span>
                               <span
@@ -10622,9 +10898,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10653,8 +10929,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Series</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Series</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
                     </button>
                     {seriesOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10674,7 +10950,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {series}
                               </span>
                               <span
@@ -10685,9 +10961,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10716,8 +10992,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Categories</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{genreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Categories</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10737,7 +11013,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {genre}
                               </span>
                               <span
@@ -10748,9 +11024,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10779,8 +11055,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Wishlist</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{wishlistOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Wishlist</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{wishlistOpen ? "−" : "+"}</span>
                     </button>
                     {wishlistOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10796,7 +11072,7 @@ export default function Page() {
                             gap: 8,
                           }}
                         >
-                          <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                          <span style={{ color: sidebarInlineMetaTextColor }}>
                             Wishlist Books
                           </span>
                           <span
@@ -10807,9 +11083,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                               textAlign: "center",
-                              background: wishlistFilter ? "rgba(140,58,58,0.25)" : "rgba(0,0,0,0.06)",
-                              color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                              border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                              background: wishlistFilter ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                              color: sidebarInlineCountColor,
+                              border: sidebarInlineCountBorder,
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -10838,7 +11114,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -10871,13 +11147,13 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#5b9bd5",
+                        background: usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#5b9bd5",
                         color: "#fff",
                       }}
                     >
                       {stats.movies}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -10898,8 +11174,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieWatchStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Watch Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieWatchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {movieWatchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10919,7 +11195,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {status}
                               </span>
                               <span
@@ -10930,9 +11206,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -10961,8 +11237,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genre</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{movieGenreOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Genre</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -10982,7 +11258,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {genre}
                               </span>
                               <span
@@ -10993,9 +11269,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11027,7 +11303,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -11060,13 +11336,13 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: sidebarTheme === "winterGray" ? currentTheme.countBubbleColor : "#d97642",
+                        background: usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#d97642",
                         color: "#fff",
                       }}
                     >
                       {stats.tv}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -11087,8 +11363,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Watch Status</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Watch Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
                     </button>
                     {watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11108,7 +11384,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {status}
                               </span>
                               <span
@@ -11119,9 +11395,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11150,8 +11426,8 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Show Status</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>+</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Show Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
                     </button>
                     {showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11171,7 +11447,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {status}
                               </span>
                               <span
@@ -11182,9 +11458,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11213,8 +11489,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Tags</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{tagOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Tags</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{tagOpen ? "−" : "+"}</span>
                     </button>
                     {tagOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11234,7 +11510,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>
                                 {tag}
                               </span>
                               <span
@@ -11245,9 +11521,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11282,7 +11558,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -11318,7 +11594,7 @@ export default function Page() {
                         background:
                           isBlueSidebarTheme
                             ? "rgba(26, 47, 92, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
                         color: "#fff",
@@ -11326,7 +11602,7 @@ export default function Page() {
                     >
                       {stats.games}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -11347,8 +11623,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Platform</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Platform</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", width: "fit-content", maxWidth: "100%" }}>
@@ -11368,7 +11644,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -11377,9 +11653,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11408,8 +11684,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Status</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameStatusOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {gameStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11429,7 +11705,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -11438,9 +11714,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11469,8 +11745,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Ownership</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Ownership</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11490,7 +11766,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -11499,9 +11775,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11530,8 +11806,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Format</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Format</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11551,7 +11827,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -11560,9 +11836,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11591,8 +11867,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Year Played</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Year Played</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11612,7 +11888,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -11621,9 +11897,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11652,8 +11928,8 @@ export default function Page() {
                         gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isBlueSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A", fontFamily: "Nunito, sans-serif" }}>Genres</span>
-                      <span style={{ color: isBlueSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A", fontWeight: 600, fontSize: 12, fontFamily: "Nunito, sans-serif" }}>{gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Genres</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -11673,7 +11949,7 @@ export default function Page() {
                                 gap: 8,
                               }}
                             >
-                              <span style={{ color: isBlueSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)" }}>{option}</span>
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
                                 style={{
                                   minWidth: 16,
@@ -11682,9 +11958,9 @@ export default function Page() {
                                   borderRadius: 8,
                                   fontSize: 10,
                                   textAlign: "center",
-                                  background: active ? (isBlueSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)") : (isBlueSidebarTheme ? "rgba(17, 40, 78, 0.68)" : "rgba(0,0,0,0.06)"),
-                                  color: isBlueSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333",
-                                  border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                  color: sidebarInlineCountColor,
+                                  border: sidebarInlineCountBorder,
                                   display: "inline-flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -11702,13 +11978,13 @@ export default function Page() {
 
                 <div
                   style={{
-                    marginTop: 16,
+                    marginTop: sidebarSectionSpacing,
                     marginBottom: 6,
                     fontSize: sidebarHeaderFontSize,
                     fontWeight: sidebarHeaderFontWeight,
                     letterSpacing: "0.04em",
                     color: currentTheme.primaryColor,
-                    fontFamily: "Nunito, sans-serif",
+                    fontFamily: sidebarSectionFontFamily,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
@@ -11731,7 +12007,7 @@ export default function Page() {
 	                    alignItems: "center",
 	                    justifyContent: "space-between",
 	                    gap: 8,
-	                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+	                    borderBottom: sidebarSectionDividerColor,
 	                  }}
 	                >
 	                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -11769,7 +12045,7 @@ export default function Page() {
                             ? isElectricBlueSidebarTheme
                               ? "rgba(64, 219, 255, 0.94)"
                               : "rgba(92, 118, 164, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
 	                        color: "#fff",
@@ -11777,7 +12053,7 @@ export default function Page() {
 	                    >
 	                      {stats.nowPlaying}
 	                    </span>
-	                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+	                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
 	                  </span>
 	                </button>
 
@@ -11794,7 +12070,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "play-next" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -11830,7 +12106,7 @@ export default function Page() {
                         background:
                           isBlueSidebarTheme
                             ? "rgba(92, 118, 164, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
                         color: "#fff",
@@ -11838,7 +12114,7 @@ export default function Page() {
                     >
                       {stats.playNext}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -11855,7 +12131,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist-books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -11891,7 +12167,7 @@ export default function Page() {
                         background:
                           isBlueSidebarTheme
                             ? "rgba(112, 88, 174, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
                         color: "#fff",
@@ -11899,7 +12175,7 @@ export default function Page() {
                     >
                       {stats.wishlistBooks}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -11916,7 +12192,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist-movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -11952,7 +12228,7 @@ export default function Page() {
                         background:
                           isBlueSidebarTheme
                             ? "rgba(56, 142, 173, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
                         color: "#fff",
@@ -11960,7 +12236,7 @@ export default function Page() {
                     >
                       {stats.watchlistMovies}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
@@ -11977,7 +12253,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist-tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12013,7 +12289,7 @@ export default function Page() {
                         background:
                           isBlueSidebarTheme
                             ? "rgba(56, 142, 173, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
                         color: "#fff",
@@ -12021,7 +12297,7 @@ export default function Page() {
                     >
                       {stats.watchlistTv}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
                 <button
@@ -12037,7 +12313,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12073,7 +12349,7 @@ export default function Page() {
                         background:
                           isBlueSidebarTheme
                             ? "rgba(112, 88, 174, 0.95)"
-                            : sidebarTheme === "winterGray"
+                            : usesThemeCountBubbleColor
                               ? currentTheme.countBubbleColor
                               : "#333",
                         color: "#fff",
@@ -12081,16 +12357,19 @@ export default function Page() {
                     >
                       {stats.wishlist}
                     </span>
-                    <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
               </div>
 
               {/* SMART LISTS section */}
-              <div style={{ marginTop: "16px" }}>
+              <div style={{ marginTop: sidebarSectionSpacing }}>
               <button
                 type="button"
-                onClick={() => setSmartListsOpen(!smartListsOpen)}
+                onClick={() => {
+                  if (isSimpleSidebarTheme) return;
+                  setSmartListsOpen(!smartListsOpen);
+                }}
                 style={{
                   width: "100%",
                   textAlign: "left",
@@ -12099,21 +12378,21 @@ export default function Page() {
                   letterSpacing: "0.04em",
                   color: currentTheme.primaryColor,
                   marginBottom: 6,
-                  fontFamily: "Nunito, sans-serif",
+                  fontFamily: sidebarSectionFontFamily,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   border: "none",
                   background: "transparent",
                   padding: 0,
-                  cursor: "pointer",
+                  cursor: isSimpleSidebarTheme ? "default" : "pointer",
                 }}
               >
                 <span>SMART LISTS</span>
-                <span style={{ color: "rgba(0,0,0,0.5)", fontSize: 16, fontWeight: 500 }}>{smartListsOpen ? "−" : "+"}</span>
+                <span style={{ color: sidebarToggleColor, fontSize: 16, fontWeight: 500 }}>{smartListsExpanded ? "−" : "+"}</span>
               </button>
 
-              {smartListsOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {smartListsExpanded ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 {/* This Year - Primary clickable */}
                 <button
                   onClick={() => setNav("year-this")}
@@ -12125,7 +12404,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "year-this" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12147,7 +12426,7 @@ export default function Page() {
                     </span>
                     This Year
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
                 <button
                   onClick={() => setNav("current")}
@@ -12159,7 +12438,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "current" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12181,7 +12460,7 @@ export default function Page() {
                     </span>
                     Current
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
                 <button
                   onClick={() => setNav("completed")}
@@ -12193,7 +12472,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "completed" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12215,7 +12494,7 @@ export default function Page() {
                     </span>
                     Completed
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
                 <button
                   onClick={() => setNav("abandoned")}
@@ -12227,7 +12506,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "abandoned" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12249,7 +12528,7 @@ export default function Page() {
                     </span>
                     Abandoned
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
                 {customSmartLists.map((smartList) => {
@@ -12270,7 +12549,7 @@ export default function Page() {
                       key={smartList.id}
                       style={{
                         width: "100%",
-                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                        borderBottom: sidebarSectionDividerColor,
                       }}
                     >
                       <button
@@ -12319,7 +12598,7 @@ export default function Page() {
                             {smartList.name}
                           </span>
                         </span>
-                        <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                        <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                       </button>
                     </div>
                   );
@@ -12333,15 +12612,15 @@ export default function Page() {
                     marginTop: 4,
                     marginBottom: customSmartLists.length ? 0 : 4,
                     textAlign: "left",
-                    border: "1px solid rgba(118, 162, 214, 0.55)",
+                    border: sidebarAccentButtonBorder,
                     borderRadius: 10,
                     padding: "6px 8px",
-                    background: "linear-gradient(180deg, rgba(26, 45, 74, 0.76) 0%, rgba(16, 30, 52, 0.8) 100%)",
-                    boxShadow: "0 10px 22px rgba(4, 12, 26, 0.3), inset 0 1px 0 rgba(188, 220, 255, 0.22)",
-                    color: "rgba(222, 240, 255, 0.98)",
+                    background: sidebarAccentButtonBackground,
+                    boxShadow: sidebarAccentButtonShadow,
+                    color: sidebarAccentButtonColor,
                     fontSize: 12,
                     fontWeight: 700,
-                    fontFamily: "Nunito, sans-serif",
+                    fontFamily: sidebarSectionFontFamily,
                     letterSpacing: "0.01em",
                     cursor: "pointer",
                   }}
@@ -12363,7 +12642,7 @@ export default function Page() {
                 boxShadow: sidebarModuleCardShadow,
                 border: sidebarModuleCardBorder,
                 borderBottom: sidebarModuleCardBorderBottom,
-                padding: "12px",
+                padding: sidebarDiscoverModulePadding,
               }}
             >
               <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
@@ -12381,7 +12660,7 @@ export default function Page() {
                   letterSpacing: "0.04em",
                   color: currentTheme.primaryColor,
                   marginBottom: 6,
-                  fontFamily: "Nunito, sans-serif",
+                  fontFamily: sidebarSectionFontFamily,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -12392,7 +12671,7 @@ export default function Page() {
                 }}
               >
                 <span>DISCOVER</span>
-                <span style={{ color: "rgba(0,0,0,0.5)", fontSize: 16, fontWeight: 500 }}>{discoverOpen ? "−" : "+"}</span>
+                <span style={{ color: sidebarToggleColor, fontSize: 16, fontWeight: 500 }}>{discoverOpen ? "−" : "+"}</span>
               </button>
 
               {discoverOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
@@ -12406,7 +12685,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 10,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "statistics" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12428,7 +12707,7 @@ export default function Page() {
                     </span>
                     Statistics
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
                 <button
@@ -12443,7 +12722,7 @@ export default function Page() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 10,
-                    borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    borderBottom: sidebarSectionDividerColor,
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: showThemes ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
@@ -12465,7 +12744,7 @@ export default function Page() {
                     </span>
                     Themes
                   </span>
-                  <span style={{ color: "rgba(0,0,0,0.4)", fontSize: 15, fontWeight: 400 }}>›</span>
+                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                 </button>
 
               </div> : null}
@@ -12478,9 +12757,9 @@ export default function Page() {
                   <div
                     style={{
                       fontSize: 11,
-                      color: "#0a7f2e",
-                      background: "rgba(10,127,46,0.12)",
-                      border: "1px solid rgba(10,127,46,0.35)",
+                      color: sidebarNoticeTextColor,
+                      background: sidebarNoticeBackground,
+                      border: sidebarNoticeBorder,
                       borderRadius: 6,
                       padding: "6px 8px",
                     }}
@@ -12488,21 +12767,39 @@ export default function Page() {
                     {themeSaveNotice}
                   </div>
                 ) : null}
-                <div style={{ fontSize: 11, color: "rgba(0,0,0,0.68)" }}>
+                <div style={{ fontSize: 11, color: sidebarThemePanelTextColor }}>
                   Theme changes auto-save immediately and are used next time.
                 </div>
                 {/* Sidebar Theme Section */}
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>SIDEBAR THEME</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: sidebarThemePanelSectionColor }}>SIDEBAR THEME</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    onClick={() => updateSidebarTheme("simple")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      border: sidebarTheme === "simple" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
+                      borderRadius: 8,
+                      background: sidebarTheme === "simple" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: sidebarTheme === "simple" ? 600 : 400,
+                    }}
+                  >
+                    Simple
+                  </button>
                   <button
                     onClick={() => updateSidebarTheme("standard")}
                     style={{
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: sidebarTheme === "standard" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: sidebarTheme === "standard" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: sidebarTheme === "standard" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: sidebarTheme === "standard" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: sidebarTheme === "standard" ? 600 : 400,
@@ -12516,9 +12813,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: sidebarTheme === "winterGray" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: sidebarTheme === "winterGray" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: sidebarTheme === "winterGray" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: sidebarTheme === "winterGray" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: sidebarTheme === "winterGray" ? 600 : 400,
@@ -12532,9 +12830,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: sidebarTheme === "darkBlue" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: sidebarTheme === "darkBlue" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: sidebarTheme === "darkBlue" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: sidebarTheme === "darkBlue" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: sidebarTheme === "darkBlue" ? 600 : 400,
@@ -12548,9 +12847,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: sidebarTheme === "electricBlue" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: sidebarTheme === "electricBlue" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: sidebarTheme === "electricBlue" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: sidebarTheme === "electricBlue" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: sidebarTheme === "electricBlue" ? 600 : 400,
@@ -12561,7 +12861,7 @@ export default function Page() {
                 </div>
                 
                 {/* Shelf Theme Section */}
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A", marginTop: 8 }}>SHELF THEME</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: sidebarThemePanelSectionColor, marginTop: 8 }}>SHELF THEME</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <button
                     onClick={() => updateShelfTheme(SIMPLE_SHELF_THEME)}
@@ -12569,9 +12869,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === SIMPLE_SHELF_THEME ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === SIMPLE_SHELF_THEME ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === SIMPLE_SHELF_THEME ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === SIMPLE_SHELF_THEME ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === SIMPLE_SHELF_THEME ? 600 : 400,
@@ -12585,9 +12886,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? 600 : 400,
@@ -12601,9 +12903,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelves-light-single2.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelves-light-single2.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === "/shelves-light-single2.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelves-light-single2.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === "/shelves-light-single2.png" ? 600 : 400,
@@ -12617,9 +12920,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-dark-walnut.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-dark-walnut.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-dark-walnut.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-dark-walnut.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-dark-walnut.png" ? 600 : 400,
@@ -12633,9 +12937,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? 600 : 400,
@@ -12649,9 +12954,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-honey-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-honey-oak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-honey-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-honey-oak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-honey-oak.png" ? 600 : 400,
@@ -12665,9 +12971,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-teak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-teak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-teak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-teak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-teak.png" ? 600 : 400,
@@ -12681,9 +12988,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf_white_oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf_white_oak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf_white_oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf_white_oak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === "/shelf_white_oak.png" ? 600 : 400,
@@ -12697,9 +13005,10 @@ export default function Page() {
                       width: "100%",
                       textAlign: "left",
                       padding: "8px 12px",
-                      border: shelfTheme === "/shelf-reclaimed-oak.png" ? `2px solid ${currentTheme.primaryColor}` : "1px solid rgba(0,0,0,0.1)",
+                      border: shelfTheme === "/shelf-reclaimed-oak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
                       borderRadius: 8,
-                      background: shelfTheme === "/shelf-reclaimed-oak.png" ? `${currentTheme.primaryColor}1A` : "rgba(255,255,255,0.5)",
+                      background: shelfTheme === "/shelf-reclaimed-oak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
+                      color: sidebarThemeOptionTextColor,
                       cursor: "pointer",
                       fontSize: 11,
                       fontWeight: shelfTheme === "/shelf-reclaimed-oak.png" ? 600 : 400,
@@ -12712,15 +13021,15 @@ export default function Page() {
                   style={{
                     marginTop: 10,
                     padding: "10px 12px",
-                    border: shelfTheme === SIMPLE_SHELF_THEME ? `1px solid ${currentTheme.primaryColor}55` : "1px solid rgba(0,0,0,0.08)",
+                    border: simpleShelfColorPanelBorder,
                     borderRadius: 10,
-                    background: shelfTheme === SIMPLE_SHELF_THEME ? `${currentTheme.primaryColor}12` : "rgba(255,255,255,0.35)",
+                    background: simpleShelfColorPanelBackground,
                     display: "flex",
                     flexDirection: "column",
                     gap: 8,
                   }}
                 >
-                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: "#7A7A7A" }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: sidebarThemePanelSectionColor }}>
                     SIMPLE SHELF BACKGROUND
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -12740,11 +13049,11 @@ export default function Page() {
                       }}
                     />
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#3f3f3f" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarThemeOptionTextColor }}>
                         {simpleShelfBackgroundColor.toUpperCase()}
                       </span>
-                      <span style={{ fontSize: 10, color: "#777" }}>
-                        Used when Simple Shelf is selected.
+                      <span style={{ fontSize: 10, color: sidebarThemePanelTextColor }}>
+                        Used when Simple Shelf or Simple Sidebar is selected.
                       </span>
                     </div>
                   </div>
@@ -13210,7 +13519,11 @@ export default function Page() {
                         {quickInsetSaveLabel}
                       </button>
                       {quickInsetSaveStatus === "saving" ? <span style={{ fontSize: 11, color: "#555" }}>Saving inset settings...</span> : null}
-                      {quickInsetSaveStatus === "saved" ? <span style={{ fontSize: 11, color: "#0a7f2e" }}>Saved. These inset settings will be used next time.</span> : null}
+                      {quickInsetSaveStatus === "saved" ? (
+                        <span style={{ fontSize: 11, color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "#0a7f2e" }}>
+                          Saved. These inset settings will be used next time.
+                        </span>
+                      ) : null}
                       {quickInsetSaveStatus === "error" ? <span style={{ fontSize: 11, color: "#b42318" }}>Save failed</span> : null}
                     </div>
                   </div>
@@ -13874,7 +14187,7 @@ export default function Page() {
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10, flex: "1 1 auto" }}>
                   <div style={{ minWidth: 0, position: "relative" }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-                      <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: "Nunito, sans-serif" }}>
+                      <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: sidebarSectionFontFamily }}>
                         {syncState === "saving"
                           ? "Syncing"
                           : syncState === "ok"
@@ -13883,7 +14196,7 @@ export default function Page() {
                           ? "Error"
                           : "Idle"}
                       </div>
-                      <div style={{ color: isBlueSidebarTheme ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ color: isDarkSidebarTheme ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
@@ -13971,13 +14284,19 @@ export default function Page() {
 	                  fontWeight: 500,
                   lineHeight: 1,
                   letterSpacing: "0.01em",
-	                  color: isElectricBlueThemeActive ? "rgba(237, 243, 252, 0.92)" : "rgba(76, 52, 34, 0.55)",
+	                  color: isElectricBlueThemeActive
+	                    ? "rgba(237, 243, 252, 0.92)"
+	                    : isSimpleHeaderTheme
+	                      ? simpleHeaderTextColor
+	                      : "rgba(76, 52, 34, 0.55)",
 	                  textShadow:
 	                    isElectricBlueThemeActive
 	                      ? "0 1px 0 rgba(180, 209, 246, 0.3), 0 -1px 0 rgba(9, 17, 32, 0.58), 0 0 1px rgba(132, 181, 247, 0.3)"
-	                      : "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
-                  mixBlendMode: isElectricBlueThemeActive ? "normal" : "multiply",
-                  opacity: isElectricBlueThemeActive ? 0.98 : 0.9,
+	                      : isSimpleHeaderTheme
+	                        ? simpleHeaderTitleShadow
+	                        : "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
+                  mixBlendMode: isElectricBlueThemeActive ? "normal" : isSimpleHeaderTheme ? "normal" : "multiply",
+                  opacity: isElectricBlueThemeActive ? 0.98 : isSimpleHeaderTheme ? 0.94 : 0.9,
                   transform: "translateY(-2.5px)",
                   userSelect: "none",
                   whiteSpace: "nowrap",
@@ -14024,7 +14343,7 @@ export default function Page() {
             <div
               style={{
                 background: "#fff",
-                border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                border: sidebarInlineCountBorder,
                 borderRadius: 9,
                 padding: 14,
                 color: "#8b0000",
@@ -14069,7 +14388,7 @@ export default function Page() {
             <div
               style={{
                 background: "#fff",
-                border: isBlueSidebarTheme ? "1px solid rgba(146, 181, 235, 0.45)" : "1px solid rgba(0,0,0,0.12)",
+                border: sidebarInlineCountBorder,
                 borderRadius: 9,
                 padding: 14,
                 fontWeight: 700,
@@ -15140,7 +15459,7 @@ export default function Page() {
 		                          title={mobileSidebarOpen ? "Close menu" : "Open menu"}
 		                          aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
 		                          aria-expanded={mobileSidebarOpen}
-			                          style={{
+		                          style={{
 			                            display: "inline-flex",
 			                            alignItems: "center",
 			                            justifyContent: "center",
@@ -15148,11 +15467,11 @@ export default function Page() {
 			                            minWidth: 24,
 			                            padding: "3px 6px",
 			                            order: 2,
-			                            background: "rgba(14, 30, 58, 0.82)",
-			                            border: "1px solid rgba(146, 181, 235, 0.52)",
+			                            background: isSimpleHeaderTheme ? simpleHeaderElevatedBackground : "rgba(14, 30, 58, 0.82)",
+			                            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(146, 181, 235, 0.52)",
 			                            borderRadius: 9,
-		                            color: "rgba(250, 242, 230, 0.78)",
-		                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.42)",
+		                            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.78)",
+		                            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.42)",
 		                            cursor: "pointer",
 		                          }}
 	                        >
@@ -15171,13 +15490,19 @@ export default function Page() {
 			                          minWidth: 0,
 			                          order: isMobileLayout ? 1 : undefined,
 			                          borderRadius: 9,
-			                          border: isMobileLayout
+			                          border: isSimpleHeaderTheme
+			                            ? simpleHeaderBorderColor
+			                            : isMobileLayout
 			                            ? "1px solid rgba(146, 181, 235, 0.52)"
 			                            : "1px solid rgba(10, 6, 3, 0.68)",
-			                          background: isMobileLayout
+			                          background: isSimpleHeaderTheme
+			                            ? simpleHeaderBackground
+			                            : isMobileLayout
 			                            ? "rgba(14, 30, 58, 0.78)"
 			                            : "rgba(16, 10, 6, 0.54)",
-	                          boxShadow: isMobileLayout
+	                          boxShadow: isSimpleHeaderTheme
+	                            ? simpleHeaderShadow
+	                            : isMobileLayout
 	                            ? "0 3px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(173, 205, 255, 0.2)"
 	                            : "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
 	                          paddingLeft: 7,
@@ -15188,7 +15513,7 @@ export default function Page() {
                           alt=""
                           width={9}
                           height={9}
-                          style={{ display: "block", marginRight: 4, filter: "brightness(0) invert(1) opacity(0.62)" }}
+                          style={{ display: "block", marginRight: 4, filter: isSimpleHeaderTheme ? simpleHeaderIconFilter : "brightness(0) invert(1) opacity(0.62)" }}
                         />
                         <input
                           value={query}
@@ -15199,7 +15524,7 @@ export default function Page() {
 	                            height: 22,
 	                            border: "none",
 	                            background: "transparent",
-	                            color: "rgba(250, 242, 230, 0.86)",
+	                            color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "rgba(250, 242, 230, 0.86)",
 	                            fontSize: 11,
 	                            fontWeight: 600,
 	                            minWidth: 0,
@@ -15225,11 +15550,11 @@ export default function Page() {
 	                            minWidth: 24,
 	                            padding: "3px 6px",
 	                            order: 3,
-	                            background: "rgba(14, 30, 58, 0.82)",
-	                            border: "1px solid rgba(146, 181, 235, 0.52)",
+	                            background: isSimpleHeaderTheme ? simpleHeaderElevatedBackground : "rgba(14, 30, 58, 0.82)",
+	                            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(146, 181, 235, 0.52)",
 	                            borderRadius: 9,
-	                            color: "rgba(250, 242, 230, 0.78)",
-	                            boxShadow: "0 3px 8px rgba(0, 0, 0, 0.42)",
+	                            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.78)",
+	                            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.42)",
 	                            cursor: "pointer",
 	                          }}
                         >
@@ -15251,11 +15576,11 @@ export default function Page() {
                               height: 24,
                               minWidth: 58,
                               padding: "3px 6px",
-                              background: "rgba(28, 18, 10, 0.52)",
-                              border: "1px solid rgba(10, 6, 3, 0.78)",
+                              background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                              border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                               borderRadius: 9,
-                              color: "rgba(250, 242, 230, 0.72)",
-                              boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                              color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.72)",
+                              boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
                               cursor: "pointer",
                               fontSize: 11,
                               fontWeight: 800,
@@ -15278,15 +15603,31 @@ export default function Page() {
                               height: 24,
                               minWidth: 68,
                               padding: "3px 7px",
-                              background: showStatusIndicators
+                              background: isSimpleHeaderTheme
+                                ? showStatusIndicators
+                                  ? simpleHeaderAccentBackground
+                                  : simpleHeaderBackground
+                                : showStatusIndicators
                                 ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
                                 : "rgba(28, 18, 10, 0.52)",
-                              border: showStatusIndicators
+                              border: isSimpleHeaderTheme
+                                ? showStatusIndicators
+                                  ? simpleHeaderAccentBorder
+                                  : simpleHeaderBorderColor
+                                : showStatusIndicators
                                 ? "1px solid rgba(190, 221, 166, 0.75)"
                                 : "1px solid rgba(10, 6, 3, 0.78)",
                               borderRadius: 9,
-                              color: showStatusIndicators ? "rgba(242, 255, 228, 0.95)" : "rgba(250, 242, 230, 0.72)",
-                              boxShadow: showStatusIndicators
+                              color: isSimpleHeaderTheme
+                                ? showStatusIndicators
+                                  ? simpleHeaderStrongTextColor
+                                  : simpleHeaderTextColor
+                                : showStatusIndicators
+                                  ? "rgba(242, 255, 228, 0.95)"
+                                  : "rgba(250, 242, 230, 0.72)",
+                              boxShadow: isSimpleHeaderTheme
+                                ? simpleHeaderShadow
+                                : showStatusIndicators
                                 ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
                                 : "0 3px 8px rgba(0, 0, 0, 0.34)",
                               cursor: "pointer",
@@ -15302,8 +15643,18 @@ export default function Page() {
                                 width: 8,
                                 height: 8,
                                 borderRadius: "50%",
-                                background: showStatusIndicators ? "rgba(194, 246, 166, 0.95)" : "rgba(250, 242, 230, 0.45)",
-                                boxShadow: showStatusIndicators
+                                background: isSimpleHeaderTheme
+                                  ? showStatusIndicators
+                                    ? simpleHeaderStatusOnColor
+                                    : simpleHeaderStatusOffColor
+                                  : showStatusIndicators
+                                    ? "rgba(194, 246, 166, 0.95)"
+                                    : "rgba(250, 242, 230, 0.45)",
+                                boxShadow: isSimpleHeaderTheme
+                                  ? showStatusIndicators
+                                    ? "0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 8px rgba(47, 143, 91, 0.28)"
+                                    : "0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 8px rgba(178, 59, 59, 0.22)"
+                                  : showStatusIndicators
                                   ? "0 0 0 1px rgba(173, 237, 138, 0.8), 0 0 8px rgba(150, 223, 108, 0.55)"
                                   : "0 0 0 1px rgba(255, 255, 255, 0.2)",
                               }}
@@ -15385,19 +15736,19 @@ export default function Page() {
                       </div>
                     ) : null}
                     <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 900,
-                        color: "rgba(250, 242, 230, 0.68)",
-                        letterSpacing: "0.01em",
-                        lineHeight: 1,
-                        textShadow: "0 2px 4px rgba(0, 0, 0, 0.5)",
-                        background: "rgba(28, 18, 10, 0.52)",
-                        border: "1px solid rgba(10, 6, 3, 0.78)",
-                        borderRadius: 9,
-                        padding: "4px 7px",
-                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                      }}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 900,
+                          color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+                          letterSpacing: "0.01em",
+                          lineHeight: 1,
+                          textShadow: isSimpleHeaderTheme ? "none" : "0 2px 4px rgba(0, 0, 0, 0.5)",
+                          background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                          border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+                          borderRadius: 9,
+                          padding: "4px 7px",
+                          boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        }}
                     >
                       {`${shows.length} items`}
                     </span>
@@ -15416,11 +15767,11 @@ export default function Page() {
                         height: 24,
                         minWidth: 18,
                         padding: "3px 5px",
-                        background: "rgba(28, 18, 10, 0.52)",
-                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                        border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                         borderRadius: 9,
-                        color: "rgba(250, 242, 230, 0.68)",
-                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+                        boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
                         cursor: "pointer",
                       }}
                     >
@@ -15486,11 +15837,11 @@ export default function Page() {
                         height: 24,
                         minWidth: 18,
                         padding: "3px 5px",
-                        background: "rgba(28, 18, 10, 0.52)",
-                        border: "1px solid rgba(10, 6, 3, 0.78)",
+                        background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                        border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                         borderRadius: 9,
-                        color: "rgba(250, 242, 230, 0.68)",
-                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+                        boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
                         cursor: "pointer",
                       }}
                     >
@@ -15511,11 +15862,11 @@ export default function Page() {
                           height: 24,
                           minWidth: 18,
                           padding: "3px 5px",
-                          background: "rgba(28, 18, 10, 0.52)",
-                          border: "1px solid rgba(10, 6, 3, 0.78)",
+                          background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                          border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                           borderRadius: 9,
-                          color: "rgba(250, 242, 230, 0.68)",
-                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+                          boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
                           cursor: "pointer",
                         }}
                       >
@@ -16639,46 +16990,46 @@ export default function Page() {
           border-radius: 8px;
           border: 1px solid transparent;
           background: transparent;
-          color: ${isBlueSidebarTheme ? "rgba(230, 239, 255, 0.92)" : "#2A2A2A"};
+          color: ${isDarkSidebarTheme ? currentTheme.textColor : "#2A2A2A"};
           font-size: 13px;
           font-weight: 500;
-          font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+          font-family: ${sidebarSectionFontFamily};
           cursor: pointer;
           transition: all 150ms ease;
         }
         .sideItem:hover { 
-          background: ${isBlueSidebarTheme ? "rgba(124, 160, 224, 0.14)" : "rgba(0,0,0,0.02)"};
+          background: ${sidebarItemHoverBackground};
         }
         .sideItem.active {
           background: ${currentTheme.activeHighlight};
-          box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+          box-shadow: ${isSimpleSidebarTheme ? "none" : "0 8px 16px rgba(0,0,0,0.15)"};
           border-color: ${currentTheme.highlightBorder};
           font-weight: 600;
           color: ${currentTheme.secondaryColor};
         }
         .sideItem.primary { background: transparent; }
-        .sideItem.primary:hover { background: rgba(0,0,0,0.02); }
+        .sideItem.primary:hover { background: ${sidebarItemHoverBackground}; }
         .sideItem.primary.active { background: ${currentTheme.activeHighlight}; color: ${currentTheme.secondaryColor}; }
         .sideSubItem {
           width: 100%;
           padding: 4px 6px;
           border-radius: 8px;
-          border: ${isBlueSidebarTheme ? "1px solid rgba(142, 178, 234, 0.42)" : "1px solid rgba(0, 0, 0, 0.06)"};
-          background: ${isBlueSidebarTheme ? "rgba(19, 39, 72, 0.62)" : "rgba(255, 255, 255, 0.6)"};
-          color: ${isBlueSidebarTheme ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)"};
+          border: ${sidebarSubItemBorderColor};
+          background: ${sidebarSubItemBackground};
+          color: ${sidebarSubItemTextColor};
           font-size: 12px;
           font-weight: 500;
-          font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+          font-family: ${sidebarSectionFontFamily};
           cursor: pointer;
           transition: background 140ms ease, border-color 140ms ease;
         }
         .sideSubItem:hover {
-          background: ${isBlueSidebarTheme ? "rgba(36, 71, 122, 0.7)" : "rgba(0, 0, 0, 0.05)"};
+          background: ${sidebarSubItemHoverBackground};
         }
         .sideSubItem.active {
           background: ${currentTheme.activeHighlight};
           border-color: ${currentTheme.highlightBorder};
-          color: ${isBlueSidebarTheme ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)"};
+          color: ${sidebarSubItemActiveTextColor};
           font-weight: 700;
         }
         .case {
