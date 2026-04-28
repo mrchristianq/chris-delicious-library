@@ -224,7 +224,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "5.3.4";
+const APP_VERSION = "6.0.0";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const SPLASH_MIN_DURATION_MS = 1500;
@@ -312,6 +312,14 @@ const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
 const VERSION_HISTORY = [
+  {
+    version: "6.0.0",
+    date: "2026-04-28",
+    notes: [
+      "Locked this pre-redesign build as the 6.0 baseline.",
+      "Preserved the current app state so it can be restored if the redesign needs to be rolled back.",
+    ],
+  },
   {
     version: "5.3.4",
     date: "2026-02-20",
