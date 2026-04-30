@@ -8,17 +8,14 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Papa from "papaparse";
-import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 import { StatisticsView } from "./components/StatisticsView";
+import { BookDetailsPage, buildSeedDetailPalette } from "./components/BookDetailsPage";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
 type MediaType = "book" | "movie" | "tv" | "game";
-type QuickInsetMode = "insetPosition" | "overlayPosition" | "overlayScale" | "coverPosition" | "coverScale";
-type InsetEditableMediaType = "tv" | "movie" | "book";
-type OverlaySettings = { width: number; height: number; top: number; left: number };
 type CoverScaleSettings = { x: number; y: number };
 type CoverOffsetSettings = { x: number; y: number };
 type WishlistPointerDrag = {
@@ -224,10 +221,10 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "6.0.0";
+const APP_VERSION = "7.1.0";
+const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
-const SPLASH_MIN_DURATION_MS = 1500;
 const MANUAL_SORT_FIELD = "Manual";
 const SMART_LISTS_SETTING_KEY = "smartLists:v1";
 const SMART_LIST_MANUAL_ORDER_SETTING_PREFIX = "smartListManualOrder:";
@@ -311,13 +308,33 @@ const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
+const COVER_SCALE_SETTING_KEYS: Record<CoverScaleGroupKey, string> = {
+  home: "rowHeightScalePct:home",
+  books: "rowHeightScalePct:books",
+  movies: "rowHeightScalePct:movies",
+  tv: "rowHeightScalePct:tv",
+  games: "rowHeightScalePct:games",
+};
+const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGroupKey | null => {
+  if (nav === "books" || nav === "movies" || nav === "tv" || nav === "games") return nav;
+  if (!nav || nav === "statistics") return null;
+  return "home";
+};
 const VERSION_HISTORY = [
   {
-    version: "6.0.0",
-    date: "2026-04-28",
+    version: "7.1.0",
+    date: "2026-04-29",
     notes: [
-      "Locked this pre-redesign build as the 6.0 baseline.",
-      "Preserved the current app state so it can be restored if the redesign needs to be rolled back.",
+      "Saved the current Mac redesign as the stable 7.1 rollback point.",
+      "Kept the sidebar in the restored working state after backing out the static-menu experiment.",
+    ],
+  },
+  {
+    version: "7.0.0",
+    date: "2026-04-29",
+    notes: [
+      "Started the Mac redesign from a fresh 7.0 baseline.",
+      "Reset the version notes so new redesign work can be tracked cleanly from here.",
     ],
   },
   {
@@ -476,7 +493,7 @@ const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
 const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
 const ELECTRIC_BLUE_SHELF_THEME = "/shelf-electric-blue.png";
 const SIMPLE_SHELF_THEME = "simpleShelf";
-const DEFAULT_SIMPLE_SHELF_BACKGROUND = "#12363c";
+const DEFAULT_SIMPLE_SHELF_BACKGROUND = "#ececec";
 const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
   "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
   "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
@@ -497,7 +514,6 @@ const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
 const MOVIE_FRAME_IMAGE = "/movie-frame.png";
 const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
 const GAME_FRAME_IMAGE = "/game-frame.png";
-const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = { width: 100, height: 100, top: 0, left: 0 };
 const DEFAULT_COVER_SCALE: CoverScaleSettings = { x: 100, y: 100 };
 const DEFAULT_COVER_OFFSET: CoverOffsetSettings = { x: 0, y: 0 };
 const APP_ICON = "/logo4.png";
@@ -628,6 +644,10 @@ function mixHexColors(
     first.g * firstWeight + second.g * clampedWeight,
     first.b * firstWeight + second.b * clampedWeight
   );
+}
+
+function buildDetailGradientBackground(startColor: string, endColor: string): string {
+  return `radial-gradient(84% 88% at 12% 8%, ${hexToRgba(mixHexColors(startColor, "#ffffff", 0.08, startColor), 0.78, startColor)} 0%, ${hexToRgba(startColor, 0.38, startColor)} 26%, ${hexToRgba(startColor, 0, startColor)} 50%), radial-gradient(96% 96% at 88% 18%, ${hexToRgba(mixHexColors(endColor, "#ffffff", 0.1, endColor), 0.52, endColor)} 0%, ${hexToRgba(endColor, 0, endColor)} 46%), radial-gradient(94% 92% at 100% 100%, ${hexToRgba(endColor, 0.5, endColor)} 0%, ${hexToRgba(endColor, 0.14, endColor)} 34%, ${hexToRgba(endColor, 0, endColor)} 56%), linear-gradient(145deg, ${mixHexColors(startColor, "#0f141d", 0.16, startColor)} 0%, ${startColor} 30%, ${mixHexColors(endColor, startColor, 0.18, endColor)} 58%, ${endColor} 100%)`;
 }
 
 function getRelativeLuminance(value: unknown, fallback = DEFAULT_SIMPLE_SHELF_BACKGROUND): number {
@@ -1285,6 +1305,13 @@ const TV_WATCHLIST_ACTIVE_STATUSES = new Set([
   "in progress",
   "watch next",
 ]);
+const TV_HEADER_WATCHING_STATUSES = new Set([
+  "watching",
+  "currently watching",
+  "in progress",
+  "paused",
+  "pending return",
+]);
 const TV_WATCHLIST_BACKLOG_STATUSES = new Set(["backlog", "wishlist", "paused"]);
 const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
   pendingReturn: {
@@ -1367,6 +1394,47 @@ function getTvWatchlistBadgeColors(
 function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource): TvWatchlistSectionKey {
   return getTvWatchlistSectionKey(
     safeStr(item.watchStatus) || safeStr(item.watched) || safeStr(item.showStatus) || safeStr(item.status)
+  );
+}
+
+function isTvWatchedStatus(show: Pick<Show, "watchStatus" | "showStatus" | "watched" | "dateCompleted">): boolean {
+  const watchStatus = normalizeStatusToken(show.watchStatus || show.showStatus);
+  const watched = normalizeStatusToken(show.watched);
+  return Boolean(safeStr(show.dateCompleted)) || WATCHED_STATUS_VALUES.has(watchStatus) || WATCHED_STATUS_VALUES.has(watched);
+}
+
+function isTvAbandonedStatus(show: Pick<Show, "watchStatus" | "showStatus" | "watched">): boolean {
+  const watchStatus = normalizeStatusToken(show.watchStatus || show.showStatus);
+  const watched = normalizeStatusToken(show.watched);
+  return ABANDONED_STATUS_VALUES.has(watchStatus) || ABANDONED_STATUS_VALUES.has(watched);
+}
+
+function isTvWatchingStatus(show: Pick<Show, "watchStatus" | "showStatus">): boolean {
+  const watchStatus = normalizeStatusToken(show.watchStatus || show.showStatus);
+  return TV_HEADER_WATCHING_STATUSES.has(watchStatus);
+}
+
+function isGameCompletedStatus(game: Pick<Game, "status" | "playStatus" | "gameStatus" | "completed" | "dateCompleted">): boolean {
+  const status = normalizeStatusToken(game.status || game.playStatus || game.gameStatus || game.completed);
+  return Boolean(safeStr(game.dateCompleted)) || status === "completed" || status === "done" || status === "beaten" || status === "finished";
+}
+
+function isGameAbandonedStatus(game: Pick<Game, "status" | "playStatus" | "gameStatus">): boolean {
+  const status = normalizeStatusToken(game.status || game.playStatus || game.gameStatus);
+  return ABANDONED_STATUS_VALUES.has(status);
+}
+
+function isGameBacklogHeaderMatch(game: Pick<Game, "status" | "playStatus" | "gameStatus" | "ownership">): boolean {
+  const status = normalizeStatusToken(game.status || game.playStatus || game.gameStatus);
+  const ownership = normalizeOwnership(game.ownership);
+  return (
+    status === "backlog" ||
+    status === "now playing" ||
+    status === "currently playing" ||
+    status === "playing" ||
+    status === "in progress" ||
+    status === "queued" ||
+    ownership === "collection"
   );
 }
 
@@ -1659,6 +1727,14 @@ function useElementWidth<T extends HTMLElement>() {
 
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
 type LibraryNavKey = Exclude<NavKey, "statistics">;
+type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
+type BookQuickLinkKey = "wishlist" | "library" | "completed";
+type MovieQuickLinkKey = "library" | "watched" | "watching" | "backlog" | "abandoned";
+type TvQuickLinkKey = "library" | "backlog" | "watching" | "watched" | "abandoned";
+type TvViewMode = TvQuickLinkKey | "custom";
+type GameQuickLinkKey = "library" | "backlog" | "completed" | "abandoned" | "wishlist";
+type GameViewMode = GameQuickLinkKey | "custom";
+type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv";
 
 function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
   return (
@@ -1781,8 +1857,6 @@ export default function Page() {
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const [loading, setLoading] = useState(false);
-  const [splashMinDurationDone, setSplashMinDurationDone] = useState(false);
-  const [initialLoadSettled, setInitialLoadSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tvRows, setTvRows] = useState<Row[]>([]);
   const [bookRows, setBookRows] = useState<Row[]>([]);
@@ -1799,12 +1873,19 @@ export default function Page() {
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
+  const isBacklogSidebarView =
+    nav === "now-playing" ||
+    nav === "play-next" ||
+    nav === "wishlist-books" ||
+    nav === "watchlist-movies" ||
+    nav === "watchlist-tv";
+  const isHomeSidebar = nav === "home" || isBacklogSidebarView;
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [faqPopupOpen, setFaqPopupOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<NavKey | null>(null);
-  const [smartListsOpen, setSmartListsOpen] = useState<boolean>(false);
+  const [smartListsOpen, setSmartListsOpen] = useState<boolean>(true);
   const [discoverOpen, setDiscoverOpen] = useState<boolean>(true);
   const [customSmartLists, setCustomSmartLists] = useState<SmartList[]>([]);
   const [selectedSmartListId, setSelectedSmartListId] = useState<string | null>(null);
@@ -1817,6 +1898,54 @@ export default function Page() {
     () => customSmartLists.find((list) => list.id === selectedSmartListId) || null,
     [customSmartLists, selectedSmartListId]
   );
+
+  const activateHomeLibrary = useCallback(() => {
+    setNav("home");
+    setOpenSection(null);
+    setSortField("ReleaseDate");
+    setSortOrder("Asc");
+  }, []);
+
+  const openMediaSidebar = (section: "books" | "movies" | "tv" | "games") => {
+    if (nav === section) {
+      activateHomeLibrary();
+      return;
+    }
+    if (section === "books") {
+      setWishlistFilter(false);
+      setReadingStatusFilter(null);
+      setFormatFilter(null);
+      setSeriesFilter(null);
+      setGenreFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    }
+    if (section === "movies") {
+      setMovieWatchFilter(null);
+      setMovieGenreFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    }
+    if (section === "tv") {
+      setTvViewMode("library");
+      setWatchFilter(null);
+      setShowFilter(null);
+      setTagFilter(null);
+    }
+    if (section === "games") {
+      setGameViewMode("library");
+      setGamePlatformFilter(null);
+      setGameStatusFilter(null);
+      setGameOwnershipFilter(null);
+      setGameFormatFilter(null);
+      setGameYearPlayedFilter(null);
+      setGameGenreFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    }
+    setNav(section);
+    setOpenSection(section);
+  };
 
   // Settings submenus
   const [settingsOpen, setSettingsOpen] = useState<{
@@ -1877,7 +2006,9 @@ export default function Page() {
   const [gameFormatFilter, setGameFormatFilter] = useState<string | null>(null);
   const [gameYearPlayedFilter, setGameYearPlayedFilter] = useState<string | null>(null);
   const [gameGenreFilter, setGameGenreFilter] = useState<string | null>(null);
+  const [gameViewMode, setGameViewMode] = useState<GameViewMode>("library");
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
+  const [tvViewMode, setTvViewMode] = useState<TvViewMode>("library");
   const [watchlistTvSectionFilter, setWatchlistTvSectionFilter] = useState<TvWatchlistSectionKey>("watching");
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
@@ -1895,8 +2026,6 @@ export default function Page() {
   const [tagOpen, setTagOpen] = useState<boolean>(false);
   const [movieWatchStatusOpen, setMovieWatchStatusOpen] = useState<boolean>(false);
   const [movieGenreOpen, setMovieGenreOpen] = useState<boolean>(false);
-  const [readingStatusOpen, setReadingStatusOpen] = useState<boolean>(false);
-  const [formatOpen, setFormatOpen] = useState<boolean>(false);
   const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
   const [genreOpen, setGenreOpen] = useState<boolean>(false);
   const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(false);
@@ -1907,6 +2036,8 @@ export default function Page() {
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
+  const [sandboxMode, setSandboxMode] = useState<boolean>(false);
+  const [coverTrimAssets, setCoverTrimAssets] = useState<Record<string, { url: string; aspect: number }>>({});
   const [viewportW, setViewportW] = useState(0);
   const [viewportH, setViewportH] = useState(0);
   const [windowScrollY, setWindowScrollY] = useState(0);
@@ -1916,11 +2047,13 @@ export default function Page() {
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
+    setTvViewMode("library");
     setWatchFilter(null);
     setShowFilter(null);
     setTagFilter(null);
     setMovieWatchFilter(null);
     setMovieGenreFilter(null);
+    setGameViewMode("library");
     setReadingStatusFilter(null);
     setFormatFilter(null);
     setSeriesFilter(null);
@@ -1934,6 +2067,63 @@ export default function Page() {
     setWishlistFilter(false);
     setWatchlistTvSectionFilter("watching");
   }, []);
+
+  const DISABLE_INSETS = true;
+  const COVER_STAGE_BACKGROUND = "#ececec";
+
+  const measureCoverTrimBounds = useCallback((src: string, img: HTMLImageElement) => {
+    if (!src || !img?.naturalWidth || !img?.naturalHeight) return;
+    if (coverTrimAssets[src]) return;
+    const naturalAsset = {
+      url: src,
+      aspect: img.naturalWidth / img.naturalHeight,
+    };
+    let nextAsset = naturalAsset;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (context) {
+        context.drawImage(img, 0, 0);
+        const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+        let top = height;
+        let bottom = -1;
+        let left = width;
+        let right = -1;
+        const alphaThreshold = 8;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const alpha = data[(y * width + x) * 4 + 3];
+            if (alpha > alphaThreshold) {
+              if (x < left) left = x;
+              if (x > right) right = x;
+              if (y < top) top = y;
+              if (y > bottom) bottom = y;
+            }
+          }
+        }
+        if (right >= left && bottom >= top) {
+          const cropWidth = right - left + 1;
+          const cropHeight = bottom - top + 1;
+          const cropCanvas = document.createElement("canvas");
+          cropCanvas.width = cropWidth;
+          cropCanvas.height = cropHeight;
+          const cropContext = cropCanvas.getContext("2d");
+          if (cropContext) {
+            cropContext.drawImage(img, left, top, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+            nextAsset = {
+              url: cropCanvas.toDataURL("image/png"),
+              aspect: cropWidth / cropHeight,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to measure cover trim bounds:", error);
+    }
+    setCoverTrimAssets((prev) => (prev[src] ? prev : { ...prev, [src]: nextAsset }));
+  }, [coverTrimAssets]);
 
   // Logo positioning and sizing
   const [logoSize, setLogoSize] = useState<number>(230);
@@ -1953,11 +2143,11 @@ export default function Page() {
   const [iconSize, setIconSize] = useState<number>(16);
 
   // Sidebar text styling
-  const [sidebarFontSize, setSidebarFontSize] = useState<number>(11);
-  const [sidebarFontWeight, setSidebarFontWeight] = useState<string>("400");
+  const [sidebarFontSize, setSidebarFontSize] = useState<number>(12);
+  const [sidebarFontWeight, setSidebarFontWeight] = useState<string>("150");
   const [sidebarGap, setSidebarGap] = useState<number>(8);
   const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
-  const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("600");
+  const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("700");
 
   // Counter configuration
   const [counterTileSize, setCounterTileSize] = useState<number>(44);
@@ -1970,23 +2160,23 @@ export default function Page() {
   const [counterTop, setCounterTop] = useState<number>(0);
   const [counterLeft, setCounterLeft] = useState<number>(0);
 
-  // Shelf theme
-  const [shelfTheme, setShelfTheme] = useState<string>(DEFAULT_SHELF_IMAGE);
+  // Mac redesign baseline: Simple shelf is the only shelf presentation.
+  const shelfTheme = SIMPLE_SHELF_THEME;
+  const setShelfTheme = (_value: string) => {};
   const [simpleShelfBackgroundColor, setSimpleShelfBackgroundColor] = useState<string>(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   const MOBILE_LAYOUT_MAX_WIDTH = 980;
   const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
   const useSimpleMobileTheme = isMobileLayout;
-  const isElectricBlueShelfTheme = shelfTheme === ELECTRIC_BLUE_SHELF_THEME;
-  const isSimpleShelfTheme = shelfTheme === SIMPLE_SHELF_THEME;
-  const isSimpleShelfPresentation = isSimpleShelfTheme || useSimpleMobileTheme;
-  const isElectricBlueShelfPresentation = isElectricBlueShelfTheme && !useSimpleMobileTheme;
-  const currentTopHeaderImage = isSimpleShelfPresentation
-    ? ""
-    : SHELF_TOP_HEADER_IMAGES[shelfTheme] || DARK_WALNUT_TOP_HEADER_IMAGE;
+  const isElectricBlueShelfTheme = false;
+  const isSimpleShelfTheme = true;
+  const isSimpleShelfPresentation = true;
+  const isElectricBlueShelfPresentation = false;
+  const currentTopHeaderImage = "";
   
-  // Sidebar theme
-  const [sidebarTheme, setSidebarTheme] = useState<string>("darkBlue");
-  const isElectricBlueThemeActive = !useSimpleMobileTheme && (isElectricBlueShelfTheme || sidebarTheme === "electricBlue");
+  // Mac redesign baseline: Mac sidebar is the only sidebar theme.
+  const sidebarTheme = "mac";
+  const setSidebarTheme = (_value: string) => {};
+  const isElectricBlueThemeActive = false;
   
   // Theme configurations
   const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
@@ -2026,6 +2216,25 @@ export default function Page() {
       highlightBgEnd: "rgba(100, 130, 128, 0.95)",
       highlightBorder: "rgba(118, 151, 149, 0.6)",
       activeHighlight: "rgba(118, 151, 149, 0.28)",
+    },
+    mac: {
+      background:
+        "linear-gradient(180deg, rgba(247, 248, 250, 0.9) 0%, rgba(235, 238, 242, 0.82) 100%), linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(240, 242, 245, 0.3) 100%)",
+      primaryColor: "#707782",
+      secondaryColor: "#454c56",
+      textColor: "rgba(67, 72, 79, 0.9)",
+      arrowColor: "rgba(95, 102, 112, 0.72)",
+      rolodexColor: "#7d8794",
+      rolodexDigitColor: "#5f6977",
+      rolodexLabelColor: "#5b6572",
+      rolodexTileBg: "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(236,239,243,0.98) 100%)",
+      rolodexTileBorder: "rgba(123, 132, 145, 0.26)",
+      countBubbleColor: "#8b919b",
+      syncedTextColor: "#5e6671",
+      highlightBg: "rgba(122, 130, 141, 0.16)",
+      highlightBgEnd: "rgba(113, 121, 132, 0.2)",
+      highlightBorder: "rgba(146, 154, 166, 0.34)",
+      activeHighlight: "rgba(120, 128, 140, 0.12)",
     },
     darkBlue: {
       background:
@@ -2068,62 +2277,184 @@ export default function Page() {
     simple: simpleSidebarTheme
   };
   
-  const currentTheme = sidebarThemes[sidebarTheme as keyof typeof sidebarThemes] || sidebarThemes.standard;
+  const currentTheme = sidebarThemes.mac;
   const simpleSidebarIsLight = simpleSidebarTheme.isLightBackground;
   const simpleSidebarTextHex = simpleSidebarTheme.baseTextHex;
   const simpleSidebarOverlayBase = simpleSidebarTheme.overlayBaseHex;
   const simplePresentationBackground = simpleSidebarTheme.background;
-  const isBlueSidebarTheme = sidebarTheme === "darkBlue" || sidebarTheme === "electricBlue";
-  const isSimpleSidebarTheme = sidebarTheme === "simple";
-  const isDarkSidebarTheme = isBlueSidebarTheme || isSimpleSidebarTheme;
-  const sidebarHasDarkSurface = isBlueSidebarTheme || (isSimpleSidebarTheme && !simpleSidebarIsLight);
-  const isElectricBlueSidebarTheme = sidebarTheme === "electricBlue";
-  const usesThemeCountBubbleColor = isSimpleSidebarTheme || sidebarTheme === "winterGray";
-  const sidebarModuleStackGap = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : 6;
-  const sidebarModuleMarginTop = isSimpleSidebarTheme ? 8 : 12;
-  const sidebarPrimaryModuleMarginTop = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : 6;
-  const sidebarModuleCardPadding = isSimpleSidebarTheme ? "8px 10px" : "12px";
-  const sidebarSectionSpacing = isSimpleSidebarTheme ? 10 : 16;
+  const isMacSidebarTheme = true;
+  const isMacCoverMode = true;
+  const isBlueSidebarTheme = false;
+  const isSimpleSidebarTheme = false;
+  const isDarkSidebarTheme = false;
+  const sidebarHasDarkSurface = false;
+  const isElectricBlueSidebarTheme = false;
+  const sidebarAccentPalette: Record<CoverScaleGroupKey, { background: string; border: string; text: string; countBubble: string }> = {
+    home: {
+      background: "rgba(128, 136, 147, 0.95)",
+      border: "rgba(106, 114, 124, 0.98)",
+      text: "#ffffff",
+      countBubble: "rgba(255, 255, 255, 0.2)",
+    },
+    books: {
+      background: "rgba(95, 184, 92, 0.96)",
+      border: "rgba(74, 154, 71, 0.98)",
+      text: "#ffffff",
+      countBubble: "rgba(255, 255, 255, 0.22)",
+    },
+    movies: {
+      background: "rgba(161, 104, 214, 0.96)",
+      border: "rgba(133, 79, 189, 0.98)",
+      text: "#ffffff",
+      countBubble: "rgba(255, 255, 255, 0.22)",
+    },
+    tv: {
+      background: "rgba(255, 153, 52, 0.96)",
+      border: "rgba(223, 121, 24, 0.98)",
+      text: "#ffffff",
+      countBubble: "rgba(255, 255, 255, 0.22)",
+    },
+    games: {
+      background: "rgba(52, 146, 255, 0.96)",
+      border: "rgba(35, 119, 220, 0.98)",
+      text: "#ffffff",
+      countBubble: "rgba(255, 255, 255, 0.22)",
+    },
+  };
+  const sidebarAccentKey = getCoverScaleGroupForNav(nav) || "home";
+  const sidebarActiveAccent = sidebarAccentPalette[sidebarAccentKey];
+  const usesThemeCountBubbleColor = true;
+  const sidebarModuleStackGap = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : isMacSidebarTheme ? 3 : 6;
+  const sidebarModuleMarginTop = isSimpleSidebarTheme ? 8 : isMacSidebarTheme ? 0 : 12;
+  const sidebarPrimaryModuleMarginTop = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : isMacSidebarTheme ? 0 : 6;
+  const sidebarModuleCardPadding = isSimpleSidebarTheme ? "8px 10px" : isMacSidebarTheme ? "8px 8px 4px" : "12px";
+  const sidebarSectionSpacing = isSimpleSidebarTheme ? 10 : isMacSidebarTheme ? 8 : 16;
   const sidebarPrimaryModulePadding = isSimpleSidebarTheme ? "8px 10px 0" : sidebarModuleCardPadding;
-  const sidebarDiscoverModulePadding = isSimpleSidebarTheme ? `${sidebarSectionSpacing}px 10px 8px` : sidebarModuleCardPadding;
+  const sidebarDiscoverModulePadding = isSimpleSidebarTheme ? `${sidebarSectionSpacing}px 10px 8px` : isMacSidebarTheme ? "0px" : sidebarModuleCardPadding;
   const sidebarModuleCardBackground = isSimpleSidebarTheme
+    ? "transparent"
+    : isMacSidebarTheme
     ? "transparent"
     : isElectricBlueSidebarTheme
     ? "linear-gradient(180deg, rgba(33, 67, 122, 0.44) 0%, rgba(18, 36, 73, 0.5) 100%)"
     : "rgba(255, 255, 255, 0.125)";
   const sidebarModuleCardShadow = isSimpleSidebarTheme
     ? "none"
+    : isMacSidebarTheme
+    ? "none"
     : isElectricBlueSidebarTheme
     ? "0 0 10px rgba(110, 190, 255, 0.42), 0 0 18px rgba(68, 141, 247, 0.28), -16px 0 26px rgba(0, 0, 0, 0.22), -6px 0 10px rgba(0, 0, 0, 0.16), 0 6px 12px rgba(0, 0, 0, 0.18), 0 3px 6px rgba(0, 0, 0, 0.13), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 0 30px rgba(7, 20, 44, 0.34)"
     : "-16px 0 26px rgba(0, 0, 0, 0.28), -6px 0 10px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2), 0 3px 6px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.7), inset 0 0 40px rgba(0, 0, 0, 0.08)";
   const sidebarModuleCardBorder = isSimpleSidebarTheme
+    ? "none"
+    : isMacSidebarTheme
     ? "none"
     : isElectricBlueSidebarTheme
     ? "1px solid transparent"
     : "1px solid rgba(255, 255, 255, 0.5)";
   const sidebarModuleCardBorderBottom = isSimpleSidebarTheme
     ? "none"
+    : isMacSidebarTheme
+    ? "none"
     : isElectricBlueSidebarTheme
     ? "1px solid transparent"
     : "1px solid rgba(0, 0, 0, 0.15)";
   const sidebarSectionFontFamily = isSimpleSidebarTheme
     ? "\"Geist Sans\", \"Geist\", \"Segoe UI\", sans-serif"
+    : isMacSidebarTheme
+    ? "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Helvetica Neue\", sans-serif"
     : "\"Nunito\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Roboto\", sans-serif";
-  const sidebarBackplateOpacity = isSimpleSidebarTheme ? 1 : sidebarTheme === "winterGray" ? 0.8 : isDarkSidebarTheme ? 0.9 : 0.84;
-  const sidebarBackplateBackgroundSize = isSimpleSidebarTheme ? "100% 100%" : "auto, 100% 100%";
-  const sidebarBackplateBackgroundPosition = isSimpleSidebarTheme ? "0 0" : "0 0, 0 0";
-  const sidebarShellBackground = isSimpleSidebarTheme ? "transparent" : "rgba(255, 255, 255, 0.125)";
+  const sidebarSectionHeaderStyle: CSSProperties = {
+    width: "100%",
+    textAlign: "left",
+    fontSize: sidebarHeaderFontSize,
+    fontWeight: sidebarHeaderFontWeight,
+    letterSpacing: "0",
+    color: "#646a73",
+    fontFamily: sidebarSectionFontFamily,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  };
+  const sidebarSectionHeaderTextStyle: CSSProperties = {
+    fontSize: sidebarHeaderFontSize,
+    fontWeight: sidebarHeaderFontWeight,
+    letterSpacing: "0",
+    color: "#646a73",
+    fontFamily: sidebarSectionFontFamily,
+    textTransform: "uppercase",
+  };
+  const sidebarSectionHeaderLabelStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: sidebarGap,
+  };
+  const sidebarPrimaryItemRowStyle: CSSProperties = {
+    width: "100%",
+    textAlign: "left",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  };
+  const sidebarPrimaryItemLabelStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: sidebarGap,
+    fontSize: sidebarFontSize,
+  };
+  const sidebarIconSlotStyle: CSSProperties = {
+    width: 18,
+    height: 14,
+    borderRadius: 4,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "0 0 auto",
+    overflow: "visible",
+  };
+  const sidebarSubSectionHeaderButtonStyle: CSSProperties = {
+    width: "100%",
+    textAlign: "left",
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  };
+  const sidebarSubItemRowStyle: CSSProperties = {
+    width: "100%",
+    textAlign: "left",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  };
+  const sidebarBackplateOpacity = 1;
+  const sidebarBackplateBackgroundSize = isSimpleSidebarTheme || isMacSidebarTheme ? "100% 100%" : "auto, 100% 100%";
+  const sidebarBackplateBackgroundPosition = isSimpleSidebarTheme || isMacSidebarTheme ? "0 0" : "0 0, 0 0";
+  const sidebarShellBackground = isSimpleSidebarTheme
+    ? "transparent"
+    : isMacSidebarTheme
+      ? "linear-gradient(180deg, rgba(243, 245, 247, 0.58) 0%, rgba(231, 235, 239, 0.5) 100%)"
+      : "rgba(255, 255, 255, 0.125)";
   const sidebarShellShadow = isSimpleSidebarTheme
     ? "none"
+    : isMacSidebarTheme
+      ? "0 18px 42px rgba(38, 41, 46, 0.16), 0 2px 10px rgba(38, 41, 46, 0.08), inset 0 1px 0 rgba(255,255,255,0.42)"
     : "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)";
-  const sidebarSectionDividerColor = isSimpleSidebarTheme
-    ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.14 : 0.12, simpleSidebarTextHex)}`
-    : "1px solid rgba(0,0,0,0.06)";
   const sidebarChevronColor = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarTextHex, 0.58, simpleSidebarTextHex)
+    : isMacSidebarTheme
+      ? "rgba(106, 112, 122, 0.66)"
     : "rgba(0,0,0,0.4)";
   const sidebarToggleColor = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarTextHex, 0.74, simpleSidebarTextHex)
+    : isMacSidebarTheme
+      ? "rgba(97, 103, 112, 0.76)"
     : "rgba(0,0,0,0.5)";
   const sidebarThemePanelTextColor = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarTextHex, 0.8, simpleSidebarTextHex)
@@ -2147,8 +2478,8 @@ export default function Page() {
       : "rgba(255,255,255,0.5)";
   const sidebarThemeOptionTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? currentTheme.textColor : "#2A2A2A";
   const smartListsExpanded = isSimpleSidebarTheme || smartListsOpen;
-  const sidebarOptionActiveBorder = isSimpleSidebarTheme ? `2px solid ${currentTheme.highlightBorder}` : `2px solid ${currentTheme.primaryColor}`;
-  const sidebarOptionActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : `${currentTheme.primaryColor}1A`;
+  const sidebarOptionActiveBorder = isSimpleSidebarTheme ? `2px solid ${currentTheme.highlightBorder}` : `2px solid ${sidebarActiveAccent.border}`;
+  const sidebarOptionActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.background;
   const simpleShelfColorPanelBorder =
     shelfTheme === SIMPLE_SHELF_THEME
       ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.16 : 0.22, simpleSidebarTextHex)}`
@@ -2191,63 +2522,79 @@ export default function Page() {
   };
   const sidebarItemHoverBackground = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarOverlayBase, 0.06, simpleSidebarOverlayBase)
+    : isMacSidebarTheme
+      ? "rgba(122, 128, 138, 0.04)"
     : isDarkSidebarTheme
       ? "rgba(124, 160, 224, 0.14)"
       : "rgba(0,0,0,0.02)";
   const sidebarSubItemBorderColor = isSimpleSidebarTheme
     ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.12 : 0.08, simpleSidebarTextHex)}`
+    : isMacSidebarTheme
+      ? "none"
     : isDarkSidebarTheme
       ? "1px solid rgba(142, 178, 234, 0.42)"
       : "1px solid rgba(0, 0, 0, 0.06)";
   const sidebarSubItemBackground = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarOverlayBase, 0.04, simpleSidebarOverlayBase)
+    : isMacSidebarTheme
+      ? "transparent"
     : isDarkSidebarTheme
       ? "rgba(19, 39, 72, 0.62)"
       : "rgba(255, 255, 255, 0.6)";
   const sidebarSubItemHoverBackground = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarOverlayBase, 0.08, simpleSidebarOverlayBase)
+    : isMacSidebarTheme
+      ? "rgba(120, 127, 138, 0.1)"
     : isDarkSidebarTheme
       ? "rgba(36, 71, 122, 0.7)"
       : "rgba(0, 0, 0, 0.05)";
   const sidebarSubItemTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)";
-  const sidebarSubItemActiveTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(245, 250, 255, 1)" : "rgba(0, 0, 0, 0.9)";
+  const sidebarSubItemActiveTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : sidebarActiveAccent.text;
   const sidebarSectionLabelColor = isSimpleSidebarTheme ? currentTheme.primaryColor : isDarkSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A";
   const sidebarSectionControlColor = isSimpleSidebarTheme ? currentTheme.arrowColor : isDarkSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A";
   const sidebarInlineMetaTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)";
-  const sidebarInlineCountActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : isDarkSidebarTheme ? "rgba(92, 136, 206, 0.46)" : "rgba(140,58,58,0.25)";
+  const sidebarSubItemLabelStyle: CSSProperties = {
+    color: sidebarInlineMetaTextColor,
+  };
+  const sidebarInlineCountActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.countBubble;
   const sidebarInlineCountBackground = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.06 : 0.1, simpleSidebarOverlayBase)
+    : isMacSidebarTheme
+      ? "rgba(121, 128, 138, 0.1)"
     : isDarkSidebarTheme
       ? "rgba(17, 40, 78, 0.68)"
       : "rgba(0,0,0,0.06)";
-  const sidebarInlineCountColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(241, 248, 255, 0.98)" : "#333";
+  const sidebarInlineCountColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(241, 248, 255, 0.98)" : isMacSidebarTheme ? "#58606b" : "#333";
   const sidebarInlineCountBorder = isSimpleSidebarTheme
     ? `1px solid ${currentTheme.highlightBorder}`
+    : isMacSidebarTheme
+      ? "1px solid rgba(164, 170, 180, 0.3)"
     : isDarkSidebarTheme
       ? "1px solid rgba(146, 181, 235, 0.45)"
       : "1px solid rgba(0,0,0,0.12)";
-  const sidebarNoticeTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : "#0a7f2e";
-  const sidebarNoticeBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : "rgba(10,127,46,0.12)";
-  const sidebarNoticeBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : "1px solid rgba(10,127,46,0.35)";
+  const sidebarNoticeTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : sidebarActiveAccent.text;
+  const sandboxOverlayText = "rgba(255, 248, 214, 0.96)";
+  const sandboxOverlayBg = "rgba(83, 54, 0, 0.84)";
+  const sandboxOverlayBorder = "1px solid rgba(255, 214, 102, 0.7)";
+  const sidebarNoticeBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.background;
+  const sidebarNoticeBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : `1px solid ${sidebarActiveAccent.border}`;
   const sidebarAccentButtonBackground = isSimpleSidebarTheme
     ? currentTheme.activeHighlight
     : "linear-gradient(180deg, rgba(26, 45, 74, 0.76) 0%, rgba(16, 30, 52, 0.8) 100%)";
-  const sidebarAccentButtonBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : "1px solid rgba(118, 162, 214, 0.55)";
-  const sidebarAccentButtonColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : "rgba(222, 240, 255, 0.98)";
+  const sidebarAccentButtonBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : `1px solid ${sidebarActiveAccent.border}`;
+  const sidebarAccentButtonColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : sidebarActiveAccent.text;
   const sidebarAccentButtonShadow = isSimpleSidebarTheme
     ? "none"
     : "0 10px 22px rgba(4, 12, 26, 0.3), inset 0 1px 0 rgba(188, 220, 255, 0.22)";
   const isSimpleHeaderTheme = isSimpleShelfPresentation;
   const simpleHeaderTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.78 : 0.86, simpleSidebarTextHex);
   const simpleHeaderStrongTextColor = hexToRgba(simpleSidebarTextHex, 0.94, simpleSidebarTextHex);
-  const simpleHeaderBorderColor = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.22, simpleSidebarTextHex)}`;
-  const simpleHeaderBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.08 : 0.16, simpleSidebarOverlayBase);
-  const simpleHeaderElevatedBackground = hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.12 : 0.22, simpleSidebarOverlayBase);
-  const simpleHeaderShadow = simpleSidebarIsLight
-    ? "0 3px 8px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255,255,255,0.24)"
-    : "0 3px 8px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255,255,255,0.08)";
-  const simpleHeaderAccentBackground = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.14 : 0.18, simpleSidebarTextHex);
-  const simpleHeaderAccentBorder = `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.18 : 0.28, simpleSidebarTextHex)}`;
+  const simpleHeaderBorderColor = "none";
+  const simpleHeaderBackground = "transparent";
+  const simpleHeaderElevatedBackground = "transparent";
+  const simpleHeaderShadow = "none";
+  const simpleHeaderAccentBackground = "transparent";
+  const simpleHeaderAccentBorder = "none";
   const simpleHeaderTitleShadow = simpleSidebarIsLight
     ? `0 1px 0 rgba(255, 255, 255, 0.32), 0 0 1px ${hexToRgba(simpleSidebarTextHex, 0.18, simpleSidebarTextHex)}`
     : `0 1px 0 rgba(255, 255, 255, 0.14), 0 -1px 0 rgba(0, 0, 0, 0.42), 0 0 1px ${hexToRgba(simpleSidebarTextHex, 0.22, simpleSidebarTextHex)}`;
@@ -2430,18 +2777,22 @@ export default function Page() {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
       }
       const cache = settingsCacheRef.current || {};
-      const cachedSidebarTheme = safeStr(cache["sidebarTheme"]);
-      const cachedShelfTheme = safeStr(cache["shelfTheme"]);
       const cachedSimpleShelfBackgroundColor = safeStr(cache["simpleShelfBackgroundColor"]);
-      const cachedMobileCoverScalePct = getCachedNumericSetting("mobileCoverScalePct");
-      if (cachedSidebarTheme) setSidebarTheme(cachedSidebarTheme);
-      if (cachedShelfTheme) setShelfTheme(normalizeShelfTheme(cachedShelfTheme));
+      const cachedCoverScaleFallback = Math.max(
+        0,
+        Math.min(200, Math.round(getCachedNumericSetting("rowHeightScalePct") ?? 100))
+      );
+      const cachedCoverScales: Record<CoverScaleGroupKey, number> = {
+        home: Math.max(0, Math.min(200, Math.round(getCachedNumericSetting(COVER_SCALE_SETTING_KEYS.home) ?? cachedCoverScaleFallback))),
+        books: Math.max(0, Math.min(200, Math.round(getCachedNumericSetting(COVER_SCALE_SETTING_KEYS.books) ?? cachedCoverScaleFallback))),
+        movies: Math.max(0, Math.min(200, Math.round(getCachedNumericSetting(COVER_SCALE_SETTING_KEYS.movies) ?? cachedCoverScaleFallback))),
+        tv: Math.max(0, Math.min(200, Math.round(getCachedNumericSetting(COVER_SCALE_SETTING_KEYS.tv) ?? cachedCoverScaleFallback))),
+        games: Math.max(0, Math.min(200, Math.round(getCachedNumericSetting(COVER_SCALE_SETTING_KEYS.games) ?? cachedCoverScaleFallback))),
+      };
       if (cachedSimpleShelfBackgroundColor) {
         setSimpleShelfBackgroundColor(normalizeHexColor(cachedSimpleShelfBackgroundColor));
       }
-      if (cachedMobileCoverScalePct !== undefined) {
-        setMobileCoverScalePct(Math.max(70, Math.min(125, cachedMobileCoverScalePct)));
-      }
+      setCoverScaleByGroup((prev) => ({ ...prev, ...cachedCoverScales }));
     } catch (e) {
       console.warn("Failed to apply cached theme settings on mount:", e);
     }
@@ -2451,6 +2802,7 @@ export default function Page() {
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
+  const RAW_COVER_STANDARD_GAP = 10;
   const LIP_FROM_BOTTOM = 5;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 560;
   const SETTINGS_WINDOW_MARGIN = 20;
@@ -2459,7 +2811,11 @@ export default function Page() {
   const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
   const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
   const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
-  const shelfGap = isSimpleShelfPresentation ? Math.max(0, gap - (isMobileLayout ? 2 : 4)) : gap;
+  const shelfGap = isMacCoverMode || DISABLE_INSETS
+    ? RAW_COVER_STANDARD_GAP
+    : isSimpleShelfPresentation
+      ? Math.max(0, gap - (isMobileLayout ? 2 : 4))
+      : gap;
   const simpleShelfVerticalPadding = isSimpleShelfPresentation ? Math.max(0, Math.round(shelfGap * 0.5)) : 0;
   const shelfSidePadding = isSimpleShelfPresentation ? shelfGap : SHELF_SIDE_PADDING;
   const shelfBottomOffset = isSimpleShelfPresentation ? simpleShelfVerticalPadding : LIP_FROM_BOTTOM;
@@ -2474,70 +2830,9 @@ export default function Page() {
     [statusIconScale]
   );
 
-  // DVD case: poster inset inside the frame
-  const CASE_SRC_W = 1024;
-  const CASE_SRC_H = 1536;
-  const [caseInsetTopPx, setCaseInsetTopPx] = useState(156);
-  const [caseInsetRightPx, setCaseInsetRightPx] = useState(121);
-  const [caseInsetBottomPx, setCaseInsetBottomPx] = useState(136);
-  const [caseInsetLeftPx, setCaseInsetLeftPx] = useState(74);
-  
-  // Book frame: separate insets for book covers
-  const BOOK_SRC_W = 1024;
-  const BOOK_SRC_H = 1536;
-  const [bookInsetTopPx, setBookInsetTopPx] = useState(99);
-  const [bookInsetRightPx, setBookInsetRightPx] = useState(75);
-  const [bookInsetBottomPx, setBookInsetBottomPx] = useState(104);
-  const [bookInsetLeftPx, setBookInsetLeftPx] = useState(62);
-  const [bookOverlaySettings, setBookOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
-  const [bookCoverScale, setBookCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
-  const [bookCoverOffset, setBookCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
-  
-  // Movie frame: separate insets for movie covers
-  const MOVIE_SRC_W = 1024;
-  const MOVIE_SRC_H = 1536;
-  const [movieInsetTopPx, setMovieInsetTopPx] = useState(156);
-  const [movieInsetRightPx, setMovieInsetRightPx] = useState(100);
-  const [movieInsetBottomPx, setMovieInsetBottomPx] = useState(136);
-  const [movieInsetLeftPx, setMovieInsetLeftPx] = useState(120);
-  const [movieOverlaySettings, setMovieOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
-  const [movieCoverScale, setMovieCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
-  const [movieCoverOffset, setMovieCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
-  const [tvOverlaySettings, setTvOverlaySettings] = useState<OverlaySettings>({ ...DEFAULT_OVERLAY_SETTINGS });
-  const [tvCoverScale, setTvCoverScale] = useState<CoverScaleSettings>({ ...DEFAULT_COVER_SCALE });
-  const [tvCoverOffset, setTvCoverOffset] = useState<CoverOffsetSettings>({ ...DEFAULT_COVER_OFFSET });
-  
-  // Platform-specific insets (stored as a single object)
-  const [platformInsets, setPlatformInsets] = useState<Record<string, { top: number; right: number; bottom: number; left: number }>>({
-    "Default": { top: 5, right: 5, bottom: 5, left: 5 },
-  });
-  
-  // Platform-specific overlay size and position
-  const [platformOverlaySettings, setPlatformOverlaySettings] = useState<Record<string, { width: number; height: number; top: number; left: number }>>({
-    "Default": { width: 100, height: 100, top: 0, left: 0 },
-  });
-  
-  // Platform-specific cover scale (for the poster image inside the inset)
-  const [platformCoverScale, setPlatformCoverScale] = useState<Record<string, { x: number; y: number }>>({
-    "Default": { x: 100, y: 100 },
-  });
-  
-  // Platform-specific cover offset (crop/position inside inset)
-  const [platformCoverOffset, setPlatformCoverOffset] = useState<Record<string, { x: number; y: number }>>({
-    "Default": { x: 0, y: 0 },
-  });
-  
-  // Track which platforms have been explicitly customized (not using Default)
+  // Track known platforms for game filters.
   const [customizedPlatforms, setCustomizedPlatforms] = useState<Set<string>>(new Set());
-  
-  // UI: Selected platform for editing insets
-  const [selectedPlatformForInsets, setSelectedPlatformForInsets] = useState<string>("Default");
-  const [quickInsetTarget, setQuickInsetTarget] = useState<string>("tv");
-  const [quickInsetMode, setQuickInsetMode] = useState<QuickInsetMode>("insetPosition");
-  const [quickInsetStep, setQuickInsetStep] = useState<number>(5);
-  const [quickInsetSaveStatus, setQuickInsetSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [themeSaveNotice, setThemeSaveNotice] = useState<string>("");
-  const quickOverlayDragRef = useRef<{ x: number; y: number; top: number; left: number } | null>(null);
   const [showVersionNotes, setShowVersionNotes] = useState(false);
   const [settingsWindowPosition, setSettingsWindowPosition] = useState<{ x: number; y: number } | null>(null);
   const settingsWindowRef = useRef<HTMLDivElement | null>(null);
@@ -2576,25 +2871,56 @@ export default function Page() {
     mobileAdjustedPosterSizeGames
   );
   const simpleShelfCaseHeight = Math.round(simpleShelfPosterSize * 1.5);
-  const shelfRowHeight = isSimpleShelfPresentation ? simpleShelfCaseHeight + simpleShelfVerticalPadding * 2 : SHELF_HEIGHT;
-  const [globalCoverScalePct, setGlobalCoverScalePct] = useState<number>(100);
-  const globalCoverScaleBaseRef = useRef<{ tv: number; movies: number; books: number; games: number }>({
+  const audiobookLayoutScale = 1.25;
+  const rawCoverHeightScaleByMedia = {
+    movie: 1.85,
+    tv: 1.8,
+    book: 1.6,
+    game: 1.55,
+    audiobook: 1.38,
+  } as const;
+  const rawCoverRowHeightRatioByMedia = {
+    movie: 0.9,
+    tv: 0.84,
+    book: 0.78,
+    game: 0.75,
+    audiobook: 0.58,
+  } as const;
+  const shelfContentHeight = Math.max(
+    Math.round(posterSizeTv * rawCoverHeightScaleByMedia.tv),
+    Math.round(posterSizeMovies * rawCoverHeightScaleByMedia.movie),
+    Math.round(posterSizeGames * rawCoverHeightScaleByMedia.game),
+    Math.round(posterSizeBooks * rawCoverHeightScaleByMedia.book),
+    Math.round(posterSizeBooks * rawCoverHeightScaleByMedia.audiobook)
+  );
+  const [coverScaleByGroup, setCoverScaleByGroup] = useState<Record<CoverScaleGroupKey, number>>({
+    home: 100,
+    books: 100,
+    movies: 100,
     tv: 100,
-    movies: 108,
-    books: 115,
-    games: 108,
+    games: 100,
   });
-  const globalCoverScaleSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const [showInsetGuide, setShowInsetGuide] = useState(false);
-
-
+  const activeCoverScaleGroup = getCoverScaleGroupForNav(nav) || getCoverScaleGroupForNav(lastLibraryNav) || "home";
+  const activeCoverScalePct = coverScaleByGroup[activeCoverScaleGroup];
+  const rowHeightScaleFactor = activeCoverScalePct / 100;
+  const shelfRowHeight = isSimpleShelfPresentation
+    ? Math.max(1, Math.round((simpleShelfCaseHeight + simpleShelfVerticalPadding * 2) * rowHeightScaleFactor))
+    : Math.max(1, Math.round(Math.max(SHELF_HEIGHT, shelfContentHeight + 18) * rowHeightScaleFactor));
+  const isAudiobookItem = useCallback((item: any) => {
+    if (!item || item.__type !== "book") return false;
+    const typeList = safeStr(item?.types)
+      .split(",")
+      .map((type) => type.trim().toLowerCase())
+      .filter(Boolean);
+    return Boolean(safeStr(item?.audiobookDuration) || safeStr(item?.AudiobookDuration) || typeList.includes("audiobook"));
+  }, []);
   // Modal state for cover popup
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
+  const [bookDetailItem, setBookDetailItem] = useState<any>(null);
+  const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
-  const [overlayFrameOverrides, setOverlayFrameOverrides] = useState<Record<string, string>>({});
   const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>({});
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
@@ -2604,9 +2930,6 @@ export default function Page() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [addSaveError, setAddSaveError] = useState<string | null>(null);
-  const [uploadingOverlayForKey, setUploadingOverlayForKey] = useState<string | null>(null);
-  const [overlayUploadError, setOverlayUploadError] = useState<string | null>(null);
-  const overlayFileInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarIconTargetKeyRef = useRef<string | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
@@ -2614,6 +2937,11 @@ export default function Page() {
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const caseTiltRafRef = useRef<number | null>(null);
   const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
+
+  useEffect(() => {
+    setBookDetailItem(null);
+    setBookDetailPalette(null);
+  }, [nav, selectedSmartListId]);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -2643,12 +2971,26 @@ export default function Page() {
     const overrideUrl = safeStr(overrides[itemKey]);
     const metadataUrl = safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
     const fallbackUrl = safeStr(item?.posterUrlFallback);
+    const existingCandidates = Array.isArray(item?.coverCandidates)
+      ? item.coverCandidates.filter(
+          (candidate: any) => candidate && typeof candidate === "object" && safeStr(candidate.url)
+        )
+      : [];
 
     const coverCandidates: CoverCandidate[] = [];
-    if (overrideUrl) coverCandidates.push({ label: "Override Cover", url: overrideUrl });
-    if (metadataUrl) coverCandidates.push({ label: "Metadata Cover", url: metadataUrl });
-    if (fallbackUrl && fallbackUrl !== metadataUrl) {
-      coverCandidates.push({ label: "Generated Backup", url: fallbackUrl });
+    const seen = new Set<string>();
+    const addCandidate = (label: string, url: string) => {
+      const normalizedUrl = safeStr(url);
+      if (!normalizedUrl || seen.has(normalizedUrl)) return;
+      seen.add(normalizedUrl);
+      coverCandidates.push({ label, url: normalizedUrl });
+    };
+
+    if (overrideUrl) addCandidate("Override Cover", overrideUrl);
+    if (metadataUrl) addCandidate("Metadata Cover", metadataUrl);
+    if (fallbackUrl && fallbackUrl !== metadataUrl) addCandidate("Generated Backup", fallbackUrl);
+    for (const candidate of existingCandidates) {
+      addCandidate(safeStr(candidate.label) || "Cover Candidate", safeStr(candidate.url));
     }
 
     return {
@@ -2677,35 +3019,26 @@ export default function Page() {
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
-  const getOverlayFrameDefaultPath = useCallback(
-    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
-      if (itemType === "book") return BOOK_FRAME_IMAGE;
-      if (itemType === "movie") return MOVIE_FRAME_IMAGE;
-      if (itemType === "tv") return CASE_FRAME_IMAGE;
-      return getPlatformFrameFilename(platform);
-    },
-    []
-  );
+  const openBookDetailItem = useCallback((item: any) => {
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    const seededPalette = buildSeedDetailPalette(nextItem, getDisplayCoverUrl(nextItem));
+    setBookDetailPalette({ key: getMediaItemKey(nextItem), start: seededPalette.start, end: seededPalette.end });
+    setBookDetailItem(nextItem);
+    setModalOpen(false);
+    setModalItem(null);
+  }, [coverOverrides, getDisplayCoverUrl]);
 
-  const getOverlayFrameOverrideKey = useCallback(
-    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
-      if (itemType !== "game") return itemType;
-      const rawPlatform = safeStr(platform) || "Default";
-      const canonicalPlatform = canonicalizePlatformLabel(rawPlatform);
-      return `game:${canonicalPlatform || "Default"}`;
-    },
-    []
-  );
-
-  const getOverlayFrameUrl = useCallback(
-    (itemType: "tv" | "movie" | "book" | "game", platform?: string) => {
-      const overrideKey = getOverlayFrameOverrideKey(itemType, platform);
-      const override = safeStr(overlayFrameOverrides[overrideKey]);
-      if (override) return override;
-      return getOverlayFrameDefaultPath(itemType, platform);
-    },
-    [getOverlayFrameDefaultPath, getOverlayFrameOverrideKey, overlayFrameOverrides]
-  );
+  const openSelectedItem = useCallback((item: any) => {
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    if (getMediaType(nextItem) === "book") {
+      openBookDetailItem(nextItem);
+      return;
+    }
+    setBookDetailItem(null);
+    setBookDetailPalette(null);
+    setModalItem(nextItem);
+    setModalOpen(true);
+  }, [coverOverrides, openBookDetailItem]);
 
   useEffect(() => {
     const onResize = () => {
@@ -3003,19 +3336,6 @@ export default function Page() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("cdlOverlayFrameOverrides");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        setOverlayFrameOverrides(parsed as Record<string, string>);
-      }
-    } catch (e) {
-      console.warn("Failed to load overlay frame overrides from localStorage:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
       const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
@@ -3031,7 +3351,6 @@ export default function Page() {
     if (!settingsRows.length) return;
     const fromSheet: Record<string, string> = {};
     const popupModesFromSheet: Record<string, "custom" | "default"> = {};
-    const overlayFromSheet: Record<string, string> = {};
     const sidebarIconFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
@@ -3040,12 +3359,6 @@ export default function Page() {
         const mediaKey = key.slice("coverOverride:".length);
         if (mediaKey && value) {
           fromSheet[mediaKey] = value;
-        }
-      }
-      if (key.startsWith("overlayFrameOverride:")) {
-        const overlayKey = key.slice("overlayFrameOverride:".length);
-        if (overlayKey && value) {
-          overlayFromSheet[overlayKey] = value;
         }
       }
       if (key.startsWith("popupCoverMode:")) {
@@ -3066,9 +3379,6 @@ export default function Page() {
     }
     if (Object.keys(popupModesFromSheet).length) {
       setPopupCoverModes((prev) => ({ ...prev, ...popupModesFromSheet }));
-    }
-    if (Object.keys(overlayFromSheet).length) {
-      setOverlayFrameOverrides((prev) => ({ ...prev, ...overlayFromSheet }));
     }
     if (Object.keys(sidebarIconFromSheet).length) {
       setSidebarIconOverrides((prev) => ({ ...prev, ...sidebarIconFromSheet }));
@@ -4363,16 +4673,6 @@ export default function Page() {
   );
 
   useEffect(() => {
-    const splashTimer = window.setTimeout(() => {
-      setSplashMinDurationDone(true);
-    }, SPLASH_MIN_DURATION_MS);
-
-    return () => {
-      window.clearTimeout(splashTimer);
-    };
-  }, []);
-
-  useEffect(() => {
     // Need at least one CSV URL to proceed
     if (!tvCsvUrl && !booksCsvUrl && !moviesCsvUrl && !gamesCsvUrl) {
       setError(
@@ -4380,7 +4680,6 @@ export default function Page() {
       );
       setSyncState("error");
       setSyncMsg("Missing CSV URL(s)");
-      setInitialLoadSettled(true);
       return;
     }
 
@@ -4452,7 +4751,6 @@ export default function Page() {
         setSyncMsg("Synced");
         setLastSyncAt(Date.now());
         setLoading(false);
-        setInitialLoadSettled(true);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -4460,7 +4758,6 @@ export default function Page() {
         setSyncState("error");
         setSyncMsg(e?.message || "Sync failed");
         setLoading(false);
-        setInitialLoadSettled(true);
       });
 
     return () => {
@@ -4806,100 +5103,6 @@ export default function Page() {
     }
   }, [postSheetWrite, settingsWriteUrl]);
 
-  // Save all insets of a specific type to Google Sheet
-  const saveInsetsToSheet = async (insetType: 'tv' | 'book' | 'movie' | 'game') => {
-    setSyncState("saving");
-    setSyncMsg(`Saving ${insetType} insets...`);
-
-    try {
-      let savePromises: Promise<void>[] = [];
-
-      if (insetType === 'tv') {
-        savePromises = [
-          saveSettingToSheet("caseInsetTopPx", caseInsetTopPx, "TV Insets", "TV Case Top Inset (px)"),
-          saveSettingToSheet("caseInsetRightPx", caseInsetRightPx, "TV Insets", "TV Case Right Inset (px)"),
-          saveSettingToSheet("caseInsetBottomPx", caseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)"),
-          saveSettingToSheet("caseInsetLeftPx", caseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)"),
-          saveSettingToSheet("tvOverlayWidth", tvOverlaySettings.width, "TV Overlay", "TV Overlay Width (%)"),
-          saveSettingToSheet("tvOverlayHeight", tvOverlaySettings.height, "TV Overlay", "TV Overlay Height (%)"),
-          saveSettingToSheet("tvOverlayTop", tvOverlaySettings.top, "TV Overlay", "TV Overlay Top (%)"),
-          saveSettingToSheet("tvOverlayLeft", tvOverlaySettings.left, "TV Overlay", "TV Overlay Left (%)"),
-          saveSettingToSheet("tvCoverScaleX", tvCoverScale.x, "TV Cover", "TV Cover Scale X (%)"),
-          saveSettingToSheet("tvCoverScaleY", tvCoverScale.y, "TV Cover", "TV Cover Scale Y (%)"),
-          saveSettingToSheet("tvCoverOffsetX", tvCoverOffset.x, "TV Cover", "TV Cover Offset X (%)"),
-          saveSettingToSheet("tvCoverOffsetY", tvCoverOffset.y, "TV Cover", "TV Cover Offset Y (%)"),
-        ];
-      } else if (insetType === 'book') {
-        savePromises = [
-          saveSettingToSheet("bookInsetTopPx", bookInsetTopPx, "Book Insets", "Book Top Inset (px)"),
-          saveSettingToSheet("bookInsetRightPx", bookInsetRightPx, "Book Insets", "Book Right Inset (px)"),
-          saveSettingToSheet("bookInsetBottomPx", bookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)"),
-          saveSettingToSheet("bookInsetLeftPx", bookInsetLeftPx, "Book Insets", "Book Left Inset (px)"),
-          saveSettingToSheet("bookOverlayWidth", bookOverlaySettings.width, "Book Overlay", "Book Overlay Width (%)"),
-          saveSettingToSheet("bookOverlayHeight", bookOverlaySettings.height, "Book Overlay", "Book Overlay Height (%)"),
-          saveSettingToSheet("bookOverlayTop", bookOverlaySettings.top, "Book Overlay", "Book Overlay Top (%)"),
-          saveSettingToSheet("bookOverlayLeft", bookOverlaySettings.left, "Book Overlay", "Book Overlay Left (%)"),
-          saveSettingToSheet("bookCoverScaleX", bookCoverScale.x, "Book Cover", "Book Cover Scale X (%)"),
-          saveSettingToSheet("bookCoverScaleY", bookCoverScale.y, "Book Cover", "Book Cover Scale Y (%)"),
-          saveSettingToSheet("bookCoverOffsetX", bookCoverOffset.x, "Book Cover", "Book Cover Offset X (%)"),
-          saveSettingToSheet("bookCoverOffsetY", bookCoverOffset.y, "Book Cover", "Book Cover Offset Y (%)"),
-        ];
-      } else if (insetType === 'movie') {
-        savePromises = [
-          saveSettingToSheet("movieInsetTopPx", movieInsetTopPx, "Movie Insets", "Movie Top Inset (px)"),
-          saveSettingToSheet("movieInsetRightPx", movieInsetRightPx, "Movie Insets", "Movie Right Inset (px)"),
-          saveSettingToSheet("movieInsetBottomPx", movieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)"),
-          saveSettingToSheet("movieInsetLeftPx", movieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)"),
-          saveSettingToSheet("movieOverlayWidth", movieOverlaySettings.width, "Movie Overlay", "Movie Overlay Width (%)"),
-          saveSettingToSheet("movieOverlayHeight", movieOverlaySettings.height, "Movie Overlay", "Movie Overlay Height (%)"),
-          saveSettingToSheet("movieOverlayTop", movieOverlaySettings.top, "Movie Overlay", "Movie Overlay Top (%)"),
-          saveSettingToSheet("movieOverlayLeft", movieOverlaySettings.left, "Movie Overlay", "Movie Overlay Left (%)"),
-          saveSettingToSheet("movieCoverScaleX", movieCoverScale.x, "Movie Cover", "Movie Cover Scale X (%)"),
-          saveSettingToSheet("movieCoverScaleY", movieCoverScale.y, "Movie Cover", "Movie Cover Scale Y (%)"),
-          saveSettingToSheet("movieCoverOffsetX", movieCoverOffset.x, "Movie Cover", "Movie Cover Offset X (%)"),
-          saveSettingToSheet("movieCoverOffsetY", movieCoverOffset.y, "Movie Cover", "Movie Cover Offset Y (%)"),
-        ];
-      } else if (insetType === 'game') {
-        // Save only the currently selected platform's insets, overlay settings, and cover scale
-        const platform = selectedPlatformKey;
-        const insets = platformInsets[platform] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-        const overlaySettings = platformOverlaySettings[platform] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-        const coverScale = platformCoverScale[platform] || platformCoverScale["Default"] || { x: 100, y: 100 };
-        const coverOffset = platformCoverOffset[platform] || platformCoverOffset["Default"] || { x: 0, y: 0 };
-        
-        savePromises = [
-          saveSettingToSheet(`${platform}InsetTopPx`, insets.top, `${platform} Insets`, `${platform} Top Inset (px)`),
-          saveSettingToSheet(`${platform}InsetRightPx`, insets.right, `${platform} Insets`, `${platform} Right Inset (px)`),
-          saveSettingToSheet(`${platform}InsetBottomPx`, insets.bottom, `${platform} Insets`, `${platform} Bottom Inset (px)`),
-          saveSettingToSheet(`${platform}InsetLeftPx`, insets.left, `${platform} Insets`, `${platform} Left Inset (px)`),
-          saveSettingToSheet(`${platform}OverlayWidth`, overlaySettings.width, `${platform} Overlay`, `${platform} Overlay Width (%)`),
-          saveSettingToSheet(`${platform}OverlayHeight`, overlaySettings.height, `${platform} Overlay`, `${platform} Overlay Height (%)`),
-          saveSettingToSheet(`${platform}OverlayTop`, overlaySettings.top, `${platform} Overlay`, `${platform} Overlay Top (%)`),
-          saveSettingToSheet(`${platform}OverlayLeft`, overlaySettings.left, `${platform} Overlay`, `${platform} Overlay Left (%)`),
-          saveSettingToSheet(`${platform}CoverScaleX`, coverScale.x, `${platform} Cover`, `${platform} Cover Scale X (%)`),
-          saveSettingToSheet(`${platform}CoverScaleY`, coverScale.y, `${platform} Cover`, `${platform} Cover Scale Y (%)`),
-          saveSettingToSheet(`${platform}CoverOffsetX`, coverOffset.x, `${platform} Cover`, `${platform} Cover Offset X (%)`),
-          saveSettingToSheet(`${platform}CoverOffsetY`, coverOffset.y, `${platform} Cover`, `${platform} Cover Offset Y (%)`),
-        ];
-      }
-
-      // Run all saves in parallel instead of sequentially
-      await Promise.all(savePromises);
-
-      setSyncState("ok");
-      setSyncMsg(`${insetType} insets saved!`);
-      setTimeout(() => {
-        setSyncMsg("Synced");
-      }, 2000);
-      return true;
-    } catch (e) {
-      console.error(`Failed to save ${insetType} insets:`, e);
-      setSyncState("error");
-      setSyncMsg(`Failed to save ${insetType} insets`);
-      return false;
-    }
-  };
-
   // Apply settings from spreadsheet on load
   useEffect(() => {
     if (settingsRows.length === 0) return;
@@ -4914,172 +5117,8 @@ export default function Page() {
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
     setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
-    
-    setCaseInsetTopPx(getSetting("caseInsetTopPx", 156));
-    setCaseInsetRightPx(getSetting("caseInsetRightPx", 121));
-    setCaseInsetBottomPx(getSetting("caseInsetBottomPx", 136));
-    setCaseInsetLeftPx(getSetting("caseInsetLeftPx", 74));
-    setTvOverlaySettings({
-      width: getSetting("tvOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
-      height: getSetting("tvOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
-      top: getSetting("tvOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
-      left: getSetting("tvOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
-    });
-    const tvLegacyCoverScale = getSetting("tvCoverScale", DEFAULT_COVER_SCALE.x);
-    setTvCoverScale({
-      x: getSetting("tvCoverScaleX", tvLegacyCoverScale),
-      y: getSetting("tvCoverScaleY", tvLegacyCoverScale),
-    });
-    setTvCoverOffset({
-      x: getSetting("tvCoverOffsetX", DEFAULT_COVER_OFFSET.x),
-      y: getSetting("tvCoverOffsetY", DEFAULT_COVER_OFFSET.y),
-    });
-    
-    setBookInsetTopPx(getSetting("bookInsetTopPx", 99));
-    setBookInsetRightPx(getSetting("bookInsetRightPx", 75));
-    setBookInsetBottomPx(getSetting("bookInsetBottomPx", 104));
-    setBookInsetLeftPx(getSetting("bookInsetLeftPx", 62));
-    setBookOverlaySettings({
-      width: getSetting("bookOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
-      height: getSetting("bookOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
-      top: getSetting("bookOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
-      left: getSetting("bookOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
-    });
-    const bookLegacyCoverScale = getSetting("bookCoverScale", DEFAULT_COVER_SCALE.x);
-    setBookCoverScale({
-      x: getSetting("bookCoverScaleX", bookLegacyCoverScale),
-      y: getSetting("bookCoverScaleY", bookLegacyCoverScale),
-    });
-    setBookCoverOffset({
-      x: getSetting("bookCoverOffsetX", DEFAULT_COVER_OFFSET.x),
-      y: getSetting("bookCoverOffsetY", DEFAULT_COVER_OFFSET.y),
-    });
-    
-    setMovieInsetTopPx(getSetting("movieInsetTopPx", 156));
-    setMovieInsetRightPx(getSetting("movieInsetRightPx", 100));
-    setMovieInsetBottomPx(getSetting("movieInsetBottomPx", 136));
-    setMovieInsetLeftPx(getSetting("movieInsetLeftPx", 120));
-    setMovieOverlaySettings({
-      width: getSetting("movieOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width),
-      height: getSetting("movieOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height),
-      top: getSetting("movieOverlayTop", DEFAULT_OVERLAY_SETTINGS.top),
-      left: getSetting("movieOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left),
-    });
-    const movieLegacyCoverScale = getSetting("movieCoverScale", DEFAULT_COVER_SCALE.x);
-    setMovieCoverScale({
-      x: getSetting("movieCoverScaleX", movieLegacyCoverScale),
-      y: getSetting("movieCoverScaleY", movieLegacyCoverScale),
-    });
-    setMovieCoverOffset({
-      x: getSetting("movieCoverOffsetX", DEFAULT_COVER_OFFSET.x),
-      y: getSetting("movieCoverOffsetY", DEFAULT_COVER_OFFSET.y),
-    });
-    
+
     setPosterSizeGames(getSetting("posterSizeGames", 108));
-    
-    // Load platform insets from settings
-    // We'll load all settings that match the pattern and dynamically populate
-    const loadedPlatformInsets: Record<string, { top: number; right: number; bottom: number; left: number }> = {
-      "Default": { 
-        top: getSetting("DefaultInsetTopPx", 5),
-        right: getSetting("DefaultInsetRightPx", 5),
-        bottom: getSetting("DefaultInsetBottomPx", 5),
-        left: getSetting("DefaultInsetLeftPx", 5),
-      }
-    };
-    
-    const loadedCustomizedPlatforms = new Set<string>();
-    
-    // Also prepare overlay settings structure
-    const loadedPlatformOverlaySettings: Record<string, { width: number; height: number; top: number; left: number }> = {
-      "Default": {
-        width: getSetting("DefaultOverlayWidth", 100),
-        height: getSetting("DefaultOverlayHeight", 100),
-        top: getSetting("DefaultOverlayTop", 0),
-        left: getSetting("DefaultOverlayLeft", 0),
-      }
-    };
-    
-    // Also prepare cover scale settings structure
-    const defaultLegacyScale = getSetting("DefaultCoverScale", 100);
-    const loadedPlatformCoverScale: Record<string, { x: number; y: number }> = {
-      "Default": {
-        x: getSetting("DefaultCoverScaleX", defaultLegacyScale),
-        y: getSetting("DefaultCoverScaleY", defaultLegacyScale),
-      },
-    };
-    
-    const loadedPlatformCoverOffset: Record<string, { x: number; y: number }> = {
-      "Default": {
-        x: getSetting("DefaultCoverOffsetX", 0),
-        y: getSetting("DefaultCoverOffsetY", 0),
-      },
-    };
-    const nonGameInsetPrefixes = new Set(["case", "tv", "movie", "book"]);
-    const nonGameOverlayPrefixes = new Set(["tv", "movie", "book"]);
-    const nonGameCoverPrefixes = new Set(["tv", "movie", "book"]);
-    
-    // Load settings for any platforms found in settings
-    settingsRows.forEach(row => {
-      const key = safeStr(row["Key"]);
-      const match = key.match(/^(.+)InsetTopPx$/);
-      if (match && match[1] !== "Default" && !nonGameInsetPrefixes.has(match[1])) {
-        const rawPlatform = match[1];
-        const platform = canonicalizePlatformLabel(rawPlatform);
-        loadedPlatformInsets[platform] = {
-          top: getSetting(`${rawPlatform}InsetTopPx`, getSetting(`${platform}InsetTopPx`, 5)),
-          right: getSetting(`${rawPlatform}InsetRightPx`, getSetting(`${platform}InsetRightPx`, 5)),
-          bottom: getSetting(`${rawPlatform}InsetBottomPx`, getSetting(`${platform}InsetBottomPx`, 5)),
-          left: getSetting(`${rawPlatform}InsetLeftPx`, getSetting(`${platform}InsetLeftPx`, 5)),
-        };
-        // Mark this platform as customized since it was saved in settings
-        loadedCustomizedPlatforms.add(platform);
-      }
-      
-      // Also check for overlay settings
-      const overlayMatch = key.match(/^(.+)OverlayWidth$/);
-      if (overlayMatch && overlayMatch[1] !== "Default" && !nonGameOverlayPrefixes.has(overlayMatch[1])) {
-        const rawPlatform = overlayMatch[1];
-        const platform = canonicalizePlatformLabel(rawPlatform);
-        loadedPlatformOverlaySettings[platform] = {
-          width: getSetting(`${rawPlatform}OverlayWidth`, getSetting(`${platform}OverlayWidth`, 100)),
-          height: getSetting(`${rawPlatform}OverlayHeight`, getSetting(`${platform}OverlayHeight`, 100)),
-          top: getSetting(`${rawPlatform}OverlayTop`, getSetting(`${platform}OverlayTop`, 0)),
-          left: getSetting(`${rawPlatform}OverlayLeft`, getSetting(`${platform}OverlayLeft`, 0)),
-        };
-        loadedCustomizedPlatforms.add(platform);
-      }
-      
-      // Also check for cover scale settings
-      const coverScaleMatch = key.match(/^(.+)CoverScale(?:X|Y)?$/);
-      if (coverScaleMatch && coverScaleMatch[1] !== "Default" && !nonGameCoverPrefixes.has(coverScaleMatch[1])) {
-        const rawPlatform = coverScaleMatch[1];
-        const platform = canonicalizePlatformLabel(rawPlatform);
-        const legacyScale = getSetting(`${rawPlatform}CoverScale`, getSetting(`${platform}CoverScale`, 100));
-        loadedPlatformCoverScale[platform] = {
-          x: getSetting(`${rawPlatform}CoverScaleX`, getSetting(`${platform}CoverScaleX`, legacyScale)),
-          y: getSetting(`${rawPlatform}CoverScaleY`, getSetting(`${platform}CoverScaleY`, legacyScale)),
-        };
-        loadedCustomizedPlatforms.add(platform);
-      }
-      
-      const coverOffsetMatch = key.match(/^(.+)CoverOffsetX$/);
-      if (coverOffsetMatch && coverOffsetMatch[1] !== "Default" && !nonGameCoverPrefixes.has(coverOffsetMatch[1])) {
-        const rawPlatform = coverOffsetMatch[1];
-        const platform = canonicalizePlatformLabel(rawPlatform);
-        loadedPlatformCoverOffset[platform] = {
-          x: getSetting(`${rawPlatform}CoverOffsetX`, getSetting(`${platform}CoverOffsetX`, 0)),
-          y: getSetting(`${rawPlatform}CoverOffsetY`, getSetting(`${platform}CoverOffsetY`, 0)),
-        };
-        loadedCustomizedPlatforms.add(platform);
-      }
-    });
-    
-    setPlatformInsets(loadedPlatformInsets);
-    setPlatformOverlaySettings(loadedPlatformOverlaySettings);
-    setPlatformCoverScale(loadedPlatformCoverScale);
-    setPlatformCoverOffset(loadedPlatformCoverOffset);
-    setCustomizedPlatforms(loadedCustomizedPlatforms);
     
     setLogoSize(getSetting("logoSize", 230));
     setLogoTop(getSetting("logoTop", 12));
@@ -5094,7 +5133,7 @@ export default function Page() {
     setIconSize(getSetting("iconSize", 16));
     
     setSidebarFontSize(getSetting("sidebarFontSize", 11));
-    setSidebarFontWeight(getSetting("sidebarFontWeight", "400"));
+    setSidebarFontWeight(getSetting("sidebarFontWeight", "150"));
     setSidebarGap(getSetting("sidebarGap", 8));
     setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
     setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
@@ -5137,9 +5176,7 @@ export default function Page() {
     }
     setSmartListManualOrderKeysById(loadedSmartListManualOrders);
     
-    setSidebarTheme(getSetting("sidebarTheme", "darkBlue"));
-    setShelfTheme(normalizeShelfTheme(getSetting("shelfTheme", DEFAULT_SHELF_IMAGE)));
-    setSimpleShelfBackgroundColor(normalizeHexColor(getSetting("simpleShelfBackgroundColor", DEFAULT_SIMPLE_SHELF_BACKGROUND)));
+    setSimpleShelfBackgroundColor("#ececec");
   }, [getCachedNumericSetting, getSetting, settingsRows]);
 
   const persistSmartLists = useCallback(
@@ -5378,9 +5415,7 @@ export default function Page() {
       if (selectedSmartListId === listId) {
         setSelectedSmartListId(null);
         if (nav === "smart-custom") {
-          setNav("home");
-          setSortField("ReleaseDate");
-          setSortOrder("Desc");
+          activateHomeLibrary();
         }
       }
       setSyncState("ok");
@@ -5390,7 +5425,7 @@ export default function Page() {
         setSyncMsg("Synced");
       }, 1200);
     },
-    [customSmartLists, nav, persistSmartLists, removeSetting, saveSetting, selectedSmartListId]
+    [activateHomeLibrary, customSmartLists, nav, persistSmartLists, removeSetting, saveSetting, selectedSmartListId]
   );
 
   useEffect(() => {
@@ -5398,11 +5433,9 @@ export default function Page() {
     if (customSmartLists.some((list) => list.id === selectedSmartListId)) return;
     setSelectedSmartListId(null);
     if (nav === "smart-custom") {
-      setNav("home");
-      setSortField("ReleaseDate");
-      setSortOrder("Desc");
+      activateHomeLibrary();
     }
-  }, [customSmartLists, nav, selectedSmartListId]);
+  }, [activateHomeLibrary, customSmartLists, nav, selectedSmartListId]);
 
   useEffect(() => {
     if (
@@ -5584,6 +5617,12 @@ export default function Page() {
       { key: "posterSizeMovies", value: posterSizeMovies, category: "Cover Sizes", description: "Movie Cover Size" },
       { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
       { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
+      { key: COVER_SCALE_SETTING_KEYS.home, value: coverScaleByGroup.home, category: "Cover Sizes", description: "Home Cover Scale (%)" },
+      { key: COVER_SCALE_SETTING_KEYS.books, value: coverScaleByGroup.books, category: "Cover Sizes", description: "Books Cover Scale (%)" },
+      { key: COVER_SCALE_SETTING_KEYS.movies, value: coverScaleByGroup.movies, category: "Cover Sizes", description: "Movies Cover Scale (%)" },
+      { key: COVER_SCALE_SETTING_KEYS.tv, value: coverScaleByGroup.tv, category: "Cover Sizes", description: "TV Shows Cover Scale (%)" },
+      { key: COVER_SCALE_SETTING_KEYS.games, value: coverScaleByGroup.games, category: "Cover Sizes", description: "Games Cover Scale (%)" },
+      { key: "rowHeightScalePct", value: coverScaleByGroup.home, category: "Cover Sizes", description: "Legacy Home Cover Scale (%)" },
       { key: "mobileCoverScalePct", value: mobileCoverScalePct, category: "Cover Sizes", description: "Mobile Cover Scale (%)" },
       { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
       { key: "coverGapSize", value: coverGapSize, category: "Cover Sizes", description: "Cover Gap Size (px)" },
@@ -5602,10 +5641,6 @@ export default function Page() {
       { key: "sidebarGap", value: sidebarGap, category: "Sidebar", description: "Sidebar Icon Gap" },
       { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
       { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
-      { key: "sidebarTheme", value: sidebarTheme, category: "Themes", description: "Sidebar Theme" },
-      { key: "shelfTheme", value: shelfTheme, category: "Themes", description: "Shelf Theme" },
-      { key: "simpleShelfBackgroundColor", value: simpleShelfBackgroundColor, category: "Themes", description: "Simple Shelf Background Color" },
-      { key: "showInsetGuide", value: showInsetGuide, category: "Cover Sizes", description: "Show inset frame guide" },
       { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
     ];
     
@@ -5755,21 +5790,6 @@ export default function Page() {
         setCoverGapSize(getNum("coverGapSize", 24));
         setTight(getBool("tight", true));
         
-        setCaseInsetTopPx(getNum("caseInsetTopPx", 156));
-        setCaseInsetRightPx(getNum("caseInsetRightPx", 121));
-        setCaseInsetBottomPx(getNum("caseInsetBottomPx", 136));
-        setCaseInsetLeftPx(getNum("caseInsetLeftPx", 74));
-        
-        setBookInsetTopPx(getNum("bookInsetTopPx", 99));
-        setBookInsetRightPx(getNum("bookInsetRightPx", 75));
-        setBookInsetBottomPx(getNum("bookInsetBottomPx", 104));
-        setBookInsetLeftPx(getNum("bookInsetLeftPx", 62));
-        
-        setMovieInsetTopPx(getNum("movieInsetTopPx", 156));
-        setMovieInsetRightPx(getNum("movieInsetRightPx", 100));
-        setMovieInsetBottomPx(getNum("movieInsetBottomPx", 136));
-        setMovieInsetLeftPx(getNum("movieInsetLeftPx", 120));
-        
         setPosterSizeGames(getNum("posterSizeGames", 108));
         
         setLogoSize(getNum("logoSize", 230));
@@ -5784,13 +5804,19 @@ export default function Page() {
         
         setIconSize(getNum("iconSize", 16));
         setSidebarFontSize(getNum("sidebarFontSize", 11));
-        setSidebarFontWeight(getStr("sidebarFontWeight", "400"));
+        setSidebarFontWeight(getStr("sidebarFontWeight", "150"));
         setSidebarGap(getNum("sidebarGap", 8));
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
-        setShelfTheme(normalizeShelfTheme(getStr("shelfTheme", DEFAULT_SHELF_IMAGE)));
+        const coverScaleFallback = Math.max(0, Math.min(200, Math.round(getNum("rowHeightScalePct", 100))));
+        setCoverScaleByGroup({
+          home: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.home, coverScaleFallback)))),
+          books: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.books, coverScaleFallback)))),
+          movies: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.movies, coverScaleFallback)))),
+          tv: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.tv, coverScaleFallback)))),
+          games: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.games, coverScaleFallback)))),
+        });
         setSimpleShelfBackgroundColor(normalizeHexColor(getStr("simpleShelfBackgroundColor", DEFAULT_SIMPLE_SHELF_BACKGROUND)));
-        setSidebarTheme(getStr("sidebarTheme", "darkBlue"));
         setShowStatusIndicators(getBool("showStatusIndicators", false));
       }, 100);
       
@@ -5855,10 +5881,6 @@ export default function Page() {
     setTight(value);
     saveSetting("tight", value, "Spacing", "Tight spacing between items");
   };
-  const updateShowInsetGuide = (value: boolean) => {
-    setShowInsetGuide(value);
-    saveSetting("showInsetGuide", value, "Cover Sizes", "Show inset frame guide");
-  };
   const updateCoverGapSize = (value: number) => {
     const next = Math.max(0, Math.min(60, Math.round(value)));
     setCoverGapSize(next);
@@ -5885,117 +5907,6 @@ export default function Page() {
     }, 150);
   }, [saveSetting]);
   
-  const updateCaseInsetTopPx = useCallback((value: number) => {
-    debouncedUpdate("caseInsetTopPx", value, setCaseInsetTopPx, "TV Insets", "TV Case Top Inset (px)");
-  }, [debouncedUpdate]);
-  const updateCaseInsetRightPx = useCallback((value: number) => {
-    debouncedUpdate("caseInsetRightPx", value, setCaseInsetRightPx, "TV Insets", "TV Case Right Inset (px)");
-  }, [debouncedUpdate]);
-  const updateCaseInsetBottomPx = useCallback((value: number) => {
-    debouncedUpdate("caseInsetBottomPx", value, setCaseInsetBottomPx, "TV Insets", "TV Case Bottom Inset (px)");
-  }, [debouncedUpdate]);
-  const updateCaseInsetLeftPx = useCallback((value: number) => {
-    debouncedUpdate("caseInsetLeftPx", value, setCaseInsetLeftPx, "TV Insets", "TV Case Left Inset (px)");
-  }, [debouncedUpdate]);
-  const updateBookInsetTopPx = useCallback((value: number) => {
-    debouncedUpdate("bookInsetTopPx", value, setBookInsetTopPx, "Book Insets", "Book Top Inset (px)");
-  }, [debouncedUpdate]);
-  const updateBookInsetRightPx = useCallback((value: number) => {
-    debouncedUpdate("bookInsetRightPx", value, setBookInsetRightPx, "Book Insets", "Book Right Inset (px)");
-  }, [debouncedUpdate]);
-  const updateBookInsetBottomPx = useCallback((value: number) => {
-    debouncedUpdate("bookInsetBottomPx", value, setBookInsetBottomPx, "Book Insets", "Book Bottom Inset (px)");
-  }, [debouncedUpdate]);
-  const updateBookInsetLeftPx = useCallback((value: number) => {
-    debouncedUpdate("bookInsetLeftPx", value, setBookInsetLeftPx, "Book Insets", "Book Left Inset (px)");
-  }, [debouncedUpdate]);
-  const updateMovieInsetTopPx = useCallback((value: number) => {
-    debouncedUpdate("movieInsetTopPx", value, setMovieInsetTopPx, "Movie Insets", "Movie Top Inset (px)");
-  }, [debouncedUpdate]);
-  const updateMovieInsetRightPx = useCallback((value: number) => {
-    debouncedUpdate("movieInsetRightPx", value, setMovieInsetRightPx, "Movie Insets", "Movie Right Inset (px)");
-  }, [debouncedUpdate]);
-  const updateMovieInsetBottomPx = useCallback((value: number) => {
-    debouncedUpdate("movieInsetBottomPx", value, setMovieInsetBottomPx, "Movie Insets", "Movie Bottom Inset (px)");
-  }, [debouncedUpdate]);
-  const updateMovieInsetLeftPx = useCallback((value: number) => {
-    debouncedUpdate("movieInsetLeftPx", value, setMovieInsetLeftPx, "Movie Insets", "Movie Left Inset (px)");
-  }, [debouncedUpdate]);
-  const updateNonGameOverlay = useCallback(
-    (mediaType: InsetEditableMediaType, property: "width" | "height" | "top" | "left", value: number) => {
-      const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
-      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
-      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
-
-      debouncedUpdate(
-        `${settingPrefix}Overlay${propertyCapitalized}`,
-        value,
-        () => {
-          const applyUpdate = (prev: OverlaySettings): OverlaySettings => ({ ...prev, [property]: value });
-          if (mediaType === "tv") {
-            setTvOverlaySettings(applyUpdate);
-            return;
-          }
-          if (mediaType === "movie") {
-            setMovieOverlaySettings(applyUpdate);
-            return;
-          }
-          setBookOverlaySettings(applyUpdate);
-        },
-        `${settingLabel} Overlay`,
-        `${settingLabel} Overlay ${propertyCapitalized} (%)`
-      );
-    },
-    [debouncedUpdate]
-  );
-  const updateNonGameCoverScale = useCallback(
-    (mediaType: InsetEditableMediaType, axis: "x" | "y", value: number) => {
-      const axisLabel = axis.toUpperCase();
-      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
-      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
-      const applyUpdate = (prev: CoverScaleSettings): CoverScaleSettings => ({ ...prev, [axis]: value });
-
-      if (mediaType === "tv") {
-        setTvCoverScale(applyUpdate);
-      } else if (mediaType === "movie") {
-        setMovieCoverScale(applyUpdate);
-      } else {
-        setBookCoverScale(applyUpdate);
-      }
-
-      saveSetting(
-        `${settingPrefix}CoverScale${axisLabel}`,
-        value,
-        `${settingLabel} Cover`,
-        `${settingLabel} Cover Scale ${axisLabel} (%)`
-      );
-    },
-    [saveSetting]
-  );
-  const updateNonGameCoverOffset = useCallback(
-    (mediaType: InsetEditableMediaType, axis: "x" | "y", value: number) => {
-      const axisLabel = axis.toUpperCase();
-      const settingPrefix = mediaType === "tv" ? "tv" : mediaType;
-      const settingLabel = mediaType === "tv" ? "TV" : mediaType === "movie" ? "Movie" : "Book";
-      const applyUpdate = (prev: CoverOffsetSettings): CoverOffsetSettings => ({ ...prev, [axis]: value });
-
-      if (mediaType === "tv") {
-        setTvCoverOffset(applyUpdate);
-      } else if (mediaType === "movie") {
-        setMovieCoverOffset(applyUpdate);
-      } else {
-        setBookCoverOffset(applyUpdate);
-      }
-
-      saveSetting(
-        `${settingPrefix}CoverOffset${axisLabel}`,
-        value,
-        `${settingLabel} Cover`,
-        `${settingLabel} Cover Offset ${axisLabel} (%)`
-      );
-    },
-    [saveSetting]
-  );
   const updatePosterSizeGames = (value: number) => {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
@@ -6005,205 +5916,25 @@ export default function Page() {
     setMobileCoverScalePct(nextValue);
     saveSetting("mobileCoverScalePct", nextValue, "Cover Sizes", "Mobile Cover Scale (%)");
   }, [saveSetting]);
-  const clampUnifiedCoverSize = (value: number) => Math.max(70, Math.min(125, Math.round(value)));
-  const captureGlobalCoverScaleBase = useCallback(() => {
-    globalCoverScaleBaseRef.current = {
-      tv: posterSizeTv,
-      movies: posterSizeMovies,
-      books: posterSizeBooks,
-      games: posterSizeGames,
-    };
-  }, [posterSizeBooks, posterSizeGames, posterSizeMovies, posterSizeTv]);
-  const updateGlobalCoverScale = useCallback((value: number) => {
-    const scalePct = Math.max(70, Math.min(130, value));
-    const scaleFactor = scalePct / 100;
-    const base = globalCoverScaleBaseRef.current;
-    const nextSizes = {
-      tv: clampUnifiedCoverSize(base.tv * scaleFactor),
-      movies: clampUnifiedCoverSize(base.movies * scaleFactor),
-      books: clampUnifiedCoverSize(base.books * scaleFactor),
-      games: clampUnifiedCoverSize(base.games * scaleFactor),
-    };
-
-    setGlobalCoverScalePct(scalePct);
-    setPosterSizeTv(nextSizes.tv);
-    setPosterSizeMovies(nextSizes.movies);
-    setPosterSizeBooks(nextSizes.books);
-    setPosterSizeGames(nextSizes.games);
-
-    if (globalCoverScaleSaveTimerRef.current) {
-      clearTimeout(globalCoverScaleSaveTimerRef.current);
-    }
-
-    globalCoverScaleSaveTimerRef.current = setTimeout(() => {
-      saveSetting("posterSizeTv", nextSizes.tv, "Cover Sizes", "TV Show Cover Size");
-      saveSetting("posterSizeMovies", nextSizes.movies, "Cover Sizes", "Movie Cover Size");
-      saveSetting("posterSizeBooks", nextSizes.books, "Cover Sizes", "Book Cover Size");
-      saveSetting("posterSizeGames", nextSizes.games, "Cover Sizes", "Game Cover Size");
-      globalCoverScaleBaseRef.current = nextSizes;
-      setGlobalCoverScalePct(100);
-      globalCoverScaleSaveTimerRef.current = null;
-    }, 2500);
-  }, [saveSetting]);
-  const updateShelfTheme = (value: string) => {
-    const normalizedValue = normalizeShelfTheme(value);
-    setShelfTheme(normalizedValue);
-    saveSetting("shelfTheme", normalizedValue, "Themes", "Shelf Theme");
-    const shelfThemeNames: Record<string, string> = {
-      [SIMPLE_SHELF_THEME]: "Simple Shelf",
-      "/shelves-light-single2.png": "Default (Light Oak)",
-      "/shelf-dark-walnut.png": "Dark Walnut",
-      "/shelf-weathered-oak.png": "Weathered Oak",
-      "/shelf-weathered-gray-oak.png": "Weathered Oak",
-      "/shelf-honey-oak.png": "Honey Oak",
-      "/shelf-teak.png": "Teak",
-      "/shelf_white_oak.png": "White Oak",
-      "/shelf-reclaimed-oak.png": "Reclaimed Oak",
-      [ELECTRIC_BLUE_SHELF_THEME]: "Electric Blue",
-    };
-    setThemeSaveNotice(`Saved theme: ${shelfThemeNames[normalizedValue] || shelfThemeNames[value] || "Shelf theme"}. This will be used next time.`);
-  };
-
+  const updateCoverScaleForGroup = useCallback((group: CoverScaleGroupKey, value: number) => {
+    const scalePct = Math.max(0, Math.min(200, Math.round(value)));
+    const settingKey = COVER_SCALE_SETTING_KEYS[group];
+    setCoverScaleByGroup((prev) => ({ ...prev, [group]: scalePct }));
+    debouncedUpdate(settingKey, scalePct, (nextValue) => {
+      setCoverScaleByGroup((prev) => ({ ...prev, [group]: nextValue }));
+    }, "Cover Sizes", `${group === "home" ? "Home" : group === "tv" ? "TV Shows" : group === "books" ? "Books" : group === "movies" ? "Movies" : "Games"} Cover Scale (%)`);
+  }, [debouncedUpdate]);
+  const updateCurrentCoverScale = useCallback((value: number) => {
+    if (nav === "statistics") return;
+    const currentGroup = activeCoverScaleGroup;
+    updateCoverScaleForGroup(currentGroup, value);
+  }, [activeCoverScaleGroup, nav, updateCoverScaleForGroup]);
   const updateSimpleShelfBackgroundColor = (value: string) => {
     const normalizedColor = normalizeHexColor(value);
     setSimpleShelfBackgroundColor(normalizedColor);
     saveSetting("simpleShelfBackgroundColor", normalizedColor, "Themes", "Simple Shelf Background Color");
     setThemeSaveNotice(`Saved Simple Shelf background: ${normalizedColor.toUpperCase()}. This will be used next time.`);
   };
-  
-  const updateSidebarTheme = (value: string) => {
-    setSidebarTheme(value);
-    saveSetting("sidebarTheme", value, "Themes", "Sidebar Theme");
-    const sidebarThemeNames: Record<string, string> = {
-      simple: "Simple",
-      standard: "Standard",
-      winterGray: "Winter Gray",
-      darkBlue: "Dark Blue",
-      electricBlue: "Electric Blue",
-    };
-    setThemeSaveNotice(`Saved theme: ${sidebarThemeNames[value] || "Sidebar theme"}. This will be used next time.`);
-  };
-
-  useEffect(() => {
-    if (globalCoverScalePct === 100 && !globalCoverScaleSaveTimerRef.current) {
-      globalCoverScaleBaseRef.current = {
-        tv: posterSizeTv,
-        movies: posterSizeMovies,
-        books: posterSizeBooks,
-        games: posterSizeGames,
-      };
-    }
-  }, [globalCoverScalePct, posterSizeBooks, posterSizeGames, posterSizeMovies, posterSizeTv]);
-
-  useEffect(() => {
-    return () => {
-      if (globalCoverScaleSaveTimerRef.current) {
-        clearTimeout(globalCoverScaleSaveTimerRef.current);
-      }
-    };
-  }, []);
-  
-  // Update platform-specific insets
-  const updatePlatformInset = useCallback((platform: string, edge: 'top' | 'right' | 'bottom' | 'left', value: number) => {
-    const platformKey = resolvePlatformAlias(platform);
-    const edgeCapitalized = edge.charAt(0).toUpperCase() + edge.slice(1);
-    const settingKey = `${platformKey}Inset${edgeCapitalized}Px`;
-    
-    debouncedUpdate(
-      settingKey,
-      value,
-      () => {
-        setPlatformInsets(prev => {
-          const currentPlatformInsets = prev[platformKey] || { top: 5, right: 5, bottom: 5, left: 5 };
-          return {
-            ...prev,
-            [platformKey]: {
-              ...currentPlatformInsets,
-              [edge]: value,
-            }
-          };
-        });
-        
-        // Mark this platform as customized if it's not Default
-        if (platformKey !== "Default") {
-          setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
-        }
-      },
-      `${platformKey} Insets`,
-      `${platformKey} ${edgeCapitalized} Inset (px)`
-    );
-  }, [debouncedUpdate]);
-  
-  // Update platform-specific overlay settings
-  const updatePlatformOverlay = useCallback((platform: string, property: 'width' | 'height' | 'top' | 'left', value: number) => {
-    const platformKey = resolvePlatformAlias(platform);
-    const propertyCapitalized = property.charAt(0).toUpperCase() + property.slice(1);
-    const settingKey = `${platformKey}Overlay${propertyCapitalized}`;
-    
-    debouncedUpdate(
-      settingKey,
-      value,
-      () => {
-        setPlatformOverlaySettings(prev => {
-          const currentOverlaySettings = prev[platformKey] || { width: 100, height: 100, top: 0, left: 0 };
-          return {
-            ...prev,
-            [platformKey]: {
-              ...currentOverlaySettings,
-              [property]: value,
-            }
-          };
-        });
-        
-        // Mark this platform as customized if it's not Default
-        if (platformKey !== "Default") {
-          setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
-        }
-      },
-      `${platformKey} Overlay`,
-      `${platformKey} Overlay ${propertyCapitalized} (%)`
-    );
-  }, [debouncedUpdate]);
-  
-  // Update platform-specific cover scale
-  const updatePlatformCoverScale = useCallback((platform: string, axis: "x" | "y", value: number) => {
-    const platformKey = resolvePlatformAlias(platform);
-    const axisLabel = axis.toUpperCase();
-    setPlatformCoverScale(prev => ({
-      ...prev,
-      [platformKey]: {
-        ...(prev[platformKey] || { x: 100, y: 100 }),
-        [axis]: value,
-      },
-    }));
-    
-    // Mark this platform as customized if it's not Default
-    if (platformKey !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
-    }
-    
-    saveSetting(`${platformKey}CoverScale${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Scale ${axisLabel} (%)`);
-  }, [saveSetting]);
-  
-  // Update platform-specific cover offset (crop position inside inset)
-  const updatePlatformCoverOffset = useCallback((platform: string, axis: 'x' | 'y', value: number) => {
-    const platformKey = resolvePlatformAlias(platform);
-    const axisLabel = axis.toUpperCase();
-    setPlatformCoverOffset(prev => ({
-      ...prev,
-      [platformKey]: {
-        ...(prev[platformKey] || { x: 0, y: 0 }),
-        [axis]: value,
-      },
-    }));
-    
-    if (platformKey !== "Default") {
-      setCustomizedPlatforms(prev => new Set(prev).add(platformKey));
-    }
-    
-    saveSetting(`${platformKey}CoverOffset${axisLabel}`, value, `${platformKey} Cover`, `${platformKey} Cover Offset ${axisLabel} (%)`);
-  }, [saveSetting]);
-  
   const updateLogoSize = (value: number) => {
     setLogoSize(value);
     saveSetting("logoSize", value, "Logo Settings", "Logo Size (px)");
@@ -7007,18 +6738,6 @@ export default function Page() {
     });
   }, [allGames]);
 
-  const getGameInsetDebugReadout = useCallback(
-    (platformKey: string) => {
-      const resolved = platformKey || "Default";
-      const insets = platformInsets[resolved] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-      const overlay = platformOverlaySettings[resolved] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-      const scale = platformCoverScale[resolved] || platformCoverScale["Default"] || { x: 100, y: 100 };
-      const offset = platformCoverOffset[resolved] || platformCoverOffset["Default"] || { x: 0, y: 0 };
-      return `P:${resolved} | I:${insets.top}/${insets.right}/${insets.bottom}/${insets.left} | O:${overlay.width}/${overlay.height}/${overlay.top}/${overlay.left} | C:${scale.x}/${scale.y}/${offset.x}/${offset.y}`;
-    },
-    [platformCoverOffset, platformCoverScale, platformInsets, platformOverlaySettings]
-  );
-
   const platformAliasMap = useMemo(() => {
     const map = new Map<string, string>();
     const knownPlatforms = new Set<string>([
@@ -7050,561 +6769,6 @@ export default function Page() {
     },
     [platformAliasMap]
   );
-
-  const selectedPlatformKey = useMemo(
-    () => resolvePlatformAlias(selectedPlatformForInsets),
-    [resolvePlatformAlias, selectedPlatformForInsets]
-  );
-
-  const quickTargetType: "tv" | "movie" | "book" | "game" = useMemo(() => {
-    return quickInsetTarget.startsWith("game:") ? "game" : (quickInsetTarget as "tv" | "movie" | "book");
-  }, [quickInsetTarget]);
-
-  const quickTargetPlatform = useMemo(() => {
-    if (!quickInsetTarget.startsWith("game:")) return "Default";
-    return quickInsetTarget.slice("game:".length) || "Default";
-  }, [quickInsetTarget]);
-
-  const quickTargetPlatformKey = useMemo(() => {
-    if (quickTargetType !== "game") return "Default";
-    return resolvePlatformAlias(quickTargetPlatform);
-  }, [quickTargetPlatform, quickTargetType, resolvePlatformAlias]);
-
-  const quickInsetTargetOptions = useMemo(
-    () => [
-      { value: "tv", label: "TV Shows" },
-      { value: "movie", label: "Movies" },
-      { value: "book", label: "Books" },
-      ...detectedPlatforms.map((platform) => ({
-        value: `game:${platform}`,
-        label: `Games: ${platform}`,
-      })),
-    ],
-    [detectedPlatforms]
-  );
-
-  const quickOverlayTargetKey = useMemo(
-    () => getOverlayFrameOverrideKey(quickTargetType, quickTargetPlatformKey),
-    [getOverlayFrameOverrideKey, quickTargetPlatformKey, quickTargetType]
-  );
-
-  const quickOverlayExpectedPath = useMemo(
-    () => getOverlayFrameDefaultPath(quickTargetType, quickTargetPlatformKey),
-    [getOverlayFrameDefaultPath, quickTargetPlatformKey, quickTargetType]
-  );
-
-  const quickOverlayExpectedFilename = useMemo(() => {
-    const parts = quickOverlayExpectedPath.split("/").filter(Boolean);
-    return parts[parts.length - 1] || quickOverlayExpectedPath;
-  }, [quickOverlayExpectedPath]);
-
-  const quickOverlayOverrideUrl = useMemo(
-    () => safeStr(overlayFrameOverrides[quickOverlayTargetKey]),
-    [overlayFrameOverrides, quickOverlayTargetKey]
-  );
-
-  const handleReplaceOverlayForQuickTarget = useCallback(
-    async (file: File | null | undefined) => {
-      if (!file) return;
-      const targetKey = quickOverlayTargetKey;
-      setUploadingOverlayForKey(targetKey);
-      setOverlayUploadError(null);
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("itemKey", targetKey);
-        formData.append("mediaType", "overlay-frame");
-        formData.append("title", targetKey);
-
-        const res = await fetch("/api/upload-cover", {
-          method: "POST",
-          body: formData,
-        });
-
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.url) {
-          throw new Error(payload?.error || `Overlay upload failed (${res.status})`);
-        }
-
-        const uploadedUrl = String(payload.url);
-        setOverlayFrameOverrides((prev) => {
-          const next = { ...prev, [targetKey]: uploadedUrl };
-          try {
-            localStorage.setItem("cdlOverlayFrameOverrides", JSON.stringify(next));
-          } catch (e) {
-            console.warn("Failed to persist overlay overrides locally:", e);
-          }
-          return next;
-        });
-
-        if (settingsWriteUrl) {
-          saveSettingToSheet(
-            `overlayFrameOverride:${targetKey}`,
-            uploadedUrl,
-            "Overlay Overrides",
-            `Overlay frame override for ${targetKey}`
-          );
-        }
-      } catch (e: any) {
-        const msg = e?.message || "Failed to upload overlay";
-        setOverlayUploadError(msg);
-        console.error("Overlay upload failed:", e);
-      } finally {
-        setUploadingOverlayForKey(null);
-      }
-    },
-    [quickOverlayTargetKey, saveSettingToSheet, settingsWriteUrl]
-  );
-
-  const handleResetOverlayForQuickTarget = useCallback(() => {
-    const targetKey = quickOverlayTargetKey;
-    setOverlayUploadError(null);
-    setOverlayFrameOverrides((prev) => {
-      if (!(targetKey in prev)) return prev;
-      const next = { ...prev };
-      delete next[targetKey];
-      try {
-        localStorage.setItem("cdlOverlayFrameOverrides", JSON.stringify(next));
-      } catch (e) {
-        console.warn("Failed to persist overlay overrides locally:", e);
-      }
-      return next;
-    });
-
-    if (settingsWriteUrl) {
-      saveSettingToSheet(
-        `overlayFrameOverride:${targetKey}`,
-        "",
-        "Overlay Overrides",
-        `Clear overlay frame override for ${targetKey}`
-      );
-    }
-  }, [quickOverlayTargetKey, saveSettingToSheet, settingsWriteUrl]);
-
-  const quickInsetSnapshot = useMemo(() => {
-    const tvInset = { top: caseInsetTopPx, right: caseInsetRightPx, bottom: caseInsetBottomPx, left: caseInsetLeftPx };
-    const movieInset = { top: movieInsetTopPx, right: movieInsetRightPx, bottom: movieInsetBottomPx, left: movieInsetLeftPx };
-    const bookInset = { top: bookInsetTopPx, right: bookInsetRightPx, bottom: bookInsetBottomPx, left: bookInsetLeftPx };
-    const tvOverlay = tvOverlaySettings;
-    const movieOverlay = movieOverlaySettings;
-    const bookOverlay = bookOverlaySettings;
-    const tvCoverOffsetSettings = tvCoverOffset;
-    const movieCoverOffsetSettings = movieCoverOffset;
-    const bookCoverOffsetSettings = bookCoverOffset;
-    const tvCoverScaleSettings = tvCoverScale;
-    const movieCoverScaleSettings = movieCoverScale;
-    const bookCoverScaleSettings = bookCoverScale;
-    const gameInset = platformInsets[quickTargetPlatformKey] || platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-    const gameOverlay = platformOverlaySettings[quickTargetPlatformKey] || platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-    const gameCoverOffset = platformCoverOffset[quickTargetPlatformKey] || platformCoverOffset["Default"] || { x: 0, y: 0 };
-    const gameCoverScale = platformCoverScale[quickTargetPlatformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
-    const gameFrameSource = getGameFrameSourceDimensions(quickTargetPlatformKey);
-    return {
-      inset: quickTargetType === "tv" ? tvInset : quickTargetType === "movie" ? movieInset : quickTargetType === "book" ? bookInset : gameInset,
-      overlay: quickTargetType === "tv" ? tvOverlay : quickTargetType === "movie" ? movieOverlay : quickTargetType === "book" ? bookOverlay : gameOverlay,
-      coverOffset:
-        quickTargetType === "tv"
-          ? tvCoverOffsetSettings
-          : quickTargetType === "movie"
-            ? movieCoverOffsetSettings
-            : quickTargetType === "book"
-              ? bookCoverOffsetSettings
-              : gameCoverOffset,
-      coverScale:
-        quickTargetType === "tv"
-          ? tvCoverScaleSettings
-          : quickTargetType === "movie"
-            ? movieCoverScaleSettings
-            : quickTargetType === "book"
-              ? bookCoverScaleSettings
-              : gameCoverScale,
-      sourceWidth: quickTargetType === "tv" ? CASE_SRC_W : quickTargetType === "movie" ? MOVIE_SRC_W : quickTargetType === "book" ? BOOK_SRC_W : gameFrameSource.width,
-      sourceHeight: quickTargetType === "tv" ? CASE_SRC_H : quickTargetType === "movie" ? MOVIE_SRC_H : quickTargetType === "book" ? BOOK_SRC_H : gameFrameSource.height,
-    };
-  }, [
-    BOOK_SRC_H,
-    BOOK_SRC_W,
-    CASE_SRC_H,
-    CASE_SRC_W,
-    MOVIE_SRC_H,
-    MOVIE_SRC_W,
-    bookInsetBottomPx,
-    bookInsetLeftPx,
-    bookInsetRightPx,
-    bookInsetTopPx,
-    bookOverlaySettings,
-    bookCoverOffset,
-    bookCoverScale,
-    caseInsetBottomPx,
-    caseInsetLeftPx,
-    caseInsetRightPx,
-    caseInsetTopPx,
-    tvOverlaySettings,
-    tvCoverOffset,
-    tvCoverScale,
-    movieInsetBottomPx,
-    movieInsetLeftPx,
-    movieInsetRightPx,
-    movieInsetTopPx,
-    movieOverlaySettings,
-    movieCoverOffset,
-    movieCoverScale,
-    platformCoverOffset,
-    platformCoverScale,
-    platformInsets,
-    platformOverlaySettings,
-    quickTargetPlatformKey,
-    quickTargetType,
-  ]);
-
-  useEffect(() => {
-    if (quickTargetType === "game") {
-      setSelectedPlatformForInsets(quickTargetPlatform);
-    }
-  }, [quickTargetPlatform, quickTargetType]);
-
-  const applyQuickInsetNudge = useCallback(
-    (direction: "up" | "down" | "left" | "right") => {
-      const step = quickInsetStep;
-      const inset = quickInsetSnapshot.inset;
-      const overlay = quickInsetSnapshot.overlay;
-      const cover = quickInsetSnapshot.coverOffset;
-      const isUp = direction === "up";
-      const isDown = direction === "down";
-      const isLeft = direction === "left";
-      const isRight = direction === "right";
-
-      if (quickInsetMode === "insetPosition") {
-        if (quickTargetType === "tv") {
-          if (isUp) { updateCaseInsetTopPx(inset.top - step); updateCaseInsetBottomPx(inset.bottom + step); }
-          if (isDown) { updateCaseInsetTopPx(inset.top + step); updateCaseInsetBottomPx(inset.bottom - step); }
-          if (isLeft) { updateCaseInsetLeftPx(inset.left - step); updateCaseInsetRightPx(inset.right + step); }
-          if (isRight) { updateCaseInsetLeftPx(inset.left + step); updateCaseInsetRightPx(inset.right - step); }
-          return;
-        }
-        if (quickTargetType === "movie") {
-          if (isUp) { updateMovieInsetTopPx(inset.top - step); updateMovieInsetBottomPx(inset.bottom + step); }
-          if (isDown) { updateMovieInsetTopPx(inset.top + step); updateMovieInsetBottomPx(inset.bottom - step); }
-          if (isLeft) { updateMovieInsetLeftPx(inset.left - step); updateMovieInsetRightPx(inset.right + step); }
-          if (isRight) { updateMovieInsetLeftPx(inset.left + step); updateMovieInsetRightPx(inset.right - step); }
-          return;
-        }
-        if (quickTargetType === "book") {
-          if (isUp) { updateBookInsetTopPx(inset.top - step); updateBookInsetBottomPx(inset.bottom + step); }
-          if (isDown) { updateBookInsetTopPx(inset.top + step); updateBookInsetBottomPx(inset.bottom - step); }
-          if (isLeft) { updateBookInsetLeftPx(inset.left - step); updateBookInsetRightPx(inset.right + step); }
-          if (isRight) { updateBookInsetLeftPx(inset.left + step); updateBookInsetRightPx(inset.right - step); }
-          return;
-        }
-        if (isUp) { updatePlatformInset(quickTargetPlatform, "top", inset.top - step); updatePlatformInset(quickTargetPlatform, "bottom", inset.bottom + step); }
-        if (isDown) { updatePlatformInset(quickTargetPlatform, "top", inset.top + step); updatePlatformInset(quickTargetPlatform, "bottom", inset.bottom - step); }
-        if (isLeft) { updatePlatformInset(quickTargetPlatform, "left", inset.left - step); updatePlatformInset(quickTargetPlatform, "right", inset.right + step); }
-        if (isRight) { updatePlatformInset(quickTargetPlatform, "left", inset.left + step); updatePlatformInset(quickTargetPlatform, "right", inset.right - step); }
-        return;
-      }
-
-      if (quickInsetMode === "overlayPosition") {
-        if (isUp) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "top", overlay.top - step);
-          else updateNonGameOverlay(quickTargetType, "top", overlay.top - step);
-        }
-        if (isDown) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "top", overlay.top + step);
-          else updateNonGameOverlay(quickTargetType, "top", overlay.top + step);
-        }
-        if (isLeft) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "left", overlay.left - step);
-          else updateNonGameOverlay(quickTargetType, "left", overlay.left - step);
-        }
-        if (isRight) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "left", overlay.left + step);
-          else updateNonGameOverlay(quickTargetType, "left", overlay.left + step);
-        }
-        return;
-      }
-
-      if (quickInsetMode === "overlayScale") {
-        if (isUp) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "height", overlay.height + step);
-          else updateNonGameOverlay(quickTargetType, "height", overlay.height + step);
-        }
-        if (isDown) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "height", overlay.height - step);
-          else updateNonGameOverlay(quickTargetType, "height", overlay.height - step);
-        }
-        if (isLeft) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "width", overlay.width - step);
-          else updateNonGameOverlay(quickTargetType, "width", overlay.width - step);
-        }
-        if (isRight) {
-          if (quickTargetType === "game") updatePlatformOverlay(quickTargetPlatform, "width", overlay.width + step);
-          else updateNonGameOverlay(quickTargetType, "width", overlay.width + step);
-        }
-        return;
-      }
-
-      if (quickInsetMode === "coverPosition") {
-        if (isUp) {
-          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y - step);
-          else updateNonGameCoverOffset(quickTargetType, "y", cover.y - step);
-        }
-        if (isDown) {
-          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "y", cover.y + step);
-          else updateNonGameCoverOffset(quickTargetType, "y", cover.y + step);
-        }
-        if (isLeft) {
-          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x - step);
-          else updateNonGameCoverOffset(quickTargetType, "x", cover.x - step);
-        }
-        if (isRight) {
-          if (quickTargetType === "game") updatePlatformCoverOffset(quickTargetPlatform, "x", cover.x + step);
-          else updateNonGameCoverOffset(quickTargetType, "x", cover.x + step);
-        }
-        return;
-      }
-
-      if (isLeft) {
-        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x - step);
-        else updateNonGameCoverScale(quickTargetType, "x", quickInsetSnapshot.coverScale.x - step);
-      }
-      if (isRight) {
-        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "x", quickInsetSnapshot.coverScale.x + step);
-        else updateNonGameCoverScale(quickTargetType, "x", quickInsetSnapshot.coverScale.x + step);
-      }
-      if (isUp) {
-        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y + step);
-        else updateNonGameCoverScale(quickTargetType, "y", quickInsetSnapshot.coverScale.y + step);
-      }
-      if (isDown) {
-        if (quickTargetType === "game") updatePlatformCoverScale(quickTargetPlatform, "y", quickInsetSnapshot.coverScale.y - step);
-        else updateNonGameCoverScale(quickTargetType, "y", quickInsetSnapshot.coverScale.y - step);
-      }
-    },
-    [
-      quickInsetMode,
-      quickInsetSnapshot,
-      quickInsetStep,
-      quickTargetPlatform,
-      quickTargetType,
-      updateBookInsetBottomPx,
-      updateBookInsetLeftPx,
-      updateBookInsetRightPx,
-      updateBookInsetTopPx,
-      updateCaseInsetBottomPx,
-      updateCaseInsetLeftPx,
-      updateCaseInsetRightPx,
-      updateCaseInsetTopPx,
-      updateMovieInsetBottomPx,
-      updateMovieInsetLeftPx,
-      updateMovieInsetRightPx,
-      updateMovieInsetTopPx,
-      updatePlatformCoverOffset,
-      updatePlatformCoverScale,
-      updatePlatformInset,
-      updatePlatformOverlay,
-      updateNonGameCoverOffset,
-      updateNonGameCoverScale,
-      updateNonGameOverlay,
-    ]
-  );
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!settingsPopupOpen || !settingsOpen.framePosition) return;
-      const active = document.activeElement as HTMLElement | null;
-      if (active) {
-        const tag = active.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) {
-          return;
-        }
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        applyQuickInsetNudge("up");
-      } else if (event.key === "ArrowDown") {
-        event.preventDefault();
-        applyQuickInsetNudge("down");
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        applyQuickInsetNudge("left");
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        applyQuickInsetNudge("right");
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [applyQuickInsetNudge, settingsOpen.framePosition, settingsPopupOpen]);
-
-  const quickInsetPreview = useMemo(() => {
-    const inset = quickInsetSnapshot.inset;
-    const top = (inset.top / quickInsetSnapshot.sourceHeight) * 100;
-    const right = (inset.right / quickInsetSnapshot.sourceWidth) * 100;
-    const bottom = (inset.bottom / quickInsetSnapshot.sourceHeight) * 100;
-    const left = (inset.left / quickInsetSnapshot.sourceWidth) * 100;
-    return {
-      top,
-      left,
-      width: Math.max(5, 100 - left - right),
-      height: Math.max(5, 100 - top - bottom),
-    };
-  }, [quickInsetSnapshot]);
-
-  const quickInsetSaveType: "tv" | "movie" | "book" | "game" = quickTargetType;
-  const quickInsetSaveLabel =
-    quickTargetType === "tv"
-      ? "Save TV Insets"
-      : quickTargetType === "movie"
-        ? "Save Movie Insets"
-        : quickTargetType === "book"
-          ? "Save Book Insets"
-          : `Save ${quickTargetPlatform} Inset`;
-
-  const resetQuickInsetTarget = useCallback(() => {
-    setQuickInsetSaveStatus("idle");
-
-    if (quickTargetType === "tv") {
-      setCaseInsetTopPx(156);
-      setCaseInsetRightPx(121);
-      setCaseInsetBottomPx(136);
-      setCaseInsetLeftPx(74);
-      setTvOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
-      setTvCoverScale({ ...DEFAULT_COVER_SCALE });
-      setTvCoverOffset({ ...DEFAULT_COVER_OFFSET });
-      saveSetting("caseInsetTopPx", 156, "TV Insets", "TV Case Top Inset (px)");
-      saveSetting("caseInsetRightPx", 121, "TV Insets", "TV Case Right Inset (px)");
-      saveSetting("caseInsetBottomPx", 136, "TV Insets", "TV Case Bottom Inset (px)");
-      saveSetting("caseInsetLeftPx", 74, "TV Insets", "TV Case Left Inset (px)");
-      saveSetting("tvOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "TV Overlay", "TV Overlay Width (%)");
-      saveSetting("tvOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "TV Overlay", "TV Overlay Height (%)");
-      saveSetting("tvOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "TV Overlay", "TV Overlay Top (%)");
-      saveSetting("tvOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "TV Overlay", "TV Overlay Left (%)");
-      saveSetting("tvCoverScaleX", DEFAULT_COVER_SCALE.x, "TV Cover", "TV Cover Scale X (%)");
-      saveSetting("tvCoverScaleY", DEFAULT_COVER_SCALE.y, "TV Cover", "TV Cover Scale Y (%)");
-      saveSetting("tvCoverOffsetX", DEFAULT_COVER_OFFSET.x, "TV Cover", "TV Cover Offset X (%)");
-      saveSetting("tvCoverOffsetY", DEFAULT_COVER_OFFSET.y, "TV Cover", "TV Cover Offset Y (%)");
-      return;
-    }
-
-    if (quickTargetType === "movie") {
-      setMovieInsetTopPx(156);
-      setMovieInsetRightPx(100);
-      setMovieInsetBottomPx(136);
-      setMovieInsetLeftPx(120);
-      setMovieOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
-      setMovieCoverScale({ ...DEFAULT_COVER_SCALE });
-      setMovieCoverOffset({ ...DEFAULT_COVER_OFFSET });
-      saveSetting("movieInsetTopPx", 156, "Movie Insets", "Movie Top Inset (px)");
-      saveSetting("movieInsetRightPx", 100, "Movie Insets", "Movie Right Inset (px)");
-      saveSetting("movieInsetBottomPx", 136, "Movie Insets", "Movie Bottom Inset (px)");
-      saveSetting("movieInsetLeftPx", 120, "Movie Insets", "Movie Left Inset (px)");
-      saveSetting("movieOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "Movie Overlay", "Movie Overlay Width (%)");
-      saveSetting("movieOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "Movie Overlay", "Movie Overlay Height (%)");
-      saveSetting("movieOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "Movie Overlay", "Movie Overlay Top (%)");
-      saveSetting("movieOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "Movie Overlay", "Movie Overlay Left (%)");
-      saveSetting("movieCoverScaleX", DEFAULT_COVER_SCALE.x, "Movie Cover", "Movie Cover Scale X (%)");
-      saveSetting("movieCoverScaleY", DEFAULT_COVER_SCALE.y, "Movie Cover", "Movie Cover Scale Y (%)");
-      saveSetting("movieCoverOffsetX", DEFAULT_COVER_OFFSET.x, "Movie Cover", "Movie Cover Offset X (%)");
-      saveSetting("movieCoverOffsetY", DEFAULT_COVER_OFFSET.y, "Movie Cover", "Movie Cover Offset Y (%)");
-      return;
-    }
-
-    if (quickTargetType === "book") {
-      setBookInsetTopPx(99);
-      setBookInsetRightPx(75);
-      setBookInsetBottomPx(104);
-      setBookInsetLeftPx(62);
-      setBookOverlaySettings({ ...DEFAULT_OVERLAY_SETTINGS });
-      setBookCoverScale({ ...DEFAULT_COVER_SCALE });
-      setBookCoverOffset({ ...DEFAULT_COVER_OFFSET });
-      saveSetting("bookInsetTopPx", 99, "Book Insets", "Book Top Inset (px)");
-      saveSetting("bookInsetRightPx", 75, "Book Insets", "Book Right Inset (px)");
-      saveSetting("bookInsetBottomPx", 104, "Book Insets", "Book Bottom Inset (px)");
-      saveSetting("bookInsetLeftPx", 62, "Book Insets", "Book Left Inset (px)");
-      saveSetting("bookOverlayWidth", DEFAULT_OVERLAY_SETTINGS.width, "Book Overlay", "Book Overlay Width (%)");
-      saveSetting("bookOverlayHeight", DEFAULT_OVERLAY_SETTINGS.height, "Book Overlay", "Book Overlay Height (%)");
-      saveSetting("bookOverlayTop", DEFAULT_OVERLAY_SETTINGS.top, "Book Overlay", "Book Overlay Top (%)");
-      saveSetting("bookOverlayLeft", DEFAULT_OVERLAY_SETTINGS.left, "Book Overlay", "Book Overlay Left (%)");
-      saveSetting("bookCoverScaleX", DEFAULT_COVER_SCALE.x, "Book Cover", "Book Cover Scale X (%)");
-      saveSetting("bookCoverScaleY", DEFAULT_COVER_SCALE.y, "Book Cover", "Book Cover Scale Y (%)");
-      saveSetting("bookCoverOffsetX", DEFAULT_COVER_OFFSET.x, "Book Cover", "Book Cover Offset X (%)");
-      saveSetting("bookCoverOffsetY", DEFAULT_COVER_OFFSET.y, "Book Cover", "Book Cover Offset Y (%)");
-      return;
-    }
-
-    const platformKey = quickTargetPlatformKey || "Default";
-    const settingKeys = [
-      `${platformKey}InsetTopPx`,
-      `${platformKey}InsetRightPx`,
-      `${platformKey}InsetBottomPx`,
-      `${platformKey}InsetLeftPx`,
-      `${platformKey}OverlayWidth`,
-      `${platformKey}OverlayHeight`,
-      `${platformKey}OverlayTop`,
-      `${platformKey}OverlayLeft`,
-      `${platformKey}CoverScaleX`,
-      `${platformKey}CoverScaleY`,
-      `${platformKey}CoverOffsetX`,
-      `${platformKey}CoverOffsetY`,
-    ];
-
-    if (platformKey === "Default") {
-      setPlatformInsets((prev) => ({ ...prev, Default: { top: 5, right: 5, bottom: 5, left: 5 } }));
-      setPlatformOverlaySettings((prev) => ({ ...prev, Default: { width: 100, height: 100, top: 0, left: 0 } }));
-      setPlatformCoverScale((prev) => ({ ...prev, Default: { x: 100, y: 100 } }));
-      setPlatformCoverOffset((prev) => ({ ...prev, Default: { x: 0, y: 0 } }));
-      saveSetting("DefaultInsetTopPx", 5, "Default Insets", "Default Top Inset (px)");
-      saveSetting("DefaultInsetRightPx", 5, "Default Insets", "Default Right Inset (px)");
-      saveSetting("DefaultInsetBottomPx", 5, "Default Insets", "Default Bottom Inset (px)");
-      saveSetting("DefaultInsetLeftPx", 5, "Default Insets", "Default Left Inset (px)");
-      saveSetting("DefaultOverlayWidth", 100, "Default Overlay", "Default Overlay Width (%)");
-      saveSetting("DefaultOverlayHeight", 100, "Default Overlay", "Default Overlay Height (%)");
-      saveSetting("DefaultOverlayTop", 0, "Default Overlay", "Default Overlay Top (%)");
-      saveSetting("DefaultOverlayLeft", 0, "Default Overlay", "Default Overlay Left (%)");
-      saveSetting("DefaultCoverScaleX", 100, "Default Cover", "Default Cover Scale X (%)");
-      saveSetting("DefaultCoverScaleY", 100, "Default Cover", "Default Cover Scale Y (%)");
-      saveSetting("DefaultCoverOffsetX", 0, "Default Cover", "Default Cover Offset X (%)");
-      saveSetting("DefaultCoverOffsetY", 0, "Default Cover", "Default Cover Offset Y (%)");
-      return;
-    }
-
-    // For platform-specific game targets, clear overrides and fall back to Default.
-    setPlatformInsets((prev) => {
-      const next = { ...prev };
-      delete next[platformKey];
-      return next;
-    });
-    setPlatformOverlaySettings((prev) => {
-      const next = { ...prev };
-      delete next[platformKey];
-      return next;
-    });
-    setPlatformCoverScale((prev) => {
-      const next = { ...prev };
-      delete next[platformKey];
-      return next;
-    });
-    setPlatformCoverOffset((prev) => {
-      const next = { ...prev };
-      delete next[platformKey];
-      return next;
-    });
-    setCustomizedPlatforms((prev) => {
-      const next = new Set(prev);
-      next.delete(platformKey);
-      return next;
-    });
-    settingKeys.forEach((key) => removeSetting(key));
-  }, [
-    quickTargetPlatformKey,
-    quickTargetType,
-    removeSetting,
-    saveSetting,
-  ]);
 
   // For rendering: use the first platform listed in the row as primary.
   // This keeps shelf rendering deterministic when a platform
@@ -8191,54 +7355,20 @@ export default function Page() {
       ] as any[];
     }
 
-    const homeToday = new Date();
-    homeToday.setHours(23, 59, 59, 999);
-    const homeTodayMs = homeToday.getTime();
-    const homeCurrentYear = homeToday.getFullYear();
-    const isFutureReleaseDateForHome = (value?: string) => {
-      const raw = safeStr(value);
-      if (!raw) return false;
-      if (/^\d{4}$/.test(raw)) {
-        return Number(raw) > homeCurrentYear;
-      }
-      const parsed = new Date(raw);
-      if (Number.isNaN(parsed.getTime())) return false;
-      return parsed.getTime() > homeTodayMs;
-    };
-    const isUnreleasedStatusForHome = (value?: string) => {
-      const token = normalizeStatus(value);
-      return (
-        token === "upcoming" ||
-        token === "in production" ||
-        token === "post production" ||
-        token === "planned" ||
-        token === "announced" ||
-        token === "rumored"
-      );
-    };
-
-    // Home: combine books + TV + movies + games and sort by releaseDate or lastAirDate (descending)
-    // Home hides items that are still unreleased.
+    // Home: combine all non-wishlist media and sort by release date.
     if (nav === "home") {
-      const qbBase = indexedBooks.filter((b) => b.ownershipNorm === "owned" && !isFutureReleaseDateForHome(b.item.releaseDate));
-      const qgBase = indexedGames.filter(
-        (g) => g.ownershipNorm !== "wishlist" && !isFutureReleaseDateForHome(g.item.releaseDate || g.item.releaseDateAlt)
-      );
+      const qbBase = indexedBooks.filter((b) => !hasWishlistOwnership(b.item.ownership));
+      const qgBase = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
       const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
       const qsBase = indexedShows.filter(
         (s) =>
           s.watchStatusNorm !== "wishlist" &&
-          s.showStatusNorm !== "in production" &&
-          !isUnreleasedStatusForHome(s.item.showStatus) &&
-          !isFutureReleaseDateForHome(s.item.firstAirDate)
+          normalizeStatus(s.item.watchStatus) !== "wishlist"
       );
       const qmBase = indexedMovies.filter(
         (m) =>
           m.watchStatusNorm !== "wishlist" &&
-          m.watchStatusNorm !== "in production" &&
-          m.movieStatusNorm !== "in production" &&
-          !isUnreleasedStatusForHome(m.item.status || m.item.movieStatus) &&
-          !isFutureReleaseDateForHome(m.item.releaseDate)
+          normalizeStatus(m.item.watchStatus) !== "wishlist"
       );
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
@@ -8491,25 +7621,8 @@ export default function Page() {
           if (movieWatchFilter === "Abandoned") return isAbandoned;
           return !isMovieWatched(m.item) && !isWatching && !isAbandoned;
         });
-      } else {
-        // Default Movies view: include watched, watching, and abandoned.
-        filtered = filtered.filter((m) => {
-          const watchStatus = normalizeStatus(m.item.watchStatus || m.item.watched);
-          const isAbandoned =
-            watchStatus === "abandoned" ||
-            watchStatus === "dropped" ||
-            watchStatus === "drop" ||
-            watchStatus === "quit" ||
-            watchStatus === "dnf";
-          const isWatching =
-            watchStatus === "watching" ||
-            watchStatus === "currently watching" ||
-            watchStatus === "in progress" ||
-            watchStatus === "paused";
-          return isMovieWatched(m.item) || isWatching || isAbandoned;
-        });
       }
-      
+
       // Apply genre filter if set
       if (movieGenreFilter) {
         filtered = filtered.filter((m) => m.genres.includes(movieGenreFilter));
@@ -8525,7 +7638,20 @@ export default function Page() {
       const hasGameFilters = Boolean(
         gamePlatformFilter || gameStatusFilter || gameOwnershipFilter || gameFormatFilter || gameYearPlayedFilter || gameGenreFilter
       );
-      let filtered = hasGameFilters ? indexedGames : indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+      let filtered = indexedGames;
+      if (gameViewMode === "backlog") {
+        filtered = indexedGames.filter((g) => isGameBacklogHeaderMatch(g.item));
+      } else if (gameViewMode === "completed") {
+        filtered = indexedGames.filter((g) => isGameCompletedStatus(g.item));
+      } else if (gameViewMode === "abandoned") {
+        filtered = indexedGames.filter((g) => isGameAbandonedStatus(g.item));
+      } else if (gameViewMode === "wishlist") {
+        filtered = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
+      } else if (gameViewMode === "library") {
+        filtered = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+      } else if (!hasGameFilters) {
+        filtered = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+      }
 
       if (gamePlatformFilter) {
         filtered = filtered.filter((g) => g.platformValues.includes(gamePlatformFilter));
@@ -8742,7 +7868,22 @@ export default function Page() {
 
     // TV default path
     const hasTvFilters = Boolean(watchFilter || showFilter || tagFilter);
-    const tvBase = hasTvFilters ? indexedShows : indexedShows.filter((s) => s.watchStatusNorm !== "backlog");
+    let tvBase = indexedShows;
+    if (nav === "tv") {
+      if (tvViewMode === "backlog") {
+        tvBase = indexedShows.filter((s) => !isTvWatchedStatus(s.item) && !isTvWatchingStatus(s.item) && !isTvAbandonedStatus(s.item));
+      } else if (tvViewMode === "watching") {
+        tvBase = indexedShows.filter((s) => isTvWatchingStatus(s.item));
+      } else if (tvViewMode === "watched") {
+        tvBase = indexedShows.filter((s) => isTvWatchedStatus(s.item));
+      } else if (tvViewMode === "abandoned") {
+        tvBase = indexedShows.filter((s) => isTvAbandonedStatus(s.item));
+      }
+    } else if (hasTvFilters) {
+      tvBase = indexedShows;
+    } else {
+      tvBase = indexedShows.filter((s) => s.watchStatusNorm !== "backlog");
+    }
     const watchStatusNorm = watchFilter ? normalizeStatus(watchFilter) : "";
     const showStatusNorm = showFilter ? normalizeStatus(showFilter) : "";
     const filteredByWatch = watchFilter
@@ -8765,8 +7906,8 @@ export default function Page() {
     applySorting, deduplicateGames,
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
-    isMovieWatched, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    activeSmartList, deferredQuery, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
+    isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
+    activeSmartList, deferredQuery, gameViewMode, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
   const watchlistTvSectionByVisibleKey = useMemo(() => {
@@ -9019,6 +8160,111 @@ export default function Page() {
     },
     [nav, persistActiveSmartListSortDefaults, persistBacklogSortSettings, persistStandardViewSortSettings, sortField]
   );
+
+  const activeBookQuickLink: BookQuickLinkKey =
+    nav === "books" && wishlistFilter
+      ? "wishlist"
+      : nav === "books" && normalizeStatus(readingStatusFilter || undefined) === "completed"
+        ? "completed"
+        : "library";
+
+  const activeMovieQuickLink: MovieQuickLinkKey | null =
+    nav === "movies"
+      ? movieWatchFilter === "Watched"
+        ? "watched"
+        : movieWatchFilter === "Watching"
+          ? "watching"
+          : movieWatchFilter === "Backlog"
+            ? "backlog"
+            : movieWatchFilter === "Abandoned"
+              ? "abandoned"
+              : "library"
+      : null;
+
+  const activeTvQuickLink: TvQuickLinkKey | null =
+    nav === "tv" && tvViewMode !== "custom"
+      ? tvViewMode
+      : null;
+
+  const activeGameQuickLink: GameQuickLinkKey | null =
+    nav === "games" && gameViewMode !== "custom"
+      ? gameViewMode
+      : null;
+
+  const activateBookQuickLink = useCallback((nextView: BookQuickLinkKey) => {
+    setNav("books");
+    setOpenSection("books");
+    setWishlistFilter(nextView === "wishlist");
+    setReadingStatusFilter(nextView === "completed" ? "Completed" : null);
+    setFormatFilter(null);
+    setSeriesFilter(null);
+    setGenreFilter(null);
+    setSortField(nextView === "completed" ? "CompletedDate" : "ReleaseDate");
+    setSortOrder("Desc");
+  }, []);
+
+  const activateMovieQuickLink = useCallback((nextView: MovieQuickLinkKey) => {
+    setNav("movies");
+    setOpenSection("movies");
+    setMovieWatchFilter(
+      nextView === "library"
+        ? null
+        : nextView === "watched"
+        ? "Watched"
+        : nextView === "watching"
+          ? "Watching"
+          : nextView === "abandoned"
+            ? "Abandoned"
+            : "Backlog"
+    );
+    setMovieGenreFilter(null);
+    setSortField("ReleaseDate");
+    setSortOrder("Desc");
+  }, []);
+
+  const activateTvQuickLink = useCallback((nextView: TvQuickLinkKey) => {
+    setNav("tv");
+    setOpenSection("tv");
+    setTvViewMode(nextView);
+    setWatchFilter(null);
+    setShowFilter(null);
+    setTagFilter(null);
+  }, []);
+
+  const activateGameQuickLink = useCallback((nextView: GameQuickLinkKey) => {
+    setNav("games");
+    setOpenSection("games");
+    setGameViewMode(nextView);
+    setGamePlatformFilter(null);
+    setGameStatusFilter(null);
+    setGameOwnershipFilter(null);
+    setGameFormatFilter(null);
+    setGameYearPlayedFilter(null);
+    setGameGenreFilter(null);
+    setSortField("ReleaseDate");
+    setSortOrder("Desc");
+  }, []);
+
+  const backlogHeaderQuickLinks: Array<{ key: BacklogQuickLinkKey; label: string }> = [
+    { key: "home", label: "Library" },
+    { key: "now-playing", label: "Now Playing" },
+    { key: "play-next", label: "Play Next" },
+    { key: "wishlist-books", label: "Read Next" },
+    { key: "watchlist-movies", label: "Movie Watchlist" },
+    { key: "watchlist-tv", label: "TV Watchlist" },
+  ];
+
+  const activeBacklogQuickLink: BacklogQuickLinkKey | null =
+    nav === "home" ||
+    nav === "now-playing" ||
+    nav === "play-next" ||
+    nav === "wishlist-books" ||
+    nav === "watchlist-movies" ||
+    nav === "watchlist-tv"
+      ? nav
+      : null;
+
+  const showBacklogHeaderQuickLinks = nav === "home" || activeBacklogQuickLink !== null;
 
   const persistBacklogManualOrder = useCallback(
     async (
@@ -9780,6 +9026,26 @@ export default function Page() {
   }, []);
 
   const stats = useMemo(() => {
+    const isCurrentToken = (value?: string) => {
+      const token = normalizeStatus(value);
+      return (
+        token === "now playing" ||
+        token === "playing" ||
+        token === "reading" ||
+        token === "currently reading" ||
+        token === "in progress" ||
+        token === "paused" ||
+        token === "watching" ||
+        token === "currently watching"
+      );
+    };
+    const isCompletedOrWatchedToken = (value?: string) => {
+      const token = normalizeStatus(value);
+      return token === "completed" || token === "watched";
+    };
+    const isAbandonedToken = (value?: string) => normalizeStatus(value) === "abandoned";
+    const currentYear = new Date().getFullYear().toString();
+
     const wishlistBooks = allBooks.filter((b) => {
       const isWishlist = hasWishlistOwnership(b.ownership);
       const isBacklog = normalizeStatus(b.status) === "backlog";
@@ -9807,6 +9073,14 @@ export default function Page() {
       return status !== "completed" && status !== "abandoned";
     }).length;
     const watchlistMovies = allMovies.filter((m) => !isMovieWatched(m) && !isMovieAbandonedStatus(m)).length;
+    const current = allBooks.filter((b) => isCurrentToken(b.status)).length + allShows.filter((s) => isCurrentToken(s.watchStatus)).length + allMovies.filter((m) => isCurrentToken(m.watchStatus) || isCurrentToken(m.status) || isCurrentToken(m.movieStatus)).length + allGames.filter((g) => isCurrentToken(g.status) || isCurrentToken(g.playStatus) || isCurrentToken(g.gameStatus)).length;
+    const completed = allBooks.filter((b) => isCompletedOrWatchedToken(b.status)).length + allShows.filter((s) => Boolean(safeStr(s.dateCompleted)) || isCompletedOrWatchedToken(s.watchStatus) || isCompletedOrWatchedToken(s.showStatus) || normalizeStatus(s.watched) === "true").length + allMovies.filter((m) => isMovieWatched(m) || isCompletedOrWatchedToken(m.watchStatus) || isCompletedOrWatchedToken(m.status) || isCompletedOrWatchedToken(m.movieStatus)).length + allGames.filter((g) => isCompletedOrWatchedToken(g.status) || isCompletedOrWatchedToken(g.playStatus) || isCompletedOrWatchedToken(g.gameStatus) || normalizeStatus(g.completed) === "true").length;
+    const abandoned = allBooks.filter((b) => isAbandonedToken(b.status)).length + allShows.filter((s) => isAbandonedToken(s.watchStatus) || isAbandonedToken(s.showStatus)).length + allMovies.filter((m) => isAbandonedToken(m.watchStatus) || isAbandonedToken(m.watched)).length + allGames.filter((g) => isAbandonedToken(g.status) || isAbandonedToken(g.playStatus) || isAbandonedToken(g.gameStatus)).length;
+    const yearThis =
+      allBooks.filter((b) => safeStr((b as any).completedYear) === currentYear || safeStr((b as any).completedDate).startsWith(currentYear)).length +
+      allShows.filter((s) => Array.isArray((s as any).watchYears) ? (s as any).watchYears.includes(currentYear) : false).length +
+      allMovies.filter((m) => safeStr((m as any).tagValue) === currentYear).length +
+      allGames.filter((g) => safeStr((g as any).yearPlayedValue) === currentYear).length;
 
     return {
       movies: allMovies.filter((m) => isMovieWatched(m)).length,
@@ -9819,6 +9093,10 @@ export default function Page() {
       wishlist: wishlistGames,
       watchlistMovies,
       watchlistTv,
+      current,
+      completed,
+      abandoned,
+      yearThis,
     };
   }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
@@ -9851,113 +9129,37 @@ export default function Page() {
     const isBook = item.__type === "book";
     const isMovie = item.__type === "movie";
     const isGame = item.__type === "game";
-    const itemSize = isSimpleShelfPresentation
-      ? simpleShelfPosterSize
+    const isAudiobook = isAudiobookItem(item);
+    const coverRowHeight = activeCoverScalePct <= 0 ? 0 : shelfRowHeight;
+    const targetHeight = isAudiobook
+      ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.audiobook)
       : isBook
-        ? mobileAdjustedPosterSizeBooks
+        ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.book)
         : isMovie
-          ? mobileAdjustedPosterSizeMovies
+          ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.movie)
           : isGame
-            ? mobileAdjustedPosterSizeGames
-            : mobileAdjustedPosterSizeTv;
-    const caseWidth = itemSize;
-    const caseHeight = isSimpleShelfPresentation
-      ? Math.round(itemSize * 1.5)
+            ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.game)
+            : Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.tv);
+    const coverSrc = getDisplayCoverUrl(item);
+    const coverAsset = coverSrc ? coverTrimAssets[coverSrc] : null;
+    const fallbackAspect = isAudiobook
+      ? 1
       : isBook
-        ? Math.round(itemSize * bookHeightMultiplier)
-        : Math.round(itemSize * 1.5);
-
-    if (isSimpleShelfPresentation) {
-      return { itemSize, visualLeft: 0, visualWidth: caseWidth };
-    }
-
-    const gamePlatformRaw = isGame ? safeStr(item?.__renderPlatform || item?.platform) : undefined;
-    const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
-    const gameFrameSource = isGame ? getGameFrameSourceDimensions(gamePlatform) : DEFAULT_GAME_FRAME_SIZE;
-    const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? gameFrameSource.width : CASE_SRC_W;
-    const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? gameFrameSource.height : CASE_SRC_H;
-
-    let insetTopVal: number;
-    let insetRightVal: number;
-    let insetBottomVal: number;
-    let insetLeftVal: number;
-    if (isBook) {
-      insetTopVal = bookInsetTopPx;
-      insetRightVal = bookInsetRightPx;
-      insetBottomVal = bookInsetBottomPx;
-      insetLeftVal = bookInsetLeftPx;
-    } else if (isMovie) {
-      insetTopVal = movieInsetTopPx;
-      insetRightVal = movieInsetRightPx;
-      insetBottomVal = movieInsetBottomPx;
-      insetLeftVal = movieInsetLeftPx;
-    } else if (isGame) {
-      const platformKey = gamePlatform || "Default";
-      const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-      const platformInset = platformInsets[platformKey];
-      const insets = platformKey !== "Default" && platformInset ? platformInset : defaultInsets;
-      insetTopVal = insets.top;
-      insetRightVal = insets.right;
-      insetBottomVal = insets.bottom;
-      insetLeftVal = insets.left;
-    } else {
-      insetTopVal = caseInsetTopPx;
-      insetRightVal = caseInsetRightPx;
-      insetBottomVal = caseInsetBottomPx;
-      insetLeftVal = caseInsetLeftPx;
-    }
-
-    const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
-    const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
-    const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
-    const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
-    const insetWidth = Math.max(1, caseWidth - insetLeft - insetRight);
-
-    if (!isGame) {
-      const visualLeft = insetLeft;
-      const visualWidth = insetWidth;
-      return { itemSize, visualLeft, visualWidth };
-    }
-
-    const platformKey = gamePlatform || "Default";
-    const coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
-    const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
-    const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
-    const coverScaleX = coverScale.x / 100;
-    const coverTranslateX = platformCoverOffsetSettings.x * 0.35;
-    const coverTranslateXPx = (coverTranslateX / 100) * insetWidth;
-    const coverVisualWidth = insetWidth * coverScaleX;
-    const rawCoverLeft = insetLeft + (insetWidth - coverVisualWidth) / 2 + coverTranslateXPx;
-    const rawCoverRight = rawCoverLeft + coverVisualWidth;
-    const visualLeft = Math.max(0, rawCoverLeft);
-    const visualRight = Math.min(caseWidth, rawCoverRight);
-    const visualWidth = Math.max(1, visualRight - visualLeft);
-    return { itemSize, visualLeft, visualWidth };
+        ? 0.66
+        : isGame
+          ? 1.25
+          : 0.67;
+    const coverAspect = isAudiobook ? 1 : coverAsset?.aspect || fallbackAspect;
+    const caseHeight = Math.max(0, targetHeight);
+    const caseWidth = Math.max(0, Math.round(caseHeight * coverAspect));
+    return { caseWidth, caseHeight, visualLeft: 0, visualWidth: caseWidth };
   }, [
-    isSimpleShelfPresentation,
-    simpleShelfPosterSize,
-    bookHeightMultiplier,
-    mobileAdjustedPosterSizeBooks,
-    mobileAdjustedPosterSizeGames,
-    mobileAdjustedPosterSizeMovies,
-    mobileAdjustedPosterSizeTv,
-    getRenderPlatform,
-    getGameFrameSourceDimensions,
-    bookInsetTopPx,
-    bookInsetRightPx,
-    bookInsetBottomPx,
-    bookInsetLeftPx,
-    movieInsetTopPx,
-    movieInsetRightPx,
-    movieInsetBottomPx,
-    movieInsetLeftPx,
-    caseInsetTopPx,
-    caseInsetRightPx,
-    caseInsetBottomPx,
-    caseInsetLeftPx,
-    platformInsets,
-    platformCoverScale,
-    platformCoverOffset,
+    isAudiobookItem,
+    activeCoverScalePct,
+    rawCoverRowHeightRatioByMedia,
+    shelfRowHeight,
+    coverTrimAssets,
+    getDisplayCoverUrl,
   ]);
 
   const shelves = useMemo(() => {
@@ -9969,13 +9171,13 @@ export default function Page() {
 
     for (let i = 0; i < shows.length; i++) {
       const show = shows[i];
-      const { visualWidth } = getItemVisualLayout(show);
-      const itemWidth = visualWidth + (currentShelf.length > 0 ? shelfGap : 0);
+      const { caseWidth } = getItemVisualLayout(show);
+      const itemWidth = caseWidth + (currentShelf.length > 0 ? shelfGap : 0);
 
       if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
         out.push(currentShelf);
         currentShelf = [show];
-        currentWidth = visualWidth;
+        currentWidth = caseWidth;
       } else {
         currentShelf.push(show);
         currentWidth += itemWidth;
@@ -9991,20 +9193,83 @@ export default function Page() {
     return out;
   }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout]);
 
+  const shelfHeights = useMemo(() => {
+    return shelves.map((shelfShows) => {
+      if (nav !== "books") return shelfRowHeight;
+      if (!shelfShows.length) return shelfRowHeight;
+      const tallestCover = shelfShows.reduce((maxHeight, show) => {
+        const { caseHeight } = getItemVisualLayout(show);
+        return Math.max(maxHeight, caseHeight);
+      }, 0);
+      return Math.max(1, tallestCover + 15);
+    });
+  }, [getItemVisualLayout, nav, shelfRowHeight, shelves]);
+
+  const shelfOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let runningOffset = 0;
+    for (const height of shelfHeights) {
+      offsets.push(runningOffset);
+      runningOffset += height;
+    }
+    return { offsets, totalHeight: runningOffset };
+  }, [shelfHeights]);
+
   const insetEditorOpen = settingsPopupOpen && settingsOpen.framePosition;
 
   const shelfRenderWindow = useMemo(() => {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
-    const start = Math.max(0, Math.floor(localScroll / shelfRowHeight) - 2);
-    const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / shelfRowHeight) + 2);
+    if (nav !== "books") {
+      const start = Math.max(0, Math.floor(localScroll / shelfRowHeight) - 2);
+      const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / shelfRowHeight) + 2);
+      return {
+        start,
+        end,
+        padTop: start * shelfRowHeight,
+        padBottom: Math.max(0, (shelves.length - end) * shelfRowHeight),
+      };
+    }
+    const rowCount = shelves.length;
+    const offsets = shelfOffsets.offsets;
+    const heights = shelfHeights;
+    let start = 0;
+    let end = rowCount;
+    let low = 0;
+    let high = rowCount - 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const rowBottom = offsets[mid] + heights[mid];
+      if (rowBottom < localScroll) {
+        low = mid + 1;
+      } else {
+        start = mid;
+        high = mid - 1;
+      }
+    }
+    start = Math.max(0, start - 2);
+    low = 0;
+    high = rowCount - 1;
+    const targetBottom = localScroll + viewH;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (offsets[mid] > targetBottom) {
+        high = mid - 1;
+      } else {
+        end = mid + 1;
+        low = mid + 1;
+      }
+    }
+    end = Math.min(rowCount, end + 2);
+    const padTop = offsets[start] || 0;
+    const padBottom = Math.max(0, shelfOffsets.totalHeight - (end < rowCount ? offsets[end] : shelfOffsets.totalHeight));
     return {
       start,
       end,
-      padTop: start * shelfRowHeight,
-      padBottom: Math.max(0, (shelves.length - end) * shelfRowHeight),
+      padTop,
+      padBottom,
     };
-  }, [shelves.length, windowScrollY, stageTopAbs, viewportH, shelfRowHeight]);
+  }, [nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelves.length, stageTopAbs, viewportH, windowScrollY]);
 
   const visibleShelves = useMemo(
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
@@ -10031,15 +9296,47 @@ export default function Page() {
     { key: "completed", label: "Completed" },
     { key: "abandoned", label: "Abandoned" },
   ];
-  const showStartupSplash = !splashMinDurationDone || !initialLoadSettled;
   const useElectricBlueStatsBackdrop = nav === "statistics" && isElectricBlueThemeActive;
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics";
+  const seededBookDetailPalette = useMemo(() => {
+    if (!bookDetailItem || getMediaType(bookDetailItem) !== "book") return null;
+    return buildSeedDetailPalette(bookDetailItem, getDisplayCoverUrl(bookDetailItem));
+  }, [bookDetailItem, getDisplayCoverUrl]);
+  const activeBookDetailKey =
+    bookDetailItem && getMediaType(bookDetailItem) === "book" ? getMediaItemKey(bookDetailItem) : "";
+  const activeBookDetailPalette =
+    bookDetailPalette?.key === activeBookDetailKey ? bookDetailPalette : seededBookDetailPalette;
+  const activeBookDetailBackground =
+    bookDetailItem && getMediaType(bookDetailItem) === "book"
+      ? buildDetailGradientBackground(
+          (activeBookDetailPalette ?? { start: "#8e6e67", end: "#6277a3" }).start,
+          (activeBookDetailPalette ?? { start: "#8e6e67", end: "#6277a3" }).end
+        )
+      : null;
+  const handleBookDetailPaletteChange = useCallback((nextPalette: { start: string; end: string } | null) => {
+    if (!nextPalette || !bookDetailItem || getMediaType(bookDetailItem) !== "book") {
+      setBookDetailPalette(null);
+      return;
+    }
+    setBookDetailPalette({
+      key: getMediaItemKey(bookDetailItem),
+      start: nextPalette.start,
+      end: nextPalette.end,
+    });
+  }, [bookDetailItem]);
+  const sidebarDetailGradientActive = Boolean(activeBookDetailBackground);
+  const sidebarDetailShellBackground = sidebarDetailGradientActive
+    ? "linear-gradient(180deg, rgba(243, 245, 247, 0.38) 0%, rgba(231, 235, 239, 0.3) 100%)"
+    : sidebarShellBackground;
+  const sidebarDetailBackplateOpacity = sidebarDetailGradientActive ? 0.74 : sidebarBackplateOpacity;
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: useElectricBlueStatsBackdrop
+        background: activeBookDetailBackground
+          ? activeBookDetailBackground
+          : useElectricBlueStatsBackdrop
           ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
           : isSimpleShelfPresentation
             ? simplePresentationBackground
@@ -10050,112 +9347,6 @@ export default function Page() {
         "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
       } as CSSProperties}
     >
-      {showStartupSplash ? (
-        <>
-          <style>{`
-            @keyframes startupSplashSpin {
-              to {
-                transform: rotate(360deg);
-              }
-            }
-          `}</style>
-          <div
-            role="status"
-            aria-live="polite"
-            aria-label={`${APP_TITLE} is loading`}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 2147483600,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(4, 8, 18, 0.12)",
-              backdropFilter: "blur(2px)",
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-                width: "min(calc(100vw - 18px), 1600px)",
-                height: "min(calc(100vh - 18px), 980px)",
-                borderRadius: "clamp(28px, 3.5vw, 52px)",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background:
-                  "radial-gradient(140% 90% at 50% 0%, rgba(88, 133, 215, 0.23) 0%, rgba(88, 133, 215, 0) 56%), linear-gradient(180deg, rgba(18, 34, 61, 0.82) 0%, rgba(8, 18, 38, 0.82) 100%)",
-                border: "1px solid rgba(123, 165, 236, 0.42)",
-                boxShadow:
-                  "0 28px 80px rgba(2, 8, 18, 0.72), inset 0 0 0 1px rgba(81, 126, 201, 0.22)",
-                backdropFilter: "blur(10px)",
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  pointerEvents: "none",
-                  background:
-                    "linear-gradient(180deg, rgba(163, 199, 255, 0.2) 0%, rgba(163, 199, 255, 0.05) 22%, rgba(163, 199, 255, 0) 58%)",
-                }}
-              />
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  pointerEvents: "none",
-                  background:
-                    "radial-gradient(130% 120% at 50% 50%, rgba(10, 24, 46, 0) 42%, rgba(6, 12, 24, 0.34) 100%)",
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "clamp(30px, 5vh, 66px)",
-                  padding: "clamp(22px, 5vw, 72px)",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={APP_ICON}
-                  alt={APP_TITLE}
-                  style={{
-                    width: "clamp(420px, 56vw, 980px)",
-                    maxWidth: "90%",
-                    height: "auto",
-                    objectFit: "contain",
-                    filter: "drop-shadow(0 14px 24px rgba(0, 0, 0, 0.46))",
-                  }}
-                />
-                <div
-                  aria-hidden
-                  style={{
-                    width: "clamp(92px, 11vw, 160px)",
-                    height: "clamp(92px, 11vw, 160px)",
-                    borderRadius: "50%",
-                    border: "clamp(8px, 0.9vw, 12px) solid rgba(126, 167, 243, 0.28)",
-                    borderTopColor: "#82b3ff",
-                    borderRightColor: "#b4d0ff",
-                    boxShadow: "0 0 28px rgba(89, 141, 240, 0.48)",
-                    animation: "startupSplashSpin 860ms linear infinite",
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
       {nav !== "statistics" ? (
         <div
           aria-hidden
@@ -10167,16 +9358,8 @@ export default function Page() {
             height: 45,
             zIndex: 1300,
             pointerEvents: "none",
-            backgroundImage: isElectricBlueShelfPresentation ? ELECTRIC_BLUE_TOP_BEAM_BACKGROUND : isSimpleShelfPresentation ? simplePresentationBackground : `url(${currentTopHeaderImage})`,
-            backgroundRepeat: isElectricBlueShelfPresentation ? "no-repeat, no-repeat" : isSimpleShelfPresentation ? "no-repeat" : "repeat-x",
-            backgroundPosition: "0 0",
-            backgroundSize: isElectricBlueShelfPresentation ? "100% 100%, 100% 100%" : isSimpleShelfPresentation ? "100% 100%" : "auto 45px",
-            backgroundColor: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
-            boxShadow: isElectricBlueShelfPresentation
-              ? "inset 0 14px 24px rgba(4, 12, 26, 0.58), inset 0 -1px 0 rgba(168, 213, 255, 0.42)"
-              : isSimpleShelfPresentation
-                ? "none"
-                : "inset 0 16px 24px rgba(0, 0, 0, 0.42)",
+            background: "transparent",
+            boxShadow: "none",
           }}
         />
       ) : null}
@@ -10647,6 +9830,91 @@ export default function Page() {
           alignItems: "stretch",
         }}
       >
+        {sandboxMode && !isMobileLayout ? (
+          <div
+            aria-hidden
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 6000,
+              pointerEvents: "none",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: topSafeInset + 6,
+                left: SIDEBAR_WIDTH + 12,
+                right: 12,
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              {[
+                `HEADER ${Math.round(45)}px`,
+                `SIDEBAR ${SIDEBAR_WIDTH}px`,
+                `STAGE ${Math.max(0, viewportW - SIDEBAR_WIDTH)}px`,
+                `ROW H ${Math.round(shelfRowHeight)}px`,
+                `GAP ${Math.round(shelfGap)}px`,
+                `CARD RADIUS ${5}px`,
+              ].map((label) => (
+                <span
+                  key={label}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    border: sandboxOverlayBorder,
+                    background: sandboxOverlayBg,
+                    color: sandboxOverlayText,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    boxShadow: "0 3px 10px rgba(0, 0, 0, 0.28)",
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                top: topSafeInset + 50,
+                left: SIDEBAR_WIDTH + 12,
+                right: 12,
+                bottom: 12,
+                border: "1px dashed rgba(255, 214, 102, 0.52)",
+                borderRadius: 10,
+                boxShadow: "inset 0 0 0 1px rgba(255, 214, 102, 0.08)",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  left: 8,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: sandboxOverlayBorder,
+                  background: sandboxOverlayBg,
+                  color: sandboxOverlayText,
+                  fontSize: 10,
+                  fontWeight: 900,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Main content / shelf area
+              </span>
+            </div>
+          </div>
+        ) : null}
         {/* LEFT MENU */}
         <aside
           className="sidebar"
@@ -10667,7 +9935,7 @@ export default function Page() {
             boxShadow: "none",
             display: isMobileLayout ? "none" : "flex",
             flexDirection: "column",
-            padding: "6px",
+            padding: sidebarDetailGradientActive ? "0px" : "6px",
           }}
         >
           <div
@@ -10725,12 +9993,12 @@ export default function Page() {
             aria-hidden
             style={{
               position: "absolute",
-              inset: 6,
+              inset: sidebarDetailGradientActive ? 0 : 6,
               zIndex: 1,
               pointerEvents: "none",
               borderRadius: isSimpleSidebarTheme ? 12 : 16,
               overflow: "hidden",
-              opacity: sidebarBackplateOpacity,
+              opacity: sidebarDetailBackplateOpacity,
               backgroundImage: currentTheme.background,
               backgroundSize: sidebarBackplateBackgroundSize,
               backgroundPosition: sidebarBackplateBackgroundPosition,
@@ -10742,10 +10010,12 @@ export default function Page() {
             style={{
               position: "relative",
               zIndex: 2,
-              background: sidebarShellBackground,
-              borderRadius: isSimpleSidebarTheme ? 12 : 16,
+              background: sidebarDetailShellBackground,
+              borderRadius: isSimpleSidebarTheme ? 12 : isMacSidebarTheme ? 18 : 16,
               boxShadow: sidebarShellShadow,
-              border: "none",
+              border: isMacSidebarTheme ? "1px solid rgba(255, 255, 255, 0.38)" : "none",
+              backdropFilter: isMacSidebarTheme ? "blur(22px) saturate(1.2)" : "none",
+              WebkitBackdropFilter: isMacSidebarTheme ? "blur(22px) saturate(1.2)" : "none",
               display: "flex",
               flexDirection: "column",
               flex: 1,
@@ -10788,58 +10058,6 @@ export default function Page() {
             />
           </div>
 
-          {/* Rolodex Counter */}
-          {!loading && !isSimpleSidebarTheme && (
-            <div
-              style={{
-                padding: "10px 10px 0 10px",
-                display: "flex",
-                justifyContent: "center",
-                width: "100%",
-              }}
-            >
-              <RolodexCounter 
-                value={shows.length} 
-                className={isElectricBlueSidebarTheme ? "rolodexCounterNeonSync" : ""}
-                digitHeight={counterDigitHeight}
-                digitWidth={counterDigitWidth}
-                spacing={counterDigitSpacing}
-                numberFontSize={counterDigitNumberFontSize}
-                labelFontSize={counterLabelFontSize}
-                labelFontWeight={counterLabelFontWeight}
-                labelTop={counterLabelTop}
-                labelLeft={counterLabelLeft}
-                counterTop={counterTop}
-                counterLeft={isElectricBlueSidebarTheme ? 0 : counterLeft}
-                labelColor={currentTheme.rolodexLabelColor}
-                commaColor={isElectricBlueSidebarTheme ? "rgba(236, 248, 255, 0.95)" : currentTheme.rolodexColor}
-                digitNumberColor={isElectricBlueSidebarTheme ? "rgba(236, 248, 255, 0.98)" : currentTheme.rolodexDigitColor}
-                digitTileBackground={
-                  isElectricBlueSidebarTheme
-                    ? "linear-gradient(180deg, rgba(7, 10, 16, 0.98) 0%, rgba(0, 0, 0, 0.97) 100%)"
-                    : currentTheme.rolodexTileBg
-                }
-                digitTileBorder={isElectricBlueSidebarTheme ? "rgba(255, 255, 255, 0.94)" : currentTheme.rolodexTileBorder}
-                digitTileShadow={
-                  isElectricBlueSidebarTheme
-                    ? "0 1px 2px rgba(0, 0, 0, 0.48), 0 0 7px rgba(196, 229, 255, 0.24), inset 0 0 0 1px rgba(214, 236, 255, 0.46), inset 0 -12px 18px rgba(16, 54, 104, 0.44)"
-                    : undefined
-                }
-                digitHighlightBackground={
-                  isElectricBlueSidebarTheme
-                    ? "linear-gradient(rgba(230, 243, 255, 0.21), rgba(230, 243, 255, 0))"
-                    : undefined
-                }
-                digitNumberTextShadow={
-                  isElectricBlueSidebarTheme
-                    ? "0 0 3px rgba(244, 252, 255, 0.82), 0 0 10px rgba(196, 229, 255, 0.66), 0 0 18px rgba(132, 188, 255, 0.44)"
-                    : undefined
-                }
-                showLabel={!isElectricBlueSidebarTheme}
-              />
-            </div>
-          )}
-
           <div
             style={{
               padding: "0 8px",
@@ -10864,87 +10082,41 @@ export default function Page() {
               }}
             >
               <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
-              <div
-                style={{
-                  fontSize: sidebarHeaderFontSize,
-                  fontWeight: sidebarHeaderFontWeight,
-                  letterSpacing: "0.04em",
-                  color: currentTheme.primaryColor,
-                  marginBottom: 6,
-                  fontFamily: sidebarSectionFontFamily,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
+              <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}>
                 <span>LIBRARY</span>
                 <span />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
-                  onClick={() => setNav("home")}
+                  onClick={activateHomeLibrary}
                   className={`sideItem ${nav === "home" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
+                  style={sidebarPrimaryItemRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "home" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={sidebarPrimaryItemLabelStyle}>
                     <span
                       aria-hidden
                       style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
+                        ...sidebarIconSlotStyle,
                         background: nav === "home" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
                       }}
                     >
                       <img src={getSidebarIconSrc("home", "/icon-home.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "home")} title={uploadingSidebarIconKey === "home" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
                     </span>
                     Home
                   </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 16, fontWeight: 400 }}>›</span>
                 </button>
                 <button
-                  onClick={() => {
-                    setNav("books");
-                    setOpenSection((s) => (s === "books" ? null : "books"));
-                  }}
+                  onClick={() => openMediaSidebar("books")}
                   className={`sideItem ${nav === "books" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
+                  style={sidebarPrimaryItemRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={sidebarPrimaryItemLabelStyle}>
                     <span
                       aria-hidden
                       style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
+                        ...sidebarIconSlotStyle,
                         background: nav === "books" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
                       }}
                     >
                       <img src={getSidebarIconSrc("books", "/icon-books.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "books")} title={uploadingSidebarIconKey === "books" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
@@ -10962,190 +10134,125 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#6ba56a",
+                        background: nav === "books" ? sidebarActiveAccent.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#6ba56a",
                         color: "#fff",
                       }}
                     >
                       {stats.books}
                     </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
-                {openSection === "books" ? (
-                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <button
-                      onClick={() => setReadingStatusOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Reading Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
-                    </button>
-                    {readingStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {readingStatuses.map((status) => {
-                          const active = readingStatusFilter === status;
-                          return (
-                            <button
-                              key={`reading-${status}`}
-                              onClick={() => setReadingStatusFilter(active ? null : status)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
+                {nav === "books" ? (
+                  <div style={{ marginTop: 4, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 5, order: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 0 }}>
+                        <span style={sidebarSectionHeaderTextStyle}>Reading Status</span>
+                        <span />
+                      </div>
+                      {readingStatuses.map((status) => {
+                        const active = readingStatusFilter === status;
+                        return (
+                          <button
+                            key={`reading-${status}`}
+                            onClick={() => setReadingStatusFilter(active ? null : status)}
+                            className={`sideSubItem ${active ? "active" : ""}`}
+                            style={sidebarSubItemRowStyle}
+                          >
+                            <span style={sidebarSubItemLabelStyle}>
+                              {status}
+                            </span>
+                            <span
                               style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
+                                minWidth: 14,
+                                height: 12,
+                                padding: "0 3px",
+                                borderRadius: 8,
+                                fontSize: 9,
+                                textAlign: "center",
+                                background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                color: sidebarInlineCountColor,
+                                border: sidebarInlineCountBorder,
+                                display: "inline-flex",
                                 alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
+                                justifyContent: "center",
                               }}
                             >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>
-                                {status}
-                              </span>
-                              <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                {readingStatusCounts[status] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
+                              {readingStatusCounts[status] ?? 0}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    <button
-                      onClick={() => setFormatOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Formats</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
-                    </button>
-                    {formatOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {bookFormats.map((format) => {
-                          const active = formatFilter === format;
-                          return (
-                            <button
-                              key={`format-${format}`}
-                              onClick={() => setFormatFilter(active ? null : format)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 0, paddingTop: 3 }}>
+                        <span style={sidebarSectionHeaderTextStyle}>Formats</span>
+                        <span />
+                      </div>
+                      {bookFormats.map((format) => {
+                        const active = formatFilter === format;
+                        return (
+                          <button
+                            key={`format-${format}`}
+                            onClick={() => setFormatFilter(active ? null : format)}
+                            className={`sideSubItem ${active ? "active" : ""}`}
+                            style={sidebarSubItemRowStyle}
+                          >
+                            <span style={sidebarSubItemLabelStyle}>
+                              {format}
+                            </span>
+                            <span
                               style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
+                                minWidth: 14,
+                                height: 12,
+                                padding: "0 3px",
+                                borderRadius: 8,
+                                fontSize: 9,
+                                textAlign: "center",
+                                background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                                color: sidebarInlineCountColor,
+                                border: sidebarInlineCountBorder,
+                                display: "inline-flex",
                                 alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
+                                justifyContent: "center",
                               }}
                             >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>
-                                {format}
-                              </span>
-                              <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                {formatCounts[format] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
+                              {formatCounts[format] ?? 0}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
                     <button
                       onClick={() => setSeriesOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Series</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Series</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{seriesOpen ? "−" : "+"}</span>
                     </button>
                     {seriesOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {bookSeries.map((series) => {
                           const active = seriesFilter === series;
                           return (
-                            <button
-                              key={`series-${series}`}
-                              onClick={() => setSeriesFilter(active ? null : series)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>
+                          <button
+                            key={`series-${series}`}
+                            onClick={() => setSeriesFilter(active ? null : series)}
+                            className={`sideSubItem ${active ? "active" : ""}`}
+                            style={sidebarSubItemRowStyle}
+                          >
+                              <span style={sidebarSubItemLabelStyle}>
                                 {series}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
+                                  minWidth: 14,
+                                  height: 12,
+                                  padding: "0 3px",
                                   borderRadius: 8,
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   textAlign: "center",
                                   background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
                                   color: sidebarInlineCountColor,
@@ -11165,50 +10272,32 @@ export default function Page() {
 
                     <button
                       onClick={() => setGenreOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Categories</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Genres</span>
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {bookGenres.map((genre) => {
                           const active = genreFilter === genre;
                           return (
-                            <button
-                              key={`genre-${genre}`}
-                              onClick={() => setGenreFilter(active ? null : genre)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>
+                          <button
+                            key={`genre-${genre}`}
+                            onClick={() => setGenreFilter(active ? null : genre)}
+                            className={`sideSubItem ${active ? "active" : ""}`}
+                            style={sidebarSubItemRowStyle}
+                          >
+                              <span style={sidebarSubItemLabelStyle}>
                                 {genre}
                               </span>
                               <span
                                 style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
+                                  minWidth: 14,
+                                  height: 12,
+                                  padding: "0 3px",
                                   borderRadius: 8,
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   textAlign: "center",
                                   background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
                                   color: sidebarInlineCountColor,
@@ -11226,62 +10315,6 @@ export default function Page() {
                       </div>
                     ) : null}
 
-                    <button
-                      onClick={() => setWishlistOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Wishlist</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{wishlistOpen ? "−" : "+"}</span>
-                    </button>
-                    {wishlistOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <button
-                          onClick={() => setWishlistFilter((v) => !v)}
-                          className={`sideSubItem ${wishlistFilter ? "active" : ""}`}
-                          style={{
-                            width: "100%",
-                            textAlign: "left",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 8,
-                          }}
-                        >
-                          <span style={{ color: sidebarInlineMetaTextColor }}>
-                            Wishlist Books
-                          </span>
-                          <span
-                            style={{
-                              minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                              textAlign: "center",
-                              background: wishlistFilter ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                              color: sidebarInlineCountColor,
-                              border: sidebarInlineCountBorder,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            {wishlistCount}
-                          </span>
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
 
@@ -11289,33 +10322,17 @@ export default function Page() {
                   onClick={() => {
                     setMovieWatchFilter(null);
                     setMovieGenreFilter(null);
-                    setNav("movies");
-                    setOpenSection((s) => (s === "movies" ? null : "movies"));
+                    openMediaSidebar("movies");
                   }}
                   className={`sideItem ${nav === "movies" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
+                  style={sidebarPrimaryItemRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={sidebarPrimaryItemLabelStyle}>
                     <span
                       aria-hidden
                       style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
+                        ...sidebarIconSlotStyle,
                         background: nav === "movies" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
                       }}
                     >
                       <img src={getSidebarIconSrc("movies", "/icon-movies.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "movies")} title={uploadingSidebarIconKey === "movies" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
@@ -11332,101 +10349,26 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
-                        fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#5b9bd5",
+                        fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
+                        background: nav === "movies" ? sidebarActiveAccent.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#5b9bd5",
                         color: "#fff",
                       }}
                     >
                       {stats.movies}
                     </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
-                {openSection === "movies" ? (
-                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <button
-                      onClick={() => setMovieWatchStatusOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Watch Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieWatchStatusOpen ? "−" : "+"}</span>
-                    </button>
-                    {movieWatchStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {["Watched", "Watching", "Backlog", "Abandoned"].map((status) => {
-                          const active = movieWatchFilter === status;
-                          return (
-                            <button
-                              key={`movie-watch-${status}`}
-                              onClick={() => setMovieWatchFilter(active ? null : status)}
-                              className={`sideSubItem ${active ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>
-                                {status}
-                              </span>
-                              <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                {movieWatchCounts[status] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
+                {nav === "movies" ? (
+                  <div style={{ marginTop: 6, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 8, order: 10 }}>
                     <button
                       onClick={() => setMovieGenreOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Genre</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieGenreOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Genre</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "movies" || movieGenreOpen ? "−" : "+"}</span>
                     </button>
-                    {movieGenreOpen ? (
+                    {nav === "movies" || movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {movieGenres.map((genre) => {
                           const active = movieGenreFilter === genre;
@@ -11475,36 +10417,21 @@ export default function Page() {
 
                 <button
                   onClick={() => {
+                    setTvViewMode("library");
                     setWatchFilter(null);
                     setShowFilter(null);
                     setTagFilter(null);
-                    setNav("tv");
-                    setOpenSection((s) => (s === "tv" ? null : "tv"));
+                    openMediaSidebar("tv");
                   }}
                   className={`sideItem primary ${nav === "tv" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
+                  style={sidebarPrimaryItemRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={sidebarPrimaryItemLabelStyle}>
                     <span
                       aria-hidden
                       style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
+                        ...sidebarIconSlotStyle,
                         background: nav === "tv" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
                       }}
                     >
                       <img src={getSidebarIconSrc("tv", "/icon-tv.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "tv")} title={uploadingSidebarIconKey === "tv" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
@@ -11521,45 +10448,37 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
-                        fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#d97642",
+                        fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
+                        background: nav === "tv" ? sidebarActiveAccent.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#d97642",
                         color: "#fff",
                       }}
                     >
                       {stats.tv}
                     </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
-                {openSection === "tv" ? (
-                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
+                {nav === "tv" ? (
+                  <div style={{ marginTop: 6, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 8, order: 10 }}>
                     <button
                       onClick={() => setWatchStatusOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Watch Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Watch Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || watchStatusOpen ? "−" : "+"}</span>
                     </button>
-                    {watchStatusOpen ? (
+                    {nav === "tv" || watchStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {watchStatuses.map((status) => {
                           const active = watchFilter === status;
                           return (
                             <button
                               key={`watch-${status}`}
-                              onClick={() => setWatchFilter(active ? null : status)}
+                              onClick={() => {
+                                const nextWatchFilter = active ? null : status;
+                                setTvViewMode(!nextWatchFilter && !showFilter && !tagFilter ? "library" : "custom");
+                                setWatchFilter(nextWatchFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -11599,30 +10518,23 @@ export default function Page() {
 
                     <button
                       onClick={() => setShowStatusOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        cursor: "pointer",
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Show Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>+</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Show Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || showStatusOpen ? "−" : "+"}</span>
                     </button>
-                    {showStatusOpen ? (
+                    {nav === "tv" || showStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {showStatuses.map((status) => {
                           const active = showFilter === status;
                           return (
                             <button
                               key={`show-${status}`}
-                              onClick={() => setShowFilter(active ? null : status)}
+                              onClick={() => {
+                                const nextShowFilter = active ? null : status;
+                                setTvViewMode(!watchFilter && !nextShowFilter && !tagFilter ? "library" : "custom");
+                                setShowFilter(nextShowFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -11662,30 +10574,23 @@ export default function Page() {
 
                     <button
                       onClick={() => setTagOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Tags</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{tagOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Tags</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || tagOpen ? "−" : "+"}</span>
                     </button>
-                    {tagOpen ? (
+                    {nav === "tv" || tagOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {tvTags.map((tag) => {
                           const active = tagFilter === tag;
                           return (
                             <button
                               key={`tag-${tag}`}
-                              onClick={() => setTagFilter(active ? null : tag)}
+                              onClick={() => {
+                                const nextTagFilter = active ? null : tag;
+                                setTvViewMode(!watchFilter && !showFilter && !nextTagFilter ? "library" : "custom");
+                                setTagFilter(nextTagFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -11727,39 +10632,24 @@ export default function Page() {
 
                 <button
                   onClick={() => {
+                    setGameViewMode("library");
                     setGamePlatformFilter(null);
                     setGameStatusFilter(null);
                     setGameOwnershipFilter(null);
                     setGameFormatFilter(null);
                     setGameYearPlayedFilter(null);
                     setGameGenreFilter(null);
-                    setNav("games");
-                    setOpenSection((s) => (s === "games" ? null : "games"));
+                    openMediaSidebar("games");
                   }}
                   className={`sideItem ${nav === "games" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
+                  style={sidebarPrimaryItemRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={sidebarPrimaryItemLabelStyle}>
                     <span
                       aria-hidden
                       style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
+                        ...sidebarIconSlotStyle,
                         background: nav === "games" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
                       }}
                     >
                       <img src={getSidebarIconSrc("games", "/icon-games.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "games")} title={uploadingSidebarIconKey === "games" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
@@ -11776,50 +10666,48 @@ export default function Page() {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
-                        fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
+                        fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
                         background:
-                          isBlueSidebarTheme
-                            ? "rgba(26, 47, 92, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
+                          nav === "games"
+                            ? sidebarActiveAccent.countBubble
+                            : isBlueSidebarTheme
+                              ? "rgba(26, 47, 92, 0.95)"
+                              : usesThemeCountBubbleColor
+                                ? currentTheme.countBubbleColor
+                                : "#333",
                         color: "#fff",
                       }}
                     >
                       {stats.games}
                     </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                   </span>
                 </button>
 
-                {openSection === "games" ? (
-                  <div style={{ marginTop: 6, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 8 }}>
+                {nav === "games" ? (
+                  <div style={{ marginTop: 6, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 8, order: 10 }}>
                     <button
                       onClick={() => setGamePlatformOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Platform</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Platform</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gamePlatformOpen ? "−" : "+"}</span>
                     </button>
-                    {gamePlatformOpen ? (
+                    {nav === "games" || gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", width: "fit-content", maxWidth: "100%" }}>
                         {gamePlatformOptions.map((option) => {
                           const active = gamePlatformFilter === option;
                           return (
                             <button
                               key={`game-platform-${option}`}
-                              onClick={() => setGamePlatformFilter(active ? null : option)}
+                              onClick={() => {
+                                const nextGamePlatformFilter = active ? null : option;
+                                setGameViewMode(
+                                  !nextGamePlatformFilter && !gameStatusFilter && !gameOwnershipFilter && !gameFormatFilter && !gameYearPlayedFilter && !gameGenreFilter
+                                    ? "library"
+                                    : "custom"
+                                );
+                                setGamePlatformFilter(nextGamePlatformFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -11857,30 +10745,27 @@ export default function Page() {
 
                     <button
                       onClick={() => setGameStatusOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameStatusOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameStatusOpen ? "−" : "+"}</span>
                     </button>
-                    {gameStatusOpen ? (
+                    {nav === "games" || gameStatusOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {gameStatuses.map((option) => {
                           const active = gameStatusFilter === option;
                           return (
                             <button
                               key={`game-status-${option}`}
-                              onClick={() => setGameStatusFilter(active ? null : option)}
+                              onClick={() => {
+                                const nextGameStatusFilter = active ? null : option;
+                                setGameViewMode(
+                                  !gamePlatformFilter && !nextGameStatusFilter && !gameOwnershipFilter && !gameFormatFilter && !gameYearPlayedFilter && !gameGenreFilter
+                                    ? "library"
+                                    : "custom"
+                                );
+                                setGameStatusFilter(nextGameStatusFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -11918,30 +10803,27 @@ export default function Page() {
 
                     <button
                       onClick={() => setGameOwnershipOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Ownership</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Ownership</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
-                    {gameOwnershipOpen ? (
+                    {nav === "games" || gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {gameOwnershipOptions.map((option) => {
                           const active = gameOwnershipFilter === option;
                           return (
                             <button
                               key={`game-ownership-${option}`}
-                              onClick={() => setGameOwnershipFilter(active ? null : option)}
+                              onClick={() => {
+                                const nextGameOwnershipFilter = active ? null : option;
+                                setGameViewMode(
+                                  !gamePlatformFilter && !gameStatusFilter && !nextGameOwnershipFilter && !gameFormatFilter && !gameYearPlayedFilter && !gameGenreFilter
+                                    ? "library"
+                                    : "custom"
+                                );
+                                setGameOwnershipFilter(nextGameOwnershipFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -11979,30 +10861,27 @@ export default function Page() {
 
                     <button
                       onClick={() => setGameFormatOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Format</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameFormatOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Format</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameFormatOpen ? "−" : "+"}</span>
                     </button>
-                    {gameFormatOpen ? (
+                    {nav === "games" || gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {gameFormatOptions.map((option) => {
                           const active = gameFormatFilter === option;
                           return (
                             <button
                               key={`game-format-${option}`}
-                              onClick={() => setGameFormatFilter(active ? null : option)}
+                              onClick={() => {
+                                const nextGameFormatFilter = active ? null : option;
+                                setGameViewMode(
+                                  !gamePlatformFilter && !gameStatusFilter && !gameOwnershipFilter && !nextGameFormatFilter && !gameYearPlayedFilter && !gameGenreFilter
+                                    ? "library"
+                                    : "custom"
+                                );
+                                setGameFormatFilter(nextGameFormatFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -12040,30 +10919,27 @@ export default function Page() {
 
                     <button
                       onClick={() => setGameYearPlayedOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Year Played</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Year Played</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
-                    {gameYearPlayedOpen ? (
+                    {nav === "games" || gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {gameYearPlayedOptions.map((option) => {
                           const active = gameYearPlayedFilter === option;
                           return (
                             <button
                               key={`game-year-played-${option}`}
-                              onClick={() => setGameYearPlayedFilter(active ? null : option)}
+                              onClick={() => {
+                                const nextGameYearPlayedFilter = active ? null : option;
+                                setGameViewMode(
+                                  !gamePlatformFilter && !gameStatusFilter && !gameOwnershipFilter && !gameFormatFilter && !nextGameYearPlayedFilter && !gameGenreFilter
+                                    ? "library"
+                                    : "custom"
+                                );
+                                setGameYearPlayedFilter(nextGameYearPlayedFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -12101,30 +10977,27 @@ export default function Page() {
 
                     <button
                       onClick={() => setGameGenresOpen((v) => !v)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        border: "none",
-                        background: "transparent",
-                        padding: 0,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
+                      style={sidebarSubSectionHeaderButtonStyle}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 700, color: sidebarSectionLabelColor, fontFamily: sidebarSectionFontFamily }}>Genres</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameGenresOpen ? "−" : "+"}</span>
+                      <span style={sidebarSectionHeaderTextStyle}>Genres</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameGenresOpen ? "−" : "+"}</span>
                     </button>
-                    {gameGenresOpen ? (
+                    {nav === "games" || gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {gameGenres.map((option) => {
                           const active = gameGenreFilter === option;
                           return (
                             <button
                               key={`game-genre-${option}`}
-                              onClick={() => setGameGenreFilter(active ? null : option)}
+                              onClick={() => {
+                                const nextGameGenreFilter = active ? null : option;
+                                setGameViewMode(
+                                  !gamePlatformFilter && !gameStatusFilter && !gameOwnershipFilter && !gameFormatFilter && !gameYearPlayedFilter && !nextGameGenreFilter
+                                    ? "library"
+                                    : "custom"
+                                );
+                                setGameGenreFilter(nextGameGenreFilter);
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{
                                 width: "100%",
@@ -12161,561 +11034,107 @@ export default function Page() {
                     ) : null}
                   </div>
                 ) : null}
-
+              {/* SMART LISTS section */}
+              <div
+                className="sidebarTextOnlySection"
+                style={{ display: isHomeSidebar ? "block" : "none", marginTop: sidebarSectionSpacing * 2 }}
+              >
                 <div
-                  style={{
-                    marginTop: sidebarSectionSpacing,
-                    marginBottom: 6,
-                    fontSize: sidebarHeaderFontSize,
-                    fontWeight: sidebarHeaderFontWeight,
-                    letterSpacing: "0.04em",
-                    color: currentTheme.primaryColor,
-                    fontFamily: sidebarSectionFontFamily,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
+                  style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}
                 >
-                  <span>BACKLOG</span>
+                  <span style={sidebarSectionHeaderTextStyle}>SMART LISTS</span>
                   <span />
                 </div>
 
-	                <button
-	                  onClick={() => {
-	                    setNav("now-playing");
-	                    setOpenSection((s) => (s === "now-playing" ? null : "now-playing"));
-	                  }}
-	                  className={`sideItem ${nav === "now-playing" ? "active" : ""}`}
-	                  style={{
-	                    width: "100%",
-	                    textAlign: "left",
-	                    display: "flex",
-	                    alignItems: "center",
-	                    justifyContent: "space-between",
-	                    gap: 8,
-	                    borderBottom: sidebarSectionDividerColor,
-	                  }}
-	                >
-	                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-	                    <span
-	                      aria-hidden
-	                      style={{
-	                        width: 18,
-	                        height: 14,
-	                        borderRadius: 4,
-	                        background: nav === "now-playing" ? "rgba(0,0,0,0.05)" : "transparent",
-	                        display: "inline-flex",
-	                        alignItems: "center",
-	                        justifyContent: "center",
-	                        flex: "0 0 auto",
-	                        overflow: "visible",
-	                      }}
-	                    >
-	                      <img src={getSidebarIconSrc("now-playing", "/icon-current.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "now-playing")} title={uploadingSidebarIconKey === "now-playing" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-	                    </span>
-	                    Now Playing
-	                  </span>
-	                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-	                    <span
-	                      style={{
-	                        width: 38,
-	                        height: 18,
-	                        borderRadius: 999,
-	                        display: "inline-flex",
-	                        alignItems: "center",
-	                        justifyContent: "center",
-	                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "now-playing" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          isBlueSidebarTheme
-                            ? isElectricBlueSidebarTheme
-                              ? "rgba(64, 219, 255, 0.94)"
-                              : "rgba(92, 118, 164, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-	                        color: "#fff",
-	                      }}
-	                    >
-	                      {stats.nowPlaying}
-	                    </span>
-	                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-	                  </span>
-	                </button>
-
-	                <button
-	                  onClick={() => {
-	                    setNav("play-next");
-	                    setOpenSection((s) => (s === "play-next" ? null : "play-next"));
-                  }}
-                  className={`sideItem ${nav === "play-next" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "play-next" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {[
+                  { key: "year-this" as const, label: "This Year", count: stats.yearThis },
+                  { key: "current" as const, label: "Current", count: stats.current },
+                  { key: "completed" as const, label: "Completed", count: stats.completed },
+                  { key: "abandoned" as const, label: "Abandoned", count: stats.abandoned },
+                ].map((item) => {
+                  const active = nav === item.key;
+                  const iconKey =
+                    item.key === "year-this"
+                      ? "year-this"
+                      : item.key === "current"
+                        ? "current"
+                        : item.key === "completed"
+                          ? "completed"
+                          : "abandoned";
+                  const iconFallback =
+                    item.key === "year-this"
+                      ? "/icon-year.png"
+                      : item.key === "current"
+                        ? "/icon-current.png"
+                        : item.key === "completed"
+                          ? "/icon-completed.png"
+                          : "/icon-abandoned.png";
+                  return (
+                    <button
+                      key={`smart-list-${item.key}`}
+                      onClick={() => setNav(item.key)}
+                      className={`sideSubItem ${active ? "active" : ""}`}
                       style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "play-next" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
+                        width: "100%",
+                        textAlign: "left",
+                        display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
+                        justifyContent: "space-between",
+                        gap: 6,
+                        padding: "3px 4px",
                       }}
                     >
-                      <img src={getSidebarIconSrc("play-next", "/icon-other.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "play-next")} title={uploadingSidebarIconKey === "play-next" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Play Next
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "play-next" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          isBlueSidebarTheme
-                            ? "rgba(92, 118, 164, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.playNext}
-                    </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setNav("wishlist-books");
-                    setOpenSection((s) => (s === "wishlist-books" ? null : "wishlist-books"));
-                  }}
-                  className={`sideItem ${nav === "wishlist-books" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist-books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "wishlist-books" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("wishlist-books", "/icon-other.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-books")} title={uploadingSidebarIconKey === "wishlist-books" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Read Next
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "wishlist-books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          isBlueSidebarTheme
-                            ? "rgba(112, 88, 174, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.wishlistBooks}
-                    </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setNav("watchlist-movies");
-                    setOpenSection((s) => (s === "watchlist-movies" ? null : "watchlist-movies"));
-                  }}
-                  className={`sideItem ${nav === "watchlist-movies" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist-movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "watchlist-movies" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("watchlist-movies", "/icon-watchlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "watchlist-movies")} title={uploadingSidebarIconKey === "watchlist-movies" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Movie Watchlist
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "watchlist-movies" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          isBlueSidebarTheme
-                            ? "rgba(56, 142, 173, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.watchlistMovies}
-                    </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setNav("watchlist-tv");
-                    setOpenSection((s) => (s === "watchlist-tv" ? null : "watchlist-tv"));
-                  }}
-                  className={`sideItem ${nav === "watchlist-tv" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "watchlist-tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "watchlist-tv" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("watchlist-tv", "/icon-watchlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "watchlist-tv")} title={uploadingSidebarIconKey === "watchlist-tv" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    TV Watchlist
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "watchlist-tv" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          isBlueSidebarTheme
-                            ? "rgba(56, 142, 173, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.watchlistTv}
-                    </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                  </span>
-                </button>
-                <button
-                  onClick={() => {
-                    setNav("wishlist");
-                    setOpenSection((s) => (s === "wishlist" ? null : "wishlist"));
-                  }}
-                  className={`sideItem ${nav === "wishlist" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "wishlist" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("wishlist-games", "/icon-wishlist.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "wishlist-games")} title={uploadingSidebarIconKey === "wishlist-games" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Wishlist (Games)
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "wishlist" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background:
-                          isBlueSidebarTheme
-                            ? "rgba(112, 88, 174, 0.95)"
-                            : usesThemeCountBubbleColor
-                              ? currentTheme.countBubbleColor
-                              : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.wishlist}
-                    </span>
-                    <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                  </span>
-                </button>
-              </div>
-
-              {/* SMART LISTS section */}
-              <div style={{ marginTop: sidebarSectionSpacing }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isSimpleSidebarTheme) return;
-                  setSmartListsOpen(!smartListsOpen);
-                }}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  fontSize: sidebarHeaderFontSize,
-                  fontWeight: sidebarHeaderFontWeight,
-                  letterSpacing: "0.04em",
-                  color: currentTheme.primaryColor,
-                  marginBottom: 6,
-                  fontFamily: sidebarSectionFontFamily,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  cursor: isSimpleSidebarTheme ? "default" : "pointer",
-                }}
-              >
-                <span>SMART LISTS</span>
-                <span style={{ color: sidebarToggleColor, fontSize: 16, fontWeight: 500 }}>{smartListsExpanded ? "−" : "+"}</span>
-              </button>
-
-              {smartListsExpanded ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {/* This Year - Primary clickable */}
-                <button
-                  onClick={() => setNav("year-this")}
-                  className={`sideItem ${nav === "year-this" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "year-this" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "year-this" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("year-this", "/icon-year.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "year-this")} title={uploadingSidebarIconKey === "year-this" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    This Year
-                  </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-                <button
-                  onClick={() => setNav("current")}
-                  className={`sideItem ${nav === "current" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "current" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "current" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("current", "/icon-current.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "current")} title={uploadingSidebarIconKey === "current" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Current
-                  </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-                <button
-                  onClick={() => setNav("completed")}
-                  className={`sideItem ${nav === "completed" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "completed" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "completed" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("completed", "/icon-completed.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "completed")} title={uploadingSidebarIconKey === "completed" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Completed
-                  </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-                <button
-                  onClick={() => setNav("abandoned")}
-                  className={`sideItem ${nav === "abandoned" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "abandoned" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: nav === "abandoned" ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("abandoned", "/icon-abaonded.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "abandoned")} title={uploadingSidebarIconKey === "abandoned" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Abandoned
-                  </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
+                      <span style={{ display: "flex", alignItems: "center", gap: sidebarGap }}>
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 18,
+                            height: 14,
+                            borderRadius: 4,
+                            background: active ? "rgba(0,0,0,0.05)" : "transparent",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flex: "0 0 auto",
+                            overflow: "visible",
+                          }}
+                        >
+                          <img
+                            src={getSidebarIconSrc(iconKey, iconFallback)}
+                            alt=""
+                            width={iconSize}
+                            height={iconSize}
+                            onClick={(event) => openSidebarIconFilePicker(event, iconKey)}
+                            title={uploadingSidebarIconKey === iconKey ? "Uploading..." : "Change icon"}
+                            style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
+                          />
+                        </span>
+                        <span style={{ color: sidebarInlineMetaTextColor }}>
+                          {item.label}
+                        </span>
+                      </span>
+                      <span
+                        style={{
+                          minWidth: 14,
+                          height: 12,
+                          padding: "0 3px",
+                          borderRadius: 8,
+                          fontSize: 9,
+                          textAlign: "center",
+                          background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
+                          color: sidebarInlineCountColor,
+                          border: sidebarInlineCountBorder,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {item.count}
+                      </span>
+                    </button>
+                  );
+                })}
 
                 {customSmartLists.map((smartList) => {
                   const isActive = nav === "smart-custom" && selectedSmartListId === smartList.id;
@@ -12735,7 +11154,6 @@ export default function Page() {
                       key={smartList.id}
                       style={{
                         width: "100%",
-                        borderBottom: sidebarSectionDividerColor,
                       }}
                     >
                       <button
@@ -12747,19 +11165,9 @@ export default function Page() {
                           setSortOrder(shouldUseManualSort ? "Asc" : smartList.defaultSortOrder);
                         }}
                         className={`sideItem ${isActive ? "active" : ""}`}
-                        style={{
-                          width: "100%",
-                          textAlign: "left",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          border: "none",
-                          borderRadius: 0,
-                          background: "transparent",
-                        }}
+                        style={sidebarSubItemRowStyle}
                       >
-                        <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: isActive ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: isActive ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight, fontSize: sidebarFontSize + 1 }}>
                           <span
                             aria-hidden
                             style={{
@@ -12784,7 +11192,6 @@ export default function Page() {
                             {smartList.name}
                           </span>
                         </span>
-                        <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
                       </button>
                     </div>
                   );
@@ -12794,35 +11201,36 @@ export default function Page() {
                   type="button"
                   onClick={handleOpenSmartListBuilder}
                   style={{
-                    width: "100%",
+                    width: "fit-content",
                     marginTop: 4,
                     marginBottom: customSmartLists.length ? 0 : 4,
                     textAlign: "left",
-                    border: sidebarAccentButtonBorder,
-                    borderRadius: 10,
-                    padding: "6px 8px",
-                    background: sidebarAccentButtonBackground,
-                    boxShadow: sidebarAccentButtonShadow,
-                    color: sidebarAccentButtonColor,
-                    fontSize: 12,
+                    border: "none",
+                    borderRadius: 0,
+                    padding: 0,
+                    background: "transparent",
+                    boxShadow: "none",
+                    color: sidebarSectionLabelColor,
+                    fontSize: 11,
                     fontWeight: 700,
                     fontFamily: sidebarSectionFontFamily,
-                    letterSpacing: "0.01em",
+                    letterSpacing: "0",
                     cursor: "pointer",
                   }}
                 >
-                  + Add Smart List
+                  + Add
                 </button>
 
-              </div> : null}
+              </div>
             </div>
             </div>
             </div>
 
             {/* DISCOVER Module */}
             <div
-              className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
+              className={`sidebarModuleCard sidebarTextOnlySection${isElectricBlueSidebarTheme ? " neon" : ""}`}
               style={{
+                display: isHomeSidebar ? "block" : "none",
                 background: sidebarModuleCardBackground,
                 borderRadius: 16,
                 boxShadow: sidebarModuleCardShadow,
@@ -12832,49 +11240,20 @@ export default function Page() {
               }}
             >
               <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (discoverOpen) setShowThemes(false);
-                  setDiscoverOpen(!discoverOpen);
-                }}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  fontSize: sidebarHeaderFontSize,
-                  fontWeight: sidebarHeaderFontWeight,
-                  letterSpacing: "0.04em",
-                  color: currentTheme.primaryColor,
-                  marginBottom: 6,
-                  fontFamily: sidebarSectionFontFamily,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  cursor: "pointer",
-                }}
-              >
-                <span>DISCOVER</span>
-                <span style={{ color: sidebarToggleColor, fontSize: 16, fontWeight: 500 }}>{discoverOpen ? "−" : "+"}</span>
-              </button>
+                <div
+                  style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}
+                >
+                  <span style={sidebarSectionHeaderTextStyle}>DISCOVER</span>
+                  <span />
+                </div>
 
-              {discoverOpen ? <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 <button
                   onClick={openStatisticsView}
-                  className={`sideItem ${nav === "statistics" ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
+                  className={`sideSubItem ${nav === "statistics" ? "active" : ""}`}
+                  style={sidebarSubItemRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: nav === "statistics" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap }}>
                     <span
                       aria-hidden
                       style={{
@@ -12889,357 +11268,24 @@ export default function Page() {
                         overflow: "visible",
                       }}
                     >
-                      <img src={getSidebarIconSrc("statistics", "/icon-statistics.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "statistics")} title={uploadingSidebarIconKey === "statistics" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Statistics
-                  </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowThemes(!showThemes);
-                  }}
-                  className={`sideItem primary ${showThemes ? "active" : ""}`}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    borderBottom: sidebarSectionDividerColor,
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: showThemes ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight, fontSize: sidebarFontSize }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 18,
-                        height: 14,
-                        borderRadius: 4,
-                        background: showThemes ? "rgba(0,0,0,0.05)" : "transparent",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flex: "0 0 auto",
-                        overflow: "visible",
-                      }}
-                    >
-                      <img src={getSidebarIconSrc("themes", "/icon-theme.png")} alt="" width={iconSize} height={iconSize} onClick={(event) => openSidebarIconFilePicker(event, "themes")} title={uploadingSidebarIconKey === "themes" ? "Uploading..." : "Change icon"} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }} />
-                    </span>
-                    Themes
-                  </span>
-                  <span style={{ color: sidebarChevronColor, fontSize: 15, fontWeight: 400 }}>›</span>
-                </button>
-
-              </div> : null}
-            </div>
-            </div>
-
-            {discoverOpen && showThemes ? (
-              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-                {themeSaveNotice ? (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: sidebarNoticeTextColor,
-                      background: sidebarNoticeBackground,
-                      border: sidebarNoticeBorder,
-                      borderRadius: 6,
-                      padding: "6px 8px",
-                    }}
-                  >
-                    {themeSaveNotice}
-                  </div>
-                ) : null}
-                <div style={{ fontSize: 11, color: sidebarThemePanelTextColor }}>
-                  Theme changes auto-save immediately and are used next time.
-                </div>
-                {/* Sidebar Theme Section */}
-                <div style={{ fontSize: 11, fontWeight: 700, color: sidebarThemePanelSectionColor }}>SIDEBAR THEME</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
-                    onClick={() => updateSidebarTheme("simple")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: sidebarTheme === "simple" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: sidebarTheme === "simple" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: sidebarTheme === "simple" ? 600 : 400,
-                    }}
-                  >
-                    Simple
-                  </button>
-                  <button
-                    onClick={() => updateSidebarTheme("standard")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: sidebarTheme === "standard" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: sidebarTheme === "standard" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: sidebarTheme === "standard" ? 600 : 400,
-                    }}
-                  >
-                    Standard
-                  </button>
-                  <button
-                    onClick={() => updateSidebarTheme("winterGray")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: sidebarTheme === "winterGray" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: sidebarTheme === "winterGray" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: sidebarTheme === "winterGray" ? 600 : 400,
-                    }}
-                  >
-                    Winter Gray
-                  </button>
-                  <button
-                    onClick={() => updateSidebarTheme("darkBlue")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: sidebarTheme === "darkBlue" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: sidebarTheme === "darkBlue" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: sidebarTheme === "darkBlue" ? 600 : 400,
-                    }}
-                  >
-                    Dark Blue
-                  </button>
-                  <button
-                    onClick={() => updateSidebarTheme("electricBlue")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: sidebarTheme === "electricBlue" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: sidebarTheme === "electricBlue" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: sidebarTheme === "electricBlue" ? 600 : 400,
-                    }}
-                  >
-                    Electric Blue
-                  </button>
-                </div>
-                
-                {/* Shelf Theme Section */}
-                <div style={{ fontSize: 11, fontWeight: 700, color: sidebarThemePanelSectionColor, marginTop: 8 }}>SHELF THEME</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
-                    onClick={() => updateShelfTheme(SIMPLE_SHELF_THEME)}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === SIMPLE_SHELF_THEME ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === SIMPLE_SHELF_THEME ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === SIMPLE_SHELF_THEME ? 600 : 400,
-                    }}
-                  >
-                    Simple Shelf
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme(ELECTRIC_BLUE_SHELF_THEME)}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === ELECTRIC_BLUE_SHELF_THEME ? 600 : 400,
-                    }}
-                  >
-                    Electric Blue
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme("/shelves-light-single2.png")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === "/shelves-light-single2.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === "/shelves-light-single2.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === "/shelves-light-single2.png" ? 600 : 400,
-                    }}
-                  >
-                    Default (Light Oak)
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme("/shelf-dark-walnut.png")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === "/shelf-dark-walnut.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === "/shelf-dark-walnut.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf-dark-walnut.png" ? 600 : 400,
-                    }}
-                  >
-                    Dark Walnut
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme(WEATHERED_OAK_SHELF_IMAGE)}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === WEATHERED_OAK_SHELF_IMAGE ? 600 : 400,
-                    }}
-                  >
-                    Weathered Oak
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme("/shelf-honey-oak.png")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === "/shelf-honey-oak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === "/shelf-honey-oak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf-honey-oak.png" ? 600 : 400,
-                    }}
-                  >
-                    Honey Oak
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme("/shelf-teak.png")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === "/shelf-teak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === "/shelf-teak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf-teak.png" ? 600 : 400,
-                    }}
-                  >
-                    Teak
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme("/shelf_white_oak.png")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === "/shelf_white_oak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === "/shelf_white_oak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf_white_oak.png" ? 600 : 400,
-                    }}
-                  >
-                    White Oak
-                  </button>
-                  <button
-                    onClick={() => updateShelfTheme("/shelf-reclaimed-oak.png")}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      border: shelfTheme === "/shelf-reclaimed-oak.png" ? sidebarOptionActiveBorder : sidebarThemeOptionBorder,
-                      borderRadius: 8,
-                      background: shelfTheme === "/shelf-reclaimed-oak.png" ? sidebarOptionActiveBackground : sidebarThemeOptionBackground,
-                      color: sidebarThemeOptionTextColor,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: shelfTheme === "/shelf-reclaimed-oak.png" ? 600 : 400,
-                    }}
-                  >
-                    Reclaimed Oak
-                  </button>
-                </div>
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "10px 12px",
-                    border: simpleShelfColorPanelBorder,
-                    borderRadius: 10,
-                    background: simpleShelfColorPanelBackground,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: simpleShelfColorPanelTitleColor }}>
-                    SIMPLE SHELF BACKGROUND
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={simpleShelfColorSwatchStyle}>
-                      <input
-                        type="color"
-                        value={simpleShelfBackgroundColor}
-                        onChange={(event) => updateSimpleShelfBackgroundColor(event.target.value)}
-                        aria-label="Simple Shelf background color"
-                        style={simpleShelfColorInputStyle}
+                      <img
+                        src={getSidebarIconSrc("statistics", "/icon-statistics.png")}
+                        alt=""
+                        width={iconSize}
+                        height={iconSize}
+                        onClick={(event) => openSidebarIconFilePicker(event, "statistics")}
+                        title={uploadingSidebarIconKey === "statistics" ? "Uploading..." : "Change icon"}
+                        style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                       />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: simpleShelfColorPanelTextColor }}>
-                        {simpleShelfBackgroundColor.toUpperCase()}
-                      </span>
-                      <span style={{ fontSize: 10, color: simpleShelfColorPanelMutedTextColor }}>
-                        Used for the Simple shelf, sidebar, and mobile gradient.
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                    </span>
+                    <span style={sidebarSubItemLabelStyle}>Statistics</span>
+                  </span>
+                </button>
+
               </div>
-            ) : null}
+            </div>
+            </div>
+
 
             {settingsPopupOpen && typeof document !== "undefined" ? createPortal(
               <div
@@ -13430,284 +11476,7 @@ export default function Page() {
                     <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
                     Tight
                   </label>
-                  <div style={{ fontSize: 11, opacity: 0.6 }}>
-                    Frame: {CASE_SRC_W}×{CASE_SRC_H}
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.8 }}>
-                    <input
-                      type="checkbox"
-                      checked={showInsetGuide}
-                      onChange={(e) => updateShowInsetGuide(e.target.checked)}
-                    />
-                    Frame
-                  </label>
                 </div>
-
-                {/* COVER INSETS Parent Menu */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, framePosition: !settingsOpen.framePosition })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                    marginTop: 4,
-                  }}
-                >
-                  <span>COVER INSETS</span>
-                  <span>{settingsOpen.framePosition ? "−" : "+"}</span>
-                </button>
-
-                {settingsOpen.framePosition ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: "#7f7f7f" }}>
-                        TARGET
-                        <select
-                          value={quickInsetTarget}
-                          onChange={(e) => setQuickInsetTarget(e.target.value)}
-                          style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
-                        >
-                          {quickInsetTargetOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, fontWeight: 700, color: "#7f7f7f" }}>
-                        MODE
-                        <select
-                          value={quickInsetMode}
-                          onChange={(e) => setQuickInsetMode(e.target.value as QuickInsetMode)}
-                          style={{ padding: "7px 8px", fontSize: 11, borderRadius: 6, border: "1px solid rgba(0,0,0,0.15)" }}
-                        >
-                          {[
-                            { value: "insetPosition", label: "Inset Position" },
-                            { value: "overlayPosition", label: "Overlay Position" },
-                            { value: "overlayScale", label: "Overlay Scale" },
-                            { value: "coverPosition", label: "Cover Position" },
-                            { value: "coverScale", label: "Cover Scale" },
-                          ].map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 9px", borderRadius: 8, background: "rgba(0,0,0,0.045)" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#6d6d6d" }}>
-                        OVERLAY FILE
-                      </div>
-                      <div style={{ fontSize: 11, color: "#4f4f4f", display: "flex", flexDirection: "column", gap: 3 }}>
-                        <span>Expected filename: <strong>{quickOverlayExpectedFilename}</strong></span>
-                        <span>
-                          Active source: {quickOverlayOverrideUrl ? "Custom upload" : "Bundled file"} ({quickOverlayTargetKey})
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          onClick={() => overlayFileInputRef.current?.click()}
-                          disabled={uploadingOverlayForKey === quickOverlayTargetKey}
-                          style={{
-                            padding: "6px 9px",
-                            fontSize: 11,
-                            borderRadius: 6,
-                            border: "1px solid rgba(0,0,0,0.2)",
-                            background: "rgba(255,255,255,0.9)",
-                            cursor: "pointer",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {uploadingOverlayForKey === quickOverlayTargetKey ? "Uploading..." : "Replace Overlay File"}
-                        </button>
-                        {quickOverlayOverrideUrl ? (
-                          <button
-                            onClick={handleResetOverlayForQuickTarget}
-                            style={{
-                              padding: "6px 9px",
-                              fontSize: 11,
-                              borderRadius: 6,
-                              border: "1px solid rgba(0,0,0,0.2)",
-                              background: "rgba(255,255,255,0.85)",
-                              cursor: "pointer",
-                              fontWeight: 700,
-                            }}
-                          >
-                            Use Expected File
-                          </button>
-                        ) : null}
-                        <input
-                          ref={overlayFileInputRef}
-                          type="file"
-                          accept="image/*"
-                          style={{ display: "none" }}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            handleReplaceOverlayForQuickTarget(file);
-                            e.currentTarget.value = "";
-                          }}
-                        />
-                      </div>
-                      {overlayUploadError ? (
-                        <div style={{ fontSize: 11, color: "#b42318" }}>{overlayUploadError}</div>
-                      ) : null}
-                    </div>
-
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Step
-                      <input
-                        type="range"
-                        min={1}
-                        max={12}
-                        step={1}
-                        value={quickInsetStep}
-                        onChange={(e) => setQuickInsetStep(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 22, textAlign: "right" }}>{quickInsetStep}</span>
-                    </label>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: 10, alignItems: "center" }}>
-                      <div
-                        onMouseDown={(e) => {
-                          if (quickInsetMode !== "overlayPosition") return;
-                          quickOverlayDragRef.current = {
-                            x: e.clientX,
-                            y: e.clientY,
-                            top: quickInsetSnapshot.overlay.top,
-                            left: quickInsetSnapshot.overlay.left,
-                          };
-                        }}
-                        onMouseMove={(e) => {
-                          const drag = quickOverlayDragRef.current;
-                          if (!drag || quickInsetMode !== "overlayPosition") return;
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const dxPct = ((e.clientX - drag.x) / rect.width) * 100;
-                          const dyPct = ((e.clientY - drag.y) / rect.height) * 100;
-                          const nextLeft = Number((drag.left + dxPct).toFixed(2));
-                          const nextTop = Number((drag.top + dyPct).toFixed(2));
-                          if (quickTargetType === "game") {
-                            updatePlatformOverlay(quickTargetPlatform, "left", nextLeft);
-                            updatePlatformOverlay(quickTargetPlatform, "top", nextTop);
-                          } else {
-                            updateNonGameOverlay(quickTargetType, "left", nextLeft);
-                            updateNonGameOverlay(quickTargetType, "top", nextTop);
-                          }
-                        }}
-                        onMouseUp={() => {
-                          quickOverlayDragRef.current = null;
-                        }}
-                        onMouseLeave={() => {
-                          quickOverlayDragRef.current = null;
-                        }}
-                        style={{
-                          position: "relative",
-                          width: 170,
-                          height: 255,
-                          borderRadius: 9,
-                          border: "1px solid rgba(0,0,0,0.2)",
-                          background: "linear-gradient(180deg, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.03) 100%)",
-                          overflow: "hidden",
-                          cursor: quickInsetMode === "overlayPosition" ? "move" : "default",
-                        }}
-                      >
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: `${quickInsetPreview.top}%`,
-                            left: `${quickInsetPreview.left}%`,
-                            width: `${quickInsetPreview.width}%`,
-                            height: `${quickInsetPreview.height}%`,
-                            border: "2px dashed rgba(31, 117, 221, 0.9)",
-                            background: "rgba(31, 117, 221, 0.12)",
-                            boxSizing: "border-box",
-                          }}
-                        />
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: `${50 + quickInsetSnapshot.overlay.top}%`,
-                            left: `${50 + quickInsetSnapshot.overlay.left}%`,
-                            width: `${quickInsetSnapshot.overlay.width}%`,
-                            height: `${quickInsetSnapshot.overlay.height}%`,
-                            transform: "translate(-50%, -50%)",
-                            border: "2px solid rgba(255, 189, 76, 0.95)",
-                            background: "rgba(255, 189, 76, 0.14)",
-                            boxSizing: "border-box",
-                          }}
-                        />
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "46px 46px 46px", gridTemplateRows: "46px 46px 46px", gap: 6, justifyContent: "center" }}>
-                        <span />
-                        <button onClick={() => applyQuickInsetNudge("up")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↑</button>
-                        <span />
-                        <button onClick={() => applyQuickInsetNudge("left")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>←</button>
-                        <div style={{ display: "grid", placeItems: "center", fontSize: 11, color: "#777", fontWeight: 700 }}>NUDGE</div>
-                        <button onClick={() => applyQuickInsetNudge("right")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>→</button>
-                        <span />
-                        <button onClick={() => applyQuickInsetNudge("down")} style={{ fontSize: 18, borderRadius: 8, border: "1px solid #bbb", background: "rgba(255,255,255,0.9)", cursor: "pointer" }}>↓</button>
-                        <span />
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: 11, opacity: 0.75, padding: "6px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)" }}>
-                      Insets T/R/B/L: {Math.round(quickInsetSnapshot.inset.top)} / {Math.round(quickInsetSnapshot.inset.right)} / {Math.round(quickInsetSnapshot.inset.bottom)} / {Math.round(quickInsetSnapshot.inset.left)}
-                      <span> · Overlay W/H/T/L: {quickInsetSnapshot.overlay.width.toFixed(1)} / {quickInsetSnapshot.overlay.height.toFixed(1)} / {quickInsetSnapshot.overlay.top.toFixed(1)} / {quickInsetSnapshot.overlay.left.toFixed(1)} · Cover W/H/X/Y: {quickInsetSnapshot.coverScale.x.toFixed(1)} / {quickInsetSnapshot.coverScale.y.toFixed(1)} / {quickInsetSnapshot.coverOffset.x.toFixed(1)} / {quickInsetSnapshot.coverOffset.y.toFixed(1)}</span>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <button
-                        onClick={resetQuickInsetTarget}
-                        style={{
-                          padding: "7px 10px",
-                          fontSize: 11,
-                          background: "#f2f2f2",
-                          color: "#222",
-                          border: "1px solid rgba(0,0,0,0.2)",
-                          borderRadius: 6,
-                          cursor: "pointer",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Reset {quickTargetType === "game" ? quickTargetPlatform : quickTargetType} Insets
-                      </button>
-                      <button
-                        onClick={async () => {
-                          setQuickInsetSaveStatus("saving");
-                          const ok = await saveInsetsToSheet(quickInsetSaveType);
-                          setQuickInsetSaveStatus(ok ? "saved" : "error");
-                        }}
-                        style={{
-                          padding: "7px 10px",
-                          fontSize: 11,
-                          background: "#0066cc",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 6,
-                          cursor: "pointer",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {quickInsetSaveLabel}
-                      </button>
-                      {quickInsetSaveStatus === "saving" ? <span style={{ fontSize: 11, color: "#555" }}>Saving inset settings...</span> : null}
-                      {quickInsetSaveStatus === "saved" ? (
-                        <span style={{ fontSize: 11, color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "#0a7f2e" }}>
-                          Saved. These inset settings will be used next time.
-                        </span>
-                      ) : null}
-                      {quickInsetSaveStatus === "error" ? <span style={{ fontSize: 11, color: "#b42318" }}>Save failed</span> : null}
-                    </div>
-                  </div>
-                ) : null}
 
                 {/* Logo Customization */}
                 <button
@@ -14285,6 +12054,7 @@ export default function Page() {
             </div>
 
             {/* Synced Module at Bottom */}
+            {nav === "statistics" ? null : (
             <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
@@ -14303,24 +12073,30 @@ export default function Page() {
                   padding: "0 2px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: currentTheme.syncedTextColor }}>Cover Size</span>
-                  <span style={{ minWidth: 40, textAlign: "right", fontSize: 11, fontWeight: 700, opacity: 0.85, color: currentTheme.syncedTextColor }}>
-                    {`${globalCoverScalePct}%`}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                    alignItems: "center",
+                    columnGap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: currentTheme.syncedTextColor, whiteSpace: "nowrap" }}>
+                    Cover Size
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={activeCoverScalePct}
+                    onChange={(e) => updateCurrentCoverScale(Number(e.target.value))}
+                    style={{ width: "100%", minWidth: 0 }}
+                  />
+                  <span style={{ minWidth: 36, textAlign: "right", fontSize: 11, fontWeight: 700, opacity: 0.85, color: currentTheme.syncedTextColor, whiteSpace: "nowrap" }}>
+                    {`${activeCoverScalePct}%`}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={70}
-                  max={130}
-                  step={1}
-                  value={globalCoverScalePct}
-                  onMouseDown={captureGlobalCoverScaleBase}
-                  onTouchStart={captureGlobalCoverScaleBase}
-                  onFocus={captureGlobalCoverScaleBase}
-                  onChange={(e) => updateGlobalCoverScale(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
               </div>
               <div
                 style={{
@@ -14425,6 +12201,8 @@ export default function Page() {
               </div>
               </div>
             </div>
+            )}
+          </div>
           </div>
         </aside>
 
@@ -14440,52 +12218,7 @@ export default function Page() {
             background: useElectricBlueStatsBackdrop ? "rgba(6, 14, 30, 0.66)" : "transparent",
           }}
         >
-          {nav !== "statistics" ? (
-            <div
-              aria-hidden
-              style={{
-                position: "fixed",
-                top: topSafeInset,
-                left: isMobileLayout ? 0 : SIDEBAR_WIDTH - 1,
-                right: 0,
-                height: 45,
-                zIndex: 1399,
-                pointerEvents: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-	              <span
-	                className={isElectricBlueSidebarTheme ? "headerTitleNeonSync" : ""}
-	                style={{
-	                  fontFamily: "\"Great Vibes\", \"Brush Script MT\", \"Lucida Handwriting\", cursive",
-	                  fontSize: 24,
-	                  fontWeight: 500,
-                  lineHeight: 1,
-                  letterSpacing: "0.01em",
-	                  color: isElectricBlueThemeActive
-	                    ? "rgba(237, 243, 252, 0.92)"
-	                    : isSimpleHeaderTheme
-	                      ? simpleHeaderTextColor
-	                      : "rgba(76, 52, 34, 0.55)",
-	                  textShadow:
-	                    isElectricBlueThemeActive
-	                      ? "0 1px 0 rgba(180, 209, 246, 0.3), 0 -1px 0 rgba(9, 17, 32, 0.58), 0 0 1px rgba(132, 181, 247, 0.3)"
-	                      : isSimpleHeaderTheme
-	                        ? simpleHeaderTitleShadow
-	                        : "0 1px 0 rgba(245, 225, 201, 0.22), 0 -1px 0 rgba(36, 22, 11, 0.5), 0 0 1px rgba(38, 23, 12, 0.35)",
-                  mixBlendMode: isElectricBlueThemeActive ? "normal" : isSimpleHeaderTheme ? "normal" : "multiply",
-                  opacity: isElectricBlueThemeActive ? 0.98 : isSimpleHeaderTheme ? 0.94 : 0.9,
-                  transform: "translateY(-2.5px)",
-                  userSelect: "none",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {APP_TITLE}
-              </span>
-            </div>
-          ) : null}
+          {nav !== "statistics" ? null : null}
           {SHOW_HEADER_DEBUG_CONTROLS ? (
             <div
               style={{
@@ -15600,32 +13333,277 @@ export default function Page() {
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
             />
+          ) : bookDetailItem && getMediaType(bookDetailItem) === "book" ? (
+            <BookDetailsPage
+              key={getMediaItemKey(bookDetailItem)}
+              item={bookDetailItem}
+              allBooks={allBooks}
+              isMobileLayout={isMobileLayout}
+              onBack={() => setBookDetailItem(null)}
+              onSelectRelated={openBookDetailItem}
+              getDisplayCoverUrl={getDisplayCoverUrl}
+              isAudiobookItem={isAudiobookItem}
+              onPaletteChange={handleBookDetailPaletteChange}
+            />
           ) : (
           <>
           {/* Stage measures width so shelves always align */}
           <div ref={stageRef} style={{ width: "100%" }}>
             {/* IMPORTANT: no vertical gap between shelves */}
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-	              <div
-		                  style={{
-		                    position: "sticky",
-		                    top: topSafeInset,
+		              <div
+			                  style={{
+			                    position: "sticky",
+			                    top: topSafeInset,
 		                    height: 45,
 		                    overflow: "hidden",
 		                    background: "transparent",
 		                    borderRadius: 0,
-		                    zIndex: 2000,
-		                  }}
-		                >
-		                  <div
-			                    style={{
-			                      position: "absolute",
+			                    zIndex: 2000,
+			                  }}
+			                >
+                      {showBacklogHeaderQuickLinks && !isMobileLayout ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 12,
+                            top: 8,
+                            zIndex: 1402,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          {backlogHeaderQuickLinks.map(({ key, label }) => {
+                            const active = activeBacklogQuickLink === key;
+                            return (
+                              <button
+                                key={`backlog-quick-link-${key}`}
+                                type="button"
+                                onClick={() => {
+                                  if (key === "home") {
+                                    activateHomeLibrary();
+                                    return;
+                                  }
+                                  setNav(key);
+                                }}
+                                aria-pressed={active}
+                                style={{
+                                  height: 26,
+                                  minWidth: 0,
+                                  padding: "0 12px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.home.border}` : "1px solid transparent",
+                                  background: active ? sidebarAccentPalette.home.background : "transparent",
+                                  color: active ? "#ffffff" : "#6f7780",
+                                  boxShadow: active ? "0 2px 7px rgba(122, 130, 141, 0.2)" : "none",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {nav === "movies" && !isMobileLayout ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 12,
+                            top: 8,
+                            zIndex: 1402,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          {([
+                            ["library", "Library"],
+                            ["backlog", "Backlog"],
+                            ["watching", "Watching"],
+                            ["watched", "Watched"],
+                            ["abandoned", "Abandoned"],
+                          ] as Array<[MovieQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeMovieQuickLink === key;
+                            return (
+                              <button
+                                key={`movie-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateMovieQuickLink(key)}
+                                aria-pressed={active}
+                                style={{
+                                  height: 26,
+                                  minWidth: 0,
+                                  padding: "0 12px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.movies.border}` : "1px solid transparent",
+                                  background: active ? sidebarAccentPalette.movies.background : "transparent",
+                                  color: active ? sidebarAccentPalette.movies.text : "#6f7780",
+                                  boxShadow: active ? "0 2px 7px rgba(92, 127, 196, 0.22)" : "none",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {nav === "tv" && !isMobileLayout ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 12,
+                            top: 8,
+                            zIndex: 1402,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          {([
+                            ["library", "Library"],
+                            ["backlog", "Backlog"],
+                            ["watching", "Watching"],
+                            ["watched", "Watched"],
+                            ["abandoned", "Abandoned"],
+                          ] as Array<[TvQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeTvQuickLink === key;
+                            return (
+                              <button
+                                key={`tv-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateTvQuickLink(key)}
+                                aria-pressed={active}
+                                style={{
+                                  height: 26,
+                                  minWidth: 0,
+                                  padding: "0 12px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.tv.border}` : "1px solid transparent",
+                                  background: active ? sidebarAccentPalette.tv.background : "transparent",
+                                  color: active ? sidebarAccentPalette.tv.text : "#6f7780",
+                                  boxShadow: active ? "0 2px 7px rgba(223, 121, 24, 0.22)" : "none",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {nav === "games" && !isMobileLayout ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 12,
+                            top: 8,
+                            zIndex: 1402,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          {([
+                            ["library", "Library"],
+                            ["backlog", "Backlog"],
+                            ["completed", "Completed"],
+                            ["abandoned", "Abandoned"],
+                            ["wishlist", "Wishlist"],
+                          ] as Array<[GameQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeGameQuickLink === key;
+                            return (
+                              <button
+                                key={`game-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateGameQuickLink(key)}
+                                aria-pressed={active}
+                                style={{
+                                  height: 26,
+                                  minWidth: 0,
+                                  padding: "0 12px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.games.border}` : "1px solid transparent",
+                                  background: active ? sidebarAccentPalette.games.background : "transparent",
+                                  color: active ? sidebarAccentPalette.games.text : "#6f7780",
+                                  boxShadow: active ? "0 2px 7px rgba(35, 119, 220, 0.22)" : "none",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {nav === "books" && !isMobileLayout ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 12,
+                            top: 8,
+                            zIndex: 1402,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          {([
+                            ["wishlist", "Wishlist"],
+                            ["library", "Library"],
+                            ["completed", "Completed"],
+                          ] as Array<[BookQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeBookQuickLink === key;
+                            return (
+                              <button
+                                key={`book-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateBookQuickLink(key)}
+                                aria-pressed={active}
+                                style={{
+                                  height: 26,
+                                  minWidth: 0,
+                                  padding: "0 12px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.books.border}` : "1px solid transparent",
+                                  background: active ? sidebarAccentPalette.books.background : "transparent",
+                                  color: active ? sidebarAccentPalette.books.text : "#6f7780",
+                                  boxShadow: active ? "0 2px 7px rgba(76, 154, 71, 0.22)" : "none",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+			                  <div
+				                    style={{
+				                      position: "absolute",
 			                      inset: 0,
 			                      zIndex: 1401,
 			                      display: isMobileLayout ? "none" : "flex",
 			                      flexDirection: "row",
 			                      alignItems: "center",
-			                      justifyContent: "space-between",
+			                      justifyContent: isMobileLayout ? "space-between" : "flex-end",
 		                      paddingLeft: isMobileLayout ? 6 : 10,
 		                      paddingRight: isMobileLayout ? 6 : 10,
 		                      gap: 5,
@@ -15651,8 +13629,8 @@ export default function Page() {
 			                            minWidth: 24,
 			                            padding: "3px 6px",
 			                            order: 2,
-			                            background: isSimpleHeaderTheme ? simpleHeaderElevatedBackground : "rgba(14, 30, 58, 0.82)",
-			                            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(146, 181, 235, 0.52)",
+			                            background: isSimpleHeaderTheme ? "transparent" : "rgba(14, 30, 58, 0.82)",
+			                            border: "none",
 			                            borderRadius: 9,
 		                            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.78)",
 		                            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.42)",
@@ -15675,17 +13653,17 @@ export default function Page() {
 			                          order: isMobileLayout ? 1 : undefined,
 			                          borderRadius: 9,
 			                          border: isSimpleHeaderTheme
-			                            ? simpleHeaderBorderColor
+			                            ? "none"
 			                            : isMobileLayout
 			                            ? "1px solid rgba(146, 181, 235, 0.52)"
 			                            : "1px solid rgba(10, 6, 3, 0.68)",
 			                          background: isSimpleHeaderTheme
-			                            ? simpleHeaderBackground
+			                            ? "transparent"
 			                            : isMobileLayout
 			                            ? "rgba(14, 30, 58, 0.78)"
 			                            : "rgba(16, 10, 6, 0.54)",
 	                          boxShadow: isSimpleHeaderTheme
-	                            ? simpleHeaderShadow
+	                            ? "none"
 	                            : isMobileLayout
 	                            ? "0 3px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(173, 205, 255, 0.2)"
 	                            : "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
@@ -15760,8 +13738,8 @@ export default function Page() {
                               height: 24,
                               minWidth: 58,
                               padding: "3px 6px",
-                              background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
-                              border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+                              background: isSimpleHeaderTheme ? "transparent" : "rgba(28, 18, 10, 0.52)",
+                              border: "none",
                               borderRadius: 9,
                               color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.72)",
                               boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
@@ -15788,16 +13766,12 @@ export default function Page() {
                               minWidth: 68,
                               padding: "3px 7px",
                               background: isSimpleHeaderTheme
-                                ? showStatusIndicators
-                                  ? simpleHeaderAccentBackground
-                                  : simpleHeaderBackground
+                                ? "transparent"
                                 : showStatusIndicators
                                 ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
                                 : "rgba(28, 18, 10, 0.52)",
                               border: isSimpleHeaderTheme
-                                ? showStatusIndicators
-                                  ? simpleHeaderAccentBorder
-                                  : simpleHeaderBorderColor
+                                ? "none"
                                 : showStatusIndicators
                                 ? "1px solid rgba(190, 221, 166, 0.75)"
                                 : "1px solid rgba(10, 6, 3, 0.78)",
@@ -15810,7 +13784,7 @@ export default function Page() {
                                   ? "rgba(242, 255, 228, 0.95)"
                                   : "rgba(250, 242, 230, 0.72)",
                               boxShadow: isSimpleHeaderTheme
-                                ? simpleHeaderShadow
+                                ? "none"
                                 : showStatusIndicators
                                 ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
                                 : "0 3px 8px rgba(0, 0, 0, 0.34)",
@@ -15844,6 +13818,49 @@ export default function Page() {
                               }}
                             />
                             Status
+                          </button>
+                          <button
+                            onClick={() => setSandboxMode((prev) => !prev)}
+                            title="Toggle sandbox overlay"
+                            aria-label="Toggle sandbox overlay"
+                            aria-pressed={sandboxMode}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                              height: 24,
+                              minWidth: 72,
+                              padding: "3px 8px",
+                              background: sandboxMode
+                                ? "linear-gradient(180deg, rgba(133, 86, 10, 0.88), rgba(92, 60, 8, 0.9))"
+                                : isSimpleHeaderTheme
+                                  ? "transparent"
+                                  : "rgba(28, 18, 10, 0.52)",
+                              border: sandboxMode
+                                ? "1px solid rgba(255, 217, 121, 0.88)"
+                                : isSimpleHeaderTheme
+                                  ? "none"
+                                  : "1px solid rgba(10, 6, 3, 0.78)",
+                              borderRadius: 9,
+                              color: sandboxMode
+                                ? "rgba(255, 248, 214, 0.98)"
+                                : isSimpleHeaderTheme
+                                  ? simpleHeaderTextColor
+                                  : "rgba(250, 242, 230, 0.72)",
+                              boxShadow: sandboxMode
+                                ? "0 3px 10px rgba(40, 26, 3, 0.48), inset 0 1px 0 rgba(255, 239, 174, 0.34)"
+                                : isSimpleHeaderTheme
+                                  ? "none"
+                                  : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 900,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Sandbox
                           </button>
                         </>
                       )}
@@ -16064,7 +14081,7 @@ export default function Page() {
                   </div>
                 </div>
               {smartListBuilderOpen ? (
-                <div style={{ height: Math.max(0, shelves.length * shelfRowHeight) }} />
+                <div style={{ height: Math.max(0, shelfOffsets.totalHeight) }} />
               ) : (
                 <div style={{ position: "relative" }}>
               {isSimpleShelfPresentation ? (
@@ -16092,7 +14109,7 @@ export default function Page() {
                   key={`shelf-${shelfIndex}`}
                   style={{
                     position: "relative",
-                    height: shelfRowHeight,
+                    height: shelfHeights[shelfIndex] || shelfRowHeight,
                     overflow: "hidden",
                     backgroundImage: isSimpleShelfPresentation ? "none" : `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
@@ -16109,8 +14126,32 @@ export default function Page() {
                       : isSimpleShelfPresentation
                         ? "none"
                         : `${shelfIndex === 0 ? "0 12px 26px rgba(0,0,0,0.18), " : ""}inset 0 20px 30px rgba(0,0,0,0.45), inset 16px 0 24px rgba(0,0,0,0.35), inset -16px 0 24px rgba(0,0,0,0.35)`,
+                    outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.34)" : "none",
                   }}
                 >
+                  {sandboxMode ? (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        left: 10,
+                        top: 8,
+                        zIndex: 40,
+                        padding: "3px 7px",
+                        borderRadius: 999,
+                        border: sandboxOverlayBorder,
+                        background: sandboxOverlayBg,
+                        color: sandboxOverlayText,
+                        fontSize: 9,
+                        fontWeight: 900,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+                      }}
+                    >
+                      Row {shelfIndex + 1} · h {Math.round(shelfHeights[shelfIndex] || shelfRowHeight)}px · gap {Math.round(shelfGap)}px
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       position: "absolute",
@@ -16126,143 +14167,23 @@ export default function Page() {
                       const isBook = show.__type === "book";
                       const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
+                      const isAudiobook = isAudiobookItem(show);
                       const renderableGame = isGame ? (show as Game & { __renderPlatform?: string }) : null;
                       const gamePlatformRaw = renderableGame ? safeStr(renderableGame.__renderPlatform || renderableGame.platform) : undefined;
                       // Determine primary platform from the row to keep shelf rendering deterministic.
                       const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
-                      const { itemSize, visualLeft, visualWidth } = getItemVisualLayout(show);
-                      const x = Math.round(runningVisualX - visualLeft);
-                      runningVisualX += visualWidth + shelfGap;
-                      const caseWidth = itemSize;
-                      const caseHeight = isSimpleShelfPresentation
-                        ? Math.round(itemSize * 1.5)
-                        : isBook
-                          ? Math.round(itemSize * bookHeightMultiplier)
-                          : Math.round(itemSize * 1.5);
+                      const { caseWidth, caseHeight } = getItemVisualLayout(show);
+                      const x = Math.round(runningVisualX);
+                      runningVisualX += caseWidth + shelfGap;
 
-                      // Use appropriate insets based on item type
-                      // For games, look up platform-specific insets or use Default
-                      let insetTopVal, insetRightVal, insetBottomVal, insetLeftVal;
-                      if (isSimpleShelfPresentation) {
-                        insetTopVal = 0;
-                        insetRightVal = 0;
-                        insetBottomVal = 0;
-                        insetLeftVal = 0;
-                      } else if (isBook) {
-                        insetTopVal = bookInsetTopPx;
-                        insetRightVal = bookInsetRightPx;
-                        insetBottomVal = bookInsetBottomPx;
-                        insetLeftVal = bookInsetLeftPx;
-                      } else if (isMovie) {
-                        insetTopVal = movieInsetTopPx;
-                        insetRightVal = movieInsetRightPx;
-                        insetBottomVal = movieInsetBottomPx;
-                        insetLeftVal = movieInsetLeftPx;
-                      } else if (isGame) {
-                        const platformKey = gamePlatform || "Default";
-                        const defaultInsets = platformInsets["Default"] || { top: 5, right: 5, bottom: 5, left: 5 };
-                        const platformInset = platformInsets[platformKey];
-                        const insets = platformKey !== "Default" && platformInset ? platformInset : defaultInsets;
-                        
-                        insetTopVal = insets.top;
-                        insetRightVal = insets.right;
-                        insetBottomVal = insets.bottom;
-                        insetLeftVal = insets.left;
-                      } else {
-                        insetTopVal = caseInsetTopPx;
-                        insetRightVal = caseInsetRightPx;
-                        insetBottomVal = caseInsetBottomPx;
-                        insetLeftVal = caseInsetLeftPx;
-                      }
-                      
-                      // Get overlay and cover transform settings for the active media type
-                      let overlayWidth = 100;
-                      let overlayHeight = 100;
-                      let overlayTop = 0;
-                      let overlayLeft = 0;
-                      let coverScale = { x: 100, y: 100 };
-                      let coverOffsetX = 0;
-                      let coverOffsetY = 0;
-                      
-                      if (isSimpleShelfPresentation) {
-                        overlayWidth = 100;
-                        overlayHeight = 100;
-                        overlayTop = 0;
-                        overlayLeft = 0;
-                        coverScale = { x: 100, y: 100 };
-                        coverOffsetX = 0;
-                        coverOffsetY = 0;
-                      } else if (isGame) {
-                        const platformKey = gamePlatform || "Default";
-                        const defaultOverlay = platformOverlaySettings["Default"] || { width: 100, height: 100, top: 0, left: 0 };
-                        const platformOverlay = platformOverlaySettings[platformKey];
-                        const overlay = platformOverlay || defaultOverlay;
-                        
-                        overlayWidth = overlay.width;
-                        overlayHeight = overlay.height;
-                        overlayTop = overlay.top;
-                        overlayLeft = overlay.left;
-                        
-                        coverScale = platformCoverScale[platformKey] || platformCoverScale["Default"] || { x: 100, y: 100 };
-                        const defaultCoverOffset = platformCoverOffset["Default"] || { x: 0, y: 0 };
-                        const platformCoverOffsetSettings = platformCoverOffset[platformKey] || defaultCoverOffset;
-                        coverOffsetX = platformCoverOffsetSettings.x;
-                        coverOffsetY = platformCoverOffsetSettings.y;
-                      } else if (isBook) {
-                        overlayWidth = bookOverlaySettings.width;
-                        overlayHeight = bookOverlaySettings.height;
-                        overlayTop = bookOverlaySettings.top;
-                        overlayLeft = bookOverlaySettings.left;
-                        coverScale = bookCoverScale;
-                        coverOffsetX = bookCoverOffset.x;
-                        coverOffsetY = bookCoverOffset.y;
-                      } else if (isMovie) {
-                        overlayWidth = movieOverlaySettings.width;
-                        overlayHeight = movieOverlaySettings.height;
-                        overlayTop = movieOverlaySettings.top;
-                        overlayLeft = movieOverlaySettings.left;
-                        coverScale = movieCoverScale;
-                        coverOffsetX = movieCoverOffset.x;
-                        coverOffsetY = movieCoverOffset.y;
-                      } else {
-                        overlayWidth = tvOverlaySettings.width;
-                        overlayHeight = tvOverlaySettings.height;
-                        overlayTop = tvOverlaySettings.top;
-                        overlayLeft = tvOverlaySettings.left;
-                        coverScale = tvCoverScale;
-                        coverOffsetX = tvCoverOffset.x;
-                        coverOffsetY = tvCoverOffset.y;
-                      }
-                      const gameCoverFit = getGameCoverFit(gamePlatform);
-
-                      const gameOverlaySrc = isGame ? getOverlayFrameUrl("game", gamePlatform) : "";
-                      const gameOverlayExpectedSrc = isGame ? getOverlayFrameDefaultPath("game", gamePlatform) : GAME_FRAME_IMAGE;
-                      const nonGameOverlayType: "tv" | "movie" | "book" = isBook ? "book" : isMovie ? "movie" : "tv";
-                      const nonGameOverlaySrc = getOverlayFrameUrl(nonGameOverlayType);
-                      const nonGameOverlayExpectedSrc = getOverlayFrameDefaultPath(nonGameOverlayType);
-
-                      const gameFrameSource = isGame ? getGameFrameSourceDimensions(gamePlatform) : DEFAULT_GAME_FRAME_SIZE;
-                      const srcW = isBook ? BOOK_SRC_W : isMovie ? MOVIE_SRC_W : isGame ? gameFrameSource.width : CASE_SRC_W;
-                      const srcH = isBook ? BOOK_SRC_H : isMovie ? MOVIE_SRC_H : isGame ? gameFrameSource.height : CASE_SRC_H;
-
-                      const insetTop = Math.round((insetTopVal / srcH) * caseHeight);
-                      const insetRight = Math.round((insetRightVal / srcW) * caseWidth);
-                      const insetBottom = Math.round((insetBottomVal / srcH) * caseHeight);
-                      const insetLeft = Math.round((insetLeftVal / srcW) * caseWidth);
-                      const coverTranslateX = coverOffsetX * 0.35;
-                      const coverTranslateY = coverOffsetY * 0.35;
-                      const insetWidthPx = Math.max(1, caseWidth - insetLeft - insetRight);
-                      const insetHeightPx = Math.max(1, caseHeight - insetTop - insetBottom);
-                      const coverScaleX = coverScale.x / 100;
-                      const coverScaleY = coverScale.y / 100;
-                      const coverTranslateXPx = (coverTranslateX / 100) * insetWidthPx;
-                      const coverTranslateYPx = (coverTranslateY / 100) * insetHeightPx;
-                      const coverVisualWidthPx = insetWidthPx * coverScaleX;
-                      const coverVisualHeightPx = insetHeightPx * coverScaleY;
-                      const coverVisualLeftPx =
-                        insetLeft + (insetWidthPx - coverVisualWidthPx) / 2 + coverTranslateXPx;
-                      const coverVisualTopPx =
-                        insetTop + (insetHeightPx - coverVisualHeightPx) / 2 + coverTranslateYPx;
+                      const insetTop = 0;
+                      const insetRight = 0;
+                      const insetBottom = 0;
+                      const insetLeft = 0;
+                      const coverVisualLeftPx = 0;
+                      const coverVisualTopPx = 0;
+                      const coverVisualWidthPx = caseWidth;
+                      const coverVisualHeightPx = caseHeight;
                       const selectedCoverUrl = getDisplayCoverUrl(show);
                       const statusIndicator = getStatusIndicator(show);
                       const ratingBadgeLabel = formatItemPersonalRatingBadge(show);
@@ -16303,11 +14224,13 @@ export default function Page() {
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
-                      const coverContainerRadius = isSimpleShelfPresentation ? 18 : 0;
-                      const coverTransform = isSimpleShelfPresentation
-                        ? undefined
-                        : `translate(${coverTranslateX}%, ${coverTranslateY}%) scale(${coverScale.x / 100}, ${coverScale.y / 100})`;
-                      const gamePosterFit = isSimpleShelfPresentation ? "cover" : gameCoverFit;
+                      const coverImageRadiusPx = 5;
+                      const coverContainerRadius = coverImageRadiusPx;
+                      const coverTrimAsset = selectedCoverUrl ? coverTrimAssets[selectedCoverUrl] : null;
+                      const macDisplayCoverUrl = (DISABLE_INSETS || isMacCoverMode) && coverTrimAsset ? coverTrimAsset.url : selectedCoverUrl;
+                      const rawCoverObjectFit = coverTrimAsset ? "cover" : "contain";
+                      const coverTransform = undefined;
+                      const gamePosterFit = rawCoverObjectFit;
                       const statusDotLeftPx = Math.round(
                         statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX
                       );
@@ -16390,6 +14313,7 @@ export default function Page() {
                       const dragPushX = wishlistDragState ? 0 : hoverPushX;
                       const dragPushY = wishlistDragState ? 0 : hoverPushY;
                       const dragScale = wishlistDragState ? 1 : isDragHoverTarget ? 1.008 : isDragHoverNeighbor ? 1.003 : 1;
+                      const gapX = Math.round(x + caseWidth + shelfGap / 2);
 
                       return (
                         <div
@@ -16423,21 +14347,22 @@ export default function Page() {
                             "--dragPushX": `${dragPushX.toFixed(2)}px`,
                             "--dragPushY": `${dragPushY.toFixed(2)}px`,
                             "--dragScale": dragScale.toFixed(3),
+                            outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.3)" : "none",
                           } as CSSProperties}
                           draggable={false}
                           onPointerDown={isWishlistCase ? (event) => handleWishlistCasePointerDown(event, itemKey) : undefined}
                           onClick={() => {
                             if (suppressCaseClickRef.current) return;
-                            setModalItem(buildItemWithCoverSelection(show, coverOverrides));
-                            setModalOpen(true);
+                            openSelectedItem(show);
                           }}
                           onMouseMove={handleCaseMouseMove}
                           onMouseLeave={handleCaseMouseLeave}
-                        >
+                          >
                           <div
                             className="caseSurface"
                             style={{
-                              borderRadius: coverContainerRadius,
+                              borderRadius: coverImageRadiusPx,
+                              outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.35)" : "none",
                             }}
                           >
                           {isGame ? (
@@ -16450,24 +14375,56 @@ export default function Page() {
                                   bottom: insetBottom,
                                   left: insetLeft,
                                   overflow: isSimpleShelfPresentation ? "hidden" : "hidden",
-                                  borderRadius: coverContainerRadius,
-                                  background: isSimpleShelfPresentation ? "rgba(255,255,255,0.06)" : "transparent",
+                                  borderRadius: 0,
+                                  background: COVER_STAGE_BACKGROUND,
                                 }}
                               >
-                                {showInsetGuide ? (
-                                  <div
-                                    aria-hidden
-                                    style={{
-                                      position: "absolute",
-                                      inset: 0,
-                                      outline: "2px dashed rgba(255,0,0,0.75)",
-                                      outlineOffset: "-2px",
-                                      pointerEvents: "none",
-                                    }}
-                                  />
-                                ) : null}
-
                                 {selectedCoverUrl ? (
+                                  DISABLE_INSETS ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      className="case-poster"
+                                      src={macDisplayCoverUrl}
+                                      alt={show.title}
+                                      loading="lazy"
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: rawCoverObjectFit,
+                                        objectPosition: "center",
+                                        display: "block",
+                                        borderRadius: coverImageRadiusPx,
+                                        transform: undefined,
+                                        transformOrigin: "center",
+                                      }}
+                                      onLoad={(e) => {
+                                        measureCoverTrimBounds(selectedCoverUrl, e.currentTarget);
+                                      }}
+                                      onError={e => {
+                                        const itemKey = getMediaItemKey(show);
+                                        const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                        if (!failedUrl) return;
+                                        const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                        const nextAttempts = currentAttempts + 1;
+                                        setFailedCoverAttempts((prev) => {
+                                          const itemAttempts = prev[itemKey] || {};
+                                          return {
+                                            ...prev,
+                                            [itemKey]: {
+                                              ...itemAttempts,
+                                              [failedUrl]: nextAttempts,
+                                            },
+                                          };
+                                        });
+                                        if (nextAttempts < 2) return;
+                                        setFailedCoverUrls((prev) => {
+                                          const existing = prev[itemKey] || [];
+                                          if (existing.includes(failedUrl)) return prev;
+                                          return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                        });
+                                      }}
+                                    />
+                                  ) : (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     className="case-poster"
@@ -16480,6 +14437,7 @@ export default function Page() {
                                       objectFit: gamePosterFit,
                                       objectPosition: "center",
                                       display: "block",
+                                      borderRadius: coverImageRadiusPx,
                                       transform: coverTransform,
                                       transformOrigin: "center",
                                     }}
@@ -16507,6 +14465,7 @@ export default function Page() {
                                       });
                                     }}
                                   />
+                                  )
                                 ) : (
                                   <div
                                     style={{
@@ -16527,133 +14486,241 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
-                                {selectedCoverUrl && !isSimpleShelfPresentation && gameCoverFit === "cover" ? (
-                                  <div
-                                    aria-hidden
-                                    className="case-reflection"
-                                    style={{
-                                      position: "absolute",
-                                      inset: 0,
-                                      pointerEvents: "none",
-                                      zIndex: 2,
-                                      background:
-                                        "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
-                                      transform: coverTransform,
-                                      transformOrigin: "center",
-                                    }}
-                                  />
-                                ) : null}
-
                               </div>
-
-                              {!isSimpleShelfPresentation ? (
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    top: `${50 + overlayTop}%`,
-                                    left: `${50 + overlayLeft}%`,
-                                    width: "100%",
-                                    height: "100%",
-                                    transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
-                                    pointerEvents: "none",
-                                  }}
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={gameOverlaySrc}
-                                    onError={(e) => {
-                                      const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
-                                      if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== gameOverlayExpectedSrc) {
-                                        e.currentTarget.dataset.fallbackTried = "1";
-                                        e.currentTarget.src = gameOverlayExpectedSrc;
-                                        return;
-                                      }
-                                      if (e.currentTarget.src !== GAME_FRAME_IMAGE) {
-                                        e.currentTarget.src = GAME_FRAME_IMAGE;
-                                      }
-                                    }}
-                                    alt=""
-                                    style={{
-                                      position: "absolute",
-                                      inset: 0,
-                                      objectFit: "fill",
-                                      pointerEvents: "none",
-                                      userSelect: "none",
-                                    }}
-                                    draggable={false}
-                                  />
-                                </div>
-                              ) : null}
                             </>
                           ) : (
                             <>
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: insetTop,
-                                  right: insetRight,
-                                  bottom: insetBottom,
-                                  left: insetLeft,
-                                  // Allow cover translation/scale to move beyond raw inset bounds so it can
-                                  // align with resized/repositioned overlays without hard clipping at inset edge.
-                                  overflow: isSimpleShelfPresentation ? "hidden" : "visible",
-                                  borderRadius: coverContainerRadius,
-                                  background: isSimpleShelfPresentation ? "rgba(255,255,255,0.06)" : "transparent",
-                                }}
-                              >
-                                {showInsetGuide ? (
+                                <div
+                                    style={{
+                                      position: "absolute",
+                                      top: insetTop,
+                                      right: insetRight,
+                                      bottom: insetBottom,
+                                      left: insetLeft,
+                                      // Allow cover translation/scale to move beyond raw inset bounds so it can
+                                      // align with resized/repositioned overlays without hard clipping at inset edge.
+                                      overflow: "hidden",
+                                      borderRadius: coverImageRadiusPx,
+                                      clipPath: undefined,
+                                      background: COVER_STAGE_BACKGROUND,
+                                    }}
+                                  >
+                                {sandboxMode ? (
                                   <div
                                     aria-hidden
                                     style={{
                                       position: "absolute",
-                                      inset: 0,
-                                      outline: "2px dashed rgba(255,0,0,0.75)",
-                                      outlineOffset: "-2px",
+                                      left: 6,
+                                      top: 6,
+                                      zIndex: 30,
+                                      maxWidth: Math.max(88, caseWidth - 12),
+                                      padding: "4px 6px",
+                                      borderRadius: 8,
+                                      border: sandboxOverlayBorder,
+                                      background: sandboxOverlayBg,
+                                      color: sandboxOverlayText,
+                                      fontSize: 10,
+                                      fontWeight: 900,
+                                      letterSpacing: "0.03em",
+                                      lineHeight: 1.15,
+                                      textTransform: "uppercase",
+                                      whiteSpace: "nowrap",
+                                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.32)",
                                       pointerEvents: "none",
                                     }}
-                                  />
+                                  >
+                                    {show.title}
+                                    <br />
+                                    W {Math.round(caseWidth)}px
+                                    <br />
+                                    H {Math.round(caseHeight)}px
+                                  </div>
                                 ) : null}
 
                                 {selectedCoverUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    className="case-poster"
-                                    src={selectedCoverUrl}
-                                    alt={show.title}
-                                    loading="lazy"
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
+                                  DISABLE_INSETS ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      className="case-poster"
+                                      src={macDisplayCoverUrl}
+                                      alt={show.title}
+                                      loading="lazy"
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: rawCoverObjectFit,
+                                        objectPosition: "center",
+                                        display: "block",
+                                        borderRadius: coverImageRadiusPx,
+                                        transform: undefined,
+                                        transformOrigin: "center",
+                                      }}
+                                      onLoad={(e) => {
+                                        measureCoverTrimBounds(selectedCoverUrl, e.currentTarget);
+                                      }}
+                                      onError={e => {
+                                        const itemKey = getMediaItemKey(show);
+                                        const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                        if (!failedUrl) return;
+                                        const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                        const nextAttempts = currentAttempts + 1;
+                                        setFailedCoverAttempts((prev) => {
+                                          const itemAttempts = prev[itemKey] || {};
+                                          return {
+                                            ...prev,
+                                            [itemKey]: {
+                                              ...itemAttempts,
+                                              [failedUrl]: nextAttempts,
+                                            },
+                                          };
+                                        });
+                                        if (nextAttempts < 2) return;
+                                        setFailedCoverUrls((prev) => {
+                                          const existing = prev[itemKey] || [];
+                                          if (existing.includes(failedUrl)) return prev;
+                                          return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                        });
+                                      }}
+                                    />
+                                  ) : isMacCoverMode ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      className="case-poster"
+                                      src={macDisplayCoverUrl}
+                                      alt={show.title}
+                                      loading="lazy"
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: rawCoverObjectFit,
+                                        objectPosition: "center",
+                                        display: "block",
+                                        borderRadius: coverImageRadiusPx,
+                                        transform: undefined,
+                                        transformOrigin: "center",
+                                      }}
+                                      onLoad={(e) => {
+                                        measureCoverTrimBounds(selectedCoverUrl, e.currentTarget);
+                                      }}
+                                      onError={e => {
+                                        const itemKey = getMediaItemKey(show);
+                                        const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                        if (!failedUrl) return;
+                                        const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                        const nextAttempts = currentAttempts + 1;
+                                        setFailedCoverAttempts((prev) => {
+                                          const itemAttempts = prev[itemKey] || {};
+                                          return {
+                                            ...prev,
+                                            [itemKey]: {
+                                              ...itemAttempts,
+                                              [failedUrl]: nextAttempts,
+                                            },
+                                          };
+                                        });
+                                        if (nextAttempts < 2) return;
+                                        setFailedCoverUrls((prev) => {
+                                          const existing = prev[itemKey] || [];
+                                          if (existing.includes(failedUrl)) return prev;
+                                          return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                        });
+                                      }}
+                                    />
+                                  ) : isAudiobook ? (
+                                  <div
+                                      style={{
+                                        position: "absolute",
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        height: "100%",
+                                        overflow: "hidden",
+                                        borderRadius: coverImageRadiusPx,
+                                        transform: coverTransform,
+                                        transformOrigin: "center bottom",
+                                      }}
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        className="case-poster"
+                                        src={selectedCoverUrl}
+                                        alt={show.title}
+                                        loading="lazy"
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "contain",
+                                          objectPosition: "center bottom",
+                                          display: "block",
+                                          borderRadius: coverImageRadiusPx,
+                                        }}
+                                        onError={e => {
+                                          const itemKey = getMediaItemKey(show);
+                                          const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                          if (!failedUrl) return;
+                                          const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                          const nextAttempts = currentAttempts + 1;
+                                          setFailedCoverAttempts((prev) => {
+                                            const itemAttempts = prev[itemKey] || {};
+                                            return {
+                                              ...prev,
+                                              [itemKey]: {
+                                                ...itemAttempts,
+                                                [failedUrl]: nextAttempts,
+                                              },
+                                            };
+                                          });
+                                          if (nextAttempts < 2) return;
+                                          setFailedCoverUrls((prev) => {
+                                            const existing = prev[itemKey] || [];
+                                            if (existing.includes(failedUrl)) return prev;
+                                            return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                          });
+                                        }}
+                                      />
+                                    </div>
+                                  ) : (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      className="case-poster"
+                                      src={selectedCoverUrl}
+                                      alt={show.title}
+                                      loading="lazy"
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
                                       objectFit: "cover",
                                       objectPosition: "center",
                                       display: "block",
+                                      borderRadius: coverImageRadiusPx,
                                       transform: coverTransform,
                                       transformOrigin: "center",
                                     }}
-                                    onError={e => {
-                                      const itemKey = getMediaItemKey(show);
-                                      const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
-                                      if (!failedUrl) return;
-                                      const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
-                                      const nextAttempts = currentAttempts + 1;
-                                      setFailedCoverAttempts((prev) => {
-                                        const itemAttempts = prev[itemKey] || {};
-                                        return {
-                                          ...prev,
-                                          [itemKey]: {
-                                            ...itemAttempts,
-                                            [failedUrl]: nextAttempts,
-                                          },
-                                        };
-                                      });
-                                      if (nextAttempts < 2) return;
-                                      setFailedCoverUrls((prev) => {
-                                        const existing = prev[itemKey] || [];
-                                        if (existing.includes(failedUrl)) return prev;
-                                        return { ...prev, [itemKey]: [...existing, failedUrl] };
-                                      });
-                                    }}
-                                  />
+                                      onError={e => {
+                                        const itemKey = getMediaItemKey(show);
+                                        const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
+                                        if (!failedUrl) return;
+                                        const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
+                                        const nextAttempts = currentAttempts + 1;
+                                        setFailedCoverAttempts((prev) => {
+                                          const itemAttempts = prev[itemKey] || {};
+                                          return {
+                                            ...prev,
+                                            [itemKey]: {
+                                              ...itemAttempts,
+                                              [failedUrl]: nextAttempts,
+                                            },
+                                          };
+                                        });
+                                        if (nextAttempts < 2) return;
+                                        setFailedCoverUrls((prev) => {
+                                          const existing = prev[itemKey] || [];
+                                          if (existing.includes(failedUrl)) return prev;
+                                          return { ...prev, [itemKey]: [...existing, failedUrl] };
+                                        });
+                                      }}
+                                    />
+                                  )
                                 ) : (
                                   <div
                                     style={{
@@ -16674,63 +14741,36 @@ export default function Page() {
                                     No poster
                                   </div>
                                 )}
-                                {selectedCoverUrl && !isSimpleShelfPresentation ? (
-                                  <div
-                                    aria-hidden
-                                    className="case-reflection"
-                                    style={{
-                                      position: "absolute",
-                                      inset: 0,
-                                      pointerEvents: "none",
-                                      zIndex: 2,
-                                      background:
-                                        "linear-gradient(165deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.0) 85%)",
-                                      transform: coverTransform,
-                                      transformOrigin: "center",
-                                    }}
-                                  />
-                                ) : null}
-
                               </div>
-
-                              {!isSimpleShelfPresentation ? (
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    top: `${50 + overlayTop}%`,
-                                    left: `${50 + overlayLeft}%`,
-                                    width: "100%",
-                                    height: "100%",
-                                    transform: `translate(-50%, -50%) scale(${overlayWidth / 100}, ${overlayHeight / 100})`,
-                                    pointerEvents: "none",
-                                  }}
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={nonGameOverlaySrc}
-                                    onError={(e) => {
-                                      const currentSrc = safeStr(e.currentTarget.getAttribute("src"));
-                                      if (e.currentTarget.dataset.fallbackTried !== "1" && currentSrc !== nonGameOverlayExpectedSrc) {
-                                        e.currentTarget.dataset.fallbackTried = "1";
-                                        e.currentTarget.src = nonGameOverlayExpectedSrc;
-                                      }
-                                    }}
-                                    alt=""
-                                    style={{
-                                      position: "absolute",
-                                      inset: 0,
-                                      objectFit: "fill",
-                                      pointerEvents: "none",
-                                      userSelect: "none",
-                                    }}
-                                    draggable={false}
-                                  />
-                                </div>
-                              ) : null}
                             </>
                           )}
 
                           </div>
+
+                          {sandboxMode && i < shelfShows.length - 1 ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: "absolute",
+                                left: x + caseWidth + Math.max(2, Math.round(shelfGap * 0.25)),
+                                top: Math.max(10, Math.round(caseHeight * 0.12)),
+                                zIndex: 45,
+                                padding: "2px 6px",
+                                borderRadius: 999,
+                                border: sandboxOverlayBorder,
+                                background: sandboxOverlayBg,
+                                color: sandboxOverlayText,
+                                fontSize: 8,
+                                fontWeight: 900,
+                                letterSpacing: "0.03em",
+                                textTransform: "uppercase",
+                                whiteSpace: "nowrap",
+                                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.28)",
+                              }}
+                            >
+                              Gap {Math.round(shelfGap)}px
+                            </div>
+                          ) : null}
 
                           {tvWatchlistSectionMeta && tvWatchlistBadgeLabel && tvWatchlistBadgeColors ? (
                             <div
@@ -16828,31 +14868,6 @@ export default function Page() {
                             </div>
                           ) : null}
 
-                          {showInsetGuide && isGame ? (
-                            <div
-                              style={{
-                                position: "absolute",
-                                left: 4,
-                                right: 4,
-                                bottom: 4,
-                                zIndex: 20,
-                                background: "rgba(8, 12, 18, 0.78)",
-                                color: "#d8e7ff",
-                                border: "1px solid rgba(150, 176, 220, 0.45)",
-                                borderRadius: 4,
-                                padding: "2px 4px",
-                                fontSize: 8,
-                                lineHeight: 1.2,
-                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                pointerEvents: "none",
-                              }}
-                            >
-                              {getGameInsetDebugReadout(gamePlatform || "Default")}
-                            </div>
-                          ) : null}
                         </div>
                       );
                     });
@@ -16939,11 +14954,17 @@ export default function Page() {
       `}</style>
       <style jsx>{`
         .sidebar {
-          font-family: "Geist Sans", "Geist", "Segoe UI", sans-serif;
-          background-image: url('/sidebar-texture.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%);
-          background-repeat: repeat, no-repeat;
-          background-size: auto 28px, cover;
-          background-position: top left, center;
+          font-family: ${sidebarSectionFontFamily};
+          background: ${sidebarDetailGradientActive
+            ? "transparent"
+            : isMacSidebarTheme
+            ? "linear-gradient(180deg, rgba(247, 248, 250, 0.34) 0%, rgba(232, 236, 241, 0.26) 100%)"
+            : "url('/sidebar-texture.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)"};
+          background-repeat: ${sidebarDetailGradientActive ? "no-repeat" : isMacSidebarTheme ? "no-repeat" : "repeat, no-repeat"};
+          background-size: ${sidebarDetailGradientActive ? "100% 100%" : isMacSidebarTheme ? "cover" : "auto 28px, cover"};
+          background-position: ${sidebarDetailGradientActive ? "0 0" : isMacSidebarTheme ? "center" : "top left, center"};
+          backdrop-filter: ${sidebarDetailGradientActive ? "none" : isMacSidebarTheme ? "blur(10px) saturate(1.15)" : "none"};
+          -webkit-backdrop-filter: ${sidebarDetailGradientActive ? "none" : isMacSidebarTheme ? "blur(10px) saturate(1.15)" : "none"};
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
@@ -17185,14 +15206,15 @@ export default function Page() {
         }
         .sideItem {
           width: 100%;
-          padding: 1px 4px;
-          border-radius: 8px;
+          padding: ${isMacSidebarTheme ? "4px 6px" : "1px 4px"};
+          border-radius: ${isMacSidebarTheme ? "10px" : "8px"};
           border: 1px solid transparent;
           background: transparent;
-          color: ${isDarkSidebarTheme ? currentTheme.textColor : "#2A2A2A"};
-          font-size: 13px;
-          font-weight: 500;
+          color: ${isMacSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? currentTheme.textColor : "#2A2A2A"};
+          font-size: ${isMacSidebarTheme ? "12px" : "13px"};
+          font-weight: ${isMacSidebarTheme ? 450 : 500};
           font-family: ${sidebarSectionFontFamily};
+          letter-spacing: ${isMacSidebarTheme ? "-0.01em" : "normal"};
           cursor: pointer;
           transition: all 150ms ease;
         }
@@ -17200,24 +15222,24 @@ export default function Page() {
           background: ${sidebarItemHoverBackground};
         }
         .sideItem.active {
-          background: ${currentTheme.activeHighlight};
-          box-shadow: ${isSimpleSidebarTheme ? "none" : "0 8px 16px rgba(0,0,0,0.15)"};
-          border-color: ${currentTheme.highlightBorder};
+          background: ${sidebarActiveAccent.background};
+          box-shadow: ${isSimpleSidebarTheme ? "none" : isMacSidebarTheme ? "inset 0 1px 0 rgba(255,255,255,0.42)" : "0 8px 16px rgba(0,0,0,0.15)"};
+          border-color: ${sidebarActiveAccent.border};
           font-weight: 600;
-          color: ${currentTheme.secondaryColor};
+          color: ${sidebarActiveAccent.text};
         }
         .sideItem.primary { background: transparent; }
         .sideItem.primary:hover { background: ${sidebarItemHoverBackground}; }
-        .sideItem.primary.active { background: ${currentTheme.activeHighlight}; color: ${currentTheme.secondaryColor}; }
+        .sideItem.primary.active { background: ${sidebarActiveAccent.background}; color: ${sidebarActiveAccent.text}; }
         .sideSubItem {
           width: 100%;
-          padding: 4px 6px;
-          border-radius: 8px;
+          padding: ${isMacSidebarTheme ? "5px 7px" : "4px 6px"};
+          border-radius: ${isMacSidebarTheme ? "10px" : "8px"};
           border: ${sidebarSubItemBorderColor};
           background: ${sidebarSubItemBackground};
           color: ${sidebarSubItemTextColor};
           font-size: 12px;
-          font-weight: 500;
+          font-weight: ${isMacSidebarTheme ? 450 : 500};
           font-family: ${sidebarSectionFontFamily};
           cursor: pointer;
           transition: background 140ms ease, border-color 140ms ease;
@@ -17226,10 +15248,16 @@ export default function Page() {
           background: ${sidebarSubItemHoverBackground};
         }
         .sideSubItem.active {
-          background: ${currentTheme.activeHighlight};
-          border-color: ${currentTheme.highlightBorder};
+          background: ${sidebarActiveAccent.background};
+          border: none;
           color: ${sidebarSubItemActiveTextColor};
           font-weight: 700;
+        }
+        .sidebarTextOnlySection .sideItem > span:first-child {
+          gap: 0 !important;
+        }
+        .sidebarTextOnlySection .sideItem > span:first-child > span[aria-hidden] {
+          display: none !important;
         }
         .case {
           position: relative;
@@ -17239,6 +15267,7 @@ export default function Page() {
           position: absolute;
           inset: 0;
           overflow: hidden;
+          background: #ececec;
           transition: transform 70ms ease, filter 140ms ease;
           transform: translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
           transform-style: preserve-3d;
