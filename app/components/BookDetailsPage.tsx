@@ -6,7 +6,9 @@ type BookDetailsPageProps = {
   item: Record<string, unknown>;
   allBooks: Record<string, unknown>[];
   isMobileLayout: boolean;
+  usePageBackground?: boolean;
   onBack: () => void;
+  onEdit?: (item: Record<string, unknown>) => void;
   onSelectRelated: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   isAudiobookItem: (item: Record<string, unknown>) => boolean;
@@ -375,7 +377,9 @@ export function BookDetailsPage({
   item,
   allBooks,
   isMobileLayout,
+  usePageBackground = false,
   onBack,
+  onEdit,
   onSelectRelated,
   getDisplayCoverUrl,
   isAudiobookItem,
@@ -544,13 +548,15 @@ export function BookDetailsPage({
       style={{
         minHeight: isMobileLayout ? `calc(100vh - 58px)` : "100vh",
         padding: isMobileLayout ? "12px 10px 24px" : "12px 16px 16px",
-        background: `radial-gradient(84% 88% at 12% 8%, ${rgba(mixHex(palette.start, "#ffffff", 0.08), 0.78)} 0%, ${rgba(palette.start, 0.38)} 26%, rgba(255,255,255,0) 50%), radial-gradient(96% 96% at 88% 18%, ${rgba(mixHex(palette.end, "#ffffff", 0.1), 0.52)} 0%, rgba(255,255,255,0) 46%), radial-gradient(94% 92% at 100% 100%, ${rgba(palette.end, 0.5)} 0%, ${rgba(palette.end, 0.14)} 34%, rgba(255,255,255,0) 56%), linear-gradient(145deg, ${mixHex(palette.start, "#0f141d", 0.16)} 0%, ${palette.start} 30%, ${mixHex(palette.end, palette.start, 0.18)} 58%, ${palette.end} 100%)`,
+        background: usePageBackground
+          ? "transparent"
+          : `radial-gradient(84% 88% at 12% 8%, ${rgba(mixHex(palette.start, "#ffffff", 0.08), 0.78)} 0%, ${rgba(palette.start, 0.38)} 26%, rgba(255,255,255,0) 50%), radial-gradient(96% 96% at 88% 18%, ${rgba(mixHex(palette.end, "#ffffff", 0.1), 0.52)} 0%, rgba(255,255,255,0) 46%), radial-gradient(94% 92% at 100% 100%, ${rgba(palette.end, 0.5)} 0%, ${rgba(palette.end, 0.14)} 34%, rgba(255,255,255,0) 56%), linear-gradient(145deg, ${mixHex(palette.start, "#0f141d", 0.16)} 0%, ${palette.start} 30%, ${mixHex(palette.end, palette.start, 0.18)} 58%, ${palette.end} 100%)`,
         color: palette.text,
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {coverUrl ? (
+      {coverUrl && !usePageBackground ? (
         <>
           <div
             aria-hidden
@@ -581,7 +587,9 @@ export function BookDetailsPage({
           margin: "0 auto",
           borderRadius: isMobileLayout ? 24 : 28,
           padding: isMobileLayout ? "12px" : "12px 12px 14px",
-          background: `linear-gradient(180deg, ${rgba("#ffffff", 0.06)} 0%, ${rgba("#000000", 0.04)} 100%)`,
+          background: usePageBackground
+            ? `linear-gradient(180deg, ${rgba("#ffffff", 0.09)} 0%, ${rgba("#000000", 0.03)} 100%)`
+            : `linear-gradient(180deg, ${rgba("#ffffff", 0.06)} 0%, ${rgba("#000000", 0.04)} 100%)`,
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15)",
           backdropFilter: "blur(12px) saturate(1.05)",
           minHeight: isMobileLayout ? undefined : "calc(100vh - 24px)",
@@ -638,13 +646,36 @@ export function BookDetailsPage({
               </svg>
             </button>
 
-            {chips.length > 0 ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", minWidth: 0 }}>
-                {chips.map((chip) => {
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", minWidth: 0 }}>
+              {onEdit ? (
+                <button
+                  type="button"
+                  onClick={() => onEdit(item)}
+                  style={{
+                    borderRadius: 999,
+                    padding: "9px 14px",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    fontWeight: 750,
+                    border: `1px solid ${palette.surfaceBorder}`,
+                    background: `linear-gradient(180deg, ${rgba("#ffffff", 0.22)} 0%, ${rgba("#ffffff", 0.08)} 100%)`,
+                    color: palette.text,
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.32), 0 8px 18px rgba(10, 14, 24, 0.14)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                  aria-label="Edit book details"
+                >
+                  Edit
+                </button>
+              ) : null}
+              {chips.length > 0
+                ? chips.map((chip, index) => {
                   const isCompletedChip = chip.toLowerCase() === "completed";
                   return (
                     <span
-                      key={chip}
+                      key={`${chip}-${index}`}
                       style={{
                         borderRadius: 999,
                         padding: "9px 13px",
@@ -661,11 +692,9 @@ export function BookDetailsPage({
                       {chip}
                     </span>
                   );
-                })}
-              </div>
-            ) : (
-              <span />
-            )}
+                })
+                : null}
+            </div>
           </div>
 
           <div

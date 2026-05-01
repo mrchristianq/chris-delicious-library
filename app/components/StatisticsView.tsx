@@ -433,8 +433,35 @@ function normalizePlatformToken(value: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-function getStatsItemKey(mediaType: StatsMediaType, title: string, platform?: string): string {
+function getStatsBookFormatKeyToken(types?: string, audiobookDuration?: string): string {
+  const typeTokens = safeText(types)
+    .split(/[,;|/]+/g)
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+  // Explicit type should win over duration heuristics.
+  if (typeTokens.includes("audiobook")) return "audiobook";
+  if (typeTokens.includes("ebook") || typeTokens.includes("e-book")) return "ebook";
+  if (typeTokens.includes("physical")) return "physical";
+  if (typeTokens.length > 0) {
+    const normalized = typeTokens[0].replace(/[^a-z0-9]+/g, "");
+    if (normalized) return normalized;
+  }
+  if (safeText(audiobookDuration)) return "audiobook";
+  return "default";
+}
+
+function getStatsItemKey(
+  mediaType: StatsMediaType,
+  title: string,
+  platform?: string,
+  bookTypes?: string,
+  audiobookDuration?: string
+): string {
   const normalizedTitle = normalizeTitleKey(title);
+  if (mediaType === "book") {
+    const bookFormat = getStatsBookFormatKeyToken(bookTypes, audiobookDuration);
+    return `${mediaType}:${normalizedTitle}:${bookFormat}`;
+  }
   if (mediaType === "game") {
     const normalizedPlatform = normalizePlatformToken(platform || "");
     return `${mediaType}:${normalizedTitle}:${normalizedPlatform || "default"}`;
@@ -447,9 +474,11 @@ function resolveCoverUrl(
   title: string,
   candidates: unknown[],
   coverOverrides: Record<string, string>,
-  platform?: string
+  platform?: string,
+  bookTypes?: string,
+  audiobookDuration?: string
 ): string | null {
-  const itemKey = getStatsItemKey(mediaType, title, platform);
+  const itemKey = getStatsItemKey(mediaType, title, platform, bookTypes, audiobookDuration);
   const override = safeText(coverOverrides[itemKey]);
   if (override) return override;
   return pickCoverUrl(candidates);
@@ -810,7 +839,10 @@ export function StatisticsView({ books, movies, shows, games, coverOverrides = {
           book.cover,
           book.githubCoverUrl,
         ],
-        coverOverrides
+        coverOverrides,
+        undefined,
+        book.types,
+        book.audiobookDuration
       );
       const audiobookMinutes = parseDurationToMinutes(book.audiobookDuration, "hours");
 

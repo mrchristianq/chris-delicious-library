@@ -52,21 +52,47 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file");
+    const sourceUrl = String(formData.get("sourceUrl") || "");
     const mediaType = String(formData.get("mediaType") || "media");
     const itemKey = String(formData.get("itemKey") || "item");
     const title = String(formData.get("title") || "cover");
+    let buffer: Buffer | null = null;
+    let contentType = "image/jpeg";
+    let ext = "jpg";
 
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "No file received" }, { status: 400 });
+    if (file && file instanceof File) {
+      const bytes = await file.arrayBuffer();
+      buffer = Buffer.from(bytes);
+      if (!buffer.length) {
+        return NextResponse.json({ error: "Uploaded file is empty" }, { status: 400 });
+      }
+      ext = extFromFile(file);
+      contentType = file.type || contentType;
+    } else if (sourceUrl) {
+      const response = await fetch(sourceUrl, { cache: "no-store" });
+      if (!response.ok) {
+        return NextResponse.json({ error: `Failed to fetch source URL (${response.status})` }, { status: 400 });
+      }
+      const bytes = await response.arrayBuffer();
+      buffer = Buffer.from(bytes);
+      if (!buffer.length) {
+        return NextResponse.json({ error: "Source URL returned empty image" }, { status: 400 });
+      }
+      const responseType = (response.headers.get("content-type") || "").toLowerCase();
+      if (responseType.includes("png")) {
+        ext = "png";
+        contentType = "image/png";
+      } else if (responseType.includes("webp")) {
+        ext = "webp";
+        contentType = "image/webp";
+      } else {
+        ext = "jpg";
+        contentType = responseType || contentType;
+      }
+    } else {
+      return NextResponse.json({ error: "No file or source URL received" }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    if (!buffer.length) {
-      return NextResponse.json({ error: "Uploaded file is empty" }, { status: 400 });
-    }
-
-    const ext = extFromFile(file);
     const safeType = sanitizePart(mediaType) || "media";
     const safeKey = sanitizePart(itemKey) || sanitizePart(title) || "cover";
     const timestamp = Date.now();
@@ -77,7 +103,7 @@ export async function POST(req: NextRequest) {
         Bucket: bucket,
         Key: objectKey,
         Body: buffer,
-        ContentType: file.type || "image/jpeg",
+        ContentType: contentType,
         CacheControl: "public, max-age=31536000, immutable",
       })
     );
@@ -90,8 +116,9 @@ export async function POST(req: NextRequest) {
       key: objectKey,
       url,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("upload-cover error", error);
-    return NextResponse.json({ error: error?.message || "Upload failed" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Upload failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

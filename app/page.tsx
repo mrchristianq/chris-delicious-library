@@ -12,6 +12,7 @@ import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 import { StatisticsView } from "./components/StatisticsView";
 import { BookDetailsPage, buildSeedDetailPalette } from "./components/BookDetailsPage";
+import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -221,7 +222,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "7.1.0";
+const APP_VERSION = "7.5";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -321,6 +322,20 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "7.5",
+    date: "2026-05-01",
+    notes: [
+      "Added a rebuilt Mac-style Edit Book flow from the details page with a clean native-like popup and tighter spacing.",
+      "Simplified book cover editing to two sources only: ImageURL (default) and CustomURL, and removed OpenLibrary Work Key + Google Books Volume ID from the edit form.",
+      "Updated book cover rules so CustomURL always wins when present, saving default clears CustomURL, and cover selections stay consistent instead of bouncing back.",
+      "Aligned book cover behavior with R2 backup flow so active covers persist reliably across details and main shelf views.",
+      "Fixed book format rendering so Type overrides Audiobook Duration (eBook always renders as book format).",
+      "Fixed duplicate React key warnings in book detail chips and stabilized detail/sidebar layout sizing.",
+      "Extended the floating sidebar treatment across views with unified full-page background behavior (home + details).",
+      "Fixed sticky header/covers overlap by introducing scroll-aware header protection with dynamic blur/opacity and consistent no-scroll appearance.",
+    ],
+  },
   {
     version: "7.1.0",
     date: "2026-04-29",
@@ -1189,6 +1204,25 @@ function normalizePlatformToken(platform: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
+function getBookFormatKeyToken(item: any): string {
+  const typesRaw = [safeStr(item?.types), safeStr(item?.type), safeStr(item?.Type)].filter(Boolean).join(",");
+  const typeTokens = typesRaw
+    .split(/[,;|/]+/g)
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+
+  // Explicit type should win over duration heuristics.
+  if (typeTokens.includes("audiobook")) return "audiobook";
+  if (typeTokens.includes("ebook") || typeTokens.includes("e-book")) return "ebook";
+  if (typeTokens.includes("physical")) return "physical";
+  if (typeTokens.length > 0) {
+    const normalized = typeTokens[0].replace(/[^a-z0-9]+/g, "");
+    if (normalized) return normalized;
+  }
+  if (Boolean(safeStr(item?.audiobookDuration) || safeStr(item?.AudiobookDuration))) return "audiobook";
+  return "default";
+}
+
 const PLATFORM_TOKEN_ALIASES: Record<string, string> = {
   ps5: "playstation5",
   ps4: "playstation4",
@@ -1256,6 +1290,10 @@ function getMediaType(item: any): MediaType {
 function getMediaItemKey(item: any): string {
   const type = getMediaType(item);
   const normalizedTitle = normalizeTitleKey(item?.title || "");
+  if (type === "book") {
+    const bookFormatToken = getBookFormatKeyToken(item);
+    return `${type}:${normalizedTitle}:${bookFormatToken}`;
+  }
   if (type === "game") {
     const normalizedPlatform = normalizePlatformToken(
       safeStr(item?.__renderPlatform || item?.platform)
@@ -1263,6 +1301,37 @@ function getMediaItemKey(item: any): string {
     return `${type}:${normalizedTitle}:${normalizedPlatform || "default"}`;
   }
   return `${type}:${normalizedTitle}`;
+}
+
+function getLegacyMediaItemKey(item: any): string {
+  const type = getMediaType(item);
+  const normalizedTitle = normalizeTitleKey(item?.title || "");
+  if (type === "game") {
+    const normalizedPlatform = normalizePlatformToken(
+      safeStr(item?.__renderPlatform || item?.platform)
+    );
+    return `${type}:${normalizedTitle}:${normalizedPlatform || "default"}`;
+  }
+  return `${type}:${normalizedTitle}`;
+}
+
+function isLegacyBookMediaKey(key: string): boolean {
+  return /^book:[^:]+$/.test(safeStr(key));
+}
+
+function getBookCustomUrl(item: any): string {
+  return safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL);
+}
+
+function getBookImageUrl(item: any): string {
+  return safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image);
+}
+
+function getBookSourceUrlByMode(item: any, _mode?: "custom" | "default"): string {
+  const imageUrl = getBookImageUrl(item);
+  const customUrl = getBookCustomUrl(item);
+  // For books, custom URL is always the source of truth when present.
+  return customUrl || imageUrl;
 }
 
 type StatusIndicator = {
@@ -1532,23 +1601,19 @@ function rowToBook(r: Row): Book | null {
   const githubCoverUrl = safeStr(r["GitHubCoverURL"]) || undefined;
   const coverSyncStatus = safeStr(r["CoverSyncStatus"]);
   const customImageUrl =
+    safeStr(r["CustomURL"]) ||
+    safeStr(r["Custom URL"]) ||
     safeStr(r["CustomImageURL"]) ||
     safeStr(r["CustomImageUrl"]) ||
     safeStr(r["Custom Image URL"]) ||
     safeStr(r["\"CustomImageURL"]) ||
     safeStr(r["CustomImageURL\n"]);
-  const cover = safeStr(r["Cover"]);
-  const coverUrl = safeStr(r["Cover URL"]) || safeStr(r["CoverURL"]);
   const imageUrl = safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]);
-  const posterUrlCol = safeStr(r["PosterURL"]) || safeStr(r["Poster URL"]) || safeStr(r["Poster"]);
-  const metadataCoverUrl = customImageUrl || imageUrl || cover || coverUrl || posterUrlCol;
+  const metadataCoverUrl = customImageUrl || imageUrl;
   const csvUrl = metadataCoverUrl;
   const orderedCandidates: CoverCandidate[] = [
     { label: "CustomImageURL", url: customImageUrl },
     { label: "ImageURL", url: imageUrl },
-    { label: "Cover", url: cover },
-    { label: "Cover URL", url: coverUrl },
-    { label: "PosterURL", url: posterUrlCol },
     { label: "GitHubCoverURL", url: githubCoverUrl || "" },
     { label: "Generated GitHub Cover", url: generatedGitHubUrl },
   ];
@@ -2908,16 +2973,13 @@ export default function Page() {
     : Math.max(1, Math.round(Math.max(SHELF_HEIGHT, shelfContentHeight + 18) * rowHeightScaleFactor));
   const isAudiobookItem = useCallback((item: any) => {
     if (!item || item.__type !== "book") return false;
-    const typeList = safeStr(item?.types)
-      .split(",")
-      .map((type) => type.trim().toLowerCase())
-      .filter(Boolean);
-    return Boolean(safeStr(item?.audiobookDuration) || safeStr(item?.AudiobookDuration) || typeList.includes("audiobook"));
+    return getBookFormatKeyToken(item) === "audiobook";
   }, []);
   // Modal state for cover popup
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<any>(null);
   const [bookDetailItem, setBookDetailItem] = useState<any>(null);
+  const [bookDetailsEditOpen, setBookDetailsEditOpen] = useState(false);
   const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
@@ -2940,6 +3002,7 @@ export default function Page() {
 
   useEffect(() => {
     setBookDetailItem(null);
+    setBookDetailsEditOpen(false);
     setBookDetailPalette(null);
   }, [nav, selectedSmartListId]);
 
@@ -2968,8 +3031,12 @@ export default function Page() {
 
   const buildItemWithCoverSelection = (item: any, overrides: Record<string, string>) => {
     const itemKey = getMediaItemKey(item);
+    const coverMode = getPopupCoverModeForItem(item);
     const overrideUrl = safeStr(overrides[itemKey]);
-    const metadataUrl = safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
+    const metadataUrl =
+      getMediaType(item) === "book"
+        ? getBookSourceUrlByMode(item, coverMode)
+        : safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
     const fallbackUrl = safeStr(item?.posterUrlFallback);
     const existingCandidates = Array.isArray(item?.coverCandidates)
       ? item.coverCandidates.filter(
@@ -3008,15 +3075,23 @@ export default function Page() {
   const getDisplayCoverUrl = (item: any) => {
     const itemKey = getMediaItemKey(item);
     const failed = new Set(failedCoverUrls[itemKey] || []);
+    const coverMode = getPopupCoverModeForItem(item);
+    const isBook = getMediaType(item) === "book";
+    const metadataUrl =
+      isBook
+        ? getBookSourceUrlByMode(item, coverMode)
+        : safeStr(item?.metadataCoverUrl);
     const overrideUrl = safeStr(coverOverrides[itemKey]);
-    const candidates = [
-      overrideUrl,
-      safeStr(item?.metadataCoverUrl),
-      safeStr(item?.posterUrl),
-      safeStr(item?.posterUrlFallback),
-    ].filter(Boolean);
+    const candidates = isBook
+      ? [overrideUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
+      : [metadataUrl, overrideUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
+  };
+
+  const getPopupCoverModeForItem = (item: any): "custom" | "default" | undefined => {
+    const itemKey = getMediaItemKey(item);
+    return popupCoverModes[itemKey];
   };
 
   const openBookDetailItem = useCallback((item: any) => {
@@ -3039,6 +3114,15 @@ export default function Page() {
     setModalItem(nextItem);
     setModalOpen(true);
   }, [coverOverrides, openBookDetailItem]);
+
+  const openBookEditModalFromDetails = useCallback((item: any) => {
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    setBookDetailItem(nextItem);
+    setModalOpen(false);
+    setModalItem(null);
+    setCoverUploadError(null);
+    setBookDetailsEditOpen(true);
+  }, [coverOverrides]);
 
   useEffect(() => {
     const onResize = () => {
@@ -3308,7 +3392,13 @@ export default function Page() {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
-        setCoverOverrides(parsed as Record<string, string>);
+        const cleaned = Object.fromEntries(
+          Object.entries(parsed as Record<string, string>).filter(([key]) => !isLegacyBookMediaKey(key))
+        );
+        setCoverOverrides(cleaned);
+        if (Object.keys(cleaned).length !== Object.keys(parsed as Record<string, string>).length) {
+          localStorage.setItem("cdlCoverOverrides", JSON.stringify(cleaned));
+        }
       }
     } catch (e) {
       console.warn("Failed to load cover overrides from localStorage:", e);
@@ -3323,11 +3413,15 @@ export default function Page() {
       if (parsed && typeof parsed === "object") {
         const normalized: Record<string, "custom" | "default"> = {};
         Object.entries(parsed as Record<string, unknown>).forEach(([key, value]) => {
+          if (isLegacyBookMediaKey(key)) return;
           if (value === "custom" || value === "default") {
             normalized[key] = value;
           }
         });
         setPopupCoverModes(normalized);
+        if (Object.keys(normalized).length !== Object.keys(parsed as Record<string, unknown>).length) {
+          localStorage.setItem("cdlPopupCoverModes", JSON.stringify(normalized));
+        }
       }
     } catch (e) {
       console.warn("Failed to load popup cover modes from localStorage:", e);
@@ -3357,12 +3451,14 @@ export default function Page() {
       const value = safeStr(r["Value"]);
       if (key.startsWith("coverOverride:")) {
         const mediaKey = key.slice("coverOverride:".length);
+        if (isLegacyBookMediaKey(mediaKey)) return;
         if (mediaKey && value) {
           fromSheet[mediaKey] = value;
         }
       }
       if (key.startsWith("popupCoverMode:")) {
         const mediaKey = key.slice("popupCoverMode:".length);
+        if (isLegacyBookMediaKey(mediaKey)) return;
         if (mediaKey && (value === "custom" || value === "default")) {
           popupModesFromSheet[mediaKey] = value;
         }
@@ -3375,10 +3471,10 @@ export default function Page() {
       }
     });
     if (Object.keys(fromSheet).length) {
-      setCoverOverrides((prev) => ({ ...prev, ...fromSheet }));
+      setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
     }
     if (Object.keys(popupModesFromSheet).length) {
-      setPopupCoverModes((prev) => ({ ...prev, ...popupModesFromSheet }));
+      setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
     }
     if (Object.keys(sidebarIconFromSheet).length) {
       setSidebarIconOverrides((prev) => ({ ...prev, ...sidebarIconFromSheet }));
@@ -3504,6 +3600,10 @@ export default function Page() {
         setModalItem((prev: any) =>
           prev ? buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: localUrl }) : prev
         );
+        setBookDetailItem((prev: any) => {
+          if (!prev || getMediaItemKey(prev) !== itemKey) return prev;
+          return buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: localUrl });
+        });
         setSyncState("ok");
         setSyncMsg("Cover saved locally");
         setLastSyncAt(Date.now());
@@ -3550,6 +3650,10 @@ export default function Page() {
       }
 
       setModalItem((prev: any) => (prev ? buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl }) : prev));
+      setBookDetailItem((prev: any) => {
+        if (!prev || getMediaItemKey(prev) !== itemKey) return prev;
+        return buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl });
+      });
     } catch (e: any) {
       const msg = e?.message || "Failed to upload cover";
       setCoverUploadError(msg);
@@ -3579,6 +3683,78 @@ export default function Page() {
         `${mediaType} popup cover mode for ${safeStr(item?.title)}`
       );
     }
+  };
+
+  const persistBookSelectedSourceToR2 = async (item: any, mode: "custom" | "default") => {
+    if (!item || getMediaType(item) !== "book" || isStaticSiteBuild) return "";
+    const sourceUrl = getBookSourceUrlByMode(item, mode);
+    if (!sourceUrl) return "";
+
+    const itemKey = getMediaItemKey(item);
+    const formData = new FormData();
+    formData.append("sourceUrl", sourceUrl);
+    formData.append("itemKey", itemKey);
+    formData.append("mediaType", "book");
+    formData.append("title", safeStr(item?.title));
+
+    const res = await fetch("/api/upload-cover", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.url) {
+      throw new Error(payload?.error || `Backup upload failed (${res.status})`);
+    }
+
+    return String(payload.url);
+  };
+
+  const handleBookDetailsCoverModeChange = (item: any, mode: "custom" | "default") => {
+    handlePopupCoverModeChange(item, mode);
+    const itemKey = getMediaItemKey(item);
+    const legacyItemKey = getLegacyMediaItemKey(item);
+
+    const applyOverride = (url: string) => {
+      setCoverOverrides((prev) => {
+        const next = { ...prev };
+        if (url) next[itemKey] = url;
+        else delete next[itemKey];
+        delete next[legacyItemKey];
+        try {
+          localStorage.setItem("cdlCoverOverrides", JSON.stringify(next));
+        } catch (e) {
+          console.warn("Failed to persist cover overrides locally:", e);
+        }
+        return next;
+      });
+      if (settingsWriteUrl) {
+        saveSettingToSheet(
+          `coverOverride:${itemKey}`,
+          url,
+          "Cover Overrides",
+          `${mode === "custom" ? "Custom" : "Default"} backup cover for ${safeStr(item?.title)}`
+        );
+        if (legacyItemKey !== itemKey) {
+          saveSettingToSheet(
+            `coverOverride:${legacyItemKey}`,
+            "",
+            "Cover Overrides",
+            `Cleared legacy cover override for ${safeStr(item?.title)}`
+          );
+        }
+      }
+    };
+
+    void (async () => {
+      try {
+        const uploadedUrl = await persistBookSelectedSourceToR2(item, mode);
+        applyOverride(uploadedUrl);
+      } catch (e: any) {
+        console.error("Failed to persist selected book source to R2:", e);
+        setCoverUploadError(e?.message || "Failed to save cover backup");
+      }
+    })();
   };
 
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
@@ -3643,6 +3819,8 @@ export default function Page() {
         ReleaseDate: safeStr(updates.releaseDate),
         description: safeStr(updates.description),
         ImageURL: safeStr(updates.imageUrl),
+        CustomURL: safeStr(updates.customImageUrl),
+        CustomImageURL: safeStr(updates.customImageUrl),
         userRating: safeStr(updates.userRating),
         "My Rating": safeStr(updates.myRating),
         pages: safeStr(updates.pages),
@@ -3676,6 +3854,54 @@ export default function Page() {
         releaseDate: safeStr(updates.releaseDate),
         description: safeStr(updates.description),
         imageUrl: safeStr(updates.imageUrl),
+        customImageUrl: safeStr(updates.customImageUrl),
+        userRating: safeStr(updates.userRating),
+        myRating: safeStr(updates.myRating),
+        pages: safeStr(updates.pages),
+        audiobookDuration: safeStr(updates.audiobookDuration),
+        categories: safeStr(updates.genre),
+        genre: safeStr(updates.genre),
+        tags: safeStr(updates.tags),
+        openLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
+        googleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+      };
+      return buildItemWithCoverSelection(nextItem, coverOverrides);
+    });
+
+    setBookDetailItem((prev: any) => {
+      if (!prev || getMediaType(prev) !== "book") return prev;
+
+      const prevGoogleBooksVolumeId = safeStr(prev?.googleBooksVolumeId || prev?.GoogleBooksVolumeId);
+      const prevOpenLibraryWorkKey = safeStr(prev?.openLibraryWorkKey || prev?.OpenLibraryWorkKey);
+      const prevIsbn = safeStr(prev?.isbn || prev?.ISBN || prev?.isbn13 || prev?.ISBN13 || prev?.isbn10 || prev?.ISBN10);
+      const prevTitle = safeStr(prev?.title || prev?.Title);
+      const isSameItem =
+        (matchGoogleBooksVolumeId && prevGoogleBooksVolumeId === matchGoogleBooksVolumeId) ||
+        (fallbackGoogleBooksVolumeId && prevGoogleBooksVolumeId === fallbackGoogleBooksVolumeId) ||
+        (matchOpenLibraryWorkKey && prevOpenLibraryWorkKey === matchOpenLibraryWorkKey) ||
+        (fallbackOpenLibraryWorkKey && prevOpenLibraryWorkKey === fallbackOpenLibraryWorkKey) ||
+        (matchIsbn && prevIsbn === matchIsbn) ||
+        (fallbackIsbn && prevIsbn === fallbackIsbn) ||
+        (matchTitle && prevTitle.toLowerCase() === matchTitle.toLowerCase()) ||
+        (fallbackTitle && prevTitle.toLowerCase() === fallbackTitle.toLowerCase());
+
+      if (!isSameItem) return prev;
+
+      const nextItem = {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        subtitle: safeStr(updates.subtitle),
+        series: safeStr(updates.series),
+        author: safeStr(updates.author),
+        ownership: safeStr(updates.ownership),
+        types: safeStr(updates.type),
+        status: safeStr(updates.status),
+        completedDate: safeStr(updates.completedDate),
+        isbn: safeStr(updates.isbn),
+        releaseDate: safeStr(updates.releaseDate),
+        description: safeStr(updates.description),
+        imageUrl: safeStr(updates.imageUrl),
+        customImageUrl: safeStr(updates.customImageUrl),
         userRating: safeStr(updates.userRating),
         myRating: safeStr(updates.myRating),
         pages: safeStr(updates.pages),
@@ -3724,6 +3950,8 @@ export default function Page() {
           ReleaseDate: safeStr(updates.releaseDate),
           description: safeStr(updates.description),
           ImageURL: safeStr(updates.imageUrl),
+          CustomURL: safeStr(updates.customImageUrl),
+          CustomImageURL: safeStr(updates.customImageUrl),
           userRating: safeStr(updates.userRating),
           "My Rating": safeStr(updates.myRating),
           pages: safeStr(updates.pages),
@@ -9275,6 +9503,17 @@ export default function Page() {
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
     [shelfRenderWindow.end, shelfRenderWindow.start, shelves]
   );
+  const headerLocalScrollY = Math.max(0, windowScrollY - stageTopAbs);
+  const stickyHeaderOverlayOpacityRaw = Math.max(0, Math.min(1, (headerLocalScrollY + 6) / 28));
+  const stickyHeaderOverlayOpacity =
+    windowScrollY > 2 ? Math.max(0.26, stickyHeaderOverlayOpacityRaw) : stickyHeaderOverlayOpacityRaw;
+  const stickyHeaderSimpleBackground = hexToRgba(
+    simpleShelfBackgroundColor,
+    0.8 * stickyHeaderOverlayOpacity,
+    simpleShelfBackgroundColor
+  );
+  const stickyHeaderDarkBackground = `rgba(8, 16, 28, ${0.78 * stickyHeaderOverlayOpacity})`;
+  const stickyHeaderBlurPx = 7 * stickyHeaderOverlayOpacity;
   const mobileLibraryMenuItems: Array<{ key: NavKey; label: string; count?: number }> = [
     { key: "home", label: "Home" },
     { key: "books", label: "Books", count: stats.books },
@@ -9324,11 +9563,10 @@ export default function Page() {
       end: nextPalette.end,
     });
   }, [bookDetailItem]);
-  const sidebarDetailGradientActive = Boolean(activeBookDetailBackground);
-  const sidebarDetailShellBackground = sidebarDetailGradientActive
-    ? "linear-gradient(180deg, rgba(243, 245, 247, 0.38) 0%, rgba(231, 235, 239, 0.3) 100%)"
-    : sidebarShellBackground;
-  const sidebarDetailBackplateOpacity = sidebarDetailGradientActive ? 0.74 : sidebarBackplateOpacity;
+  const sidebarFloatOverPageBackground = Boolean(activeBookDetailBackground) || nav === "home";
+  const sidebarDetailGradientActive = sidebarFloatOverPageBackground;
+  const sidebarDetailShellBackground = sidebarShellBackground;
+  const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
 
   return (
     <div
@@ -9935,7 +10173,7 @@ export default function Page() {
             boxShadow: "none",
             display: isMobileLayout ? "none" : "flex",
             flexDirection: "column",
-            padding: sidebarDetailGradientActive ? "0px" : "6px",
+            padding: "6px",
           }}
         >
           <div
@@ -9948,15 +10186,27 @@ export default function Page() {
               bottom: 0,
               zIndex: 0,
               pointerEvents: "none",
-              backgroundImage: isSimpleShelfPresentation ? simplePresentationBackground : `url(${shelfTheme})`,
-              backgroundRepeat: "repeat-y",
-              backgroundPosition: "center top",
-              backgroundSize: isElectricBlueShelfPresentation
-                ? `calc(100% + 2px) ${shelfRowHeight + 2}px`
+              backgroundImage: sidebarDetailGradientActive
+                ? "none"
                 : isSimpleShelfPresentation
-                  ? "100% 100%"
-                  : `100% ${shelfRowHeight}px`,
-              backgroundColor: isElectricBlueShelfPresentation ? "rgba(5, 13, 30, 0.88)" : isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+                  ? simplePresentationBackground
+                  : `url(${shelfTheme})`,
+              backgroundRepeat: sidebarDetailGradientActive ? "no-repeat" : "repeat-y",
+              backgroundPosition: "center top",
+              backgroundSize: sidebarDetailGradientActive
+                ? "100% 100%"
+                : isElectricBlueShelfPresentation
+                  ? `calc(100% + 2px) ${shelfRowHeight + 2}px`
+                  : isSimpleShelfPresentation
+                    ? "100% 100%"
+                    : `100% ${shelfRowHeight}px`,
+              backgroundColor: sidebarDetailGradientActive
+                ? "transparent"
+                : isElectricBlueShelfPresentation
+                  ? "rgba(5, 13, 30, 0.88)"
+                  : isSimpleShelfPresentation
+                    ? simpleShelfBackgroundColor
+                    : "transparent",
               boxShadow: isElectricBlueShelfPresentation
                 ? "0 0 26px rgba(58, 125, 232, 0.2), inset 0 0 0 1px rgba(7, 21, 45, 0.6)"
                 : isSimpleShelfPresentation
@@ -9993,12 +10243,12 @@ export default function Page() {
             aria-hidden
             style={{
               position: "absolute",
-              inset: sidebarDetailGradientActive ? 0 : 6,
+              inset: 6,
               zIndex: 1,
               pointerEvents: "none",
               borderRadius: isSimpleSidebarTheme ? 12 : 16,
               overflow: "hidden",
-              opacity: sidebarDetailBackplateOpacity,
+              opacity: sidebarDetailGradientActive ? 0 : sidebarDetailBackplateOpacity,
               backgroundImage: currentTheme.background,
               backgroundSize: sidebarBackplateBackgroundSize,
               backgroundPosition: sidebarBackplateBackgroundPosition,
@@ -13339,7 +13589,9 @@ export default function Page() {
               item={bookDetailItem}
               allBooks={allBooks}
               isMobileLayout={isMobileLayout}
+              usePageBackground
               onBack={() => setBookDetailItem(null)}
+              onEdit={openBookEditModalFromDetails}
               onSelectRelated={openBookDetailItem}
               getDisplayCoverUrl={getDisplayCoverUrl}
               isAudiobookItem={isAudiobookItem}
@@ -13357,7 +13609,12 @@ export default function Page() {
 			                    top: topSafeInset,
 		                    height: 45,
 		                    overflow: "hidden",
-		                    background: "transparent",
+		                    background: isSimpleHeaderTheme
+		                      ? stickyHeaderSimpleBackground
+		                      : stickyHeaderDarkBackground,
+		                    backdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none",
+		                    WebkitBackdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none",
+		                    isolation: "isolate",
 		                    borderRadius: 0,
 			                    zIndex: 2000,
 			                  }}
@@ -14938,9 +15195,25 @@ export default function Page() {
         gameOwnershipOptions={gameOwnershipOptions}
         gameFormatOptions={gameFormatOptions}
         gameStatusOptions={gameStatusOptions}
-        popupCoverMode={modalItem ? popupCoverModes[getMediaItemKey(modalItem)] : undefined}
+        popupCoverMode={modalItem ? getPopupCoverModeForItem(modalItem) : undefined}
         onPopupCoverModeChange={handlePopupCoverModeChange}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
+        replaceCoverError={coverUploadError}
+      />
+
+      <BookDetailsEditModal
+        open={bookDetailsEditOpen && Boolean(bookDetailItem)}
+        item={bookDetailItem}
+        onClose={() => {
+          if (uploadingCoverForKey) return;
+          setBookDetailsEditOpen(false);
+          setCoverUploadError(null);
+        }}
+        onSave={handleSaveBookEdits}
+        onReplaceCover={handleReplaceCover}
+        onCoverModeChange={handleBookDetailsCoverModeChange}
+        popupCoverMode={bookDetailItem ? getPopupCoverModeForItem(bookDetailItem) : undefined}
+        isReplacingCover={Boolean(bookDetailItem && uploadingCoverForKey === getMediaItemKey(bookDetailItem))}
         replaceCoverError={coverUploadError}
       />
 
