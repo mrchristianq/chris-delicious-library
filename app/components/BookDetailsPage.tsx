@@ -397,6 +397,7 @@ export function BookDetailsPage({
       ].join("|"),
     [coverUrl, item]
   );
+  const [paletteReady, setPaletteReady] = useState(false);
   const [extractedPaletteEntry, setExtractedPaletteEntry] = useState<{
     key: string;
     palette: PaletteState;
@@ -406,20 +407,24 @@ export function BookDetailsPage({
 
   useEffect(() => {
     let cancelled = false;
+    setPaletteReady(false);
     extractPalette(item, coverUrl).then((nextPalette) => {
       if (!cancelled) {
         setExtractedPaletteEntry({ key: paletteCacheKey, palette: nextPalette });
+        setPaletteReady(true);
       }
     });
     return () => {
       cancelled = true;
+      setPaletteReady(false);
       onPaletteChange?.(null);
     };
   }, [coverUrl, item, onPaletteChange, paletteCacheKey]);
 
   useEffect(() => {
+    if (!paletteReady) return;
     onPaletteChange?.({ start: palette.start, end: palette.end });
-  }, [onPaletteChange, palette.end, palette.start]);
+  }, [onPaletteChange, palette.end, palette.start, paletteReady]);
 
   const author = safeStr(item.author || item.Author) || "Unknown author";
   const releaseDate = formatLongDate(item.releaseDate || item.ReleaseDate);
@@ -546,6 +551,7 @@ export function BookDetailsPage({
   return (
     <div
       style={{
+        opacity: paletteReady ? 1 : 0,
         minHeight: isMobileLayout ? `calc(100vh - 58px)` : "100vh",
         padding: isMobileLayout ? "12px 10px 24px" : "12px 16px 16px",
         background: usePageBackground

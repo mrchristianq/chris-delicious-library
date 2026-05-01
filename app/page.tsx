@@ -11,7 +11,7 @@ import Papa from "papaparse";
 import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 import { StatisticsView } from "./components/StatisticsView";
-import { BookDetailsPage, buildSeedDetailPalette } from "./components/BookDetailsPage";
+import { BookDetailsPage } from "./components/BookDetailsPage";
 import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 
 type Row = Record<string, string>;
@@ -222,7 +222,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "7.5";
+const APP_VERSION = "7.6";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -322,6 +322,23 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "7.6",
+    date: "2026-05-01",
+    notes: [
+      "Removed pill box styling from sidebar item counts — now shows plain bold numbers.",
+      "Tightened sidebar sub-item spacing to 4px total vertical gap.",
+      "Eliminated flash of default background color when opening book details — page now waits for cover-based palette before rendering.",
+      "Redesigned cover art rating badge with gold star, white/transparent pill, and clean whole-number formatting.",
+      "Rounded cover art corners from 5px to 6px.",
+      "Reduced gap between header quick-link pills (Home, Now Playing, Play Next, etc.) to 0.",
+      "Moved TV Watchlist section filter (Watching, Backlog, Pending Return) into the sidebar Discover section with color-coded pills matching cover badges.",
+      "Removed Sandbox button from header.",
+      "Replaced header search PNG icon with inline SVG magnifying glass and made the search box transparent.",
+      "Removed redundant second 'Synced' label from the sidebar sync module and extended sync box closer to sidebar edges.",
+      "Fixed Games sidebar platform list alignment so counts right-align consistently with other sections.",
+    ],
+  },
   {
     version: "7.5",
     date: "2026-05-01",
@@ -929,7 +946,8 @@ function formatItemPersonalRatingBadge(item: any): string | null {
   );
   if (rating === null) return null;
   const tenScaleValue = mediaType === "book" && rating <= 5 ? rating * 2 : rating;
-  return `${(Math.round(tenScaleValue * 10) / 10).toFixed(1)}`;
+  const rounded = Math.round(tenScaleValue * 10) / 10;
+  return rounded % 1 === 0 ? `${rounded}` : `${rounded.toFixed(1)}`;
 }
 
 function parseManualOrderValue(value: unknown): number | null {
@@ -3096,8 +3114,7 @@ export default function Page() {
 
   const openBookDetailItem = useCallback((item: any) => {
     const nextItem = buildItemWithCoverSelection(item, coverOverrides);
-    const seededPalette = buildSeedDetailPalette(nextItem, getDisplayCoverUrl(nextItem));
-    setBookDetailPalette({ key: getMediaItemKey(nextItem), start: seededPalette.start, end: seededPalette.end });
+    setBookDetailPalette(null);
     setBookDetailItem(nextItem);
     setModalOpen(false);
     setModalItem(null);
@@ -9537,20 +9554,13 @@ export default function Page() {
   ];
   const useElectricBlueStatsBackdrop = nav === "statistics" && isElectricBlueThemeActive;
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics";
-  const seededBookDetailPalette = useMemo(() => {
-    if (!bookDetailItem || getMediaType(bookDetailItem) !== "book") return null;
-    return buildSeedDetailPalette(bookDetailItem, getDisplayCoverUrl(bookDetailItem));
-  }, [bookDetailItem, getDisplayCoverUrl]);
   const activeBookDetailKey =
     bookDetailItem && getMediaType(bookDetailItem) === "book" ? getMediaItemKey(bookDetailItem) : "";
   const activeBookDetailPalette =
-    bookDetailPalette?.key === activeBookDetailKey ? bookDetailPalette : seededBookDetailPalette;
+    bookDetailPalette?.key === activeBookDetailKey ? bookDetailPalette : null;
   const activeBookDetailBackground =
-    bookDetailItem && getMediaType(bookDetailItem) === "book"
-      ? buildDetailGradientBackground(
-          (activeBookDetailPalette ?? { start: "#8e6e67", end: "#6277a3" }).start,
-          (activeBookDetailPalette ?? { start: "#8e6e67", end: "#6277a3" }).end
-        )
+    bookDetailItem && getMediaType(bookDetailItem) === "book" && activeBookDetailPalette
+      ? buildDetailGradientBackground(activeBookDetailPalette.start, activeBookDetailPalette.end)
       : null;
   const handleBookDetailPaletteChange = useCallback((nextPalette: { start: string; end: string } | null) => {
     if (!nextPalette || !bookDetailItem || getMediaType(bookDetailItem) !== "book") {
@@ -10395,7 +10405,7 @@ export default function Page() {
 
                 {nav === "books" ? (
                   <div style={{ marginTop: 4, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 5, order: 10 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                       <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 0 }}>
                         <span style={sidebarSectionHeaderTextStyle}>Reading Status</span>
                         <span />
@@ -10413,20 +10423,7 @@ export default function Page() {
                               {status}
                             </span>
                             <span
-                              style={{
-                                minWidth: 14,
-                                height: 12,
-                                padding: "0 3px",
-                                borderRadius: 8,
-                                fontSize: 9,
-                                textAlign: "center",
-                                background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                color: sidebarInlineCountColor,
-                                border: sidebarInlineCountBorder,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
+                              style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                             >
                               {readingStatusCounts[status] ?? 0}
                             </span>
@@ -10435,7 +10432,7 @@ export default function Page() {
                       })}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                       <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 0, paddingTop: 3 }}>
                         <span style={sidebarSectionHeaderTextStyle}>Formats</span>
                         <span />
@@ -10453,20 +10450,7 @@ export default function Page() {
                               {format}
                             </span>
                             <span
-                              style={{
-                                minWidth: 14,
-                                height: 12,
-                                padding: "0 3px",
-                                borderRadius: 8,
-                                fontSize: 9,
-                                textAlign: "center",
-                                background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                color: sidebarInlineCountColor,
-                                border: sidebarInlineCountBorder,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
+                              style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                             >
                               {formatCounts[format] ?? 0}
                             </span>
@@ -10483,7 +10467,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{seriesOpen ? "−" : "+"}</span>
                     </button>
                     {seriesOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {bookSeries.map((series) => {
                           const active = seriesFilter === series;
                           return (
@@ -10497,20 +10481,7 @@ export default function Page() {
                                 {series}
                               </span>
                               <span
-                                style={{
-                                  minWidth: 14,
-                                  height: 12,
-                                  padding: "0 3px",
-                                  borderRadius: 8,
-                                  fontSize: 9,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {seriesCounts[series] ?? 0}
                               </span>
@@ -10528,7 +10499,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {bookGenres.map((genre) => {
                           const active = genreFilter === genre;
                           return (
@@ -10542,20 +10513,7 @@ export default function Page() {
                                 {genre}
                               </span>
                               <span
-                                style={{
-                                  minWidth: 14,
-                                  height: 12,
-                                  padding: "0 3px",
-                                  borderRadius: 8,
-                                  fontSize: 9,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {genreCounts[genre] ?? 0}
                               </span>
@@ -10619,7 +10577,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "movies" || movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "movies" || movieGenreOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {movieGenres.map((genre) => {
                           const active = movieGenreFilter === genre;
                           return (
@@ -10640,20 +10598,7 @@ export default function Page() {
                                 {genre}
                               </span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {movieGenreCounts[genre] ?? 0}
                               </span>
@@ -10718,7 +10663,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || watchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "tv" || watchStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {watchStatuses.map((status) => {
                           const active = watchFilter === status;
                           return (
@@ -10743,20 +10688,7 @@ export default function Page() {
                                 {status}
                               </span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {watchCounts[status] ?? 0}
                               </span>
@@ -10774,7 +10706,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || showStatusOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "tv" || showStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {showStatuses.map((status) => {
                           const active = showFilter === status;
                           return (
@@ -10799,20 +10731,7 @@ export default function Page() {
                                 {status}
                               </span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {showCounts[status] ?? 0}
                               </span>
@@ -10830,7 +10749,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || tagOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "tv" || tagOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {tvTags.map((tag) => {
                           const active = tagFilter === tag;
                           return (
@@ -10855,20 +10774,7 @@ export default function Page() {
                                 {tag}
                               </span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {tvTagCounts[tag] ?? 0}
                               </span>
@@ -10943,7 +10849,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gamePlatformOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", width: "fit-content", maxWidth: "100%" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {gamePlatformOptions.map((option) => {
                           const active = gamePlatformFilter === option;
                           return (
@@ -10970,20 +10876,7 @@ export default function Page() {
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {gamePlatformCounts[option] ?? 0}
                               </span>
@@ -11001,7 +10894,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {gameStatuses.map((option) => {
                           const active = gameStatusFilter === option;
                           return (
@@ -11028,20 +10921,7 @@ export default function Page() {
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {gameStatusCounts[option] ?? 0}
                               </span>
@@ -11059,7 +10939,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameOwnershipOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {gameOwnershipOptions.map((option) => {
                           const active = gameOwnershipFilter === option;
                           return (
@@ -11086,20 +10966,7 @@ export default function Page() {
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {gameOwnershipCounts[option] ?? 0}
                               </span>
@@ -11117,7 +10984,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameFormatOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {gameFormatOptions.map((option) => {
                           const active = gameFormatFilter === option;
                           return (
@@ -11144,20 +11011,7 @@ export default function Page() {
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {gameFormatCounts[option] ?? 0}
                               </span>
@@ -11175,7 +11029,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameYearPlayedOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {gameYearPlayedOptions.map((option) => {
                           const active = gameYearPlayedFilter === option;
                           return (
@@ -11202,20 +11056,7 @@ export default function Page() {
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {gameYearPlayedCounts[option] ?? 0}
                               </span>
@@ -11233,7 +11074,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameGenresOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {gameGenres.map((option) => {
                           const active = gameGenreFilter === option;
                           return (
@@ -11260,20 +11101,7 @@ export default function Page() {
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
                               <span
-                                style={{
-                                  minWidth: 16,
-                                  height: 14,
-                                  padding: "0 4px",
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  textAlign: "center",
-                                  background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                                  color: sidebarInlineCountColor,
-                                  border: sidebarInlineCountBorder,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
+                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                               >
                                 {gameGenreCounts[option] ?? 0}
                               </span>
@@ -11296,7 +11124,7 @@ export default function Page() {
                   <span />
                 </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                 {[
                   { key: "year-this" as const, label: "This Year", count: stats.yearThis },
                   { key: "current" as const, label: "Current", count: stats.current },
@@ -11365,20 +11193,7 @@ export default function Page() {
                         </span>
                       </span>
                       <span
-                        style={{
-                          minWidth: 14,
-                          height: 12,
-                          padding: "0 3px",
-                          borderRadius: 8,
-                          fontSize: 9,
-                          textAlign: "center",
-                          background: active ? sidebarInlineCountActiveBackground : sidebarInlineCountBackground,
-                          color: sidebarInlineCountColor,
-                          border: sidebarInlineCountBorder,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
+                        style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
                       >
                         {item.count}
                       </span>
@@ -11533,6 +11348,39 @@ export default function Page() {
                 </button>
 
               </div>
+
+              {nav === "watchlist-tv" ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
+                  {TV_WATCHLIST_SECTION_ORDER.map((sectionKey) => {
+                    const sectionMeta = TV_WATCHLIST_SECTION_META[sectionKey];
+                    const active = watchlistTvSectionFilter === sectionKey;
+                    return (
+                      <button
+                        key={`watchlist-tv-sidebar-${sectionKey}`}
+                        type="button"
+                        onClick={() => setWatchlistTvSectionFilter(sectionKey)}
+                        style={{
+                          ...sidebarSubItemRowStyle,
+                          width: "100%",
+                          borderRadius: 8,
+                          border: `1px solid ${active ? sectionMeta.badgeBorder : "rgba(255,255,255,0.1)"}`,
+                          background: active ? sectionMeta.badgeBackground : "rgba(255,255,255,0.04)",
+                          padding: "5px 8px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: active ? 700 : 500, color: active ? sectionMeta.badgeColor : currentTheme.syncedTextColor }}>
+                          {sectionMeta.label}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: active ? sectionMeta.badgeColor : sidebarInlineCountColor, opacity: active ? 1 : 0.75 }}>
+                          {watchlistTvSectionCounts[sectionKey]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
             </div>
             </div>
 
@@ -12305,7 +12153,7 @@ export default function Page() {
 
             {/* Synced Module at Bottom */}
             {nav === "statistics" ? null : (
-            <div style={{ padding: "0 8px", marginTop: "auto", marginBottom: 12 }}>
+            <div style={{ padding: "0 4px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
                 style={{
@@ -12406,7 +12254,7 @@ export default function Page() {
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
-                    {syncMsg ? (
+                    {syncMsg && syncMsg !== "Synced" ? (
                       <div
                         style={{
                           color: syncStatusTextColor,
@@ -13628,7 +13476,7 @@ export default function Page() {
                             zIndex: 1402,
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: 8,
+                            gap: 0,
                           }}
                         >
                           {backlogHeaderQuickLinks.map(({ key, label }) => {
@@ -13675,7 +13523,7 @@ export default function Page() {
                             zIndex: 1402,
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: 8,
+                            gap: 0,
                           }}
                         >
                           {([
@@ -13722,7 +13570,7 @@ export default function Page() {
                             zIndex: 1402,
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: 8,
+                            gap: 0,
                           }}
                         >
                           {([
@@ -13769,7 +13617,7 @@ export default function Page() {
                             zIndex: 1402,
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: 8,
+                            gap: 0,
                           }}
                         >
                           {([
@@ -13908,44 +13756,49 @@ export default function Page() {
 		                          flex: 1,
 			                          minWidth: 0,
 			                          order: isMobileLayout ? 1 : undefined,
-			                          borderRadius: 9,
+			                          borderRadius: 8,
 			                          border: isSimpleHeaderTheme
-			                            ? "none"
+			                            ? "1px solid rgba(0,0,0,0.1)"
 			                            : isMobileLayout
 			                            ? "1px solid rgba(146, 181, 235, 0.52)"
-			                            : "1px solid rgba(10, 6, 3, 0.68)",
+			                            : "1px solid rgba(255,255,255,0.18)",
 			                          background: isSimpleHeaderTheme
-			                            ? "transparent"
+			                            ? "rgba(0,0,0,0.04)"
 			                            : isMobileLayout
 			                            ? "rgba(14, 30, 58, 0.78)"
-			                            : "rgba(16, 10, 6, 0.54)",
-	                          boxShadow: isSimpleHeaderTheme
-	                            ? "none"
-	                            : isMobileLayout
-	                            ? "0 3px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(173, 205, 255, 0.2)"
-	                            : "0 3px 10px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
-	                          paddingLeft: 7,
+			                            : "rgba(255,255,255,0.08)",
+	                          boxShadow: "none",
+	                          paddingLeft: 8,
+	                          gap: 6,
 	                        }}
 	                      >
-                        <img
-                          src="/icon-search.png"
-                          alt=""
-                          width={9}
-                          height={9}
-                          style={{ display: "block", marginRight: 4, filter: isSimpleHeaderTheme ? simpleHeaderIconFilter : "brightness(0) invert(1) opacity(0.62)" }}
-                        />
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                          style={{ flexShrink: 0, color: isSimpleHeaderTheme ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.5)" }}
+                        >
+                          <circle cx="11" cy="11" r="7" />
+                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
                         <input
                           value={query}
                           onChange={(e) => setQuery(e.target.value)}
-                          placeholder="Search..."
+                          placeholder="Search"
                           style={{
 	                            flex: 1,
-	                            height: 22,
+	                            height: 26,
 	                            border: "none",
 	                            background: "transparent",
-	                            color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "rgba(250, 242, 230, 0.86)",
-	                            fontSize: 11,
-	                            fontWeight: 600,
+	                            color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "rgba(255,255,255,0.9)",
+	                            fontSize: 12,
+	                            fontWeight: 500,
 	                            minWidth: 0,
 	                            outline: "none",
 	                          }}
@@ -14076,49 +13929,6 @@ export default function Page() {
                             />
                             Status
                           </button>
-                          <button
-                            onClick={() => setSandboxMode((prev) => !prev)}
-                            title="Toggle sandbox overlay"
-                            aria-label="Toggle sandbox overlay"
-                            aria-pressed={sandboxMode}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: 6,
-                              height: 24,
-                              minWidth: 72,
-                              padding: "3px 8px",
-                              background: sandboxMode
-                                ? "linear-gradient(180deg, rgba(133, 86, 10, 0.88), rgba(92, 60, 8, 0.9))"
-                                : isSimpleHeaderTheme
-                                  ? "transparent"
-                                  : "rgba(28, 18, 10, 0.52)",
-                              border: sandboxMode
-                                ? "1px solid rgba(255, 217, 121, 0.88)"
-                                : isSimpleHeaderTheme
-                                  ? "none"
-                                  : "1px solid rgba(10, 6, 3, 0.78)",
-                              borderRadius: 9,
-                              color: sandboxMode
-                                ? "rgba(255, 248, 214, 0.98)"
-                                : isSimpleHeaderTheme
-                                  ? simpleHeaderTextColor
-                                  : "rgba(250, 242, 230, 0.72)",
-                              boxShadow: sandboxMode
-                                ? "0 3px 10px rgba(40, 26, 3, 0.48), inset 0 1px 0 rgba(255, 239, 174, 0.34)"
-                                : isSimpleHeaderTheme
-                                  ? "none"
-                                  : "0 3px 8px rgba(0, 0, 0, 0.34)",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 900,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            Sandbox
-                          </button>
                         </>
                       )}
 	                    </div>
@@ -14129,70 +13939,6 @@ export default function Page() {
 		                        gap: 5,
 		                      }}
 		                    >
-                    {nav === "watchlist-tv" ? (
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                          padding: 2,
-                          borderRadius: 10,
-                          border: "1px solid rgba(10, 6, 3, 0.78)",
-                          background: "rgba(28, 18, 10, 0.52)",
-                          boxShadow: "0 3px 8px rgba(0, 0, 0, 0.34)",
-                        }}
-                      >
-                        {TV_WATCHLIST_SECTION_ORDER.map((sectionKey) => {
-                          const sectionMeta = TV_WATCHLIST_SECTION_META[sectionKey];
-                          const active = watchlistTvSectionFilter === sectionKey;
-                          return (
-                            <button
-                              key={`watchlist-tv-filter-${sectionKey}`}
-                              type="button"
-                              onClick={() => setWatchlistTvSectionFilter(sectionKey)}
-                              title={`Show ${sectionMeta.label}`}
-                              aria-label={`Show ${sectionMeta.label}`}
-                              aria-pressed={active}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: 4,
-                                height: 20,
-                                padding: "0 6px",
-                                borderRadius: 8,
-                                border: active
-                                  ? `1px solid ${sectionMeta.badgeBorder}`
-                                  : "1px solid rgba(255,255,255,0.2)",
-                                background: active ? sectionMeta.badgeBackground : "rgba(17, 10, 6, 0.36)",
-                                color: active ? sectionMeta.badgeColor : "rgba(250, 242, 230, 0.72)",
-                                fontSize: 9,
-                                fontWeight: 900,
-                                letterSpacing: "0.04em",
-                                textTransform: "uppercase",
-                                cursor: "pointer",
-                                lineHeight: 1,
-                                boxShadow: active ? "0 2px 6px rgba(0,0,0,0.3)" : "none",
-                              }}
-                            >
-                              <span>{sectionMeta.label}</span>
-                              <span
-                                style={{
-                                  borderRadius: 999,
-                                  border: "1px solid rgba(255,255,255,0.24)",
-                                  background: active ? "rgba(0, 0, 0, 0.24)" : "rgba(255, 255, 255, 0.06)",
-                                  padding: "0 4px",
-                                  fontSize: 8,
-                                  letterSpacing: "0.02em",
-                                }}
-                              >
-                                {watchlistTvSectionCounts[sectionKey]}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
                     <span
                         style={{
                           fontSize: 11,
@@ -14481,7 +14227,7 @@ export default function Page() {
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
-                      const coverImageRadiusPx = 5;
+                      const coverImageRadiusPx = 6;
                       const coverContainerRadius = coverImageRadiusPx;
                       const coverTrimAsset = selectedCoverUrl ? coverTrimAssets[selectedCoverUrl] : null;
                       const macDisplayCoverUrl = (DISABLE_INSETS || isMacCoverMode) && coverTrimAsset ? coverTrimAsset.url : selectedCoverUrl;
@@ -15068,25 +14814,27 @@ export default function Page() {
                                 position: "absolute",
                                 top: Math.max(4, ratingBadgeTopPx - 1),
                                 right: Math.max(4, ratingBadgeRightPx - 1),
-                                maxWidth: Math.max(36, caseWidth - insetLeft - insetRight - 8),
+                                maxWidth: Math.max(44, caseWidth - insetLeft - insetRight - 8),
                                 borderRadius: 999,
-                                border: "1px solid rgba(151, 188, 245, 0.6)",
-                                background: "rgba(8, 18, 40, 0.8)",
-                                color: "#f9fcff",
-                                boxShadow: "0 2px 6px rgba(0,0,0,0.34)",
-                                padding: "2px 6px",
+                                border: "1px solid rgba(255, 255, 255, 0.5)",
+                                background: "rgba(255, 255, 255, 0.78)",
+                                color: "#1a1206",
+                                boxShadow: "0 1px 4px rgba(0,0,0,0.22)",
+                                padding: "2px 6px 2px 5px",
                                 fontSize: 10,
                                 lineHeight: 1.1,
-                                fontWeight: 900,
-                                letterSpacing: "0em",
+                                fontWeight: 700,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
-                                textOverflow: "ellipsis",
                                 pointerEvents: "none",
                                 zIndex: 28,
-                                backdropFilter: "blur(2px)",
+                                backdropFilter: "blur(3px)",
                               }}
                             >
+                              <span style={{ color: "#1a1206", fontSize: 10, lineHeight: 1, flexShrink: 0 }}>★</span>
                               {ratingBadgeLabel}
                             </div>
                           ) : null}
@@ -15506,7 +15254,7 @@ export default function Page() {
         .sideItem.primary.active { background: ${sidebarActiveAccent.background}; color: ${sidebarActiveAccent.text}; }
         .sideSubItem {
           width: 100%;
-          padding: ${isMacSidebarTheme ? "5px 7px" : "4px 6px"};
+          padding: ${isMacSidebarTheme ? "3px 7px" : "2px 6px"};
           border-radius: ${isMacSidebarTheme ? "10px" : "8px"};
           border: ${sidebarSubItemBorderColor};
           background: ${sidebarSubItemBackground};
