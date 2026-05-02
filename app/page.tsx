@@ -2004,12 +2004,6 @@ export default function Page() {
     nav === "smart-custom" ||
     nav === "statistics";
   const isHomeSidebar = nav === "home" || isBacklogSidebarView || isSmartListOrDiscoverNav;
-  const isUpcomingView =
-    nav === "upcoming" ||
-    (nav === "books" && bookUpcomingFilter) ||
-    (nav === "movies" && movieUpcomingFilter) ||
-    (nav === "tv" && tvViewMode === "upcoming") ||
-    (nav === "games" && gameViewMode === "upcoming");
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
@@ -2141,6 +2135,12 @@ export default function Page() {
   const [bookUpcomingFilter, setBookUpcomingFilter] = useState<boolean>(false);
   const [movieUpcomingFilter, setMovieUpcomingFilter] = useState<boolean>(false);
   const [tvViewMode, setTvViewMode] = useState<TvViewMode>("library");
+  const isUpcomingView =
+    nav === "upcoming" ||
+    (nav === "books" && bookUpcomingFilter) ||
+    (nav === "movies" && movieUpcomingFilter) ||
+    (nav === "tv" && tvViewMode === "upcoming") ||
+    (nav === "games" && gameViewMode === "upcoming");
   const [watchlistTvSectionFilter, setWatchlistTvSectionFilter] = useState<TvWatchlistSectionKey>("watching");
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
