@@ -13882,7 +13882,7 @@ export default function Page() {
 		                      transform: "translateY(-4.5px)",
 		                    }}
 		                  >
-		                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: isMobileLayout ? "100%" : "min(340px, calc(100% - 220px))" }}>
+		                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: isMobileLayout ? "100%" : "auto" }}>
 		                      {isMobileLayout ? (
 		                        <button
 		                          type="button"
