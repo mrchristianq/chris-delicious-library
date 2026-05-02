@@ -867,6 +867,39 @@ function getYearToken(value?: string): string {
   return year >= 1900 && year <= 2100 ? String(year) : "";
 }
 
+function parseReleaseDateForComparison(value?: string): Date | null {
+  const raw = safeStr(value);
+  if (!raw) return null;
+  const fullMatch = raw.match(/\b((?:19|20)\d{2})-(\d{2})-(\d{2})\b/);
+  if (fullMatch) {
+    const d = new Date(Number(fullMatch[1]), Number(fullMatch[2]) - 1, Number(fullMatch[3]));
+    if (!isNaN(d.getTime())) return d;
+  }
+  const monthMatch = raw.match(/\b((?:19|20)\d{2})-(\d{2})\b/);
+  if (monthMatch) return new Date(Number(monthMatch[1]), Number(monthMatch[2]) - 1, 1);
+  const yearMatch = raw.match(/\b((?:19|20)\d{2})\b/);
+  if (yearMatch) return new Date(Number(yearMatch[1]), 0, 1);
+  return null;
+}
+
+function todayMidnight(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function isNotYetReleased(dateStr?: string): boolean {
+  const d = parseReleaseDateForComparison(dateStr);
+  if (!d) return false;
+  return d > todayMidnight();
+}
+
+function isUpcomingRelease(dateStr?: string): boolean {
+  const d = parseReleaseDateForComparison(dateStr);
+  if (!d) return false;
+  return d >= todayMidnight();
+}
+
 function getYearTokens(value?: string): string[] {
   const raw = safeStr(value);
   if (!raw) return [];
@@ -1808,16 +1841,16 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming";
 type LibraryNavKey = Exclude<NavKey, "statistics">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
-type BookQuickLinkKey = "wishlist" | "library" | "completed";
-type MovieQuickLinkKey = "library" | "watched" | "watching" | "backlog" | "abandoned";
-type TvQuickLinkKey = "library" | "backlog" | "watching" | "watched" | "abandoned";
+type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
+type MovieQuickLinkKey = "library" | "watched" | "watching" | "backlog" | "abandoned" | "upcoming";
+type TvQuickLinkKey = "library" | "backlog" | "watching" | "watched" | "abandoned" | "upcoming";
 type TvViewMode = TvQuickLinkKey | "custom";
-type GameQuickLinkKey = "library" | "backlog" | "completed" | "abandoned" | "wishlist";
+type GameQuickLinkKey = "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
 type GameViewMode = GameQuickLinkKey | "custom";
-type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv";
+type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "upcoming";
 
 function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
   return (
@@ -1961,8 +1994,22 @@ export default function Page() {
     nav === "play-next" ||
     nav === "wishlist-books" ||
     nav === "watchlist-movies" ||
-    nav === "watchlist-tv";
-  const isHomeSidebar = nav === "home" || isBacklogSidebarView;
+    nav === "watchlist-tv" ||
+    nav === "upcoming";
+  const isSmartListOrDiscoverNav =
+    nav === "current" ||
+    nav === "completed" ||
+    nav === "abandoned" ||
+    nav === "year-this" ||
+    nav === "smart-custom" ||
+    nav === "statistics";
+  const isHomeSidebar = nav === "home" || isBacklogSidebarView || isSmartListOrDiscoverNav;
+  const isUpcomingView =
+    nav === "upcoming" ||
+    (nav === "books" && bookUpcomingFilter) ||
+    (nav === "movies" && movieUpcomingFilter) ||
+    (nav === "tv" && tvViewMode === "upcoming") ||
+    (nav === "games" && gameViewMode === "upcoming");
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
@@ -2091,6 +2138,8 @@ export default function Page() {
   const [gameGenreFilter, setGameGenreFilter] = useState<string | null>(null);
   const [gameViewMode, setGameViewMode] = useState<GameViewMode>("library");
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
+  const [bookUpcomingFilter, setBookUpcomingFilter] = useState<boolean>(false);
+  const [movieUpcomingFilter, setMovieUpcomingFilter] = useState<boolean>(false);
   const [tvViewMode, setTvViewMode] = useState<TvViewMode>("library");
   const [watchlistTvSectionFilter, setWatchlistTvSectionFilter] = useState<TvWatchlistSectionKey>("watching");
   const [sortField, setSortField] = useState<string>("ReleaseDate");
@@ -2885,6 +2934,7 @@ export default function Page() {
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
+  const UPCOMING_LABEL_SPACE = 34;
   const RAW_COVER_STANDARD_GAP = 10;
   const LIP_FROM_BOTTOM = 5;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 560;
@@ -7563,8 +7613,16 @@ export default function Page() {
   const shows = useMemo(() => {
     const q = safeStr(deferredQuery).toLowerCase();
     if (nav === "books") {
+      if (bookUpcomingFilter) {
+        const upcoming = indexedBooks.filter((b) => isUpcomingRelease(b.item.releaseDate));
+        const sorted = applySorting(upcoming.map((b) => b.item), sortField, sortOrder);
+        const qf = q ? sorted.filter((b) => safeStr(b.title).toLowerCase().includes(q)) : sorted;
+        return qf.map((b) => ({ ...b, __type: "book" })) as any[];
+      }
       const hasBookFilters = Boolean(readingStatusFilter || formatFilter || seriesFilter || genreFilter || wishlistFilter);
-      const bookBase = hasBookFilters ? indexedBooks : indexedBooks.filter((b) => b.ownershipNorm === "owned");
+      const bookBase = hasBookFilters
+        ? (wishlistFilter ? indexedBooks : indexedBooks.filter((b) => b.ownershipNorm !== "wishlist" && !isNotYetReleased(b.item.releaseDate)))
+        : indexedBooks.filter((b) => b.ownershipNorm === "owned" && !isNotYetReleased(b.item.releaseDate));
       let filtered = q ? bookBase.filter((b) => b.titleLC.includes(q)) : bookBase;
       // Apply reading status filter if set
       if (readingStatusFilter) {
@@ -7600,20 +7658,22 @@ export default function Page() {
       ] as any[];
     }
 
-    // Home: combine all non-wishlist media and sort by release date.
+    // Home: combine all non-wishlist, already-released media and sort by release date.
     if (nav === "home") {
-      const qbBase = indexedBooks.filter((b) => !hasWishlistOwnership(b.item.ownership));
-      const qgBase = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+      const qbBase = indexedBooks.filter((b) => !hasWishlistOwnership(b.item.ownership) && !isNotYetReleased(b.item.releaseDate));
+      const qgBase = indexedGames.filter((g) => g.ownershipNorm !== "wishlist" && !isNotYetReleased(g.item.releaseDate));
       const qb = q ? qbBase.filter((b) => b.titleLC.includes(q)) : qbBase;
       const qsBase = indexedShows.filter(
         (s) =>
           s.watchStatusNorm !== "wishlist" &&
-          normalizeStatus(s.item.watchStatus) !== "wishlist"
+          normalizeStatus(s.item.watchStatus) !== "wishlist" &&
+          !isNotYetReleased(s.item.firstAirDate)
       );
       const qmBase = indexedMovies.filter(
         (m) =>
           m.watchStatusNorm !== "wishlist" &&
-          normalizeStatus(m.item.watchStatus) !== "wishlist"
+          normalizeStatus(m.item.watchStatus) !== "wishlist" &&
+          !isNotYetReleased(m.item.releaseDate)
       );
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
@@ -7631,6 +7691,27 @@ export default function Page() {
 
       const sorted = applySorting(combined, sortField, sortOrder);
       return sorted as any[];
+    }
+
+    // Upcoming: all items across types with a future or today release date
+    if (nav === "upcoming") {
+      const upcomingBooks = indexedBooks
+        .filter((b) => isUpcomingRelease(b.item.releaseDate))
+        .map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" }));
+      const upcomingShows = indexedShows
+        .filter((s) => isUpcomingRelease(s.item.firstAirDate))
+        .map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" }));
+      const upcomingMovies = indexedMovies
+        .filter((m) => isUpcomingRelease(m.item.releaseDate))
+        .map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" }));
+      const upcomingGames = indexedGames
+        .filter((g) => isUpcomingRelease(g.item.releaseDate) || isUpcomingRelease(g.item.releaseDateAlt))
+        .map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" }));
+      const combined = [...upcomingBooks, ...upcomingShows, ...upcomingMovies, ...upcomingGames] as any[];
+      const effectiveSortField = sortField === MANUAL_SORT_FIELD ? "ReleaseDate" : sortField;
+      const sorted = applySorting(combined, effectiveSortField, sortOrder);
+      const queryFiltered = q ? sorted.filter((item) => safeStr((item as any).title).toLowerCase().includes(q)) : sorted;
+      return queryFiltered as any[];
     }
 
     // Wishlist: games only
@@ -7844,8 +7925,16 @@ export default function Page() {
 
     // Movies path
     if (nav === "movies") {
-      let filtered = indexedMovies;
-      
+      if (movieUpcomingFilter) {
+        const upcoming = indexedMovies.filter((m) => isUpcomingRelease(m.item.releaseDate));
+        const sorted = applySorting(upcoming.map((m) => m.item), sortField, sortOrder);
+        const qf = q ? sorted.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : sorted;
+        return qf.map((m) => ({ ...m, __type: "movie" })) as any[];
+      }
+      let filtered = indexedMovies.filter(
+        (m) => m.watchStatusNorm !== "wishlist" && !isNotYetReleased(m.item.releaseDate)
+      );
+
       // Apply watch status filter if set
       if (movieWatchFilter) {
         filtered = filtered.filter((m) => {
@@ -7892,10 +7981,15 @@ export default function Page() {
         filtered = indexedGames.filter((g) => isGameAbandonedStatus(g.item));
       } else if (gameViewMode === "wishlist") {
         filtered = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
+      } else if (gameViewMode === "upcoming") {
+        const upcoming = indexedGames.filter((g) => isUpcomingRelease(g.item.releaseDate) || isUpcomingRelease(g.item.releaseDateAlt));
+        const sorted = applySorting(upcoming.map((g) => g.item), sortField, sortOrder);
+        const qf = q ? sorted.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : sorted;
+        return qf.map((g) => ({ ...g, __type: "game" })) as any[];
       } else if (gameViewMode === "library") {
-        filtered = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+        filtered = indexedGames.filter((g) => g.ownershipNorm !== "wishlist" && !isNotYetReleased(g.item.releaseDate));
       } else if (!hasGameFilters) {
-        filtered = indexedGames.filter((g) => g.ownershipNorm !== "wishlist");
+        filtered = indexedGames.filter((g) => g.ownershipNorm !== "wishlist" && !isNotYetReleased(g.item.releaseDate));
       }
 
       if (gamePlatformFilter) {
@@ -8112,22 +8206,29 @@ export default function Page() {
     }
 
     // TV default path
+    if (nav === "tv" && tvViewMode === "upcoming") {
+      const upcoming = indexedShows.filter((s) => isUpcomingRelease(s.item.firstAirDate));
+      const sorted = applySorting(upcoming.map((s) => s.item), sortField, sortOrder);
+      const qf = q ? sorted.filter((s) => safeStr(s.title).toLowerCase().includes(q)) : sorted;
+      return qf as any[];
+    }
     const hasTvFilters = Boolean(watchFilter || showFilter || tagFilter);
-    let tvBase = indexedShows;
+    const tvLibraryBase = indexedShows.filter((s) => s.watchStatusNorm !== "wishlist" && !isNotYetReleased(s.item.firstAirDate));
+    let tvBase = tvLibraryBase;
     if (nav === "tv") {
       if (tvViewMode === "backlog") {
-        tvBase = indexedShows.filter((s) => !isTvWatchedStatus(s.item) && !isTvWatchingStatus(s.item) && !isTvAbandonedStatus(s.item));
+        tvBase = tvLibraryBase.filter((s) => !isTvWatchedStatus(s.item) && !isTvWatchingStatus(s.item) && !isTvAbandonedStatus(s.item));
       } else if (tvViewMode === "watching") {
-        tvBase = indexedShows.filter((s) => isTvWatchingStatus(s.item));
+        tvBase = tvLibraryBase.filter((s) => isTvWatchingStatus(s.item));
       } else if (tvViewMode === "watched") {
-        tvBase = indexedShows.filter((s) => isTvWatchedStatus(s.item));
+        tvBase = tvLibraryBase.filter((s) => isTvWatchedStatus(s.item));
       } else if (tvViewMode === "abandoned") {
-        tvBase = indexedShows.filter((s) => isTvAbandonedStatus(s.item));
+        tvBase = tvLibraryBase.filter((s) => isTvAbandonedStatus(s.item));
       }
     } else if (hasTvFilters) {
-      tvBase = indexedShows;
+      tvBase = tvLibraryBase;
     } else {
-      tvBase = indexedShows.filter((s) => s.watchStatusNorm !== "backlog");
+      tvBase = tvLibraryBase.filter((s) => s.watchStatusNorm !== "backlog");
     }
     const watchStatusNorm = watchFilter ? normalizeStatus(watchFilter) : "";
     const showStatusNorm = showFilter ? normalizeStatus(showFilter) : "";
@@ -8152,7 +8253,7 @@ export default function Page() {
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    activeSmartList, deferredQuery, gameViewMode, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
+    activeSmartList, bookUpcomingFilter, deferredQuery, gameViewMode, movieUpcomingFilter, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
   const watchlistTvSectionByVisibleKey = useMemo(() => {
@@ -8407,23 +8508,27 @@ export default function Page() {
   );
 
   const activeBookQuickLink: BookQuickLinkKey =
-    nav === "books" && wishlistFilter
-      ? "wishlist"
-      : nav === "books" && normalizeStatus(readingStatusFilter || undefined) === "completed"
-        ? "completed"
-        : "library";
+    nav === "books" && bookUpcomingFilter
+      ? "upcoming"
+      : nav === "books" && wishlistFilter
+        ? "wishlist"
+        : nav === "books" && normalizeStatus(readingStatusFilter || undefined) === "completed"
+          ? "completed"
+          : "library";
 
   const activeMovieQuickLink: MovieQuickLinkKey | null =
     nav === "movies"
-      ? movieWatchFilter === "Watched"
-        ? "watched"
-        : movieWatchFilter === "Watching"
-          ? "watching"
-          : movieWatchFilter === "Backlog"
-            ? "backlog"
-            : movieWatchFilter === "Abandoned"
-              ? "abandoned"
-              : "library"
+      ? movieUpcomingFilter
+        ? "upcoming"
+        : movieWatchFilter === "Watched"
+          ? "watched"
+          : movieWatchFilter === "Watching"
+            ? "watching"
+            : movieWatchFilter === "Backlog"
+              ? "backlog"
+              : movieWatchFilter === "Abandoned"
+                ? "abandoned"
+                : "library"
       : null;
 
   const activeTvQuickLink: TvQuickLinkKey | null =
@@ -8439,32 +8544,34 @@ export default function Page() {
   const activateBookQuickLink = useCallback((nextView: BookQuickLinkKey) => {
     setNav("books");
     setOpenSection("books");
+    setBookUpcomingFilter(nextView === "upcoming");
     setWishlistFilter(nextView === "wishlist");
     setReadingStatusFilter(nextView === "completed" ? "Completed" : null);
     setFormatFilter(null);
     setSeriesFilter(null);
     setGenreFilter(null);
     setSortField(nextView === "completed" ? "CompletedDate" : "ReleaseDate");
-    setSortOrder("Desc");
+    setSortOrder(nextView === "upcoming" ? "Asc" : "Desc");
   }, []);
 
   const activateMovieQuickLink = useCallback((nextView: MovieQuickLinkKey) => {
     setNav("movies");
     setOpenSection("movies");
+    setMovieUpcomingFilter(nextView === "upcoming");
     setMovieWatchFilter(
-      nextView === "library"
+      nextView === "library" || nextView === "upcoming"
         ? null
         : nextView === "watched"
-        ? "Watched"
-        : nextView === "watching"
-          ? "Watching"
-          : nextView === "abandoned"
-            ? "Abandoned"
-            : "Backlog"
+          ? "Watched"
+          : nextView === "watching"
+            ? "Watching"
+            : nextView === "abandoned"
+              ? "Abandoned"
+              : "Backlog"
     );
     setMovieGenreFilter(null);
     setSortField("ReleaseDate");
-    setSortOrder("Desc");
+    setSortOrder(nextView === "upcoming" ? "Asc" : "Desc");
   }, []);
 
   const activateTvQuickLink = useCallback((nextView: TvQuickLinkKey) => {
@@ -8474,6 +8581,7 @@ export default function Page() {
     setWatchFilter(null);
     setShowFilter(null);
     setTagFilter(null);
+    if (nextView === "upcoming") { setSortField("ReleaseDate"); setSortOrder("Asc"); }
   }, []);
 
   const activateGameQuickLink = useCallback((nextView: GameQuickLinkKey) => {
@@ -8487,11 +8595,12 @@ export default function Page() {
     setGameYearPlayedFilter(null);
     setGameGenreFilter(null);
     setSortField("ReleaseDate");
-    setSortOrder("Desc");
+    setSortOrder(nextView === "upcoming" ? "Asc" : "Desc");
   }, []);
 
   const backlogHeaderQuickLinks: Array<{ key: BacklogQuickLinkKey; label: string }> = [
     { key: "home", label: "Library" },
+    { key: "upcoming", label: "Upcoming" },
     { key: "now-playing", label: "Now Playing" },
     { key: "play-next", label: "Play Next" },
     { key: "wishlist-books", label: "Read Next" },
@@ -8501,6 +8610,7 @@ export default function Page() {
 
   const activeBacklogQuickLink: BacklogQuickLinkKey | null =
     nav === "home" ||
+    nav === "upcoming" ||
     nav === "now-playing" ||
     nav === "play-next" ||
     nav === "wishlist-books" ||
@@ -9439,16 +9549,17 @@ export default function Page() {
   }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout]);
 
   const shelfHeights = useMemo(() => {
+    const upcomingExtra = isUpcomingView ? UPCOMING_LABEL_SPACE : 0;
     return shelves.map((shelfShows) => {
-      if (nav !== "books") return shelfRowHeight;
-      if (!shelfShows.length) return shelfRowHeight;
+      if (nav !== "books") return shelfRowHeight + upcomingExtra;
+      if (!shelfShows.length) return shelfRowHeight + upcomingExtra;
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
         const { caseHeight } = getItemVisualLayout(show);
         return Math.max(maxHeight, caseHeight);
       }, 0);
-      return Math.max(1, tallestCover + 15);
+      return Math.max(1, tallestCover + 15 + upcomingExtra);
     });
-  }, [getItemVisualLayout, nav, shelfRowHeight, shelves]);
+  }, [getItemVisualLayout, isUpcomingView, nav, shelfRowHeight, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -9466,13 +9577,14 @@ export default function Page() {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
     if (nav !== "books") {
-      const start = Math.max(0, Math.floor(localScroll / shelfRowHeight) - 2);
-      const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / shelfRowHeight) + 2);
+      const effectiveRowH = shelfRowHeight + (isUpcomingView ? UPCOMING_LABEL_SPACE : 0);
+      const start = Math.max(0, Math.floor(localScroll / effectiveRowH) - 2);
+      const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / effectiveRowH) + 2);
       return {
         start,
         end,
-        padTop: start * shelfRowHeight,
-        padBottom: Math.max(0, (shelves.length - end) * shelfRowHeight),
+        padTop: start * effectiveRowH,
+        padBottom: Math.max(0, (shelves.length - end) * effectiveRowH),
       };
     }
     const rowCount = shelves.length;
@@ -9514,7 +9626,7 @@ export default function Page() {
       padTop,
       padBottom,
     };
-  }, [nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelves.length, stageTopAbs, viewportH, windowScrollY]);
+  }, [isUpcomingView, nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelves.length, stageTopAbs, viewportH, windowScrollY]);
 
   const visibleShelves = useMemo(
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
@@ -10318,6 +10430,53 @@ export default function Page() {
             />
           </div>
 
+          {!isMobileLayout && (
+            <div style={{ padding: "0 8px 8px 8px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  borderRadius: 8,
+                  border: isSimpleHeaderTheme ? "1px solid rgba(0,0,0,0.1)" : "1px solid rgba(255,255,255,0.18)",
+                  background: isSimpleHeaderTheme ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.08)",
+                  paddingLeft: 8,
+                  gap: 6,
+                }}
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  style={{ flexShrink: 0, color: isSimpleHeaderTheme ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.5)" }}
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search"
+                  style={{
+                    flex: 1,
+                    height: 26,
+                    border: "none",
+                    background: "transparent",
+                    color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "rgba(255,255,255,0.9)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    minWidth: 0,
+                    outline: "none",
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <div
             style={{
               padding: "0 8px",
@@ -12550,7 +12709,7 @@ export default function Page() {
                       <option value="ExternalRatingSort">User Rating</option>
                     </>
                   )}
-	                  {(nav === "home" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
+	                  {(nav === "home" || nav === "upcoming" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
 	                    <>
 	                      <option value="Title">Title</option>
 	                      <option value="ReleaseDate">Release Date</option>
@@ -13490,6 +13649,10 @@ export default function Page() {
                                     activateHomeLibrary();
                                     return;
                                   }
+                                  if (key === "upcoming") {
+                                    setSortField("ReleaseDate");
+                                    setSortOrder("Asc");
+                                  }
                                   setNav(key);
                                 }}
                                 aria-pressed={active}
@@ -13528,6 +13691,7 @@ export default function Page() {
                         >
                           {([
                             ["library", "Library"],
+                            ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
                             ["watching", "Watching"],
                             ["watched", "Watched"],
@@ -13575,6 +13739,7 @@ export default function Page() {
                         >
                           {([
                             ["library", "Library"],
+                            ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
                             ["watching", "Watching"],
                             ["watched", "Watched"],
@@ -13622,6 +13787,7 @@ export default function Page() {
                         >
                           {([
                             ["library", "Library"],
+                            ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
                             ["completed", "Completed"],
                             ["abandoned", "Abandoned"],
@@ -13668,9 +13834,10 @@ export default function Page() {
                           }}
                         >
                           {([
-                            ["wishlist", "Wishlist"],
                             ["library", "Library"],
+                            ["upcoming", "Upcoming"],
                             ["completed", "Completed"],
+                            ["wishlist", "Wishlist"],
                           ] as Array<[BookQuickLinkKey, string]>).map(([key, label]) => {
                             const active = activeBookQuickLink === key;
                             return (
@@ -13749,61 +13916,6 @@ export default function Page() {
 	                          </svg>
 	                        </button>
 	                      ) : null}
-	                      <div
-	                        style={{
-		                          display: "flex",
-		                          alignItems: "center",
-		                          flex: 1,
-			                          minWidth: 0,
-			                          order: isMobileLayout ? 1 : undefined,
-			                          borderRadius: 8,
-			                          border: isSimpleHeaderTheme
-			                            ? "1px solid rgba(0,0,0,0.1)"
-			                            : isMobileLayout
-			                            ? "1px solid rgba(146, 181, 235, 0.52)"
-			                            : "1px solid rgba(255,255,255,0.18)",
-			                          background: isSimpleHeaderTheme
-			                            ? "rgba(0,0,0,0.04)"
-			                            : isMobileLayout
-			                            ? "rgba(14, 30, 58, 0.78)"
-			                            : "rgba(255,255,255,0.08)",
-	                          boxShadow: "none",
-	                          paddingLeft: 8,
-	                          gap: 6,
-	                        }}
-	                      >
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                          style={{ flexShrink: 0, color: isSimpleHeaderTheme ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.5)" }}
-                        >
-                          <circle cx="11" cy="11" r="7" />
-                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                        </svg>
-                        <input
-                          value={query}
-                          onChange={(e) => setQuery(e.target.value)}
-                          placeholder="Search"
-                          style={{
-	                            flex: 1,
-	                            height: 26,
-	                            border: "none",
-	                            background: "transparent",
-	                            color: isSimpleHeaderTheme ? simpleHeaderStrongTextColor : "rgba(255,255,255,0.9)",
-	                            fontSize: 12,
-	                            fontWeight: 500,
-	                            minWidth: 0,
-	                            outline: "none",
-	                          }}
-	                        />
-	                      </div>
                       {isMobileLayout ? (
                         <button
                           type="button"
@@ -14251,6 +14363,20 @@ export default function Page() {
                       const ratingBadgeTopPx = Math.max(4, insetTop + 4);
                       const ratingBadgeRightPx = Math.max(4, insetRight + 4);
                       const itemKey = getMediaItemKey(show);
+                      const itemReleaseDateStr = show.__type === "tv"
+                        ? safeStr((show as any).firstAirDate)
+                        : safeStr((show as any).releaseDate) || (show.__type === "game" ? safeStr((show as any).releaseDateAlt) : "");
+                      const itemReleaseDate = isUpcomingView ? parseReleaseDateForComparison(itemReleaseDateStr) : null;
+                      const upcomingDaysRaw = itemReleaseDate
+                        ? Math.round((itemReleaseDate.getTime() - todayMidnight().getTime()) / 86400000)
+                        : null;
+                      const upcomingLabel = upcomingDaysRaw === null ? null
+                        : upcomingDaysRaw === 0 ? "Today"
+                        : upcomingDaysRaw === 1 ? "Tomorrow"
+                        : `In ${upcomingDaysRaw} days`;
+                      const upcomingDateDisplay = itemReleaseDate
+                        ? itemReleaseDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                        : null;
                       const tvWatchlistSectionKey =
                         nav === "watchlist-tv" && show.__type === "tv"
                           ? watchlistTvSectionByVisibleKey.get(itemKey) || getTvWatchlistSectionForItem(show)
@@ -14330,7 +14456,7 @@ export default function Page() {
                             position: isWishlistPointerDragging ? "fixed" : "absolute",
                             left: dragLeft,
                             top: isWishlistPointerDragging ? dragTop : undefined,
-                            bottom: isWishlistPointerDragging ? undefined : shelfBottomOffset,
+                            bottom: isWishlistPointerDragging ? undefined : shelfBottomOffset + (isUpcomingView ? UPCOMING_LABEL_SPACE : 0),
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
@@ -14870,6 +14996,30 @@ export default function Page() {
                                   background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
                                 }}
                               />
+                            </div>
+                          ) : null}
+
+                          {isUpcomingView && upcomingLabel ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: "absolute",
+                                top: caseHeight + 5,
+                                left: 0,
+                                width: caseWidth,
+                                textAlign: "center",
+                                pointerEvents: "none",
+                                zIndex: 10,
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(140,140,140,0.9)", lineHeight: 1.3 }}>
+                                {upcomingLabel}
+                              </div>
+                              {upcomingDateDisplay ? (
+                                <div style={{ fontSize: 10, color: "rgba(160,160,160,0.75)", marginTop: 1 }}>
+                                  {upcomingDateDisplay}
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
 
