@@ -226,7 +226,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "7.6";
+const APP_VERSION = "7.8";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -326,6 +326,20 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "7.8",
+    date: "2026-05-03",
+    notes: [
+      "Added full TV Show details page with backdrop hero, cover poster, palette-based background extending behind sidebar, and color-coded status pill.",
+      "Added full Game details page with backdrop hero, cover poster, platform/developer/hours metadata, and color-coded status pill.",
+      "TV Show details page shows TV Show Status, Network, seasons, episodes, caught-up date, and first/last air dates displayed directly in the backdrop footer.",
+      "Status pills on Movie, TV, and Game detail pages now use light frosted-glass color coding: green for completed/watched, yellow for in-progress, orange for abandoned.",
+      "Edit pill on all detail pages updated to solid white background for readability across all palette backgrounds.",
+      "Navigating via the sidebar while on a details page now correctly exits the detail view and loads the selected section.",
+      "Movies sidebar: replaced 'Watching' status with 'Started', added Status (Released/Upcoming) and Tags filter sections above Genre.",
+      "Genre section in Movies sidebar now defaults to closed.",
+    ],
+  },
   {
     version: "7.6",
     date: "2026-05-01",
