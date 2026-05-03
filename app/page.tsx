@@ -14,6 +14,8 @@ import { StatisticsView } from "./components/StatisticsView";
 import { RoadmapView } from "./components/RoadmapView";
 import { BookDetailsPage } from "./components/BookDetailsPage";
 import { MovieDetailsPage } from "./components/MovieDetailsPage";
+import { TVDetailsPage } from "./components/TVDetailsPage";
+import { GameDetailsPage } from "./components/GameDetailsPage";
 import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 
 type Row = Record<string, string>;
@@ -2060,6 +2062,11 @@ export default function Page() {
   }, []);
 
   const openMediaSidebar = (section: "books" | "movies" | "tv" | "games") => {
+    setMovieDetailItem(null);
+    setTvDetailItem(null);
+    setGameDetailItem(null);
+    setBookDetailItem(null);
+    setBookDetailPalette(null);
     if (nav === section) {
       activateHomeLibrary();
       return;
@@ -3084,6 +3091,10 @@ export default function Page() {
   const [bookDetailsEditOpen, setBookDetailsEditOpen] = useState(false);
   const [movieDetailItem, setMovieDetailItem] = useState<any>(null);
   const [movieDetailPalette, setMovieDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
+  const [tvDetailItem, setTvDetailItem] = useState<any>(null);
+  const [tvDetailPalette, setTvDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
+  const [gameDetailItem, setGameDetailItem] = useState<any>(null);
+  const [gameDetailPalette, setGameDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
@@ -3208,26 +3219,60 @@ export default function Page() {
     setModalItem(null);
   }, [coverOverrides, getDisplayCoverUrl]);
 
+  const clearAllDetailItems = useCallback(() => {
+    setMovieDetailItem(null);
+    setTvDetailItem(null);
+    setGameDetailItem(null);
+    setBookDetailItem(null);
+    setBookDetailPalette(null);
+    setModalItem(null);
+    setModalOpen(false);
+  }, []);
+
   const openSelectedItem = useCallback((item: any) => {
     const nextItem = buildItemWithCoverSelection(item, coverOverrides);
-    if (getMediaType(nextItem) === "book") {
+    const mediaType = getMediaType(nextItem);
+    if (mediaType === "book") {
       openBookDetailItem(nextItem);
+      setMovieDetailItem(null);
+      setTvDetailItem(null);
+      setGameDetailItem(null);
       return;
     }
-    if (getMediaType(nextItem) === "movie") {
+    if (mediaType === "movie") {
       setMovieDetailItem(nextItem);
+      setTvDetailItem(null);
+      setGameDetailItem(null);
       setBookDetailItem(null);
       setBookDetailPalette(null);
       setModalItem(null);
       setModalOpen(false);
       return;
     }
-    setMovieDetailItem(null);
-    setBookDetailItem(null);
-    setBookDetailPalette(null);
+    if (mediaType === "tv") {
+      setTvDetailItem(nextItem);
+      setMovieDetailItem(null);
+      setGameDetailItem(null);
+      setBookDetailItem(null);
+      setBookDetailPalette(null);
+      setModalItem(null);
+      setModalOpen(false);
+      return;
+    }
+    if (mediaType === "game") {
+      setGameDetailItem(nextItem);
+      setMovieDetailItem(null);
+      setTvDetailItem(null);
+      setBookDetailItem(null);
+      setBookDetailPalette(null);
+      setModalItem(null);
+      setModalOpen(false);
+      return;
+    }
+    clearAllDetailItems();
     setModalItem(nextItem);
     setModalOpen(true);
-  }, [coverOverrides, openBookDetailItem]);
+  }, [coverOverrides, openBookDetailItem, clearAllDetailItems]);
 
   const openBookEditModalFromDetails = useCallback((item: any) => {
     const nextItem = buildItemWithCoverSelection(item, coverOverrides);
@@ -3261,6 +3306,14 @@ export default function Page() {
       setMobileSettingsOpen(false);
     }
   }, [isMobileLayout, nav]);
+
+  useEffect(() => {
+    setMovieDetailItem(null);
+    setTvDetailItem(null);
+    setGameDetailItem(null);
+    setBookDetailItem(null);
+    setBookDetailPalette(null);
+  }, [nav]);
 
   useEffect(() => {
     let rafId: number | null = null;
@@ -9794,7 +9847,27 @@ export default function Page() {
     setMovieDetailPalette({ key: getMediaItemKey(movieDetailItem), start: nextPalette.start, end: nextPalette.end });
   }, [movieDetailItem]);
 
-  const sidebarFloatOverPageBackground = Boolean(activeBookDetailBackground) || Boolean(activeMovieDetailBackground) || nav === "home";
+  const activeTvDetailKey = tvDetailItem ? getMediaItemKey(tvDetailItem) : "";
+  const activeTvDetailPalette = tvDetailPalette?.key === activeTvDetailKey ? tvDetailPalette : null;
+  const activeTvDetailBackground = tvDetailItem && activeTvDetailPalette
+    ? buildDetailGradientBackground(activeTvDetailPalette.start, activeTvDetailPalette.end)
+    : null;
+  const handleTvDetailPaletteChange = useCallback((nextPalette: { start: string; end: string } | null) => {
+    if (!nextPalette || !tvDetailItem) { setTvDetailPalette(null); return; }
+    setTvDetailPalette({ key: getMediaItemKey(tvDetailItem), start: nextPalette.start, end: nextPalette.end });
+  }, [tvDetailItem]);
+
+  const activeGameDetailKey = gameDetailItem ? getMediaItemKey(gameDetailItem) : "";
+  const activeGameDetailPalette = gameDetailPalette?.key === activeGameDetailKey ? gameDetailPalette : null;
+  const activeGameDetailBackground = gameDetailItem && activeGameDetailPalette
+    ? buildDetailGradientBackground(activeGameDetailPalette.start, activeGameDetailPalette.end)
+    : null;
+  const handleGameDetailPaletteChange = useCallback((nextPalette: { start: string; end: string } | null) => {
+    if (!nextPalette || !gameDetailItem) { setGameDetailPalette(null); return; }
+    setGameDetailPalette({ key: getMediaItemKey(gameDetailItem), start: nextPalette.start, end: nextPalette.end });
+  }, [gameDetailItem]);
+
+  const sidebarFloatOverPageBackground = Boolean(activeBookDetailBackground) || Boolean(activeMovieDetailBackground) || Boolean(activeTvDetailBackground) || Boolean(activeGameDetailBackground) || nav === "home";
   const sidebarDetailGradientActive = sidebarFloatOverPageBackground;
   const sidebarDetailShellBackground = sidebarShellBackground;
   const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
@@ -9805,6 +9878,10 @@ export default function Page() {
         minHeight: "100vh",
         background: activeMovieDetailBackground
           ? activeMovieDetailBackground
+          : activeTvDetailBackground
+          ? activeTvDetailBackground
+          : activeGameDetailBackground
+          ? activeGameDetailBackground
           : activeBookDetailBackground
           ? activeBookDetailBackground
           : useElectricBlueStatsBackdrop
@@ -13826,6 +13903,28 @@ export default function Page() {
               onEdit={(item) => { setMovieDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
+            />
+          ) : tvDetailItem ? (
+            <TVDetailsPage
+              key={getMediaItemKey(tvDetailItem)}
+              item={tvDetailItem}
+              isMobileLayout={isMobileLayout}
+              usePageBackground={Boolean(activeTvDetailBackground)}
+              onBack={() => setTvDetailItem(null)}
+              onEdit={(item) => { setTvDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
+              getDisplayCoverUrl={getDisplayCoverUrl}
+              onPaletteChange={handleTvDetailPaletteChange}
+            />
+          ) : gameDetailItem ? (
+            <GameDetailsPage
+              key={getMediaItemKey(gameDetailItem)}
+              item={gameDetailItem}
+              isMobileLayout={isMobileLayout}
+              usePageBackground={Boolean(activeGameDetailBackground)}
+              onBack={() => setGameDetailItem(null)}
+              onEdit={(item) => { setGameDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
+              getDisplayCoverUrl={getDisplayCoverUrl}
+              onPaletteChange={handleGameDetailPaletteChange}
             />
           ) : (
           <>

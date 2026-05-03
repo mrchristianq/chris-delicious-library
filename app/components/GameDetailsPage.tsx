@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type MovieDetailsPageProps = {
+type GameDetailsPageProps = {
   item: Record<string, unknown>;
   isMobileLayout: boolean;
   usePageBackground?: boolean;
@@ -133,7 +133,7 @@ async function extractPalette(backdropUrl: string, fallback: string): Promise<Pa
   return FALLBACK_PALETTE;
 }
 
-export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = false, onBack, onEdit, getDisplayCoverUrl, onPaletteChange }: MovieDetailsPageProps) {
+export function GameDetailsPage({ item, isMobileLayout, usePageBackground = false, onBack, onEdit, getDisplayCoverUrl, onPaletteChange }: GameDetailsPageProps) {
   const coverUrl = getDisplayCoverUrl(item);
   const backdropUrl = safeStr(item.backdropUrl);
 
@@ -156,22 +156,27 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
     onPaletteChange?.({ start: palette.start, end: palette.end });
   }, [ready, palette.start, palette.end, onPaletteChange]);
 
-  const title = safeStr(item.title) || "Untitled";
-  const year = formatYear(item.releaseDate || item.year);
-  const runtime = safeStr(item.runtime);
-  const genres = splitList(item.genres).slice(0, 3);
-  const overview = safeStr(item.overview || item.description);
-  const myRating = safeStr(item.myRating);
-  const tmdbRating = safeStr(item.tmdbRating);
-  const watchStatus = safeStr(item.watchStatus || item.watched);
-  const watchDate = safeStr(item.watchDate);
+  const title = safeStr(item.title || item.name) || "Untitled";
+  const year = formatYear(item.releaseDate || item.releaseDateAlt);
+  const platform = safeStr(item.platform);
+  const platforms = safeStr(item.platforms);
+  const platformDisplay = platform || platforms;
+  const developer = safeStr(item.developer);
+  const genres = splitList(item.genres || item.genre).slice(0, 3);
+  const description = safeStr(item.description || item.overview);
+  const myRating = safeStr(item.myRating || item.rating);
+  const igdbRating = safeStr(item.igdbRating);
+  const playStatus = safeStr(item.playStatus || item.gameStatus || item.status);
+  const dateCompleted = safeStr(item.dateCompleted);
+  const yearPlayed = safeStr(item.yearPlayed);
+  const hoursPlayed = safeStr(item.hoursPlayed);
   const ownership = safeStr(item.ownership);
   const tags = splitList(item.tag || item.tags);
 
-  const metaParts = [year, runtime, ...genres].filter(Boolean);
+  const metaParts = [year, platformDisplay, developer, ...genres].filter(Boolean);
   const titleFontSize = isMobileLayout ? 26 : title.length > 44 ? 32 : title.length > 28 ? 38 : 44;
 
-  const descriptionText = overview || "No description available.";
+  const descriptionText = description || "No description available.";
   const descFontSize = isMobileLayout ? 13 : descriptionText.length > 900 ? 12 : descriptionText.length > 650 ? 13 : 14;
 
   const descViewport = useRef<HTMLDivElement>(null);
@@ -200,27 +205,30 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
   }, [descriptionText, descFontSize]);
 
   const statusColor = (() => {
-    const s = watchStatus.toLowerCase();
-    if (s==="watched"||s==="completed")
+    const s = playStatus.toLowerCase();
+    if (s==="completed"||s==="finished")
       return { background:"rgba(220,252,231,0.92)", border:"1px solid rgba(134,239,172,0.5)", color:"#166534" };
-    if (s==="started"||s==="watching"||s==="in progress")
+    if (s==="playing"||s==="started"||s==="in progress"||s==="currently playing")
       return { background:"rgba(254,249,195,0.92)", border:"1px solid rgba(253,224,71,0.5)", color:"#854d0e" };
     if (s==="abandoned"||s==="dropped")
-      return { background:"rgba(255,237,213,0.92)", border:"1px solid rgba(253,186,116,0.5)", color:"#9a3412" };
+      return { background:"rgba(255,237,213,0.92)", border:"1px solid rgba(255,186,116,0.5)", color:"#9a3412" };
     return { background:"rgba(255,255,255,0.88)", border:"1px solid rgba(255,255,255,0.4)", color:"#111" };
   })();
 
+  const completedLabel = dateCompleted || yearPlayed;
+
   const detailFacts = [
     myRating ? { label: "MY RATING", value: formatRating(myRating), isStar: true } : null,
-    tmdbRating ? { label: "TMDB RATING", value: formatRating(tmdbRating), isStar: true } : null,
-    watchDate ? { label: "WATCHED", value: watchDate } : null,
-    runtime ? { label: "RUNTIME", value: runtime } : null,
+    igdbRating ? { label: "IGDB RATING", value: formatRating(igdbRating), isStar: true } : null,
+    completedLabel ? { label: "DATE COMPLETED", value: completedLabel } : null,
+    hoursPlayed ? { label: "HOURS PLAYED", value: hoursPlayed } : null,
+    platformDisplay ? { label: "PLATFORM", value: platformDisplay } : null,
+    developer ? { label: "DEVELOPER", value: developer } : null,
     year ? { label: "RELEASED", value: year } : null,
     ownership ? { label: "OWNERSHIP", value: ownership } : null,
     ...tags.map(t => ({ label: "TAG", value: t, isStar: false })),
   ].filter(Boolean) as { label: string; value: string; isStar?: boolean }[];
 
-  // Backdrop height: ~52% of viewport on desktop
   const backdropH = isMobileLayout ? "48vw" : "52vh";
 
   return (
@@ -235,7 +243,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
         overflow: "hidden auto",
       }}
     >
-      {/* Page-wide ambient backdrop blur */}
       {backdropUrl ? (
         <div aria-hidden style={{
           position: "fixed", inset: 0,
@@ -261,7 +268,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
             <div style={{ width: "100%", height: "100%", background: `linear-gradient(180deg, ${rgba(palette.start,0.6)} 0%, ${palette.start} 100%)` }} />
           )}
 
-          {/* Bottom blur + fade overlay — bottom 30% */}
           <div aria-hidden style={{
             position: "absolute", inset: 0,
             background: `linear-gradient(to bottom,
@@ -271,7 +277,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
               ${rgba(palette.start, 0.88)} 85%,
               ${rgba(palette.start, 1.0)} 100%)`,
           }} />
-          {/* Backdrop blur applied only to the bottom portion via a pseudo element approach */}
           <div aria-hidden style={{
             position: "absolute", bottom: 0, left: 0, right: 0, height: "32%",
             backdropFilter: "blur(14px)",
@@ -314,23 +319,22 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
                 }}
               >Edit</button>
             ) : null}
-            {watchStatus ? (
+            {playStatus ? (
               <span style={{
                 borderRadius: 999, padding: "9px 13px", fontSize: 14, lineHeight: 1, fontWeight: 850,
                 ...statusColor,
               }}>
-                {watchStatus.charAt(0).toUpperCase() + watchStatus.slice(1)}
+                {playStatus.charAt(0).toUpperCase() + playStatus.slice(1)}
               </span>
             ) : null}
           </div>
 
-          {/* Poster + title + meta overlaid at bottom of backdrop */}
+          {/* Poster + title + meta */}
           <div style={{
             position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 2,
             padding: isMobileLayout ? "0 16px 18px" : "0 24px 22px",
             display: "flex", alignItems: "flex-end", gap: isMobileLayout ? 14 : 20,
           }}>
-            {/* Poster */}
             {coverUrl ? (
               <img
                 src={coverUrl}
@@ -346,7 +350,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
                 }}
               />
             ) : null}
-            {/* Title + meta */}
             <div style={{ minWidth: 0 }}>
               <h1 style={{
                 margin: 0, fontSize: titleFontSize, lineHeight: 1.06, fontWeight: 860,
@@ -368,7 +371,7 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
           </div>
         </div>
 
-        {/* ── BODY: description + details (equal height) ── */}
+        {/* ── BODY ── */}
         <div style={{
           display: "grid",
           gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(0,1fr) 220px",
@@ -376,8 +379,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
           padding: isMobileLayout ? "12px 12px 24px" : "14px 16px 24px",
           alignItems: "stretch",
         }}>
-
-          {/* Overview */}
           <div style={{
             overflow: "hidden",
             borderRadius: 18,
@@ -396,7 +397,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
             </div>
           </div>
 
-          {/* Details */}
           <div style={{
             overflow: "hidden",
             borderRadius: 18,
@@ -421,7 +421,6 @@ export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = fal
               ))}
             </div>
           </div>
-
         </div>
       </div>
     </div>
