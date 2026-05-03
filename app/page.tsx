@@ -11,6 +11,7 @@ import Papa from "papaparse";
 import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 import { StatisticsView } from "./components/StatisticsView";
+import { RoadmapView } from "./components/RoadmapView";
 import { BookDetailsPage } from "./components/BookDetailsPage";
 import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 
@@ -318,7 +319,7 @@ const COVER_SCALE_SETTING_KEYS: Record<CoverScaleGroupKey, string> = {
 };
 const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGroupKey | null => {
   if (nav === "books" || nav === "movies" || nav === "tv" || nav === "games") return nav;
-  if (!nav || nav === "statistics") return null;
+  if (!nav || nav === "statistics" || nav === "roadmap") return null;
   return "home";
 };
 const VERSION_HISTORY = [
@@ -870,16 +871,42 @@ function getYearToken(value?: string): string {
 function parseReleaseDateForComparison(value?: string): Date | null {
   const raw = safeStr(value);
   if (!raw) return null;
+  // YYYY-MM-DD
   const fullMatch = raw.match(/\b((?:19|20)\d{2})-(\d{2})-(\d{2})\b/);
   if (fullMatch) {
     const d = new Date(Number(fullMatch[1]), Number(fullMatch[2]) - 1, Number(fullMatch[3]));
     if (!isNaN(d.getTime())) return d;
   }
+  // YYYY-MM
   const monthMatch = raw.match(/\b((?:19|20)\d{2})-(\d{2})\b/);
   if (monthMatch) return new Date(Number(monthMatch[1]), Number(monthMatch[2]) - 1, 1);
+  // M/D/YYYY (e.g. "5/12/2026")
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const date = new Date(Number(slashMatch[3]), Number(slashMatch[1]) - 1, Number(slashMatch[2]));
+    if (!isNaN(date.getTime())) return date;
+  }
+  // Exact year only (e.g. "2026"): use Dec 31 so current/future-year entries stay upcoming
+  if (/^((?:19|20)\d{2})$/.test(raw)) return new Date(Number(raw), 11, 31);
   const yearMatch = raw.match(/\b((?:19|20)\d{2})\b/);
   if (yearMatch) return new Date(Number(yearMatch[1]), 0, 1);
   return null;
+}
+
+function dateSpecificity(dateStr?: string): number {
+  const raw = safeStr(dateStr);
+  if (!raw) return 0;
+  if (/\b((?:19|20)\d{2})-(\d{2})-(\d{2})\b/.test(raw) || /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.test(raw)) return 3;
+  if (/\b((?:19|20)\d{2})-(\d{2})\b/.test(raw)) return 2;
+  if (/^((?:19|20)\d{2})$/.test(raw)) return 1;
+  return 0;
+}
+
+function pickBestReleaseDate(a?: string, b?: string): string | undefined {
+  const sa = dateSpecificity(a);
+  const sb = dateSpecificity(b);
+  if (sa === 0 && sb === 0) return a || b;
+  return sa >= sb ? a : b;
 }
 
 function todayMidnight(): Date {
@@ -1841,8 +1868,8 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming";
-type LibraryNavKey = Exclude<NavKey, "statistics">;
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap";
+type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
 type MovieQuickLinkKey = "library" | "watched" | "watching" | "backlog" | "abandoned" | "upcoming";
@@ -2002,7 +2029,8 @@ export default function Page() {
     nav === "abandoned" ||
     nav === "year-this" ||
     nav === "smart-custom" ||
-    nav === "statistics";
+    nav === "statistics" ||
+    nav === "roadmap";
   const isHomeSidebar = nav === "home" || isBacklogSidebarView || isSmartListOrDiscoverNav;
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
@@ -3407,7 +3435,7 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (nav !== "statistics") {
+    if (nav !== "statistics" && nav !== "roadmap") {
       setLastLibraryNav(nav);
     }
   }, [nav]);
@@ -3424,6 +3452,23 @@ export default function Page() {
   }, []);
 
   const handleExitStatistics = useCallback(() => {
+    setNav(lastLibraryNav || "home");
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, [lastLibraryNav]);
+
+  const openRoadmapView = useCallback(() => {
+    setNav("roadmap");
+    setShowThemes(false);
+    setSortPopupOpen(false);
+    setSettingsPopupOpen(false);
+    setFaqPopupOpen(false);
+    setShowVersionNotes(false);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, []);
+
+  const handleExitRoadmap = useCallback(() => {
     setNav(lastLibraryNav || "home");
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
@@ -6220,7 +6265,7 @@ export default function Page() {
     }, "Cover Sizes", `${group === "home" ? "Home" : group === "tv" ? "TV Shows" : group === "books" ? "Books" : group === "movies" ? "Movies" : "Games"} Cover Scale (%)`);
   }, [debouncedUpdate]);
   const updateCurrentCoverScale = useCallback((value: number) => {
-    if (nav === "statistics") return;
+    if (nav === "statistics" || nav === "roadmap") return;
     const currentGroup = activeCoverScaleGroup;
     updateCoverScaleForGroup(currentGroup, value);
   }, [activeCoverScaleGroup, nav, updateCoverScaleForGroup]);
@@ -7649,7 +7694,7 @@ export default function Page() {
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
-    if (nav === "statistics") {
+    if (nav === "statistics" || nav === "roadmap") {
       return [
         ...indexedBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...indexedShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
@@ -7705,7 +7750,7 @@ export default function Page() {
         .filter((m) => isUpcomingRelease(m.item.releaseDate))
         .map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" }));
       const upcomingGames = indexedGames
-        .filter((g) => isUpcomingRelease(g.item.releaseDate) || isUpcomingRelease(g.item.releaseDateAlt))
+        .filter((g) => isUpcomingRelease(pickBestReleaseDate(g.item.releaseDate, g.item.releaseDateAlt)))
         .map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" }));
       const combined = [...upcomingBooks, ...upcomingShows, ...upcomingMovies, ...upcomingGames] as any[];
       const effectiveSortField = sortField === MANUAL_SORT_FIELD ? "ReleaseDate" : sortField;
@@ -7982,7 +8027,7 @@ export default function Page() {
       } else if (gameViewMode === "wishlist") {
         filtered = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
       } else if (gameViewMode === "upcoming") {
-        const upcoming = indexedGames.filter((g) => isUpcomingRelease(g.item.releaseDate) || isUpcomingRelease(g.item.releaseDateAlt));
+        const upcoming = indexedGames.filter((g) => isUpcomingRelease(pickBestReleaseDate(g.item.releaseDate, g.item.releaseDateAlt)));
         const sorted = applySorting(upcoming.map((g) => g.item), sortField, sortOrder);
         const qf = q ? sorted.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : sorted;
         return qf.map((g) => ({ ...g, __type: "game" })) as any[];
@@ -9432,10 +9477,13 @@ export default function Page() {
     const completed = allBooks.filter((b) => isCompletedOrWatchedToken(b.status)).length + allShows.filter((s) => Boolean(safeStr(s.dateCompleted)) || isCompletedOrWatchedToken(s.watchStatus) || isCompletedOrWatchedToken(s.showStatus) || normalizeStatus(s.watched) === "true").length + allMovies.filter((m) => isMovieWatched(m) || isCompletedOrWatchedToken(m.watchStatus) || isCompletedOrWatchedToken(m.status) || isCompletedOrWatchedToken(m.movieStatus)).length + allGames.filter((g) => isCompletedOrWatchedToken(g.status) || isCompletedOrWatchedToken(g.playStatus) || isCompletedOrWatchedToken(g.gameStatus) || normalizeStatus(g.completed) === "true").length;
     const abandoned = allBooks.filter((b) => isAbandonedToken(b.status)).length + allShows.filter((s) => isAbandonedToken(s.watchStatus) || isAbandonedToken(s.showStatus)).length + allMovies.filter((m) => isAbandonedToken(m.watchStatus) || isAbandonedToken(m.watched)).length + allGames.filter((g) => isAbandonedToken(g.status) || isAbandonedToken(g.playStatus) || isAbandonedToken(g.gameStatus)).length;
     const yearThis =
-      allBooks.filter((b) => safeStr((b as any).completedYear) === currentYear || safeStr((b as any).completedDate).startsWith(currentYear)).length +
-      allShows.filter((s) => Array.isArray((s as any).watchYears) ? (s as any).watchYears.includes(currentYear) : false).length +
-      allMovies.filter((m) => safeStr((m as any).tagValue) === currentYear).length +
-      allGames.filter((g) => safeStr((g as any).yearPlayedValue) === currentYear).length;
+      allBooks.filter((b) => getYearToken(b.completedDate) === currentYear).length +
+      allShows.filter((s) => {
+        const watchYears = new Set([getYearToken(s.dateCompleted), ...getYearTokens(s.tag)].filter(Boolean));
+        return watchYears.has(currentYear);
+      }).length +
+      allMovies.filter((m) => safeStr(m.tag) === currentYear).length +
+      allGames.filter((g) => safeStr(g.yearPlayed) === currentYear).length;
 
     return {
       movies: allMovies.filter((m) => isMovieWatched(m)).length,
@@ -9921,6 +9969,16 @@ export default function Page() {
               }}
             >
               Statistics
+            </button>
+            <button
+              type="button"
+              onClick={openRoadmapView}
+              style={{
+                ...getMobileMenuButtonStyle(nav === "roadmap"),
+                textAlign: "left",
+              }}
+            >
+              Roadmap
             </button>
           </div>
         </div>
@@ -11506,6 +11564,40 @@ export default function Page() {
                   </span>
                 </button>
 
+                <button
+                  onClick={openRoadmapView}
+                  className={`sideSubItem ${nav === "roadmap" ? "active" : ""}`}
+                  style={sidebarSubItemRowStyle}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "roadmap" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img
+                        src={getSidebarIconSrc("roadmap", "/icon-statistics.png")}
+                        alt=""
+                        width={iconSize}
+                        height={iconSize}
+                        onClick={(event) => openSidebarIconFilePicker(event, "roadmap")}
+                        title={uploadingSidebarIconKey === "roadmap" ? "Uploading..." : "Change icon"}
+                        style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
+                      />
+                    </span>
+                    <span style={sidebarSubItemLabelStyle}>Roadmap</span>
+                  </span>
+                </button>
+
               </div>
 
               {nav === "watchlist-tv" ? (
@@ -12311,7 +12403,7 @@ export default function Page() {
             </div>
 
             {/* Synced Module at Bottom */}
-            {nav === "statistics" ? null : (
+            {nav === "statistics" || nav === "roadmap" ? null : (
             <div style={{ padding: "0 4px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
@@ -13590,6 +13682,8 @@ export default function Page() {
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
             />
+          ) : nav === "roadmap" ? (
+            <RoadmapView onExit={handleExitRoadmap} />
           ) : bookDetailItem && getMediaType(bookDetailItem) === "book" ? (
             <BookDetailsPage
               key={getMediaItemKey(bookDetailItem)}
