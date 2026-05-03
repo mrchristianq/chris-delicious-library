@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type MovieDetailsPageProps = {
   item: Record<string, unknown>;
   isMobileLayout: boolean;
+  usePageBackground?: boolean;
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
@@ -132,7 +133,7 @@ async function extractPalette(backdropUrl: string, fallback: string): Promise<Pa
   return FALLBACK_PALETTE;
 }
 
-export function MovieDetailsPage({ item, isMobileLayout, onBack, onEdit, getDisplayCoverUrl, onPaletteChange }: MovieDetailsPageProps) {
+export function MovieDetailsPage({ item, isMobileLayout, usePageBackground = false, onBack, onEdit, getDisplayCoverUrl, onPaletteChange }: MovieDetailsPageProps) {
   const coverUrl = getDisplayCoverUrl(item);
   const backdropUrl = safeStr(item.backdropUrl);
 
@@ -225,7 +226,7 @@ export function MovieDetailsPage({ item, isMobileLayout, onBack, onEdit, getDisp
         opacity: ready ? 1 : 0,
         transition: "opacity 260ms ease",
         minHeight: "100vh",
-        background: `linear-gradient(160deg, ${mixHex(palette.start,"#06080f",0.08)} 0%, ${palette.start} 30%, ${mixHex(palette.end,palette.start,0.18)} 58%, ${palette.end} 100%)`,
+        background: usePageBackground ? "transparent" : `linear-gradient(160deg, ${mixHex(palette.start,"#06080f",0.08)} 0%, ${palette.start} 30%, ${mixHex(palette.end,palette.start,0.18)} 58%, ${palette.end} 100%)`,
         color: palette.text,
         position: "relative",
         overflow: "hidden auto",

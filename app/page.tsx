@@ -3083,6 +3083,7 @@ export default function Page() {
   const [bookDetailItem, setBookDetailItem] = useState<any>(null);
   const [bookDetailsEditOpen, setBookDetailsEditOpen] = useState(false);
   const [movieDetailItem, setMovieDetailItem] = useState<any>(null);
+  const [movieDetailPalette, setMovieDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
@@ -3108,6 +3109,7 @@ export default function Page() {
     setBookDetailsEditOpen(false);
     setBookDetailPalette(null);
     setMovieDetailItem(null);
+    setMovieDetailPalette(null);
   }, [nav, selectedSmartListId]);
 
   const applyDebugHeaderOffset = useCallback(() => {
@@ -9781,7 +9783,18 @@ export default function Page() {
       end: nextPalette.end,
     });
   }, [bookDetailItem]);
-  const sidebarFloatOverPageBackground = Boolean(activeBookDetailBackground) || nav === "home";
+
+  const activeMovieDetailKey = movieDetailItem ? getMediaItemKey(movieDetailItem) : "";
+  const activeMovieDetailPalette = movieDetailPalette?.key === activeMovieDetailKey ? movieDetailPalette : null;
+  const activeMovieDetailBackground = movieDetailItem && activeMovieDetailPalette
+    ? buildDetailGradientBackground(activeMovieDetailPalette.start, activeMovieDetailPalette.end)
+    : null;
+  const handleMovieDetailPaletteChange = useCallback((nextPalette: { start: string; end: string } | null) => {
+    if (!nextPalette || !movieDetailItem) { setMovieDetailPalette(null); return; }
+    setMovieDetailPalette({ key: getMediaItemKey(movieDetailItem), start: nextPalette.start, end: nextPalette.end });
+  }, [movieDetailItem]);
+
+  const sidebarFloatOverPageBackground = Boolean(activeBookDetailBackground) || Boolean(activeMovieDetailBackground) || nav === "home";
   const sidebarDetailGradientActive = sidebarFloatOverPageBackground;
   const sidebarDetailShellBackground = sidebarShellBackground;
   const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
@@ -9790,7 +9803,9 @@ export default function Page() {
     <div
       style={{
         minHeight: "100vh",
-        background: activeBookDetailBackground
+        background: activeMovieDetailBackground
+          ? activeMovieDetailBackground
+          : activeBookDetailBackground
           ? activeBookDetailBackground
           : useElectricBlueStatsBackdrop
           ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
@@ -13806,9 +13821,11 @@ export default function Page() {
               key={getMediaItemKey(movieDetailItem)}
               item={movieDetailItem}
               isMobileLayout={isMobileLayout}
+              usePageBackground={Boolean(activeMovieDetailBackground)}
               onBack={() => setMovieDetailItem(null)}
               onEdit={(item) => { setMovieDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
               getDisplayCoverUrl={getDisplayCoverUrl}
+              onPaletteChange={handleMovieDetailPaletteChange}
             />
           ) : (
           <>
