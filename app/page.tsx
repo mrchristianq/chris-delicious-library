@@ -13,6 +13,7 @@ import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
 import { StatisticsView } from "./components/StatisticsView";
 import { RoadmapView } from "./components/RoadmapView";
 import { BookDetailsPage } from "./components/BookDetailsPage";
+import { MovieDetailsPage } from "./components/MovieDetailsPage";
 import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 
 type Row = Record<string, string>;
@@ -976,7 +977,7 @@ const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1
 const ABANDONED_STATUS_VALUES = new Set(["abandoned", "dropped", "drop", "quit", "dnf"]);
 const NOW_PLAYING_GAME_STATUS_VALUES = new Set(["now playing"]);
 const NOW_PLAYING_TV_STATUS_VALUES = new Set(["currently watching", "watching"]);
-const NOW_PLAYING_MOVIE_STATUS_VALUES = new Set(["watching"]);
+const NOW_PLAYING_MOVIE_STATUS_VALUES = new Set(["watching", "started"]);
 const NOW_PLAYING_BOOK_STATUS_VALUES = new Set(["reading"]);
 const PLAY_NEXT_STATUS_VALUES = new Set(["queued", "replay"]);
 
@@ -1872,7 +1873,7 @@ type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-pla
 type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
-type MovieQuickLinkKey = "library" | "watched" | "watching" | "backlog" | "abandoned" | "upcoming";
+type MovieQuickLinkKey = "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
 type TvQuickLinkKey = "library" | "backlog" | "watching" | "watched" | "abandoned" | "upcoming";
 type TvViewMode = TvQuickLinkKey | "custom";
 type GameQuickLinkKey = "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
@@ -2075,6 +2076,7 @@ export default function Page() {
     if (section === "movies") {
       setMovieWatchFilter(null);
       setMovieGenreFilter(null);
+      setMovieTagFilter(null);
       setSortField("ReleaseDate");
       setSortOrder("Desc");
     }
@@ -2147,6 +2149,7 @@ export default function Page() {
   const [showFilter, setShowFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [movieWatchFilter, setMovieWatchFilter] = useState<string | null>(null);
+  const [movieTagFilter, setMovieTagFilter] = useState<string | null>(null);
   const [movieGenreFilter, setMovieGenreFilter] = useState<string | null>(null);
   const [readingStatusFilter, setReadingStatusFilter] = useState<string | null>(null);
   const [formatFilter, setFormatFilter] = useState<string | null>(null);
@@ -2186,6 +2189,8 @@ export default function Page() {
   const [tagOpen, setTagOpen] = useState<boolean>(false);
   const [movieWatchStatusOpen, setMovieWatchStatusOpen] = useState<boolean>(false);
   const [movieGenreOpen, setMovieGenreOpen] = useState<boolean>(false);
+  const [movieTagOpen, setMovieTagOpen] = useState<boolean>(true);
+  const [movieStatusOpen, setMovieStatusOpen] = useState<boolean>(true);
   const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
   const [genreOpen, setGenreOpen] = useState<boolean>(false);
   const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(false);
@@ -2213,6 +2218,7 @@ export default function Page() {
     setTagFilter(null);
     setMovieWatchFilter(null);
     setMovieGenreFilter(null);
+    setMovieTagFilter(null);
     setGameViewMode("library");
     setReadingStatusFilter(null);
     setFormatFilter(null);
@@ -3076,6 +3082,7 @@ export default function Page() {
   const [modalItem, setModalItem] = useState<any>(null);
   const [bookDetailItem, setBookDetailItem] = useState<any>(null);
   const [bookDetailsEditOpen, setBookDetailsEditOpen] = useState(false);
+  const [movieDetailItem, setMovieDetailItem] = useState<any>(null);
   const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
@@ -3100,6 +3107,7 @@ export default function Page() {
     setBookDetailItem(null);
     setBookDetailsEditOpen(false);
     setBookDetailPalette(null);
+    setMovieDetailItem(null);
   }, [nav, selectedSmartListId]);
 
   const applyDebugHeaderOffset = useCallback(() => {
@@ -3204,6 +3212,15 @@ export default function Page() {
       openBookDetailItem(nextItem);
       return;
     }
+    if (getMediaType(nextItem) === "movie") {
+      setMovieDetailItem(nextItem);
+      setBookDetailItem(null);
+      setBookDetailPalette(null);
+      setModalItem(null);
+      setModalOpen(false);
+      return;
+    }
+    setMovieDetailItem(null);
     setBookDetailItem(null);
     setBookDetailPalette(null);
     setModalItem(nextItem);
@@ -7182,8 +7199,8 @@ export default function Page() {
       const status = normalizeStatus(item?.watchStatus || item?.watched);
       if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
       if (isMovieWatched(item as Movie)) return { color: STATUS_COLOR_GREEN, label: "Watched" };
-      if (status === "watching" || status === "currently watching" || status === "in progress" || status === "paused") {
-        return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+      if (status === "started" || status === "watching" || status === "currently watching" || status === "in progress" || status === "paused") {
+        return { color: STATUS_COLOR_YELLOW, label: "Started" };
       }
       return { color: STATUS_COLOR_RED, label: "Not Watched" };
     }
@@ -7439,6 +7456,29 @@ export default function Page() {
     return counts;
   }, [allMovies, movieGenres]);
 
+  const movieTags = useMemo(() => {
+    const tags = new Set<string>();
+    allMovies.forEach(movie => {
+      [...parseTagValues(movie.tag), ...parseTagValues(movie.tags)].forEach(t => {
+        const v = t.trim();
+        if (v) tags.add(v);
+      });
+    });
+    return Array.from(tags).sort();
+  }, [allMovies]);
+
+  const movieTagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of movieTags) counts[t] = 0;
+    for (const movie of allMovies) {
+      [...parseTagValues(movie.tag), ...parseTagValues(movie.tags)].forEach(t => {
+        const v = t.trim();
+        if (counts[v] !== undefined) counts[v] += 1;
+      });
+    }
+    return counts;
+  }, [allMovies, movieTags]);
+
   const smartListStatusOptionsByMedia = useMemo(() => {
     const buildOptions = (values: string[], fallbackLabels: string[]): SmartListStatusOption[] => {
       const byToken = new Map<string, string>();
@@ -7469,7 +7509,7 @@ export default function Page() {
       ),
       movie: buildOptions(
         allMovies.map((movie) => safeStr(movie.watchStatus || movie.watched || movie.status || movie.movieStatus)),
-        ["Watched", "Watching", "Backlog", "Abandoned", "Paused"]
+        ["Watched", "Started", "Backlog", "Abandoned", "Paused"]
       ),
       tv: buildOptions(
         allShows.map((show) => safeStr(show.watchStatus || show.showStatus || show.watched)),
@@ -7991,12 +8031,13 @@ export default function Page() {
             watchStatus === "quit" ||
             watchStatus === "dnf";
           const isWatching =
+            watchStatus === "started" ||
             watchStatus === "watching" ||
             watchStatus === "currently watching" ||
             watchStatus === "in progress" ||
             watchStatus === "paused";
           if (movieWatchFilter === "Watched") return isMovieWatched(m.item);
-          if (movieWatchFilter === "Watching") return isWatching;
+          if (movieWatchFilter === "Started") return isWatching;
           if (movieWatchFilter === "Abandoned") return isAbandoned;
           return !isMovieWatched(m.item) && !isWatching && !isAbandoned;
         });
@@ -8006,7 +8047,12 @@ export default function Page() {
       if (movieGenreFilter) {
         filtered = filtered.filter((m) => m.genres.includes(movieGenreFilter));
       }
-      
+
+      // Apply tag filter if set
+      if (movieTagFilter) {
+        filtered = filtered.filter((m) => m.tagTokens.includes(normalizeTagToken(movieTagFilter)));
+      }
+
       const filteredByQuery = q ? filtered.filter((m) => m.titleLC.includes(q)) : filtered;
       const sorted = applySorting(filteredByQuery.map((m) => m.item), sortField, sortOrder);
       return sorted.map((m) => ({ ...m, __type: "movie" } as Movie & { __type: "movie" })) as any[];
@@ -8297,7 +8343,7 @@ export default function Page() {
     applySorting, deduplicateGames,
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
-    isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
+    isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieTagFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
     activeSmartList, bookUpcomingFilter, deferredQuery, gameViewMode, movieUpcomingFilter, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
@@ -8567,8 +8613,8 @@ export default function Page() {
         ? "upcoming"
         : movieWatchFilter === "Watched"
           ? "watched"
-          : movieWatchFilter === "Watching"
-            ? "watching"
+          : movieWatchFilter === "Started"
+            ? "started"
             : movieWatchFilter === "Backlog"
               ? "backlog"
               : movieWatchFilter === "Abandoned"
@@ -8608,13 +8654,14 @@ export default function Page() {
         ? null
         : nextView === "watched"
           ? "Watched"
-          : nextView === "watching"
-            ? "Watching"
+          : nextView === "started"
+            ? "Started"
             : nextView === "abandoned"
               ? "Abandoned"
               : "Backlog"
     );
     setMovieGenreFilter(null);
+    setMovieTagFilter(null);
     setSortField("ReleaseDate");
     setSortOrder(nextView === "upcoming" ? "Asc" : "Desc");
   }, []);
@@ -9436,7 +9483,8 @@ export default function Page() {
         token === "in progress" ||
         token === "paused" ||
         token === "watching" ||
-        token === "currently watching"
+        token === "currently watching" ||
+        token === "started"
       );
     };
     const isCompletedOrWatchedToken = (value?: string) => {
@@ -10786,14 +10834,68 @@ export default function Page() {
 
                 {nav === "movies" ? (
                   <div style={{ marginTop: 6, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 8, order: 10 }}>
+                    {/* Status */}
+                    <button
+                      onClick={() => setMovieStatusOpen((v) => !v)}
+                      style={sidebarSubSectionHeaderButtonStyle}
+                    >
+                      <span style={sidebarSectionHeaderTextStyle}>Status</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieStatusOpen ? "−" : "+"}</span>
+                    </button>
+                    {movieStatusOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                        {(["Released", "Upcoming"] as const).map((option) => {
+                          const active = option === "Upcoming" ? movieUpcomingFilter : !movieUpcomingFilter;
+                          return (
+                            <button
+                              key={`movie-status-${option}`}
+                              onClick={() => setMovieUpcomingFilter(option === "Upcoming")}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "1px 6px" }}
+                            >
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {/* Tags */}
+                    <button
+                      onClick={() => setMovieTagOpen((v) => !v)}
+                      style={sidebarSubSectionHeaderButtonStyle}
+                    >
+                      <span style={sidebarSectionHeaderTextStyle}>Tags</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieTagOpen ? "−" : "+"}</span>
+                    </button>
+                    {movieTagOpen ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                        {movieTags.map((tag) => {
+                          const active = movieTagFilter === tag;
+                          return (
+                            <button
+                              key={`movie-tag-${tag}`}
+                              onClick={() => setMovieTagFilter(active ? null : tag)}
+                              className={`sideSubItem ${active ? "active" : ""}`}
+                              style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "1px 6px" }}
+                            >
+                              <span style={{ color: sidebarInlineMetaTextColor }}>{tag}</span>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}>{movieTagCounts[tag] ?? 0}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {/* Genre */}
                     <button
                       onClick={() => setMovieGenreOpen((v) => !v)}
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Genre</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "movies" || movieGenreOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "movies" || movieGenreOpen ? (
+                    {movieGenreOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {movieGenres.map((genre) => {
                           const active = movieGenreFilter === genre;
@@ -10809,6 +10911,7 @@ export default function Page() {
                                 alignItems: "center",
                                 justifyContent: "space-between",
                                 gap: 8,
+                                padding: "1px 6px",
                               }}
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>
@@ -11015,7 +11118,7 @@ export default function Page() {
                     openMediaSidebar("games");
                   }}
                   className={`sideItem ${nav === "games" ? "active" : ""}`}
-                  style={sidebarPrimaryItemRowStyle}
+                  style={{ ...sidebarPrimaryItemRowStyle, marginBottom: 15 }}
                 >
                   <span style={sidebarPrimaryItemLabelStyle}>
                     <span
@@ -11332,7 +11435,7 @@ export default function Page() {
               {/* SMART LISTS section */}
               <div
                 className="sidebarTextOnlySection"
-                style={{ display: isHomeSidebar ? "block" : "none", marginTop: sidebarSectionSpacing * 2 }}
+                style={{ display: isHomeSidebar ? "block" : "none", marginTop: 8 }}
               >
                 <div
                   style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}
@@ -13698,6 +13801,15 @@ export default function Page() {
               isAudiobookItem={isAudiobookItem}
               onPaletteChange={handleBookDetailPaletteChange}
             />
+          ) : movieDetailItem ? (
+            <MovieDetailsPage
+              key={getMediaItemKey(movieDetailItem)}
+              item={movieDetailItem}
+              isMobileLayout={isMobileLayout}
+              onBack={() => setMovieDetailItem(null)}
+              onEdit={(item) => { setMovieDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
+              getDisplayCoverUrl={getDisplayCoverUrl}
+            />
           ) : (
           <>
           {/* Stage measures width so shelves always align */}
@@ -13787,7 +13899,7 @@ export default function Page() {
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
-                            ["watching", "Watching"],
+                            ["started", "Started"],
                             ["watched", "Watched"],
                             ["abandoned", "Abandoned"],
                           ] as Array<[MovieQuickLinkKey, string]>).map(([key, label]) => {
