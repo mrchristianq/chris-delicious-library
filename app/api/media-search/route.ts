@@ -400,15 +400,16 @@ type ItunesBook = {
   averageUserRating?: number;
 };
 
-type HardcoverBook = {
-  id?: number;
+type HardcoverSearchDocument = {
+  id?: string | number;
   title?: string;
   description?: string;
   pages?: number;
   release_date?: string;
   image?: { url?: string };
-  contributions?: Array<{ author?: { name?: string } }>;
-  editions?: Array<{ isbn_13?: string; isbn_10?: string; pages?: number }>;
+  author_names?: string[];
+  genres?: string[];
+  isbns?: string[];
 };
 
 async function searchAppleBooks(query: string): Promise<SearchResult[]> {
@@ -445,14 +446,7 @@ async function searchHardcover(query: string): Promise<SearchResult[]> {
   const apiKey = pickEnv(["HARDCOVER_API_KEY"]);
   if (!apiKey) throw new Error("Hardcover API key not configured (HARDCOVER_API_KEY).");
 
-  const gqlQuery = `query {
-    books(where: {title: {_ilike: "%${query.replace(/["%]/g, "")}%"}}, limit: 8, order_by: {users_count: desc_nulls_last}) {
-      id title description pages release_date
-      image { url }
-      contributions { author { name } }
-      editions(limit: 1, order_by: {id: desc}) { isbn_13 isbn_10 pages }
-    }
-  }`;
+  const gqlQuery = `{ search(query: ${JSON.stringify(query)}, query_type: "Book", per_page: 8) { results } }`;
 
   const res = await fetch("https://api.hardcover.app/v1/graphql", {
     method: "POST",
@@ -462,7 +456,7 @@ async function searchHardcover(query: string): Promise<SearchResult[]> {
   });
 
   const payload = (await res.json().catch(() => ({}))) as {
-    data?: { books?: HardcoverBook[] };
+    data?: { search?: { results?: { hits?: Array<{ document?: HardcoverSearchDocument }> } } };
     errors?: Array<{ message?: string }>;
   };
 
@@ -470,27 +464,26 @@ async function searchHardcover(query: string): Promise<SearchResult[]> {
     throw new Error(payload.errors?.[0]?.message || "Hardcover search failed.");
   }
 
-  const books = Array.isArray(payload.data?.books) ? (payload.data!.books as HardcoverBook[]) : [];
-  return books.map((book) => {
-    const title = safeStr(book.title);
-    const author = Array.isArray(book.contributions)
-      ? book.contributions.map((c) => safeStr(c.author?.name)).filter(Boolean).join(", ")
-      : "";
-    const image = safeStr(book.image?.url);
-    const releaseDate = safeStr(book.release_date);
+  const hits = payload.data?.search?.results?.hits ?? [];
+  return hits.map(({ document: doc = {} }) => {
+    const title = safeStr(doc.title);
+    const author = Array.isArray(doc.author_names) ? doc.author_names.filter(Boolean).join(", ") : "";
+    const genre = Array.isArray(doc.genres) ? doc.genres.slice(0, 4).join(", ") : "";
+    const image = safeStr(doc.image?.url);
+    const releaseDate = safeStr(doc.release_date);
     const year = releaseDate ? releaseDate.slice(0, 4) : "";
-    const edition = book.editions?.[0];
-    const isbn = safeStr(edition?.isbn_13 || edition?.isbn_10);
-    const pages = edition?.pages ?? book.pages;
+    const isbn = Array.isArray(doc.isbns) ? safeStr(doc.isbns[0]) : "";
+    const pages = doc.pages;
     return {
-      id: `book-hardcover:${String(book.id || title)}`,
+      id: `book-hardcover:${String(doc.id || title)}`,
       title,
       subtitle: author || undefined,
       year: year || undefined,
       imageUrl: image || undefined,
       data: {
-        title, author, description: safeStr(book.description),
-        releaseDate, imageUrl: image,
+        title, author,
+        description: safeStr(doc.description),
+        genre, releaseDate, imageUrl: image,
         pages: pages != null ? String(pages) : "",
         isbn,
       },
