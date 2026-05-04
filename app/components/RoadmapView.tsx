@@ -4,9 +4,12 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 const STORAGE_KEY = "cdlRoadmapItems";
 
+type Tag = "bug" | "feature";
+
 type RoadmapItem = {
   id: string;
   text: string;
+  tag?: Tag;
   completed: boolean;
   createdAt: number;
   completedAt?: number;
@@ -47,6 +50,65 @@ async function serverSave(items: RoadmapItem[]): Promise<void> {
   if (!res.ok) throw new Error("save failed");
 }
 
+const TAG_STYLES: Record<Tag, { bg: string; color: string; border: string; label: string }> = {
+  bug: {
+    bg: "rgba(255, 59, 48, 0.09)",
+    color: "#c0392b",
+    border: "rgba(255, 59, 48, 0.22)",
+    label: "Bug",
+  },
+  feature: {
+    bg: "rgba(0, 113, 227, 0.08)",
+    color: "#0055b3",
+    border: "rgba(0, 113, 227, 0.22)",
+    label: "Feature",
+  },
+};
+
+function TagPill({ tag }: { tag: Tag }) {
+  const s = TAG_STYLES[tag];
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      padding: "2px 8px", borderRadius: 999,
+      fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+      background: s.bg, color: s.color,
+      border: `1px solid ${s.border}`,
+      flexShrink: 0,
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
+function TagSelector({ value, onChange }: { value?: Tag; onChange: (t?: Tag) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+      {(["bug", "feature"] as Tag[]).map((t) => {
+        const s = TAG_STYLES[t];
+        const active = value === t;
+        return (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onChange(active ? undefined : t)}
+            style={{
+              padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+              cursor: "pointer", letterSpacing: "0.03em",
+              background: active ? s.bg : "rgba(0,0,0,0.04)",
+              color: active ? s.color : "rgba(0,0,0,0.38)",
+              border: active ? `1px solid ${s.border}` : "1px solid rgba(0,0,0,0.1)",
+              transition: "all 120ms ease",
+            }}
+          >
+            {s.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 type RoadmapViewProps = {
   onExit?: () => void;
 };
@@ -56,31 +118,31 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [inputTag, setInputTag] = useState<Tag | undefined>(undefined);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editTag, setEditTag] = useState<Tag | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Optimistically show localStorage while server loads
     const cached = localLoad();
     if (cached.length > 0) setItems(cached);
-
     serverLoad()
-      .then((serverItems) => {
-        setItems(serverItems);
-        localSave(serverItems);
-      })
-      .catch(() => {
-        // Server failed — keep localStorage version
-      })
+      .then((serverItems) => { setItems(serverItems); localSave(serverItems); })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (editingId && editInputRef.current) editInputRef.current.focus();
+  }, [editingId]);
 
   function persist(next: RoadmapItem[]): void {
     setItems(next);
     localSave(next);
     setSaveError(false);
-
-    // Debounce server saves by 400ms so rapid changes batch together
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       serverSave(next).catch(() => setSaveError(true));
@@ -90,29 +152,41 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
   function addItem(): void {
     const text = inputText.trim();
     if (!text) return;
-    const next: RoadmapItem = {
-      id: generateId(),
-      text,
-      completed: false,
-      createdAt: Date.now(),
-    };
-    persist([next, ...items]);
+    persist([{ id: generateId(), text, tag: inputTag, completed: false, createdAt: Date.now() }, ...items]);
     setInputText("");
+    setInputTag(undefined);
     inputRef.current?.focus();
   }
 
   function handleInputKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
     if (e.key === "Enter") addItem();
+    if (e.key === "Escape") { setInputText(""); setInputTag(undefined); }
+  }
+
+  function startEdit(item: RoadmapItem): void {
+    setEditingId(item.id);
+    setEditText(item.text);
+    setEditTag(item.tag);
+  }
+
+  function commitEdit(id: string): void {
+    const text = editText.trim();
+    if (!text) { setEditingId(null); return; }
+    persist(items.map((item) => item.id === id ? { ...item, text, tag: editTag } : item));
+    setEditingId(null);
+  }
+
+  function handleEditKeyDown(e: KeyboardEvent<HTMLInputElement>, id: string): void {
+    if (e.key === "Enter") commitEdit(id);
+    if (e.key === "Escape") setEditingId(null);
   }
 
   function toggleComplete(id: string): void {
-    persist(
-      items.map((item) =>
-        item.id === id
-          ? { ...item, completed: !item.completed, completedAt: !item.completed ? Date.now() : undefined }
-          : item
-      )
-    );
+    persist(items.map((item) =>
+      item.id === id
+        ? { ...item, completed: !item.completed, completedAt: !item.completed ? Date.now() : undefined }
+        : item
+    ));
   }
 
   function deleteItem(id: string): void {
@@ -125,9 +199,8 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
     if (idx === -1) return;
     if (direction === "up" && idx === 0) return;
     if (direction === "down" && idx === openItems.length - 1) return;
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
     const reordered = [...openItems];
-    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+    [reordered[idx], reordered[direction === "up" ? idx - 1 : idx + 1]] = [reordered[direction === "up" ? idx - 1 : idx + 1], reordered[idx]];
     persist([...reordered, ...items.filter((i) => i.completed)]);
   }
 
@@ -135,445 +208,300 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
   const completedItems = items.filter((i) => i.completed).sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
 
   return (
-    <section className="roadmapRoot">
-      <div className="roadmapBgGlow" aria-hidden />
-
-      <header className="roadmapHeader">
-        <div className="roadmapHeaderIntro">
-          {onExit ? (
-            <button type="button" className="roadmapExitButton" onClick={onExit}>
-              Back to Library
-            </button>
-          ) : null}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 className="roadmapTitle">Roadmap</h1>
-            {loading ? (
-              <span style={{ fontSize: 11, color: "rgba(191,211,240,0.6)", fontWeight: 600 }}>Syncing…</span>
-            ) : saveError ? (
-              <span style={{ fontSize: 11, color: "rgba(255,160,130,0.85)", fontWeight: 600 }}>⚠ Couldn't save to server</span>
-            ) : null}
-          </div>
-          <p className="roadmapSubtitle">Track features and changes you want to add to the app.</p>
-        </div>
-      </header>
-
-      {/* Add new item */}
-      <div className="roadmapAddRow">
-        <input
-          ref={inputRef}
-          className="roadmapInput"
-          type="text"
-          placeholder="Describe a new feature or change…"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          autoFocus
-        />
-        <button
-          type="button"
-          className="roadmapAddButton"
-          onClick={addItem}
-          disabled={!inputText.trim()}
-        >
-          Add
-        </button>
-      </div>
-
-      {/* Open items */}
-      {openItems.length > 0 ? (
-        <div className="roadmapSection">
-          <div className="roadmapSectionLabel">Open · {openItems.length}</div>
-          <ul className="roadmapList">
-            {openItems.map((item, idx) => (
-              <li key={item.id} className="roadmapItem">
-                <button
-                  type="button"
-                  className="roadmapCheckbox"
-                  onClick={() => toggleComplete(item.id)}
-                  aria-label="Mark complete"
-                  title="Mark complete"
-                >
-                  <span className="roadmapCheckboxInner" />
-                </button>
-                <span className="roadmapItemText">{item.text}</span>
-                <div className="roadmapItemActions">
-                  <button
-                    type="button"
-                    className="roadmapMoveButton"
-                    onClick={() => moveItem(item.id, "up")}
-                    disabled={idx === 0}
-                    aria-label="Move up"
-                    title="Move up"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    className="roadmapMoveButton"
-                    onClick={() => moveItem(item.id, "down")}
-                    disabled={idx === openItems.length - 1}
-                    aria-label="Move down"
-                    title="Move down"
-                  >
-                    ▼
-                  </button>
-                  <button
-                    type="button"
-                    className="roadmapDeleteButton"
-                    onClick={() => deleteItem(item.id)}
-                    aria-label="Delete"
-                    title="Delete"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <div className="roadmapEmpty">No open items. Add something above to get started.</div>
-      )}
-
-      {/* Completed items */}
-      {completedItems.length > 0 ? (
-        <div className="roadmapSection roadmapCompletedSection">
-          <div className="roadmapSectionLabel roadmapSectionLabelCompleted">Completed · {completedItems.length}</div>
-          <ul className="roadmapList">
-            {completedItems.map((item) => (
-              <li key={item.id} className="roadmapItem roadmapItemDone">
-                <button
-                  type="button"
-                  className="roadmapCheckbox roadmapCheckboxDone"
-                  onClick={() => toggleComplete(item.id)}
-                  aria-label="Mark incomplete"
-                  title="Mark incomplete"
-                >
-                  <span className="roadmapCheckboxInner">✓</span>
-                </button>
-                <span className="roadmapItemText roadmapItemTextDone">{item.text}</span>
-                <div className="roadmapItemActions">
-                  <button
-                    type="button"
-                    className="roadmapDeleteButton"
-                    onClick={() => deleteItem(item.id)}
-                    aria-label="Delete"
-                    title="Delete"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <style jsx>{`
-        .roadmapRoot {
-          --rm-bg: rgba(8, 20, 44, 0.86);
-          --rm-card: linear-gradient(156deg, rgba(30, 59, 106, 0.82), rgba(16, 34, 70, 0.9));
-          --rm-border: rgba(125, 171, 242, 0.3);
-          --rm-text: rgba(233, 243, 255, 0.96);
-          --rm-muted: rgba(191, 211, 240, 0.65);
-          --rm-accent: #5ee0ff;
-          --rm-green: #62f39b;
-          position: relative;
-          min-height: calc(100vh - 12px);
-          margin: 8px 10px 0 10px;
-          border-radius: 20px;
-          padding: clamp(14px, 2vw, 28px);
-          overflow: hidden;
-          color: var(--rm-text);
-          background:
-            radial-gradient(circle at 10% -10%, rgba(78, 144, 250, 0.22), transparent 42%),
-            radial-gradient(circle at 95% 14%, rgba(43, 218, 170, 0.16), transparent 36%),
-            var(--rm-bg);
-          border: 1px solid rgba(117, 160, 228, 0.36);
-          box-shadow:
-            inset 0 1px 0 rgba(214, 234, 255, 0.22),
-            0 26px 70px rgba(4, 12, 29, 0.54),
-            0 6px 18px rgba(0, 0, 0, 0.35);
-          animation: roadmapFadeRise 480ms cubic-bezier(0.22, 1, 0.36, 1);
-        }
-
+    <div style={{
+      minHeight: "calc(100vh - 12px)",
+      margin: "8px 10px 0 10px",
+      borderRadius: 16,
+      background: "rgba(255, 255, 255, 0.62)",
+      backdropFilter: "blur(20px) saturate(1.2)",
+      WebkitBackdropFilter: "blur(20px) saturate(1.2)",
+      border: "1px solid rgba(0, 0, 0, 0.08)",
+      boxShadow: "0 2px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)",
+      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+      color: "#1d1d1f",
+      overflow: "hidden",
+      animation: "roadmapFadeRise 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+    }}>
+      <style>{`
         @keyframes roadmapFadeRise {
-          from { opacity: 0; transform: translateY(12px); }
+          from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-
-        .roadmapBgGlow {
-          position: absolute;
-          width: 460px;
-          height: 460px;
-          right: -130px;
-          bottom: -210px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(98, 243, 155, 0.18), rgba(98, 243, 155, 0));
-          pointer-events: none;
-        }
-
-        .roadmapHeader {
-          position: relative;
-          margin-bottom: 22px;
-        }
-
-        .roadmapHeaderIntro {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .roadmapExitButton {
-          display: inline-flex;
-          align-items: center;
-          align-self: flex-start;
-          border: 1px solid rgba(154, 198, 255, 0.64);
-          background: linear-gradient(165deg, rgba(39, 78, 140, 0.82), rgba(21, 48, 94, 0.88));
-          color: #e7f2ff;
-          border-radius: 999px;
-          padding: 6px 12px;
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.03em;
-          cursor: pointer;
-          box-shadow: 0 8px 16px rgba(7, 20, 44, 0.4), inset 0 1px 0 rgba(220, 241, 255, 0.3);
-          transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
-        }
-
-        .roadmapExitButton:hover {
-          transform: translateY(-1px);
-          border-color: rgba(194, 226, 255, 0.82);
-          background: linear-gradient(165deg, rgba(48, 92, 162, 0.9), rgba(28, 62, 119, 0.92));
-        }
-
-        .roadmapTitle {
-          margin: 0;
-          font-size: clamp(24px, 4vw, 34px);
-          line-height: 1;
-          letter-spacing: 0.02em;
-          font-weight: 900;
-          color: #f4f8ff;
-          text-shadow: 0 4px 24px rgba(53, 116, 244, 0.4);
-        }
-
-        .roadmapSubtitle {
-          margin: 0;
-          font-size: 12px;
-          color: var(--rm-muted);
-          letter-spacing: 0.01em;
-        }
-
-        .roadmapAddRow {
-          display: flex;
-          gap: 8px;
-          margin-bottom: 28px;
-        }
-
-        .roadmapInput {
-          flex: 1;
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(125, 171, 242, 0.3);
-          border-radius: 10px;
-          padding: 10px 14px;
-          color: var(--rm-text);
-          font-size: 13px;
-          font-weight: 500;
-          outline: none;
-          transition: border-color 140ms ease, background 140ms ease;
-        }
-
-        .roadmapInput::placeholder {
-          color: var(--rm-muted);
-        }
-
-        .roadmapInput:focus {
-          border-color: rgba(94, 224, 255, 0.6);
-          background: rgba(255, 255, 255, 0.09);
-        }
-
-        .roadmapAddButton {
-          background: linear-gradient(145deg, rgba(62, 140, 230, 0.85), rgba(32, 88, 175, 0.9));
-          border: 1px solid rgba(130, 190, 255, 0.5);
-          border-radius: 10px;
-          color: #e8f4ff;
-          font-size: 13px;
-          font-weight: 700;
-          padding: 10px 20px;
-          cursor: pointer;
-          transition: transform 120ms ease, background 120ms ease;
-          white-space: nowrap;
-        }
-
-        .roadmapAddButton:hover:not(:disabled) {
-          transform: translateY(-1px);
-          background: linear-gradient(145deg, rgba(74, 154, 244, 0.9), rgba(44, 102, 196, 0.95));
-        }
-
-        .roadmapAddButton:disabled {
-          opacity: 0.35;
-          cursor: default;
-        }
-
-        .roadmapSection {
-          margin-bottom: 28px;
-        }
-
-        .roadmapCompletedSection {
-          opacity: 0.8;
-        }
-
-        .roadmapSectionLabel {
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          color: var(--rm-accent);
-          margin-bottom: 10px;
-        }
-
-        .roadmapSectionLabelCompleted {
-          color: var(--rm-green);
-        }
-
-        .roadmapList {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .roadmapItem {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(125, 171, 242, 0.18);
-          border-radius: 10px;
-          padding: 10px 12px;
-          transition: background 120ms ease;
-        }
-
-        .roadmapItem:hover {
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        .roadmapItemDone {
-          background: rgba(98, 243, 155, 0.04);
-          border-color: rgba(98, 243, 155, 0.15);
-        }
-
-        .roadmapCheckbox {
-          flex: 0 0 auto;
-          width: 20px;
-          height: 20px;
-          border-radius: 6px;
-          border: 1.5px solid rgba(125, 171, 242, 0.5);
-          background: transparent;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: border-color 120ms ease, background 120ms ease;
-          padding: 0;
-        }
-
-        .roadmapCheckbox:hover {
-          border-color: rgba(94, 224, 255, 0.8);
-          background: rgba(94, 224, 255, 0.1);
-        }
-
-        .roadmapCheckboxDone {
-          border-color: rgba(98, 243, 155, 0.7);
-          background: rgba(98, 243, 155, 0.15);
-        }
-
-        .roadmapCheckboxDone:hover {
-          border-color: rgba(98, 243, 155, 0.9);
-          background: rgba(98, 243, 155, 0.22);
-        }
-
-        .roadmapCheckboxInner {
-          font-size: 11px;
-          font-weight: 900;
-          color: var(--rm-green);
-          line-height: 1;
-          user-select: none;
-        }
-
-        .roadmapItemText {
-          flex: 1;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--rm-text);
-          line-height: 1.4;
-        }
-
-        .roadmapItemTextDone {
-          text-decoration: line-through;
-          color: var(--rm-muted);
-        }
-
-        .roadmapItemActions {
-          display: flex;
-          align-items: center;
-          gap: 2px;
-          flex: 0 0 auto;
-          opacity: 0;
-          transition: opacity 120ms ease;
-        }
-
-        .roadmapItem:hover .roadmapItemActions {
-          opacity: 1;
-        }
-
-        .roadmapMoveButton,
-        .roadmapDeleteButton {
-          width: 24px;
-          height: 24px;
-          border-radius: 6px;
-          border: none;
-          background: transparent;
-          color: var(--rm-muted);
-          font-size: 9px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: background 100ms ease, color 100ms ease;
-          padding: 0;
-        }
-
-        .roadmapMoveButton:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.1);
-          color: var(--rm-text);
-        }
-
-        .roadmapMoveButton:disabled {
-          opacity: 0.2;
-          cursor: default;
-        }
-
-        .roadmapDeleteButton {
-          font-size: 10px;
-          color: rgba(255, 130, 130, 0.5);
-        }
-
-        .roadmapDeleteButton:hover {
-          background: rgba(255, 80, 80, 0.12);
-          color: rgba(255, 140, 140, 0.9);
-        }
-
-        .roadmapEmpty {
-          font-size: 13px;
-          color: var(--rm-muted);
-          text-align: center;
-          padding: 32px 0;
-          font-style: italic;
-        }
       `}</style>
-    </section>
+
+      {/* Header */}
+      <div style={{
+        padding: "20px 24px 16px",
+        borderBottom: "1px solid rgba(0,0,0,0.07)",
+        display: "flex", flexDirection: "column", gap: 6,
+      }}>
+        {onExit ? (
+          <button
+            type="button"
+            onClick={onExit}
+            style={{
+              alignSelf: "flex-start",
+              display: "inline-flex", alignItems: "center", gap: 5,
+              padding: "5px 12px", borderRadius: 999,
+              border: "1px solid rgba(0,0,0,0.14)",
+              background: "rgba(255,255,255,0.7)",
+              color: "rgba(0,0,0,0.6)",
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+              transition: "background 120ms, border-color 120ms",
+            }}
+          >
+            ← Back to Library
+          </button>
+        ) : null}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#1d1d1f" }}>
+            Roadmap
+          </h1>
+          {loading ? (
+            <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontWeight: 500 }}>Syncing…</span>
+          ) : saveError ? (
+            <span style={{ fontSize: 12, color: "#c0392b", fontWeight: 500 }}>⚠ Couldn't save</span>
+          ) : null}
+        </div>
+        <p style={{ margin: 0, fontSize: 13, color: "rgba(0,0,0,0.45)", fontWeight: 400 }}>
+          Track features and fixes you want to add to the app.
+        </p>
+      </div>
+
+      <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* Add new item */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Describe a new feature or bug…"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              autoFocus
+              style={{
+                flex: 1, padding: "9px 13px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.14)",
+                background: "rgba(255,255,255,0.9)",
+                fontSize: 13, fontWeight: 450, color: "#1d1d1f",
+                outline: "none",
+                fontFamily: "inherit",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                transition: "border-color 140ms, box-shadow 140ms",
+              }}
+            />
+            <button
+              type="button"
+              onClick={addItem}
+              disabled={!inputText.trim()}
+              style={{
+                padding: "9px 18px", borderRadius: 10,
+                border: "none",
+                background: inputText.trim() ? "#0071e3" : "rgba(0,0,0,0.08)",
+                color: inputText.trim() ? "#fff" : "rgba(0,0,0,0.28)",
+                fontSize: 13, fontWeight: 600, cursor: inputText.trim() ? "pointer" : "default",
+                whiteSpace: "nowrap", fontFamily: "inherit",
+                transition: "background 140ms, color 140ms",
+              }}
+            >
+              Add
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, color: "rgba(0,0,0,0.38)", fontWeight: 500 }}>Tag:</span>
+            <TagSelector value={inputTag} onChange={setInputTag} />
+          </div>
+        </div>
+
+        {/* Open items */}
+        {openItems.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "rgba(0,0,0,0.38)", textTransform: "uppercase" }}>
+              Open · {openItems.length}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {openItems.map((item, idx) => (
+                <div key={item.id} style={{
+                  background: "rgba(255,255,255,0.82)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: 11,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                  overflow: "hidden",
+                }}>
+                  {editingId === item.id ? (
+                    /* Edit mode */
+                    <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <input
+                        ref={editInputRef}
+                        type="text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => handleEditKeyDown(e, item.id)}
+                        style={{
+                          width: "100%", padding: "7px 11px", borderRadius: 8,
+                          border: "1px solid rgba(0,113,227,0.4)",
+                          background: "rgba(255,255,255,0.95)",
+                          fontSize: 13, fontWeight: 450, color: "#1d1d1f",
+                          outline: "none", fontFamily: "inherit",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, color: "rgba(0,0,0,0.38)", fontWeight: 500 }}>Tag:</span>
+                          <TagSelector value={editTag} onChange={setEditTag} />
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button" onClick={() => setEditingId(null)}
+                            style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(0,0,0,0.14)", background: "transparent", fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.5)", cursor: "pointer", fontFamily: "inherit" }}>
+                            Cancel
+                          </button>
+                          <button type="button" onClick={() => commitEdit(item.id)}
+                            style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#0071e3", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* View mode */
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}
+                      className="rm-item">
+                      <button
+                        type="button"
+                        onClick={() => toggleComplete(item.id)}
+                        aria-label="Mark complete"
+                        style={{
+                          flexShrink: 0, width: 18, height: 18, borderRadius: 5,
+                          border: "1.5px solid rgba(0,0,0,0.22)",
+                          background: "transparent", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          padding: 0, transition: "border-color 120ms, background 120ms",
+                        }}
+                      />
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 450, color: "#1d1d1f", lineHeight: 1.45 }}>
+                        {item.text}
+                      </span>
+                      {item.tag ? <TagPill tag={item.tag} /> : null}
+                      <div className="rm-actions" style={{ display: "flex", alignItems: "center", gap: 2, opacity: 0, transition: "opacity 120ms", flexShrink: 0 }}>
+                        <button type="button" onClick={() => moveItem(item.id, "up")} disabled={idx === 0} aria-label="Move up"
+                          style={{ width: 24, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.3)", fontSize: 10, cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.3 : 1, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▲</button>
+                        <button type="button" onClick={() => moveItem(item.id, "down")} disabled={idx === openItems.length - 1} aria-label="Move down"
+                          style={{ width: 24, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.3)", fontSize: 10, cursor: idx === openItems.length - 1 ? "default" : "pointer", opacity: idx === openItems.length - 1 ? 0.3 : 1, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▼</button>
+                        <button type="button" onClick={() => startEdit(item)} aria-label="Edit"
+                          style={{ width: 28, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.35)", fontSize: 12, cursor: "pointer", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button type="button" onClick={() => deleteItem(item.id)} aria-label="Delete"
+                          style={{ width: 24, height: 24, border: "none", background: "transparent", color: "rgba(200,50,50,0.5)", fontSize: 13, cursor: "pointer", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✕</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "32px 0", fontSize: 13, color: "rgba(0,0,0,0.32)", fontStyle: "italic" }}>
+            No open items — add something above to get started.
+          </div>
+        )}
+
+        {/* Completed items */}
+        {completedItems.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "rgba(52,199,89,0.8)", textTransform: "uppercase" }}>
+              Completed · {completedItems.length}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {completedItems.map((item) => (
+                <div key={item.id} style={{
+                  background: "rgba(52,199,89,0.05)",
+                  border: "1px solid rgba(52,199,89,0.14)",
+                  borderRadius: 11,
+                  overflow: "hidden",
+                }}>
+                  {editingId === item.id ? (
+                    <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <input
+                        ref={editInputRef}
+                        type="text"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => handleEditKeyDown(e, item.id)}
+                        style={{
+                          width: "100%", padding: "7px 11px", borderRadius: 8,
+                          border: "1px solid rgba(0,113,227,0.4)",
+                          background: "rgba(255,255,255,0.95)",
+                          fontSize: 13, fontWeight: 450, color: "#1d1d1f",
+                          outline: "none", fontFamily: "inherit",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, color: "rgba(0,0,0,0.38)", fontWeight: 500 }}>Tag:</span>
+                          <TagSelector value={editTag} onChange={setEditTag} />
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button" onClick={() => setEditingId(null)}
+                            style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(0,0,0,0.14)", background: "transparent", fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.5)", cursor: "pointer", fontFamily: "inherit" }}>
+                            Cancel
+                          </button>
+                          <button type="button" onClick={() => commitEdit(item.id)}
+                            style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#0071e3", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }} className="rm-item">
+                      <button
+                        type="button"
+                        onClick={() => toggleComplete(item.id)}
+                        aria-label="Mark incomplete"
+                        style={{
+                          flexShrink: 0, width: 18, height: 18, borderRadius: 5,
+                          border: "1.5px solid rgba(52,199,89,0.6)",
+                          background: "rgba(52,199,89,0.18)", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          padding: 0, color: "#34c759", fontSize: 10, fontWeight: 900,
+                        }}
+                      >✓</button>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 400, color: "rgba(0,0,0,0.38)", lineHeight: 1.45, textDecoration: "line-through" }}>
+                        {item.text}
+                      </span>
+                      {item.tag ? <TagPill tag={item.tag} /> : null}
+                      <div className="rm-actions" style={{ display: "flex", alignItems: "center", gap: 2, opacity: 0, transition: "opacity 120ms", flexShrink: 0 }}>
+                        <button type="button" onClick={() => startEdit(item)} aria-label="Edit"
+                          style={{ width: 28, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.3)", fontSize: 12, cursor: "pointer", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button type="button" onClick={() => deleteItem(item.id)} aria-label="Delete"
+                          style={{ width: 24, height: 24, border: "none", background: "transparent", color: "rgba(200,50,50,0.45)", fontSize: 13, cursor: "pointer", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✕</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <style>{`
+        .rm-item:hover .rm-actions { opacity: 1 !important; }
+      `}</style>
+    </div>
   );
 }
