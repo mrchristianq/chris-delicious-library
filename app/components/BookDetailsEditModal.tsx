@@ -256,6 +256,7 @@ export function BookDetailsEditModal({
 
       const type = source === "apple" ? "book-apple" : "book-hardcover";
       const params = new URLSearchParams({ type, query: title });
+      if (values.type) params.set("bookFormat", values.type);
       const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
       const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ data?: Record<string, string> }> };
 

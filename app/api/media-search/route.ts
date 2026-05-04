@@ -412,8 +412,14 @@ type HardcoverSearchDocument = {
   isbns?: string[];
 };
 
-async function searchAppleBooks(query: string): Promise<SearchResult[]> {
-  const params = new URLSearchParams({ term: query, entity: "ebook", media: "ebook", limit: "8" });
+async function searchAppleBooks(query: string, bookFormat: string): Promise<SearchResult[]> {
+  const isAudiobook = bookFormat.toLowerCase() === "audiobook";
+  const params = new URLSearchParams({
+    term: query,
+    entity: isAudiobook ? "audiobook" : "ebook",
+    media: isAudiobook ? "audiobook" : "ebook",
+    limit: "8",
+  });
   const res = await fetch(`https://itunes.apple.com/search?${params.toString()}`, { cache: "no-store" });
   const payload = (await res.json().catch(() => ({}))) as { results?: ItunesBook[]; errorMessage?: string };
   if (!res.ok) throw new Error(payload.errorMessage || "Apple Books search failed.");
@@ -442,7 +448,7 @@ async function searchAppleBooks(query: string): Promise<SearchResult[]> {
   });
 }
 
-async function searchHardcover(query: string): Promise<SearchResult[]> {
+async function searchHardcover(query: string, bookFormat: string): Promise<SearchResult[]> {
   const apiKey = pickEnv(["HARDCOVER_API_KEY"]);
   if (!apiKey) throw new Error("Hardcover API key not configured (HARDCOVER_API_KEY).");
 
@@ -473,7 +479,8 @@ async function searchHardcover(query: string): Promise<SearchResult[]> {
     const releaseDate = safeStr(doc.release_date);
     const year = releaseDate ? releaseDate.slice(0, 4) : "";
     const isbn = Array.isArray(doc.isbns) ? safeStr(doc.isbns[0]) : "";
-    const pages = doc.pages;
+    const isAudiobook = bookFormat.toLowerCase() === "audiobook";
+    const pages = !isAudiobook ? doc.pages : undefined;
     return {
       id: `book-hardcover:${String(doc.id || title)}`,
       title,
@@ -484,7 +491,7 @@ async function searchHardcover(query: string): Promise<SearchResult[]> {
         title, author,
         description: safeStr(doc.description),
         genre, releaseDate, imageUrl: image,
-        pages: pages != null ? String(pages) : "",
+        ...(pages != null ? { pages: String(pages) } : {}),
         isbn,
       },
     };
@@ -698,6 +705,7 @@ export async function GET(req: NextRequest) {
   const type = safeStr(searchParams.get("type")) as SearchType;
   const query = safeStr(searchParams.get("query"));
   const lookupId = safeStr(searchParams.get("lookupId"));
+  const bookFormat = safeStr(searchParams.get("bookFormat"));
 
   if (!query && !lookupId) {
     return NextResponse.json({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
@@ -730,9 +738,9 @@ export async function GET(req: NextRequest) {
       type === "book"
         ? await searchGoogleBooks(query)
         : type === "book-apple"
-          ? await searchAppleBooks(query)
+          ? await searchAppleBooks(query, bookFormat)
           : type === "book-hardcover"
-            ? await searchHardcover(query)
+            ? await searchHardcover(query, bookFormat)
             : type === "tv"
               ? await searchTmdb("tv", query)
               : type === "movie"
