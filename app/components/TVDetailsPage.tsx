@@ -235,7 +235,7 @@ export function TVDetailsPage({
   const castMembers = topcastNames.slice(0, 10).map((name, i) => ({ name, photo: topcastPhotoList[i] || "" }));
 
   const seasonsLabel = numberOfSeasons ? `${numberOfSeasons} Season${numberOfSeasons === "1" ? "" : "s"}` : "";
-  const metaParts = [yearRange, seasonsLabel, ...genres].filter(Boolean);
+  const metaParts = [yearRange, seasonsLabel, networks, ...genres].filter(Boolean);
   const titleFontSize = isMobileLayout ? 22 : title.length > 44 ? 26 : title.length > 28 ? 32 : 38;
 
   const descriptionText = overview || "";
@@ -265,7 +265,6 @@ export function TVDetailsPage({
     dateCompleted ? { label: "COMPLETED", value: dateCompleted } : null,
     caughtUp ? { label: "CAUGHT UP", value: caughtUp } : null,
     tvShowStatus ? { label: "SHOW STATUS", value: tvShowStatus } : null,
-    networks ? { label: "NETWORK", value: networks } : null,
     firstAirDate ? { label: "FIRST AIR DATE", value: firstAirDate } : null,
     lastAirDate ? { label: "LAST AIR DATE", value: lastAirDate } : null,
     creator ? { label: "CREATOR", value: creator } : null,

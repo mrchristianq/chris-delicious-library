@@ -5554,6 +5554,19 @@ export default function Page() {
     }
   }, [postSheetWrite, settingsWriteUrl]);
 
+  // Load UI prefs from R2 on mount — authoritative cross-device source for UI toggles
+  useEffect(() => {
+    fetch("/api/ui-prefs", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.ok || !data.prefs) return;
+        if (typeof data.prefs.showStatusIndicators === "boolean") {
+          setShowStatusIndicators(data.prefs.showStatusIndicators);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Apply settings from spreadsheet on load
   useEffect(() => {
     if (settingsRows.length === 0) return;
@@ -6340,6 +6353,11 @@ export default function Page() {
   const updateShowStatusIndicators = (value: boolean) => {
     setShowStatusIndicators(value);
     saveSetting("showStatusIndicators", value, "Display", "Show status indicator dots on covers");
+    fetch("/api/ui-prefs", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prefs: { showStatusIndicators: value } }),
+    }).catch(() => {});
   };
   
   // Update UI immediately; debounce only persistence so controls remain responsive.

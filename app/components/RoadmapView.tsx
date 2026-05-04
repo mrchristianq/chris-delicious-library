@@ -16,22 +16,35 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function loadItems(): RoadmapItem[] {
+function localLoad(): RoadmapItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as RoadmapItem[];
+    return raw ? (JSON.parse(raw) as RoadmapItem[]) : [];
   } catch {
     return [];
   }
 }
 
-function saveItems(items: RoadmapItem[]): void {
+function localSave(items: RoadmapItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {
-    // storage unavailable
-  }
+  } catch {}
+}
+
+async function serverLoad(): Promise<RoadmapItem[]> {
+  const res = await fetch("/api/roadmap", { cache: "no-store" });
+  if (!res.ok) throw new Error("load failed");
+  const data = await res.json();
+  return data.items as RoadmapItem[];
+}
+
+async function serverSave(items: RoadmapItem[]): Promise<void> {
+  const res = await fetch("/api/roadmap", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error("save failed");
 }
 
 type RoadmapViewProps = {
@@ -40,16 +53,38 @@ type RoadmapViewProps = {
 
 export function RoadmapView({ onExit }: RoadmapViewProps) {
   const [items, setItems] = useState<RoadmapItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState(false);
   const [inputText, setInputText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setItems(loadItems());
+    // Optimistically show localStorage while server loads
+    const cached = localLoad();
+    if (cached.length > 0) setItems(cached);
+
+    serverLoad()
+      .then((serverItems) => {
+        setItems(serverItems);
+        localSave(serverItems);
+      })
+      .catch(() => {
+        // Server failed — keep localStorage version
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   function persist(next: RoadmapItem[]): void {
     setItems(next);
-    saveItems(next);
+    localSave(next);
+    setSaveError(false);
+
+    // Debounce server saves by 400ms so rapid changes batch together
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      serverSave(next).catch(() => setSaveError(true));
+    }, 400);
   }
 
   function addItem(): void {
@@ -110,7 +145,14 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
               Back to Library
             </button>
           ) : null}
-          <h1 className="roadmapTitle">Roadmap</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h1 className="roadmapTitle">Roadmap</h1>
+            {loading ? (
+              <span style={{ fontSize: 11, color: "rgba(191,211,240,0.6)", fontWeight: 600 }}>Syncing…</span>
+            ) : saveError ? (
+              <span style={{ fontSize: 11, color: "rgba(255,160,130,0.85)", fontWeight: 600 }}>⚠ Couldn't save to server</span>
+            ) : null}
+          </div>
           <p className="roadmapSubtitle">Track features and changes you want to add to the app.</p>
         </div>
       </header>
