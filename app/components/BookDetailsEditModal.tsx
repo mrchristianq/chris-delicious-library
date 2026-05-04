@@ -177,6 +177,10 @@ export function BookDetailsEditModal({
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncDiff, setSyncDiff] = useState<DiffRow[] | null>(null);
   const [syncSource, setSyncSource] = useState<"apple" | "hardcover" | null>(null);
+  const [syncStep, setSyncStep] = useState<"books" | "editions" | null>(null);
+  const [syncBookResults, setSyncBookResults] = useState<Array<{ id: string; title: string; author: string; imageUrl: string; year: string; data: Record<string, string> }>>([]);
+  const [syncEditionResults, setSyncEditionResults] = useState<Array<{ id: string; format: string; isbn: string; pages: string; imageUrl: string; releaseDate: string; publisher: string; data: Record<string, string> }>>([]);
+  const [selectedBookData, setSelectedBookData] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open || !item) return;
@@ -187,6 +191,10 @@ export function BookDetailsEditModal({
     setSyncNotice(null);
     setSyncDiff(null);
     setSyncSource(null);
+    setSyncStep(null);
+    setSyncBookResults([]);
+    setSyncEditionResults([]);
+    setSelectedBookData({});
   }, [open, item]);
 
   useEffect(() => {
@@ -196,6 +204,8 @@ export function BookDetailsEditModal({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !isSaving && !isSyncing) {
         if (syncDiff) { setSyncDiff(null); return; }
+        if (syncStep === "editions") { setSyncStep("books"); return; }
+        if (syncStep === "books") { setSyncStep(null); return; }
         onClose();
       }
     };
@@ -243,11 +253,26 @@ export function BookDetailsEditModal({
 
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
+  const buildDiff = (incoming: Record<string, string>, syncFields: typeof APPLE_BOOKS_SYNC_FIELDS): DiffRow[] => {
+    const proposed: Record<string, string> = { ...values };
+    for (const { key } of syncFields) {
+      const v = safeStr(incoming[key]);
+      if (v) proposed[key] = v;
+    }
+    return syncFields.map(({ key, label }) => {
+      const before = safeStr(values[key]);
+      const after = safeStr(proposed[key]);
+      if (before === after) return null;
+      return { key, label, before: before || "—", after: after || "—", selected: true };
+    }).filter(Boolean) as DiffRow[];
+  };
+
   const handleSync = async (source: "apple" | "hardcover") => {
     if (isSyncing || isSaving) return;
     setSyncError(null);
     setSyncNotice(null);
     setSyncDiff(null);
+    setSyncStep(null);
     setSyncSource(source);
     setIsSyncing(true);
     try {
@@ -258,40 +283,80 @@ export function BookDetailsEditModal({
       const params = new URLSearchParams({ type, query: title });
       if (values.type) params.set("bookFormat", values.type);
       const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
-      const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ data?: Record<string, string> }> };
+      const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ id?: string; title?: string; subtitle?: string; year?: string; imageUrl?: string; data?: Record<string, string> }> };
 
       if (!res.ok || !payload.ok) throw new Error(payload.error || "Sync failed.");
+      if (!payload.results?.length) { setSyncNotice("No results found."); return; }
 
-      const incoming: Record<string, string> = payload.results?.[0]?.data ?? {};
-      if (!Object.keys(incoming).length) {
-        setSyncNotice("No results found.");
+      if (source === "hardcover") {
+        // Show book picker
+        setSyncBookResults(payload.results.map((r) => ({
+          id: safeStr(r.data?.hardcoverBookId || r.id),
+          title: safeStr(r.title),
+          author: safeStr(r.subtitle),
+          imageUrl: safeStr(r.imageUrl),
+          year: safeStr(r.year),
+          data: r.data ?? {},
+        })));
+        setSyncStep("books");
         return;
       }
 
-      const syncFields = source === "apple" ? APPLE_BOOKS_SYNC_FIELDS : HARDCOVER_SYNC_FIELDS;
-      const proposed: Record<string, string> = { ...values };
-      for (const { key } of syncFields) {
-        const v = safeStr(incoming[key]);
-        if (v) proposed[key] = v;
-      }
-
-      const diff: DiffRow[] = syncFields.map(({ key, label }) => {
-        const before = safeStr(values[key]);
-        const after = safeStr(proposed[key]);
-        if (before === after) return null;
-        return { key, label, before: before || "—", after: after || "—", selected: true };
-      }).filter(Boolean) as DiffRow[];
-
-      if (diff.length === 0) {
-        setSyncNotice("Everything is already up to date.");
-        return;
-      }
+      // Apple Books: go straight to diff
+      const incoming = payload.results[0].data ?? {};
+      const diff = buildDiff(incoming, APPLE_BOOKS_SYNC_FIELDS);
+      if (!diff.length) { setSyncNotice("Everything is already up to date."); return; }
       setSyncDiff(diff);
     } catch (err: unknown) {
       setSyncError(err instanceof Error ? err.message : "Sync failed.");
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleSelectHardcoverBook = async (bookId: string, bookData: Record<string, string>) => {
+    if (isSyncing) return;
+    setSyncError(null);
+    setSelectedBookData(bookData);
+    setIsSyncing(true);
+    try {
+      const params = new URLSearchParams({ type: "book-hardcover", lookupId: bookId });
+      if (values.type) params.set("bookFormat", values.type);
+      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ id?: string; title?: string; subtitle?: string; imageUrl?: string; year?: string; data?: Record<string, string> }> };
+
+      if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to fetch editions.");
+      if (!payload.results?.length) { setSyncNotice("No editions found for this book."); setSyncStep(null); return; }
+
+      setSyncEditionResults(payload.results.map((r) => ({
+        id: safeStr(r.id),
+        format: safeStr(r.data?.editionFormat || r.title),
+        isbn: safeStr(r.data?.isbn),
+        pages: safeStr(r.data?.pages),
+        imageUrl: safeStr(r.imageUrl || r.data?.imageUrl),
+        releaseDate: safeStr(r.data?.releaseDate),
+        publisher: safeStr(r.data?.publisher),
+        data: r.data ?? {},
+      })));
+      setSyncStep("editions");
+    } catch (err: unknown) {
+      setSyncError(err instanceof Error ? err.message : "Failed to fetch editions.");
+      setSyncStep(null);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSelectHardcoverEdition = (editionData: Record<string, string>) => {
+    // Merge: book-level fields + edition overrides
+    const merged: Record<string, string> = { ...selectedBookData };
+    for (const [k, v] of Object.entries(editionData)) {
+      if (v) merged[k] = v;
+    }
+    const diff = buildDiff(merged, HARDCOVER_SYNC_FIELDS);
+    setSyncStep(null);
+    if (!diff.length) { setSyncNotice("Everything is already up to date."); return; }
+    setSyncDiff(diff);
   };
 
   const toggleDiffRow = (key: string) =>
@@ -326,7 +391,14 @@ export function BookDetailsEditModal({
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 10,
       }}
-      onClick={() => { if (!isSaving && !isSyncing) { if (syncDiff) { setSyncDiff(null); } else { onClose(); } } }}
+      onClick={() => {
+        if (!isSaving && !isSyncing) {
+          if (syncDiff) { setSyncDiff(null); }
+          else if (syncStep === "editions") { setSyncStep("books"); }
+          else if (syncStep === "books") { setSyncStep(null); }
+          else { onClose(); }
+        }
+      }}
     >
       <div
         style={{
@@ -395,21 +467,75 @@ export function BookDetailsEditModal({
           </div>
         </div>
 
-        {/* Diff panel */}
+        {/* Step 1: Book picker */}
+        {syncStep === "books" ? (
+          <div style={{ margin: "12px 12px 0", border: "1px solid #7c3aed33", borderRadius: 12, background: "#7c3aed08", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #7c3aed22", background: "#7c3aed0a" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>Select the correct book from Hardcover</div>
+              <button type="button" onClick={() => setSyncStep(null)} style={{ border: "none", background: "transparent", fontSize: 11, color: "rgba(0,0,0,0.45)", cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>Cancel</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {syncBookResults.map((book) => (
+                <button key={book.id} type="button" onClick={() => handleSelectHardcoverBook(book.id, book.data)} disabled={isSyncing}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", border: "none", borderBottom: "1px solid #7c3aed14", background: "transparent", cursor: isSyncing ? "default" : "pointer", textAlign: "left", transition: "background 100ms" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#7c3aed0a")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  {book.imageUrl ? (
+                    <img src={book.imageUrl} alt={book.title} style={{ width: 36, height: 52, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: 36, height: 52, borderRadius: 4, background: "#e8eaf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>?</div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1c2738" }}>{book.title}</div>
+                    <div style={{ fontSize: 11, color: "#516279", marginTop: 2 }}>{book.author}{book.year ? ` · ${book.year}` : ""}</div>
+                  </div>
+                  <div style={{ marginLeft: "auto", fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>Select →</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Step 2: Edition picker */}
+        {syncStep === "editions" ? (
+          <div style={{ margin: "12px 12px 0", border: "1px solid #7c3aed33", borderRadius: 12, background: "#7c3aed08", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #7c3aed22", background: "#7c3aed0a" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>Select an edition</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => setSyncStep("books")} style={{ border: "none", background: "transparent", fontSize: 11, color: "#7c3aed", cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>← Back</button>
+                <button type="button" onClick={() => setSyncStep(null)} style={{ border: "none", background: "transparent", fontSize: 11, color: "rgba(0,0,0,0.45)", cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>Cancel</button>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, padding: 12 }}>
+              {syncEditionResults.map((ed) => (
+                <button key={ed.id} type="button" onClick={() => handleSelectHardcoverEdition(ed.data)}
+                  style={{ display: "flex", flexDirection: "column", gap: 6, padding: 8, border: "1px solid #7c3aed22", borderRadius: 10, background: "rgba(255,255,255,0.7)", cursor: "pointer", textAlign: "left", transition: "border-color 100ms, background 100ms" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#7c3aed66"; e.currentTarget.style.background = "#7c3aed08"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#7c3aed22"; e.currentTarget.style.background = "rgba(255,255,255,0.7)"; }}
+                >
+                  {ed.imageUrl ? (
+                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6 }} />
+                  ) : (
+                    <div style={{ width: "100%", height: 100, borderRadius: 6, background: "#e8eaf0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>No cover</div>
+                  )}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>{ed.format}</div>
+                  {ed.publisher ? <div style={{ fontSize: 10, color: "#516279" }}>{ed.publisher}</div> : null}
+                  <div style={{ fontSize: 10, color: "#8a95a3", display: "flex", flexDirection: "column", gap: 2 }}>
+                    {ed.isbn ? <span>ISBN: {ed.isbn}</span> : null}
+                    {ed.pages ? <span>{ed.pages} pages</span> : null}
+                    {ed.releaseDate ? <span>{ed.releaseDate.slice(0, 4)}</span> : null}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Step 3: Diff panel */}
         {syncDiff ? (
-          <div style={{
-            margin: "12px 12px 0",
-            border: `1px solid ${syncAccent}33`,
-            borderRadius: 12,
-            background: `${syncAccent}08`,
-            overflow: "hidden",
-          }}>
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "10px 14px",
-              borderBottom: `1px solid ${syncAccent}22`,
-              background: `${syncAccent}0a`,
-            }}>
+          <div style={{ margin: "12px 12px 0", border: `1px solid ${syncAccent}33`, borderRadius: 12, background: `${syncAccent}08`, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: `1px solid ${syncAccent}22`, background: `${syncAccent}0a` }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: syncAccent }}>
                 {syncLabel} returned {syncDiff.length} change{syncDiff.length !== 1 ? "s" : ""} — choose what to apply
               </div>
@@ -422,16 +548,7 @@ export function BookDetailsEditModal({
               {syncDiff.map((row) => {
                 const isImg = row.key === "imageUrl";
                 return (
-                  <label key={row.key} style={{
-                    display: "grid",
-                    gridTemplateColumns: "28px 110px 1fr auto 1fr",
-                    alignItems: "start",
-                    gap: 8,
-                    padding: "7px 14px",
-                    cursor: "pointer",
-                    background: row.selected ? `${syncAccent}08` : "transparent",
-                    transition: "background 100ms",
-                  }}>
+                  <label key={row.key} style={{ display: "grid", gridTemplateColumns: "28px 110px 1fr auto 1fr", alignItems: "start", gap: 8, padding: "7px 14px", cursor: "pointer", background: row.selected ? `${syncAccent}08` : "transparent", transition: "background 100ms" }}>
                     <input type="checkbox" checked={row.selected} onChange={() => toggleDiffRow(row.key)} style={{ marginTop: 2, accentColor: syncAccent, cursor: "pointer" }} />
                     <span style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.2, paddingTop: 1 }}>{row.label.toUpperCase()}</span>
                     {isImg && row.before !== "—" ? (
@@ -451,18 +568,8 @@ export function BookDetailsEditModal({
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: "10px 14px", borderTop: `1px solid ${syncAccent}22` }}>
               <button type="button" onClick={() => setSyncDiff(null)} style={{ border: "1px solid rgba(149,161,178,0.5)", borderRadius: 8, padding: "7px 14px", background: "rgba(255,255,255,0.86)", color: "#243244", cursor: "pointer", fontSize: 12, fontWeight: 650 }}>Cancel</button>
-              <button
-                type="button"
-                disabled={selectedCount === 0}
-                onClick={applyDiff}
-                style={{
-                  border: `1px solid ${syncAccent}80`, borderRadius: 8,
-                  padding: "7px 16px",
-                  background: selectedCount === 0 ? `${syncAccent}20` : `linear-gradient(180deg,${syncAccent}f0 0%,${syncAccent} 100%)`,
-                  color: selectedCount === 0 ? `${syncAccent}80` : "#fff",
-                  cursor: selectedCount === 0 ? "default" : "pointer",
-                  fontSize: 12, fontWeight: 700,
-                }}
+              <button type="button" disabled={selectedCount === 0} onClick={applyDiff}
+                style={{ border: `1px solid ${syncAccent}80`, borderRadius: 8, padding: "7px 16px", background: selectedCount === 0 ? `${syncAccent}20` : `linear-gradient(180deg,${syncAccent}f0 0%,${syncAccent} 100%)`, color: selectedCount === 0 ? `${syncAccent}80` : "#fff", cursor: selectedCount === 0 ? "default" : "pointer", fontSize: 12, fontWeight: 700 }}
               >
                 Apply {selectedCount > 0 ? selectedCount : ""} Selected
               </button>

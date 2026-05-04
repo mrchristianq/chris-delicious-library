@@ -478,21 +478,78 @@ async function searchHardcover(query: string, bookFormat: string): Promise<Searc
     const image = safeStr(doc.image?.url);
     const releaseDate = safeStr(doc.release_date);
     const year = releaseDate ? releaseDate.slice(0, 4) : "";
-    const isbn = Array.isArray(doc.isbns) ? safeStr(doc.isbns[0]) : "";
-    const isAudiobook = bookFormat.toLowerCase() === "audiobook";
-    const pages = !isAudiobook ? doc.pages : undefined;
+    const hardcoverBookId = safeStr(doc.id);
     return {
-      id: `book-hardcover:${String(doc.id || title)}`,
+      id: `book-hardcover:${hardcoverBookId || title}`,
       title,
       subtitle: author || undefined,
       year: year || undefined,
       imageUrl: image || undefined,
+      data: { title, author, description: safeStr(doc.description), genre, releaseDate, imageUrl: image, hardcoverBookId },
+    };
+  });
+}
+
+type HardcoverEdition = {
+  id?: number;
+  isbn_13?: string | null;
+  isbn_10?: string | null;
+  pages?: number | null;
+  release_date?: string | null;
+  edition_format?: string | null;
+  image?: { url?: string } | null;
+  publisher?: { name?: string } | null;
+};
+
+async function lookupHardcoverEditions(bookId: string, bookFormat: string): Promise<SearchResult[]> {
+  const apiKey = pickEnv(["HARDCOVER_API_KEY"]);
+  if (!apiKey) throw new Error("Hardcover API key not configured (HARDCOVER_API_KEY).");
+
+  const numericId = parseInt(bookId, 10);
+  if (!Number.isFinite(numericId)) throw new Error("Invalid Hardcover book ID.");
+
+  const gqlQuery = `{ editions(where: {book_id: {_eq: ${numericId}}}, limit: 40, order_by: {users_count: desc_nulls_last}) { id isbn_13 isbn_10 pages release_date edition_format image { url } publisher { name } } }`;
+
+  const res = await fetch("https://api.hardcover.app/v1/graphql", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ query: gqlQuery }),
+    cache: "no-store",
+  });
+
+  const payload = (await res.json().catch(() => ({}))) as {
+    data?: { editions?: HardcoverEdition[] };
+    errors?: Array<{ message?: string }>;
+  };
+
+  if (!res.ok || payload.errors?.length) {
+    throw new Error(payload.errors?.[0]?.message || "Hardcover editions fetch failed.");
+  }
+
+  const isAudiobook = bookFormat.toLowerCase() === "audiobook";
+  const editions = Array.isArray(payload.data?.editions) ? payload.data!.editions : [];
+  return editions.map((ed) => {
+    const format = safeStr(ed.edition_format) || "Unknown";
+    const isbn = safeStr(ed.isbn_13 || ed.isbn_10);
+    const image = safeStr(ed.image?.url);
+    const publisher = safeStr(ed.publisher?.name);
+    const releaseDate = safeStr(ed.release_date);
+    const year = releaseDate ? releaseDate.slice(0, 4) : "";
+    const pages = !isAudiobook && ed.pages != null ? String(ed.pages) : "";
+    const label = [format, publisher, year].filter(Boolean).join(" · ");
+    return {
+      id: `book-hardcover-edition:${String(ed.id)}`,
+      title: format,
+      subtitle: label,
+      year: year || undefined,
+      imageUrl: image || undefined,
       data: {
-        title, author,
-        description: safeStr(doc.description),
-        genre, releaseDate, imageUrl: image,
-        ...(pages != null ? { pages: String(pages) } : {}),
+        imageUrl: image,
         isbn,
+        releaseDate,
+        ...(pages ? { pages } : {}),
+        editionFormat: format,
+        publisher,
       },
     };
   });
@@ -717,6 +774,10 @@ export async function GET(req: NextRequest) {
 
   try {
     if (lookupId) {
+      if (type === "book-hardcover") {
+        const editions = await lookupHardcoverEditions(lookupId, bookFormat);
+        return NextResponse.json({ ok: true, results: editions });
+      }
       const lookupResult =
         type === "book"
           ? await lookupGoogleBookById(lookupId)
