@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 
 const STORAGE_KEY = "cdlRoadmapItems";
 
@@ -122,9 +122,11 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editTag, setEditTag] = useState<Tag | undefined>(undefined);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragId = useRef<string | null>(null);
 
   useEffect(() => {
     const cached = localLoad();
@@ -193,15 +195,35 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
     persist(items.filter((item) => item.id !== id));
   }
 
-  function moveItem(id: string, direction: "up" | "down"): void {
-    const openItems = items.filter((i) => !i.completed);
-    const idx = openItems.findIndex((i) => i.id === id);
-    if (idx === -1) return;
-    if (direction === "up" && idx === 0) return;
-    if (direction === "down" && idx === openItems.length - 1) return;
-    const reordered = [...openItems];
-    [reordered[idx], reordered[direction === "up" ? idx - 1 : idx + 1]] = [reordered[direction === "up" ? idx - 1 : idx + 1], reordered[idx]];
+  function handleDragStart(e: DragEvent, id: string): void {
+    dragId.current = id;
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDragOver(e: DragEvent, id: string): void {
+    e.preventDefault();
+    if (dragId.current !== id) setDragOverId(id);
+  }
+
+  function handleDrop(e: DragEvent, targetId: string): void {
+    e.preventDefault();
+    const fromId = dragId.current;
+    dragId.current = null;
+    setDragOverId(null);
+    if (!fromId || fromId === targetId) return;
+    const open = items.filter((i) => !i.completed);
+    const fromIdx = open.findIndex((i) => i.id === fromId);
+    const toIdx = open.findIndex((i) => i.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const reordered = [...open];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
     persist([...reordered, ...items.filter((i) => i.completed)]);
+  }
+
+  function handleDragEnd(): void {
+    dragId.current = null;
+    setDragOverId(null);
   }
 
   const openItems = items.filter((i) => !i.completed);
@@ -323,14 +345,23 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
               Open · {openItems.length}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {openItems.map((item, idx) => (
-                <div key={item.id} style={{
-                  background: "rgba(255,255,255,0.82)",
-                  border: "1px solid rgba(0,0,0,0.08)",
-                  borderRadius: 11,
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                  overflow: "hidden",
-                }}>
+              {openItems.map((item) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, item.id)}
+                  onDragOver={(e) => handleDragOver(e, item.id)}
+                  onDrop={(e) => handleDrop(e, item.id)}
+                  onDragEnd={handleDragEnd}
+                  style={{
+                    background: "rgba(255,255,255,0.82)",
+                    border: dragOverId === item.id ? "1px solid rgba(0,113,227,0.5)" : "1px solid rgba(0,0,0,0.08)",
+                    borderRadius: 11,
+                    boxShadow: dragOverId === item.id ? "0 0 0 2px rgba(0,113,227,0.12)" : "0 1px 3px rgba(0,0,0,0.05)",
+                    overflow: "hidden",
+                    transition: "border-color 100ms, box-shadow 100ms",
+                  }}
+                >
                   {editingId === item.id ? (
                     /* Edit mode */
                     <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -370,6 +401,16 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                     /* View mode */
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}
                       className="rm-item">
+                      <div className="rm-drag-handle" aria-hidden="true" style={{
+                        flexShrink: 0, width: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "grab", color: "rgba(0,0,0,0.22)", opacity: 0, transition: "opacity 120ms",
+                      }}>
+                        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                          <circle cx="2.5" cy="2" r="1.5"/><circle cx="7.5" cy="2" r="1.5"/>
+                          <circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/>
+                          <circle cx="2.5" cy="12" r="1.5"/><circle cx="7.5" cy="12" r="1.5"/>
+                        </svg>
+                      </div>
                       <button
                         type="button"
                         onClick={() => toggleComplete(item.id)}
@@ -387,10 +428,6 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                       </span>
                       {item.tag ? <TagPill tag={item.tag} /> : null}
                       <div className="rm-actions" style={{ display: "flex", alignItems: "center", gap: 2, opacity: 0, transition: "opacity 120ms", flexShrink: 0 }}>
-                        <button type="button" onClick={() => moveItem(item.id, "up")} disabled={idx === 0} aria-label="Move up"
-                          style={{ width: 24, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.3)", fontSize: 10, cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.3 : 1, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▲</button>
-                        <button type="button" onClick={() => moveItem(item.id, "down")} disabled={idx === openItems.length - 1} aria-label="Move down"
-                          style={{ width: 24, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.3)", fontSize: 10, cursor: idx === openItems.length - 1 ? "default" : "pointer", opacity: idx === openItems.length - 1 ? 0.3 : 1, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▼</button>
                         <button type="button" onClick={() => startEdit(item)} aria-label="Edit"
                           style={{ width: 28, height: 24, border: "none", background: "transparent", color: "rgba(0,0,0,0.35)", fontSize: 12, cursor: "pointer", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -501,6 +538,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
 
       <style>{`
         .rm-item:hover .rm-actions { opacity: 1 !important; }
+        .rm-item:hover .rm-drag-handle { opacity: 1 !important; }
       `}</style>
     </div>
   );

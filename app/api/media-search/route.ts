@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type SearchType = "book" | "tv" | "movie" | "game";
+type SearchType = "book" | "book-apple" | "book-hardcover" | "tv" | "movie" | "game";
 
 type SearchResult = {
   id: string;
@@ -388,6 +388,116 @@ async function lookupTmdbById(type: "tv" | "movie", id: string): Promise<SearchR
   };
 }
 
+type ItunesBook = {
+  trackId?: number;
+  trackName?: string;
+  artistName?: string;
+  description?: string;
+  artworkUrl512?: string;
+  artworkUrl100?: string;
+  genres?: string[];
+  releaseDate?: string;
+  averageUserRating?: number;
+};
+
+type HardcoverBook = {
+  id?: number;
+  title?: string;
+  description?: string;
+  pages?: number;
+  release_date?: string;
+  image?: { url?: string };
+  contributions?: Array<{ author?: { name?: string } }>;
+  editions?: Array<{ isbn_13?: string; isbn_10?: string; pages?: number }>;
+};
+
+async function searchAppleBooks(query: string): Promise<SearchResult[]> {
+  const params = new URLSearchParams({ term: query, entity: "ebook", media: "ebook", limit: "8" });
+  const res = await fetch(`https://itunes.apple.com/search?${params.toString()}`, { cache: "no-store" });
+  const payload = (await res.json().catch(() => ({}))) as { results?: ItunesBook[]; errorMessage?: string };
+  if (!res.ok) throw new Error(payload.errorMessage || "Apple Books search failed.");
+  const list = Array.isArray(payload.results) ? payload.results : [];
+  return list.map((item) => {
+    const title = safeStr(item.trackName);
+    const author = safeStr(item.artistName);
+    const image = safeStr(item.artworkUrl512 || item.artworkUrl100).replace(/\d+x\d+bb/, "512x512bb");
+    const genre = Array.isArray(item.genres) ? item.genres.join(", ") : "";
+    const releaseDate = item.releaseDate ? item.releaseDate.slice(0, 10) : "";
+    const year = releaseDate ? releaseDate.slice(0, 4) : "";
+    return {
+      id: `book-apple:${String(item.trackId || title)}`,
+      title,
+      subtitle: author || undefined,
+      year: year || undefined,
+      imageUrl: image || undefined,
+      data: {
+        title, author,
+        description: safeStr(item.description),
+        genre, releaseDate,
+        imageUrl: image,
+        userRating: item.averageUserRating != null ? String(item.averageUserRating) : "",
+      },
+    };
+  });
+}
+
+async function searchHardcover(query: string): Promise<SearchResult[]> {
+  const apiKey = pickEnv(["HARDCOVER_API_KEY"]);
+  if (!apiKey) throw new Error("Hardcover API key not configured (HARDCOVER_API_KEY).");
+
+  const gqlQuery = `query {
+    books(where: {title: {_ilike: "%${query.replace(/["%]/g, "")}%"}}, limit: 8, order_by: {users_count: desc_nulls_last}) {
+      id title description pages release_date
+      image { url }
+      contributions { author { name } }
+      editions(limit: 1, order_by: {id: desc}) { isbn_13 isbn_10 pages }
+    }
+  }`;
+
+  const res = await fetch("https://api.hardcover.app/v1/graphql", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ query: gqlQuery }),
+    cache: "no-store",
+  });
+
+  const payload = (await res.json().catch(() => ({}))) as {
+    data?: { books?: HardcoverBook[] };
+    errors?: Array<{ message?: string }>;
+  };
+
+  if (!res.ok || payload.errors?.length) {
+    throw new Error(payload.errors?.[0]?.message || "Hardcover search failed.");
+  }
+
+  const books = Array.isArray(payload.data?.books) ? (payload.data!.books as HardcoverBook[]) : [];
+  return books.map((book) => {
+    const title = safeStr(book.title);
+    const author = Array.isArray(book.contributions)
+      ? book.contributions.map((c) => safeStr(c.author?.name)).filter(Boolean).join(", ")
+      : "";
+    const image = safeStr(book.image?.url);
+    const releaseDate = safeStr(book.release_date);
+    const year = releaseDate ? releaseDate.slice(0, 4) : "";
+    const edition = book.editions?.[0];
+    const isbn = safeStr(edition?.isbn_13 || edition?.isbn_10);
+    const pages = edition?.pages ?? book.pages;
+    return {
+      id: `book-hardcover:${String(book.id || title)}`,
+      title,
+      subtitle: author || undefined,
+      year: year || undefined,
+      imageUrl: image || undefined,
+      data: {
+        title, author, description: safeStr(book.description),
+        releaseDate, imageUrl: image,
+        pages: pages != null ? String(pages) : "",
+        isbn,
+      },
+    };
+  });
+}
+
 function mapGoogleBookVolumeToResult(item: GoogleBooksVolume): SearchResult {
   const info = item.volumeInfo || {};
   const title = safeStr(info.title);
@@ -600,7 +710,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
   }
 
-  if (!["book", "tv", "movie", "game"].includes(type)) {
+  if (!["book", "book-apple", "book-hardcover", "tv", "movie", "game"].includes(type)) {
     return NextResponse.json({ ok: false, error: "Invalid media type." }, { status: 400 });
   }
 
@@ -626,11 +736,15 @@ export async function GET(req: NextRequest) {
     const results =
       type === "book"
         ? await searchGoogleBooks(query)
-        : type === "tv"
-          ? await searchTmdb("tv", query)
-          : type === "movie"
-            ? await searchTmdb("movie", query)
-            : await searchIgdb(query);
+        : type === "book-apple"
+          ? await searchAppleBooks(query)
+          : type === "book-hardcover"
+            ? await searchHardcover(query)
+            : type === "tv"
+              ? await searchTmdb("tv", query)
+              : type === "movie"
+                ? await searchTmdb("movie", query)
+                : await searchIgdb(query);
 
     return NextResponse.json({ ok: true, results });
   } catch (error: unknown) {

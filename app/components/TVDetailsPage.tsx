@@ -268,10 +268,9 @@ export function TVDetailsPage({
     firstAirDate ? { label: "FIRST AIR DATE", value: firstAirDate } : null,
     lastAirDate ? { label: "LAST AIR DATE", value: lastAirDate } : null,
     creator ? { label: "CREATOR", value: creator } : null,
-    numberOfSeasons ? { label: "SEASONS", value: numberOfSeasons } : null,
-    numberOfEpisodes ? { label: "EPISODES", value: numberOfEpisodes } : null,
-    ownership ? { label: "OWNERSHIP", value: ownership } : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+    numberOfSeasons ? { label: "SEASONS", value: numberOfSeasons, half: true } : null,
+    numberOfEpisodes ? { label: "EPISODES", value: numberOfEpisodes, half: true } : null,
+  ].filter(Boolean) as { label: string; value: string; half?: boolean }[];
 
   const ratingFacts = [
     tmdbRating ? { label: "TMDB RATING", value: tmdbRating } : null,
@@ -281,14 +280,14 @@ export function TVDetailsPage({
   const POSTER_W = isMobileLayout ? 120 : 190;
   const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + 44;
   const DETAILS_W = isMobileLayout ? 0 : 220;
-  const HERO_H = isMobileLayout ? "auto" : 460;
+  const HERO_H = isMobileLayout ? "auto" : 418;
 
   const hasRelated = relatedShows && relatedShows.length > 0;
 
   const sectionBox = (children: React.ReactNode, style?: React.CSSProperties) => (
     <div style={{
       borderRadius: 16,
-      padding: isMobileLayout ? "14px 14px" : "16px 18px",
+      padding: isMobileLayout ? "14px 14px" : "12px 18px",
       background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.02)} 100%)`,
       border: `1px solid ${palette.surfaceBorder}`,
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
@@ -396,9 +395,9 @@ export function TVDetailsPage({
               overflow: "hidden",
             }}>
               <div style={{ fontSize: 10, fontWeight: 860, letterSpacing: "0.09em", color: "rgba(255,255,255,0.45)", marginBottom: 12 }}>DETAILS</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 8px" }}>
                 {detailFacts.map((f, i) => (
-                  <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: f.half ? undefined : "1 / -1" }}>
                     <div style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.42)", letterSpacing: "0.06em" }}>{f.label}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{f.value}</div>
                   </div>
@@ -468,7 +467,24 @@ export function TVDetailsPage({
                   color: "rgba(255,255,255,0.78)", letterSpacing: "0.01em",
                   textShadow: "0 1px 6px rgba(0,0,0,0.5)",
                 }}>
-                  {metaParts.join("  ·  ")}
+                  {metaParts.map((part, i) => (
+                    <span key={i}>
+                      {i > 0 && <span style={{ color: "rgba(255,255,255,0.78)" }}>{"  ·  "}</span>}
+                      <span style={part === "Netflix" ? { color: "#e60813" } : part === "Prime Video" ? { color: "#01a3db" } : (part === "Disney +" || part === "Disney+") ? { fontFamily: "var(--font-pacifico)", fontWeight: 400 } : (part === "Paramount+" || part === "Paramount +") ? { color: "#085af6" } : part === "AMC" ? { color: "#c5b95b" } : part === "Hulu" ? { color: "#1be17f" } : undefined}>
+                        {part === "Peacock" ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, verticalAlign: "-1.5px" }}>
+                            <img src="/peacock.png" alt="Peacock" style={{ height: "1em", width: "auto", verticalAlign: "middle" }} />
+                            {part}
+                          </span>
+                        ) : part === "Apple TV" ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, verticalAlign: "-3.3px" }}>
+                            <img src="/apple.png" alt="Apple TV" style={{ height: "1em", width: "auto", verticalAlign: "middle" }} />
+                            {part}
+                          </span>
+                        ) : part}
+                      </span>
+                    </span>
+                  ))}
                 </div>
               ) : null}
               {descriptionText ? (
@@ -517,7 +533,7 @@ export function TVDetailsPage({
               {sectionLabel("CAST")}
               <div style={{ display: "flex", gap: CAST_GAP, flexWrap: "wrap" }}>
                 {visibleCast.map((member, i) => (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W }}>
+                  <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
                     {member.photo ? (
                       <img src={member.photo} alt={member.name} style={{
                         width: CAST_ITEM_W, height: CAST_ITEM_W,
@@ -541,7 +557,7 @@ export function TVDetailsPage({
                     }}>
                       {member.name}
                     </div>
-                  </div>
+                  </a>
                 ))}
               </div>
             </>

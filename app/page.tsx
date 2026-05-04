@@ -17,6 +17,8 @@ import { MovieDetailsPage } from "./components/MovieDetailsPage";
 import { TVDetailsPage } from "./components/TVDetailsPage";
 import { GameDetailsPage } from "./components/GameDetailsPage";
 import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
+import { MovieDetailsEditModal } from "./components/MovieDetailsEditModal";
+import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -3122,15 +3124,26 @@ export default function Page() {
   const [bookDetailItem, setBookDetailItem] = useState<any>(null);
   const [bookDetailsEditOpen, setBookDetailsEditOpen] = useState(false);
   const [movieDetailItem, setMovieDetailItem] = useState<any>(null);
+  const [movieDetailsEditOpen, setMovieDetailsEditOpen] = useState(false);
   const [movieDetailPalette, setMovieDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [tvDetailItem, setTvDetailItem] = useState<any>(null);
+  const [tvDetailsEditOpen, setTvDetailsEditOpen] = useState(false);
   const [tvDetailPalette, setTvDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [gameDetailItem, setGameDetailItem] = useState<any>(null);
   const [gameDetailPalette, setGameDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
-  const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>({});
+  const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, string>;
+    } catch {}
+    return {};
+  });
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
@@ -3313,6 +3326,18 @@ export default function Page() {
     setModalItem(null);
     setCoverUploadError(null);
     setBookDetailsEditOpen(true);
+  }, [coverOverrides]);
+
+  const openMovieEditModalFromDetails = useCallback((item: any) => {
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    setMovieDetailItem(nextItem);
+    setMovieDetailsEditOpen(true);
+  }, [coverOverrides]);
+
+  const openTVEditModalFromDetails = useCallback((item: any) => {
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    setTvDetailItem(nextItem);
+    setTvDetailsEditOpen(true);
   }, [coverOverrides]);
 
   useEffect(() => {
@@ -3648,19 +3673,6 @@ export default function Page() {
       }
     } catch (e) {
       console.warn("Failed to load popup cover modes from localStorage:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        setSidebarIconOverrides(parsed as Record<string, string>);
-      }
-    } catch (e) {
-      console.warn("Failed to load sidebar icon overrides from localStorage:", e);
     }
   }, []);
 
@@ -4248,33 +4260,39 @@ export default function Page() {
       throw new Error(e?.message || "Failed to save show edits");
     }
 
+    const buildShowNextItem = (prev: any) => ({
+      ...prev,
+      title: safeStr(updates.title) || prev.title,
+      year: safeStr(updates.year),
+      tmdbId: safeStr(updates.tmdbId),
+      firstAirDate: safeStr(updates.firstAirDate),
+      lastAirDate: safeStr(updates.lastAirDate),
+      dateCompleted: safeStr(updates.dateCompleted),
+      numberOfSeasons: safeStr(updates.numberOfSeasons),
+      numberOfEpisodes: safeStr(updates.numberOfEpisodes),
+      watchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
+      showStatus: safeStr(updates.showStatus),
+      networks: safeStr(updates.networks),
+      streamingUS: safeStr(updates.streamingUS),
+      genres: safeStr(updates.genres),
+      tmdbRating: safeStr(updates.tmdbRating),
+      myRating: safeStr(updates.myRating),
+      backdropUrl: safeStr(updates.backdropUrl),
+      overview: safeStr(updates.overview),
+      ownership: safeStr(updates.ownership),
+      tag: safeStr(updates.tags),
+      tags: safeStr(updates.tags),
+      posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
+    });
+
     setModalItem((prev: any) => {
       if (!prev) return prev;
-      const nextItem = {
-        ...prev,
-        title: safeStr(updates.title) || prev.title,
-        year: safeStr(updates.year),
-        tmdbId: safeStr(updates.tmdbId),
-        firstAirDate: safeStr(updates.firstAirDate),
-        lastAirDate: safeStr(updates.lastAirDate),
-        dateCompleted: safeStr(updates.dateCompleted),
-        numberOfSeasons: safeStr(updates.numberOfSeasons),
-        numberOfEpisodes: safeStr(updates.numberOfEpisodes),
-        watchStatus: normalizeShowWatchStatusForSheet(updates.watchStatus),
-        showStatus: safeStr(updates.showStatus),
-        networks: safeStr(updates.networks),
-        streamingUS: safeStr(updates.streamingUS),
-        genres: safeStr(updates.genres),
-        tmdbRating: safeStr(updates.tmdbRating),
-        myRating: safeStr(updates.myRating),
-        backdropUrl: safeStr(updates.backdropUrl),
-        overview: safeStr(updates.overview),
-        ownership: safeStr(updates.ownership),
-        tag: safeStr(updates.tags),
-        tags: safeStr(updates.tags),
-        posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
-      };
-      return buildItemWithCoverSelection(nextItem, coverOverrides);
+      return buildItemWithCoverSelection(buildShowNextItem(prev), coverOverrides);
+    });
+
+    setTvDetailItem((prev: any) => {
+      if (!prev) return prev;
+      return buildItemWithCoverSelection(buildShowNextItem(prev), coverOverrides);
     });
 
     setTvRows((prev) =>
@@ -4371,31 +4389,37 @@ export default function Page() {
       throw new Error(e?.message || "Failed to save movie edits");
     }
 
+    const buildMovieNextItem = (prev: any) => ({
+      ...prev,
+      title: safeStr(updates.title) || prev.title,
+      year: safeStr(updates.year),
+      myRating: safeStr(updates.myRating),
+      tmdbRating: safeStr(updates.tmdbRating),
+      tmdbId: safeStr(updates.tmdbId),
+      watched: normalizedWatchStatus,
+      watchStatus: normalizedWatchStatus,
+      watchDate: safeStr(updates.watchDate),
+      tags: safeStr(updates.tags),
+      tag: safeStr(updates.tags),
+      releaseDate: safeStr(updates.releaseDate),
+      runtime: safeStr(updates.runtime),
+      status: safeStr(updates.status),
+      movieStatus: safeStr(updates.status),
+      ownership: safeStr(updates.ownership),
+      genres: safeStr(updates.genres),
+      overview: safeStr(updates.overview),
+      posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
+      backdropUrl: safeStr(updates.backdropUrl),
+    });
+
     setModalItem((prev: any) => {
       if (!prev) return prev;
-      const nextItem = {
-        ...prev,
-        title: safeStr(updates.title) || prev.title,
-        year: safeStr(updates.year),
-        myRating: safeStr(updates.myRating),
-        tmdbRating: safeStr(updates.tmdbRating),
-        tmdbId: safeStr(updates.tmdbId),
-        watched: normalizedWatchStatus,
-        watchStatus: normalizedWatchStatus,
-        watchDate: safeStr(updates.watchDate),
-        tags: safeStr(updates.tags),
-        tag: safeStr(updates.tags),
-        releaseDate: safeStr(updates.releaseDate),
-        runtime: safeStr(updates.runtime),
-        status: safeStr(updates.status),
-        movieStatus: safeStr(updates.status),
-        ownership: safeStr(updates.ownership),
-        genres: safeStr(updates.genres),
-        overview: safeStr(updates.overview),
-        posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
-        backdropUrl: safeStr(updates.backdropUrl),
-      };
-      return buildItemWithCoverSelection(nextItem, coverOverrides);
+      return buildItemWithCoverSelection(buildMovieNextItem(prev), coverOverrides);
+    });
+
+    setMovieDetailItem((prev: any) => {
+      if (!prev) return prev;
+      return buildItemWithCoverSelection(buildMovieNextItem(prev), coverOverrides);
     });
 
     setMovieRows((prev) =>
@@ -9993,7 +10017,7 @@ export default function Page() {
           ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
           : isSimpleShelfPresentation
             ? simplePresentationBackground
-            : "#f4f1ea",
+            : "#ececec",
         color: isSimpleShelfPresentation ? simpleHeaderStrongTextColor : "#111",
         position: "relative",
         overflowX: isMobileLayout ? "hidden" : undefined,
@@ -14005,7 +14029,7 @@ export default function Page() {
               isMobileLayout={isMobileLayout}
               usePageBackground={Boolean(activeMovieDetailBackground)}
               onBack={() => setMovieDetailItem(null)}
-              onEdit={(item) => { setMovieDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
+              onEdit={openMovieEditModalFromDetails}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
               relatedMovies={movieRelated.movies}
@@ -14019,7 +14043,7 @@ export default function Page() {
               isMobileLayout={isMobileLayout}
               usePageBackground={Boolean(activeTvDetailBackground)}
               onBack={() => setTvDetailItem(null)}
-              onEdit={(item) => { setTvDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
+              onEdit={openTVEditModalFromDetails}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleTvDetailPaletteChange}
               relatedShows={tvRelated.shows}
@@ -15546,6 +15570,20 @@ export default function Page() {
         popupCoverMode={bookDetailItem ? getPopupCoverModeForItem(bookDetailItem) : undefined}
         isReplacingCover={Boolean(bookDetailItem && uploadingCoverForKey === getMediaItemKey(bookDetailItem))}
         replaceCoverError={coverUploadError}
+      />
+
+      <MovieDetailsEditModal
+        open={movieDetailsEditOpen && Boolean(movieDetailItem)}
+        item={movieDetailItem}
+        onClose={() => setMovieDetailsEditOpen(false)}
+        onSave={handleSaveMovieEdits}
+      />
+
+      <TVDetailsEditModal
+        open={tvDetailsEditOpen && Boolean(tvDetailItem)}
+        item={tvDetailItem}
+        onClose={() => setTvDetailsEditOpen(false)}
+        onSave={handleSaveShowEdits}
       />
 
       {/* Mobile layout: sidebar collapses above */}

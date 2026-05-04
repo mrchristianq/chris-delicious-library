@@ -39,6 +39,17 @@ function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
 function splitList(v: unknown): string[] { return safeStr(v).split(/[,|/]/g).map(p => p.trim()).filter(Boolean); }
 function formatYear(v: unknown): string { const r = safeStr(v); const m = r.match(/\b((?:19|20)\d{2})\b/); return m ? m[1] : r; }
+function formatFullDate(v: unknown): string {
+  const s = safeStr(v);
+  if (!s) return "";
+  // ISO date e.g. "2023-05-04" or "2023-05-04T..."
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  }
+  return s;
+}
 function formatRuntime(v: string): string {
   const n = parseInt(v, 10);
   if (!isFinite(n) || n <= 0) return v || "";
@@ -292,7 +303,7 @@ export function MovieDetailsPage({
   const detailFacts = [
     watchDate ? { label: "WATCHED", value: watchDate } : null,
     runtime ? { label: "RUNTIME", value: runtime } : null,
-    year ? { label: "RELEASED", value: year } : null,
+    (item.releaseDate || item.year) ? { label: "RELEASE DATE", value: formatFullDate(item.releaseDate) || year } : null,
     director ? { label: "DIRECTOR", value: director } : null,
     budget ? { label: "BUDGET", value: budget } : null,
     revenue ? { label: "REVENUE", value: revenue } : null,
@@ -558,7 +569,7 @@ export function MovieDetailsPage({
                   {sectionLabel("CAST")}
                   <div style={{ display: "flex", gap: CAST_GAP, justifyContent: "center" }}>
                     {visibleCast.map((member, i) => (
-                      <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W }}>
+                      <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
                         {member.photo ? (
                           <img src={member.photo} alt={member.name} style={{
                             width: CAST_ITEM_W, height: CAST_ITEM_W,
@@ -582,7 +593,7 @@ export function MovieDetailsPage({
                         }}>
                           {member.name}
                         </div>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 </div>

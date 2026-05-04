@@ -460,13 +460,14 @@ export function BookDetailsPage({
     { label: "My Rating", value: myRatingLabel ? formatRating(myRatingLabel) : "" },
     { label: "User Rating", value: userRatingLabel ? formatRating(userRatingLabel) : "" },
   ].filter((fact) => fact.value);
+  const isAudiobook = typeLabel === "Audiobook";
   const factDetails = [
-    { label: "Pages", value: pagesLabel },
-    { label: "Length", value: durationLabel },
+    !isAudiobook ? { label: "Pages", value: pagesLabel } : null,
+    isAudiobook ? { label: "Length", value: durationLabel } : null,
     { label: "Format", value: typeLabel },
     { label: "Released", value: releaseDate },
     { label: "Completed", value: showCompletedDate ? completedDateLabel : "" },
-  ].filter((fact) => fact.value);
+  ].filter((fact): fact is { label: string; value: string } => Boolean(fact?.value));
   const descriptionText = description || "No description yet for this title.";
   const descriptionFontSize = isMobileLayout
     ? 15
@@ -901,9 +902,8 @@ export function BookDetailsPage({
                   color: palette.text,
                   willChange: "transform",
                 }}
-              >
-                {descriptionText}
-              </div>
+                dangerouslySetInnerHTML={{ __html: descriptionText }}
+              />
             </div>
           </div>
 
