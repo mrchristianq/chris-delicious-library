@@ -3544,6 +3544,13 @@ export default function Page() {
     }
   }, [nav]);
 
+  useEffect(() => {
+    setMovieDetailItem(null);
+    setTvDetailItem(null);
+    setGameDetailItem(null);
+    setBookDetailItem(null);
+  }, [nav]);
+
   const openStatisticsView = useCallback(() => {
     setNav("statistics");
     setShowThemes(false);
@@ -6540,7 +6547,7 @@ export default function Page() {
     if (creator) {
       const byCreator = allShows
         .filter(s => safeStr(s?.creator) === creator && safeStr(s?.title) !== showTitle)
-        .slice(0, 12);
+        .slice(0, 20);
       if (byCreator.length > 0) return { shows: byCreator as unknown as Record<string, unknown>[], label: `More by ${creator}` };
     }
     const genreSet = new Set(genres.split(/[,|]/).map(g => g.trim().toLowerCase()).filter(Boolean));
@@ -6550,7 +6557,7 @@ export default function Page() {
           if (safeStr(s?.title) === showTitle) return false;
           return safeStr(s?.genres).split(/[,|]/).some(g => genreSet.has(g.trim().toLowerCase()));
         })
-        .slice(0, 12);
+        .slice(0, 20);
       if (similar.length > 0) return { shows: similar as unknown as Record<string, unknown>[], label: "Similar Shows" };
     }
     return { shows: [] as Record<string, unknown>[], label: "Similar Shows" };

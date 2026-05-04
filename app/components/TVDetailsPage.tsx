@@ -65,7 +65,7 @@ function ScoreCircle({ raw, label }: { raw: string; label: string }) {
   const color = scoreColor(pct);
   const words = label.split(" ");
   return (
-    <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
       <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={size / 2} cy={size / 2} r={r} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
@@ -81,10 +81,8 @@ function ScoreCircle({ raw, label }: { raw: string; label: string }) {
           {pct}%
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-        {words.map((word, i) => (
-          <span key={i} style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{word}</span>
-        ))}
+      <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
+        {label}
       </div>
     </div>
   );
@@ -234,47 +232,22 @@ export function TVDetailsPage({
   const creator = safeStr(item.creator);
   const topcastNames = splitList(item.topcast);
   const topcastPhotoList = safeStr(item.topcastPhotos).split(",").map(s => s.trim()).filter(Boolean);
-  const castMembers = topcastNames.slice(0, 5).map((name, i) => ({ name, photo: topcastPhotoList[i] || "" }));
+  const castMembers = topcastNames.slice(0, 10).map((name, i) => ({ name, photo: topcastPhotoList[i] || "" }));
 
   const seasonsLabel = numberOfSeasons ? `${numberOfSeasons} Season${numberOfSeasons === "1" ? "" : "s"}` : "";
   const metaParts = [yearRange, seasonsLabel, ...genres].filter(Boolean);
   const titleFontSize = isMobileLayout ? 22 : title.length > 44 ? 26 : title.length > 28 ? 32 : 38;
 
-  const descriptionText = overview || "No description available.";
-  const descFontSize = isMobileLayout ? 13 : 13;
+  const descriptionText = overview || "";
 
-  const descViewport = useRef<HTMLDivElement>(null);
-  const descContent = useRef<HTMLDivElement>(null);
   const relatedRowRef = useRef<HTMLDivElement>(null);
-  const CAST_ITEM_W = isMobileLayout ? 68 : 82;
+  const CAST_ITEM_W = isMobileLayout ? 68 : 90;
   const CAST_GAP = isMobileLayout ? 14 : 20;
-  const RELATED_ITEM_W = 80;
+  const RELATED_ITEM_W = 90;
   const RELATED_GAP = 10;
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
   const visibleCast = castMembers;
   const visibleRelated = (relatedShows ?? []).slice(0, maxRelated);
-
-  useEffect(() => {
-    const vp = descViewport.current, ct = descContent.current;
-    if (!vp || !ct || typeof window === "undefined") return;
-    let af = 0, rt = 0, lastT = 0, offset = 0, pause = Date.now() + 1400;
-    const speed = 0.016;
-    const setOff = (o: number) => { offset = o; ct.style.transform = `translate3d(0,-${o}px,0)`; };
-    const getMax = () => Math.max(0, ct.scrollHeight - vp.clientHeight);
-    const step = (t: number) => {
-      const max = getMax();
-      if (max <= 2) { setOff(0); lastT = 0; af = requestAnimationFrame(step); return; }
-      if (Date.now() >= pause) {
-        if (!lastT) lastT = t;
-        const next = offset + (t - lastT) * speed; lastT = t;
-        if (next >= max) { setOff(max); pause = Date.now() + 1800; lastT = 0; clearTimeout(rt); rt = window.setTimeout(() => { setOff(0); pause = Date.now() + 1000; }, 1800); }
-        else setOff(next);
-      }
-      af = requestAnimationFrame(step);
-    };
-    setOff(0); af = requestAnimationFrame(step);
-    return () => { cancelAnimationFrame(af); clearTimeout(rt); ct.style.transform = ""; };
-  }, [descriptionText, descFontSize]);
 
   const chipStatus = watchStatus || tvShowStatus;
   const statusColor = (() => {
@@ -416,7 +389,7 @@ export function TVDetailsPage({
           {/* Details panel — absolute bottom-right inside hero */}
           {!isMobileLayout && (detailFacts.length > 0 || ratingFacts.length > 0) ? (
             <div style={{
-              position: "absolute", bottom: 16, right: 16, width: DETAILS_W,
+              position: "absolute", bottom: 16, right: 16, width: "max-content", minWidth: 160, maxWidth: 260,
               zIndex: 5,
               ...PANEL_STYLE,
               padding: "14px 16px",
@@ -436,7 +409,7 @@ export function TVDetailsPage({
                 <>
                   <div style={{ height: 1, background: "rgba(255,255,255,0.10)", margin: "12px 0" }} />
                   <div style={{ display: "flex", gap: 16 }}>
-                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="TMDB Score" /> : null}
+                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" /> : null}
                     {myRating ? <ScoreCircle raw={myRating} label="My Rating" /> : null}
                   </div>
                 </>
@@ -499,6 +472,21 @@ export function TVDetailsPage({
                   {metaParts.join("  ·  ")}
                 </div>
               ) : null}
+              {descriptionText ? (
+                <div style={{
+                  marginTop: 10,
+                  fontSize: isMobileLayout ? 13 : 13,
+                  lineHeight: 1.6,
+                  color: "rgba(255,255,255,0.72)",
+                  textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                  display: "-webkit-box",
+                  WebkitLineClamp: isMobileLayout ? 4 : 3,
+                  WebkitBoxOrient: "vertical" as const,
+                  overflow: "hidden",
+                }}>
+                  {descriptionText}
+                </div>
+              ) : null}
             </div>
 
             {/* Right spacer — keeps title from going under the details panel */}
@@ -508,18 +496,6 @@ export function TVDetailsPage({
 
         {/* ── BODY ── */}
         <div style={{ padding: isMobileLayout ? "8px 10px 28px" : "10px 14px 32px", display: "flex", flexDirection: "column", gap: 10 }}>
-
-          {/* Overview — thin on desktop */}
-          {sectionBox(
-            <>
-              {sectionLabel("OVERVIEW")}
-              <div ref={descViewport} style={{ height: isMobileLayout ? "auto" : 72, overflow: "hidden" }}>
-                <div ref={descContent} style={{ fontSize: descFontSize, lineHeight: 1.65, color: palette.text, willChange: "transform" }}>
-                  {descriptionText}
-                </div>
-              </div>
-            </>
-          )}
 
           {/* Mobile details panel */}
           {isMobileLayout && detailFacts.length > 0 ? sectionBox(
@@ -536,101 +512,94 @@ export function TVDetailsPage({
             </>
           ) : null}
 
-          {/* Cast + Related — side by side */}
-          {(castMembers.length > 0 || hasRelated) ? (
-            <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
-
-              {castMembers.length > 0 ? (
-                <div style={{
-                  flex: 1, minWidth: 0,
-                  borderRadius: 16, padding: isMobileLayout ? "14px 14px" : "16px 18px",
-                  background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.02)} 100%)`,
-                  border: `1px solid ${palette.surfaceBorder}`,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-                }}>
-                  {sectionLabel("CAST")}
-                  <div style={{ display: "flex", gap: CAST_GAP, justifyContent: "center" }}>
-                    {visibleCast.map((member, i) => (
-                      <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W }}>
-                        {member.photo ? (
-                          <img src={member.photo} alt={member.name} style={{
-                            width: CAST_ITEM_W, height: CAST_ITEM_W,
-                            borderRadius: "50%", objectFit: "cover",
-                            border: `2px solid ${palette.surfaceBorder}`,
-                            background: palette.surface,
-                          }} />
-                        ) : (
-                          <div style={{
-                            width: CAST_ITEM_W, height: CAST_ITEM_W,
-                            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                            background: palette.chip, border: `2px solid ${palette.surfaceBorder}`,
-                            fontSize: 20, fontWeight: 700, color: palette.mutedText,
-                          }}>
-                            {member.name.charAt(0)}
-                          </div>
-                        )}
-                        <div style={{
-                          fontSize: 11, fontWeight: 650, color: palette.text, textAlign: "center",
-                          lineHeight: 1.25, wordBreak: "break-word", width: "100%",
-                        }}>
-                          {member.name}
-                        </div>
+          {/* Cast — full width */}
+          {castMembers.length > 0 ? sectionBox(
+            <>
+              {sectionLabel("CAST")}
+              <div style={{ display: "flex", gap: CAST_GAP, flexWrap: "wrap" }}>
+                {visibleCast.map((member, i) => (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W }}>
+                    {member.photo ? (
+                      <img src={member.photo} alt={member.name} style={{
+                        width: CAST_ITEM_W, height: CAST_ITEM_W,
+                        borderRadius: "50%", objectFit: "cover",
+                        border: `2px solid ${palette.surfaceBorder}`,
+                        background: palette.surface,
+                      }} />
+                    ) : (
+                      <div style={{
+                        width: CAST_ITEM_W, height: CAST_ITEM_W,
+                        borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                        background: palette.chip, border: `2px solid ${palette.surfaceBorder}`,
+                        fontSize: 20, fontWeight: 700, color: palette.mutedText,
+                      }}>
+                        {member.name.charAt(0)}
                       </div>
-                    ))}
+                    )}
+                    <div style={{
+                      fontSize: 11, fontWeight: 650, color: palette.text, textAlign: "center",
+                      lineHeight: 1.25, wordBreak: "break-word", width: "100%",
+                    }}>
+                      {member.name}
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                ))}
+              </div>
+            </>
+          ) : null}
 
-              {hasRelated ? (
-                <div style={{
-                  flex: 1, minWidth: 0,
-                  borderRadius: 16, padding: isMobileLayout ? "14px 14px" : "16px 18px",
-                  background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.02)} 100%)`,
-                  border: `1px solid ${palette.surfaceBorder}`,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-                }}>
-                  {sectionLabel(relatedShowsLabel || "Similar Shows")}
-                  <div ref={relatedRowRef} style={{ display: "flex", gap: RELATED_GAP, overflow: "hidden" }}>
-                    {visibleRelated.map((show, i) => {
-                      const sTitle = safeStr(show.title);
-                      const sYear = formatYear(show.firstAirDate || show.year);
-                      const sCover = getDisplayCoverUrl(show);
-                      return (
-                        <div key={i}
-                          onClick={() => onSelectRelated?.(show)}
-                          style={{
-                            flexShrink: 0, width: RELATED_ITEM_W,
-                            cursor: onSelectRelated ? "pointer" : "default",
-                            display: "flex", flexDirection: "column", gap: 5,
-                          }}
-                        >
-                          {sCover ? (
-                            <img src={sCover} alt={sTitle} style={{
-                              display: "block", width: RELATED_ITEM_W, borderRadius: 6,
-                              border: `1px solid ${palette.surfaceBorder}`,
-                            }} />
-                          ) : (
-                            <div style={{
-                              width: RELATED_ITEM_W, height: RELATED_ITEM_W * 1.5, borderRadius: 6,
-                              background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              padding: "0 5px", textAlign: "center",
-                            }}>
-                              <span style={{ fontSize: 9, color: palette.mutedText, lineHeight: 1.3 }}>{sTitle}</span>
-                            </div>
-                          )}
-                          <div style={{ fontSize: 10, fontWeight: 650, color: palette.text, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
-                            {sTitle}
-                          </div>
-                          {sYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{sYear}</div> : null}
+          {/* Creator — full width */}
+          {creator ? sectionBox(
+            <>
+              {sectionLabel("CREATOR")}
+              <div style={{ fontSize: 16, fontWeight: 750, color: palette.text, lineHeight: 1.3 }}>
+                {creator}
+              </div>
+            </>
+          ) : null}
+
+          {/* Similar Shows — full width */}
+          {hasRelated ? sectionBox(
+            <>
+              {sectionLabel(relatedShowsLabel || "SIMILAR SHOWS")}
+              <div ref={relatedRowRef} style={{ display: "flex", gap: RELATED_GAP, overflow: "hidden" }}>
+                {visibleRelated.map((show, i) => {
+                  const sTitle = safeStr(show.title);
+                  const sYear = formatYear(show.firstAirDate || show.year);
+                  const sCover = getDisplayCoverUrl(show);
+                  return (
+                    <div key={i}
+                      onClick={() => onSelectRelated?.(show)}
+                      style={{
+                        flexShrink: 0, width: RELATED_ITEM_W,
+                        cursor: onSelectRelated ? "pointer" : "default",
+                        display: "flex", flexDirection: "column", gap: 5,
+                      }}
+                    >
+                      {sCover ? (
+                        <img src={sCover} alt={sTitle} style={{
+                          display: "block", width: RELATED_ITEM_W, borderRadius: 6,
+                          border: `1px solid ${palette.surfaceBorder}`,
+                        }} />
+                      ) : (
+                        <div style={{
+                          width: RELATED_ITEM_W, height: RELATED_ITEM_W * 1.5, borderRadius: 6,
+                          background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          padding: "0 5px", textAlign: "center",
+                        }}>
+                          <span style={{ fontSize: 9, color: palette.mutedText, lineHeight: 1.3 }}>{sTitle}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-            </div>
+                      )}
+                      <div style={{ fontSize: 10, fontWeight: 650, color: palette.text, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                        {sTitle}
+                      </div>
+                      {sYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{sYear}</div> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           ) : null}
 
         </div>

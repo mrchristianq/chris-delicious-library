@@ -73,7 +73,7 @@ function ScoreCircle({ raw, label }: { raw: string; label: string }) {
   const color = scoreColor(pct);
   const words = label.split(" ");
   return (
-    <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
       <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={size / 2} cy={size / 2} r={r} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
@@ -89,10 +89,8 @@ function ScoreCircle({ raw, label }: { raw: string; label: string }) {
           {pct}%
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-        {words.map((word, i) => (
-          <span key={i} style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{word}</span>
-        ))}
+      <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
+        {label}
       </div>
     </div>
   );
@@ -416,7 +414,7 @@ export function MovieDetailsPage({
           {/* Details panel — absolute bottom-right inside hero */}
           {!isMobileLayout && (detailFacts.length > 0 || ratingFacts.length > 0) ? (
             <div style={{
-              position: "absolute", bottom: 16, right: 16, width: DETAILS_W,
+              position: "absolute", bottom: 16, right: 16, width: "max-content", minWidth: 160, maxWidth: 260,
               zIndex: 5,
               ...PANEL_STYLE,
               padding: "14px 16px",
@@ -436,7 +434,7 @@ export function MovieDetailsPage({
                 <>
                   <div style={{ height: 1, background: "rgba(255,255,255,0.10)", margin: "12px 0" }} />
                   <div style={{ display: "flex", gap: 16 }}>
-                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="TMDB Score" /> : null}
+                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" /> : null}
                     {myRating ? <ScoreCircle raw={myRating} label="My Rating" /> : null}
                   </div>
                 </>
