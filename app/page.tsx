@@ -73,6 +73,9 @@ type Show = {
   overview?: string;
   ownership?: string;
   tag?: string;
+  creator?: string;
+  topcast?: string;
+  topcastPhotos?: string;
 };
 
 type Book = {
@@ -139,6 +142,12 @@ type Movie = {
   overview?: string;
   backdropUrl?: string;
   genres?: string;
+  director?: string;
+  tagline?: string;
+  budget?: string;
+  revenue?: string;
+  topcast?: string;
+  topcastPhotos?: string;
 };
 
 type Game = {
@@ -1684,6 +1693,9 @@ function rowToShow(r: Row): Show | null {
     overview: safeStr(r["Overview"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tags"]) || safeStr(r["Tag"]) || undefined,
+    creator: safeStr(r["Creator"]) || undefined,
+    topcast: safeStr(r["Cast"]) || safeStr(r["Topcast"]) || undefined,
+    topcastPhotos: safeStr(r["Cast Photos"]) || safeStr(r["Topcast Photos"]) || undefined,
   };
 }
 
@@ -1796,6 +1808,12 @@ function rowToMovie(r: Row): Movie | null {
     overview: safeStr(r["Overview"]) || undefined,
     backdropUrl: safeStr(r["BackdropURL"]) || undefined,
     genres: safeStr(r["Genres"]) || safeStr(r["Genre"]) || undefined,
+    director: safeStr(r["Director"]) || undefined,
+    tagline: safeStr(r["Tagline"]) || undefined,
+    budget: safeStr(r["Budget"]) || undefined,
+    revenue: safeStr(r["Revenue"]) || undefined,
+    topcast: safeStr(r["Topcast"]) || undefined,
+    topcastPhotos: safeStr(r["Topcast Photos"]) || undefined,
   };
 }
 
@@ -6489,6 +6507,54 @@ export default function Page() {
       return true;
     }) as Movie[];
   }, [movieRows]);
+
+  const movieRelated = useMemo(() => {
+    if (!movieDetailItem) return { movies: [] as Record<string, unknown>[], label: "Similar Movies" };
+    const dir = safeStr(movieDetailItem?.director);
+    const movieTitle = safeStr(movieDetailItem?.title);
+    const genres = safeStr(movieDetailItem?.genres);
+    if (dir) {
+      const byDir = allMovies
+        .filter(m => safeStr(m?.director) === dir && safeStr(m?.title) !== movieTitle)
+        .slice(0, 12);
+      if (byDir.length > 0) return { movies: byDir as unknown as Record<string, unknown>[], label: `More by ${dir}` };
+    }
+    const genreSet = new Set(genres.split(/[,|]/).map(g => g.trim().toLowerCase()).filter(Boolean));
+    if (genreSet.size > 0) {
+      const similar = allMovies
+        .filter(m => {
+          if (safeStr(m?.title) === movieTitle) return false;
+          return safeStr(m?.genres).split(/[,|]/).some(g => genreSet.has(g.trim().toLowerCase()));
+        })
+        .slice(0, 12);
+      if (similar.length > 0) return { movies: similar as unknown as Record<string, unknown>[], label: "Similar Movies" };
+    }
+    return { movies: [] as Record<string, unknown>[], label: "Similar Movies" };
+  }, [movieDetailItem, allMovies]);
+
+  const tvRelated = useMemo(() => {
+    if (!tvDetailItem) return { shows: [] as Record<string, unknown>[], label: "Similar Shows" };
+    const creator = safeStr(tvDetailItem?.creator);
+    const showTitle = safeStr(tvDetailItem?.title);
+    const genres = safeStr(tvDetailItem?.genres);
+    if (creator) {
+      const byCreator = allShows
+        .filter(s => safeStr(s?.creator) === creator && safeStr(s?.title) !== showTitle)
+        .slice(0, 12);
+      if (byCreator.length > 0) return { shows: byCreator as unknown as Record<string, unknown>[], label: `More by ${creator}` };
+    }
+    const genreSet = new Set(genres.split(/[,|]/).map(g => g.trim().toLowerCase()).filter(Boolean));
+    if (genreSet.size > 0) {
+      const similar = allShows
+        .filter(s => {
+          if (safeStr(s?.title) === showTitle) return false;
+          return safeStr(s?.genres).split(/[,|]/).some(g => genreSet.has(g.trim().toLowerCase()));
+        })
+        .slice(0, 12);
+      if (similar.length > 0) return { shows: similar as unknown as Record<string, unknown>[], label: "Similar Shows" };
+    }
+    return { shows: [] as Record<string, unknown>[], label: "Similar Shows" };
+  }, [tvDetailItem, allShows]);
 
   const allGames = useMemo(() => {
     return gameRows.map(rowToGame).filter(game => {
@@ -13917,6 +13983,9 @@ export default function Page() {
               onEdit={(item) => { setMovieDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
+              relatedMovies={movieRelated.movies}
+              relatedMoviesLabel={movieRelated.label}
+              onSelectRelated={(m) => setMovieDetailItem(m)}
             />
           ) : tvDetailItem ? (
             <TVDetailsPage
@@ -13928,6 +13997,9 @@ export default function Page() {
               onEdit={(item) => { setTvDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleTvDetailPaletteChange}
+              relatedShows={tvRelated.shows}
+              relatedShowsLabel={tvRelated.label}
+              onSelectRelated={(s) => setTvDetailItem(s)}
             />
           ) : gameDetailItem ? (
             <GameDetailsPage
