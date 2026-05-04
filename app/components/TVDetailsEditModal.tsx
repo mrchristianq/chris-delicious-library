@@ -402,39 +402,38 @@ export function TVDetailsEditModal({ open, item, onClose, onSave }: TVDetailsEdi
             </div>
 
             <div style={{ padding: "6px 0" }}>
-              {syncDiff.map((row) => (
-                <label key={row.key} style={{
-                  display: "grid",
-                  gridTemplateColumns: "28px 130px 1fr auto 1fr",
-                  alignItems: "start",
-                  gap: 8,
-                  padding: "7px 14px",
-                  cursor: "pointer",
-                  background: row.selected ? "rgba(0,113,227,0.05)" : "transparent",
-                  transition: "background 100ms",
-                }}>
-                  <input type="checkbox" checked={row.selected} onChange={() => toggleDiffRow(row.key)}
-                    style={{ marginTop: 2, accentColor: "#0071e3", cursor: "pointer" }} />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.2, paddingTop: 1 }}>
-                    {row.label.toUpperCase()}
-                  </span>
-                  <span style={{
-                    fontSize: 11, color: "rgba(0,0,0,0.4)",
-                    textDecoration: row.selected ? "line-through" : "none",
-                    wordBreak: "break-word", lineHeight: 1.4,
+              {syncDiff.map((row) => {
+                const isImg = row.key === "posterUrl" || row.key === "backdropUrl";
+                return (
+                  <label key={row.key} style={{
+                    display: "grid",
+                    gridTemplateColumns: "28px 130px 1fr auto 1fr",
+                    alignItems: "start",
+                    gap: 8,
+                    padding: "7px 14px",
+                    cursor: "pointer",
+                    background: row.selected ? "rgba(0,113,227,0.05)" : "transparent",
+                    transition: "background 100ms",
                   }}>
-                    {row.before}
-                  </span>
-                  <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
-                  <span style={{
-                    fontSize: 11, color: row.selected ? "#0055b3" : "rgba(0,0,0,0.55)",
-                    fontWeight: row.selected ? 600 : 400,
-                    wordBreak: "break-word", lineHeight: 1.4,
-                  }}>
-                    {row.after}
-                  </span>
-                </label>
-              ))}
+                    <input type="checkbox" checked={row.selected} onChange={() => toggleDiffRow(row.key)}
+                      style={{ marginTop: 2, accentColor: "#0071e3", cursor: "pointer" }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.2, paddingTop: 1 }}>
+                      {row.label.toUpperCase()}
+                    </span>
+                    {isImg && row.before !== "—" ? (
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
+                    ) : (
+                      <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
+                    )}
+                    <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
+                    {isImg && row.after !== "—" ? (
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms" }} />
+                    ) : (
+                      <span style={{ fontSize: 11, color: row.selected ? "#0055b3" : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
+                    )}
+                  </label>
+                );
+              })}
             </div>
 
             <div style={{
