@@ -3015,7 +3015,7 @@ export default function Page() {
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
-  const UPCOMING_LABEL_SPACE = 34;
+  const UPCOMING_LABEL_SPACE = -3;
   const RAW_COVER_STANDARD_GAP = 10;
   const LIP_FROM_BOTTOM = 5;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 560;
@@ -9742,16 +9742,31 @@ export default function Page() {
 
   const shelfHeights = useMemo(() => {
     const upcomingExtra = isUpcomingView ? UPCOMING_LABEL_SPACE : 0;
+    // For upcoming, compute a fixed offset that matches the current look for the
+    // most common (game) cover type, then apply it per-shelf based on each row's
+    // tallest cover so the gap between label text and the next row's tallest cover
+    // stays consistent regardless of media type.
+    const upcomingFixedOffset = isUpcomingView
+      ? (shelfRowHeight + UPCOMING_LABEL_SPACE) - Math.round(shelfRowHeight * rawCoverRowHeightRatioByMedia.game)
+      : 0;
     return shelves.map((shelfShows) => {
-      if (nav !== "books") return shelfRowHeight + upcomingExtra;
-      if (!shelfShows.length) return shelfRowHeight + upcomingExtra;
+      if (isUpcomingView) {
+        if (!shelfShows.length) return shelfRowHeight + upcomingExtra;
+        const maxCoverH = shelfShows.reduce((max, show) => {
+          const { caseHeight } = getItemVisualLayout(show);
+          return Math.max(max, caseHeight);
+        }, 0);
+        return Math.max(1, maxCoverH + upcomingFixedOffset);
+      }
+      if (nav !== "books") return shelfRowHeight;
+      if (!shelfShows.length) return shelfRowHeight;
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
         const { caseHeight } = getItemVisualLayout(show);
         return Math.max(maxHeight, caseHeight);
       }, 0);
-      return Math.max(1, tallestCover + 15 + upcomingExtra);
+      return Math.max(1, tallestCover + 15);
     });
-  }, [getItemVisualLayout, isUpcomingView, nav, shelfRowHeight, shelves]);
+  }, [getItemVisualLayout, isUpcomingView, nav, rawCoverRowHeightRatioByMedia, shelfRowHeight, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -9768,8 +9783,8 @@ export default function Page() {
   const shelfRenderWindow = useMemo(() => {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
-    if (nav !== "books") {
-      const effectiveRowH = shelfRowHeight + (isUpcomingView ? UPCOMING_LABEL_SPACE : 0);
+    if (nav !== "books" && !isUpcomingView) {
+      const effectiveRowH = shelfRowHeight;
       const start = Math.max(0, Math.floor(localScroll / effectiveRowH) - 2);
       const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / effectiveRowH) + 2);
       return {
@@ -11886,742 +11901,389 @@ export default function Page() {
                   maxHeight: `calc(100vh - ${SETTINGS_WINDOW_START_Y + SETTINGS_WINDOW_MARGIN}px)`,
                   overflowY: "auto",
                   zIndex: SETTINGS_WINDOW_Z_INDEX,
-                  padding: 14,
                   display: "flex",
                   flexDirection: "column",
-                  gap: 6,
-                  background: "rgba(248, 244, 236, 0.98)",
-                  border: "1px solid rgba(58, 37, 24, 0.38)",
-                  borderRadius: 14,
-                  boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
-                  backdropFilter: "blur(2px)",
+                  background: "rgba(246, 245, 243, 0.98)",
+                  border: "1px solid rgba(139, 175, 244, 0.28)",
+                  borderRadius: 16,
+                  boxShadow: "0 24px 60px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(139, 175, 244, 0.12)",
+                  backdropFilter: "blur(20px)",
+                  overflow: "hidden",
                 }}
               >
-                {settingsPopupOpen ? (
-                  <>
-                    <div
-                      data-settings-window-drag-handle="true"
+                {/* Title bar */}
+                <div
+                  data-settings-window-drag-handle="true"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "13px 16px 12px",
+                    borderBottom: "1px solid rgba(139, 175, 244, 0.18)",
+                    cursor: "grab",
+                    userSelect: "none",
+                    touchAction: "none",
+                    background: "rgba(255,255,255,0.55)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.55 }}>
+                      <circle cx="7" cy="7" r="6" stroke="#8baff4" strokeWidth="1.5" />
+                      <path d="M7 4v3l2 1.5" stroke="#8baff4" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#2c2c2e", letterSpacing: "-0.01em" }}>Settings</span>
+                  </div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <button
+                      onClick={() => setShowVersionNotes((prev) => !prev)}
+                      title="Show recent version notes"
+                      aria-label="Show recent version notes"
                       style={{
-                        display: "flex",
+                        display: "inline-flex",
                         alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: 4,
-                        paddingBottom: 8,
-                        borderBottom: "1px solid rgba(0,0,0,0.12)",
-                        cursor: "grab",
-                        userSelect: "none",
-                        touchAction: "none",
+                        justifyContent: "center",
+                        padding: "3px 9px",
+                        background: showVersionNotes ? "#8baff4" : "rgba(139, 175, 244, 0.14)",
+                        border: "1px solid rgba(139, 175, 244, 0.4)",
+                        borderRadius: 20,
+                        color: showVersionNotes ? "#fff" : "#4a7ed4",
+                        cursor: "pointer",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.02em",
+                        lineHeight: 1,
+                        transition: "all 0.15s",
                       }}
                     >
-                      <span style={{ fontSize: 14, fontWeight: 800, color: "#5c3c38" }}>Settings</span>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <button
-                          onClick={() => setShowVersionNotes((prev) => !prev)}
-                          title="Show recent version notes"
-                          aria-label="Show recent version notes"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minWidth: 54,
-                            padding: "4px 8px",
-                            background: "rgba(255,255,255,0.85)",
-                            border: "1px solid rgba(0,0,0,0.2)",
-                            borderRadius: 8,
-                            color: "#5c3c38",
-                            cursor: "pointer",
-                            fontSize: 11,
-                            fontWeight: 800,
-                            letterSpacing: "0.03em",
-                            lineHeight: 1,
-                          }}
-                        >
-                          v{APP_VERSION}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSettingsPopupOpen(false);
-                            setShowVersionNotes(false);
-                          }}
-                          style={{
-                            border: "1px solid rgba(0,0,0,0.2)",
-                            background: "rgba(255,255,255,0.85)",
-                            color: "#5c3c38",
-                            borderRadius: 8,
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}
-                        >
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                    {showVersionNotes ? (
-                      <div
-                        style={{
-                          marginTop: 2,
-                          marginBottom: 10,
-                          borderRadius: 9,
-                          border: "1px solid rgba(0,0,0,0.14)",
-                          background: "rgba(249, 245, 236, 0.97)",
-                          boxShadow: "0 8px 20px rgba(0,0,0,0.14)",
-                          padding: 10,
-                          textAlign: "left",
-                        }}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 800, color: "#5c3c38", marginBottom: 8 }}>Recent Version Notes</div>
-                        {VERSION_HISTORY.slice(0, 3).map((entry) => (
-                          <div key={entry.version} style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#3f2e1f" }}>
-                              v{entry.version} <span style={{ opacity: 0.6, fontWeight: 600 }}>({entry.date})</span>
-                            </div>
-                            <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: 11, lineHeight: 1.35, color: "#4b3c31" }}>
-                              {entry.notes.map((note) => (
-                                <li key={note}>{note}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-                {/* Cover Size */}
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#8A8A8A" }}>COVER SIZE</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                    TV Size
-                    <input
-                      type="range"
-                      min={70}
-                      max={125}
-                      step={5}
-                      value={posterSizeTv}
-                      onChange={(e) => updatePosterSizeTv(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeTv}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                    Movies Size
-                    <input
-                      type="range"
-                      min={70}
-                      max={125}
-                      step={5}
-                      value={posterSizeMovies}
-                      onChange={(e) => updatePosterSizeMovies(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeMovies}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                    Books Size
-                    <input
-                      type="range"
-                      min={70}
-                      max={125}
-                      step={5}
-                      value={posterSizeBooks}
-                      onChange={(e) => updatePosterSizeBooks(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeBooks}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                    Games Size
-                    <input
-                      type="range"
-                      min={70}
-                      max={125}
-                      step={5}
-                      value={posterSizeGames}
-                      onChange={(e) => updatePosterSizeGames(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{posterSizeGames}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                    Cover Gap Size
-                    <input
-                      type="range"
-                      min={0}
-                      max={60}
-                      step={1}
-                      value={coverGapSize}
-                      onChange={(e) => updateCoverGapSize(Number(e.target.value))}
-                      style={{ flex: 1 }}
-                    />
-                    <span style={{ width: 28, textAlign: "right" }}>{coverGapSize}</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                    <input type="checkbox" checked={tight} onChange={(e) => updateTight(e.target.checked)} />
-                    Tight
-                  </label>
+                      v{APP_VERSION}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSettingsPopupOpen(false);
+                        setShowVersionNotes(false);
+                      }}
+                      style={{
+                        border: "1px solid rgba(0,0,0,0.14)",
+                        background: "rgba(0,0,0,0.06)",
+                        color: "#636366",
+                        borderRadius: 20,
+                        padding: "3px 10px",
+                        cursor: "pointer",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: "0.02em",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
 
-                {/* Logo Customization */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, logoSize: !settingsOpen.logoSize })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                    marginTop: 4,
-                  }}
-                >
-                  <span>LOGO CUSTOMIZATION</span>
-                  <span>{settingsOpen.logoSize ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.logoSize ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Size
-                      <input
-                        type="range"
-                        min={60}
-                        max={500}
-                        step={5}
-                        value={logoSize}
-                        onChange={(e) => updateLogoSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{logoSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Top
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={logoTop}
-                        onChange={(e) => updateLogoTop(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{logoTop}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Left
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={logoLeft}
-                        onChange={(e) => updateLogoLeft(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{logoLeft}</span>
-                    </label>
-                  </div>
-                ) : null}
+                {/* Scrollable body */}
+                <div style={{ overflowY: "auto", flex: 1, padding: "12px 14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
 
-                {/* Sync Status Customization */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, syncIcon: !settingsOpen.syncIcon })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                    marginTop: 4,
-                  }}
-                >
-                  <span>SYNC STATUS CUSTOMIZATION</span>
-                  <span>{settingsOpen.syncIcon ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.syncIcon ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Size
-                      <input
-                        type="range"
-                        min={8}
-                        max={24}
-                        step={1}
-                        value={syncIconSize}
-                        onChange={(e) => updateSyncIconSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{syncIconSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Top
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={syncIconTop}
-                        onChange={(e) => updateSyncIconTop(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{syncIconTop}</span>
-                    </label>
-                  </div>
-                ) : null}
-
-                {/* Status Icon */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                    marginTop: 4,
-                  }}
-                >
-                  <span>STATUS ICON</span>
-                  <span>{settingsOpen.statusIcon ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.statusIcon ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Size %
-                      <input
-                        type="range"
-                        min={50}
-                        max={220}
-                        step={5}
-                        value={statusIconScale}
-                        onChange={(e) => updateStatusIconScale(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 40, textAlign: "right" }}>{statusIconScale}%</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Offset X
-                      <input
-                        type="range"
-                        min={-30}
-                        max={30}
-                        step={1}
-                        value={statusIconOffsetX}
-                        onChange={(e) => updateStatusIconOffsetX(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 40, textAlign: "right" }}>{statusIconOffsetX}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Offset Y
-                      <input
-                        type="range"
-                        min={-30}
-                        max={30}
-                        step={1}
-                        value={statusIconOffsetY}
-                        onChange={(e) => updateStatusIconOffsetY(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 40, textAlign: "right" }}>{statusIconOffsetY}</span>
-                    </label>
-                  </div>
-                ) : null}
-
-                {/* Sidebar Customization */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                    marginTop: 4,
-                  }}
-                >
-                  <span>SIDEBAR CUSTOMIZATION</span>
-                  <span>{settingsOpen.sidebar ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.sidebar ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Icon Size
-                      <input
-                        type="range"
-                        min={8}
-                        max={64}
-                        step={1}
-                        value={iconSize}
-                        onChange={(e) => updateIconSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{iconSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Font Size
-                      <input
-                        type="range"
-                        min={10}
-                        max={20}
-                        step={1}
-                        value={sidebarFontSize}
-                        onChange={(e) => updateSidebarFontSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{sidebarFontSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Font Weight
-                      <select
-                        value={sidebarFontWeight}
-                        onChange={(e) => updateSidebarFontWeight(e.target.value)}
-                        style={{ flex: 1, fontSize: 11 }}
-                      >
-                        <option value="300">Light (300)</option>
-                        <option value="400">Normal (400)</option>
-                        <option value="500">Medium (500)</option>
-                        <option value="600">Semi-Bold (600)</option>
-                        <option value="700">Bold (700)</option>
-                      </select>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Icon Gap
-                      <input
-                        type="range"
-                        min={4}
-                        max={20}
-                        step={1}
-                        value={sidebarGap}
-                        onChange={(e) => updateSidebarGap(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{sidebarGap}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Header Font Size
-                      <input
-                        type="range"
-                        min={8}
-                        max={16}
-                        step={1}
-                        value={sidebarHeaderFontSize}
-                        onChange={(e) => updateSidebarHeaderFontSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{sidebarHeaderFontSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Header Font Weight
-                      <select
-                        value={sidebarHeaderFontWeight}
-                        onChange={(e) => updateSidebarHeaderFontWeight(e.target.value)}
-                        style={{ flex: 1, fontSize: 11 }}
-                      >
-                        <option value="300">Light (300)</option>
-                        <option value="400">Normal (400)</option>
-                        <option value="500">Medium (500)</option>
-                        <option value="600">Semi-Bold (600)</option>
-                        <option value="700">Bold (700)</option>
-                      </select>
-                    </label>
-                  </div>
-                ) : null}
-
-                {/* Counter Configuration */}
-                <button
-                  onClick={() => setSettingsOpen({ ...settingsOpen, counter: !settingsOpen.counter })}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#8A8A8A",
-                    marginTop: 4,
-                  }}
-                >
-                  <span>COUNTER CONFIGURATION</span>
-                  <span>{settingsOpen.counter ? "−" : "+"}</span>
-                </button>
-                {settingsOpen.counter ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Tile Size
-                      <input
-                        type="range"
-                        min={30}
-                        max={60}
-                        step={2}
-                        value={counterTileSize}
-                        onChange={(e) => updateCounterTileSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterTileSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Tile Spacing
-                      <input
-                        type="range"
-                        min={0}
-                        max={10}
-                        step={1}
-                        value={counterTileSpacing}
-                        onChange={(e) => updateCounterTileSpacing(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterTileSpacing}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Number Font Size
-                      <input
-                        type="range"
-                        min={10}
-                        max={40}
-                        step={1}
-                        value={counterNumberFontSize}
-                        onChange={(e) => updateCounterNumberFontSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterNumberFontSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Label Font Size
-                      <input
-                        type="range"
-                        min={10}
-                        max={24}
-                        step={1}
-                        value={counterLabelFontSize}
-                        onChange={(e) => updateCounterLabelFontSize(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterLabelFontSize}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Label Font Weight
-                      <select
-                        value={counterLabelFontWeight}
-                        onChange={(e) => updateCounterLabelFontWeight(e.target.value)}
-                        style={{ flex: 1, fontSize: 11 }}
-                      >
-                        <option value="300">Light (300)</option>
-                        <option value="400">Normal (400)</option>
-                        <option value="500">Medium (500)</option>
-                        <option value="600">Semi-Bold (600)</option>
-                        <option value="700">Bold (700)</option>
-                        <option value="800">Extra-Bold (800)</option>
-                      </select>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Label Top Offset
-                      <input
-                        type="range"
-                        min={-20}
-                        max={20}
-                        step={1}
-                        value={counterLabelTop}
-                        onChange={(e) => updateCounterLabelTop(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterLabelTop}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Label Left Offset
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={counterLabelLeft}
-                        onChange={(e) => updateCounterLabelLeft(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterLabelLeft}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Counter Top Offset
-                      <input
-                        type="range"
-                        min={-20}
-                        max={20}
-                        step={1}
-                        value={counterTop}
-                        onChange={(e) => updateCounterTop(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterTop}</span>
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: 0.85 }}>
-                      Counter Left Offset
-                      <input
-                        type="range"
-                        min={-50}
-                        max={50}
-                        step={1}
-                        value={counterLeft}
-                        onChange={(e) => updateCounterLeft(Number(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 28, textAlign: "right" }}>{counterLeft}</span>
-                    </label>
-                  </div>
-                ) : null}
-
-                {/* Chris' Delicious Library FAQ */}
-                <button
-                  onClick={() => setFaqPopupOpen(true)}
-                  style={{
-                    width: "100%",
-                    textAlign: "center",
-                    border: "1px solid rgba(38, 62, 91, 0.28)",
-                    background: "linear-gradient(180deg, rgba(84, 118, 160, 0.92) 0%, rgba(58, 89, 126, 0.92) 100%)",
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#fff",
-                    marginTop: 8,
-                    borderRadius: 8,
-                    boxShadow: "0 2px 7px rgba(0, 0, 0, 0.22)",
-                  }}
-                >
-                  <span>CHRIS&apos; DELICIOUS LIBRARY FAQ</span>
-                </button>
-
-                {/* Save All Settings Button */}
-                <button
-                  onClick={saveAllSettings}
-                  style={{
-                    width: "100%",
-                    marginTop: 12,
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(92, 60, 56, 0.3)",
-                    background: "linear-gradient(180deg, rgba(139, 76, 76, 0.9) 0%, rgba(115, 62, 62, 0.9) 100%)",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.3)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
-                  }}
-                >
-                  💾 Save All Settings to Sheet
-                </button>
-
-                {/* Load Settings from Sheet Button */}
-                <button
-                  onClick={loadSettingsFromSheet}
-                  style={{
-                    width: "100%",
-                    marginTop: 8,
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(60, 92, 92, 0.3)",
-                    background: "linear-gradient(180deg, rgba(76, 115, 115, 0.9) 0%, rgba(62, 95, 95, 0.9) 100%)",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.25)",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.3)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0, 0, 0, 0.25)";
-                  }}
-                >
-                  📥 Load Settings from Sheet
-                </button>
-                {syncMsg ? (
+                {/* Version Notes */}
+                {showVersionNotes ? (
                   <div
                     style={{
-                      marginTop: 8,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: syncStatusTextColor,
+                      borderRadius: 10,
+                      border: "1px solid rgba(139, 175, 244, 0.22)",
+                      background: "rgba(139, 175, 244, 0.07)",
+                      padding: "10px 12px",
                     }}
                   >
-                    {syncMsg}
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.06em", marginBottom: 8, textTransform: "uppercase" }}>Recent Updates</div>
+                    {VERSION_HISTORY.slice(0, 3).map((entry) => (
+                      <div key={entry.version} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2c2c2e" }}>
+                          v{entry.version} <span style={{ opacity: 0.45, fontWeight: 500, fontSize: 10 }}>{entry.date}</span>
+                        </div>
+                        <ul style={{ margin: "3px 0 0 14px", padding: 0, fontSize: 10.5, lineHeight: 1.4, color: "#48484a" }}>
+                          {entry.notes.map((note) => (
+                            <li key={note}>{note}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
                   </div>
                 ) : null}
+
+                {/* Cover Sizes section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(139, 175, 244, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ padding: "10px 14px 10px", borderBottom: "1px solid rgba(139, 175, 244, 0.14)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Cover Sizes</div>
+                  </div>
+                  <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                    {(
+                      [
+                        { label: "TV", value: posterSizeTv, min: 70, max: 125, step: 5, update: updatePosterSizeTv },
+                        { label: "Movies", value: posterSizeMovies, min: 70, max: 125, step: 5, update: updatePosterSizeMovies },
+                        { label: "Books", value: posterSizeBooks, min: 70, max: 125, step: 5, update: updatePosterSizeBooks },
+                        { label: "Games", value: posterSizeGames, min: 70, max: 125, step: 5, update: updatePosterSizeGames },
+                        { label: "Gap", value: coverGapSize, min: 0, max: 60, step: 1, update: updateCoverGapSize },
+                      ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                    ).map(({ label, value, min, max, step, update }) => (
+                      <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>{label}</span>
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={value}
+                          onChange={(e) => update(Number(e.target.value))}
+                          style={{ width: "100%", accentColor: "#8baff4" }}
+                        />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{value}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Logo section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(244, 153, 16, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    onClick={() => setSettingsOpen({ ...settingsOpen, logoSize: !settingsOpen.logoSize })}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      borderBottom: settingsOpen.logoSize ? "1px solid rgba(244, 153, 16, 0.14)" : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Logo</div>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.logoSize ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                      <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {settingsOpen.logoSize ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                      {(
+                        [
+                          { label: "Size", value: logoSize, min: 60, max: 500, step: 5, update: updateLogoSize },
+                          { label: "Top", value: logoTop, min: -50, max: 50, step: 1, update: updateLogoTop },
+                          { label: "Left", value: logoLeft, min: -50, max: 50, step: 1, update: updateLogoLeft },
+                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                      ).map(({ label, value, min, max, step, update }) => (
+                        <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                          <span style={{ fontWeight: 500 }}>{label}</span>
+                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Sync Status section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(139, 146, 14, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    onClick={() => setSettingsOpen({ ...settingsOpen, syncIcon: !settingsOpen.syncIcon })}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      borderBottom: settingsOpen.syncIcon ? "1px solid rgba(139, 146, 14, 0.14)" : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8b920e", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sync Status</div>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.syncIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                      <path d="M2 4l4 4 4-4" stroke="#8b920e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {settingsOpen.syncIcon ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                      {(
+                        [
+                          { label: "Size", value: syncIconSize, min: 8, max: 24, step: 1, update: updateSyncIconSize },
+                          { label: "Top", value: syncIconTop, min: -50, max: 50, step: 1, update: updateSyncIconTop },
+                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                      ).map(({ label, value, min, max, step, update }) => (
+                        <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                          <span style={{ fontWeight: 500 }}>{label}</span>
+                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#8b920e" }} />
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#5c6200", fontSize: 11 }}>{value}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Status Icon section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(139, 175, 244, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    onClick={() => setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon })}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      borderBottom: settingsOpen.statusIcon ? "1px solid rgba(139, 175, 244, 0.14)" : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Status Icon</div>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.statusIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                      <path d="M2 4l4 4 4-4" stroke="#8baff4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {settingsOpen.statusIcon ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Size</span>
+                        <input type="range" min={50} max={220} step={5} value={statusIconScale} onChange={(e) => updateStatusIconScale(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconScale}%</span>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Offset X</span>
+                        <input type="range" min={-30} max={30} step={1} value={statusIconOffsetX} onChange={(e) => updateStatusIconOffsetX(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconOffsetX}</span>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Offset Y</span>
+                        <input type="range" min={-30} max={30} step={1} value={statusIconOffsetY} onChange={(e) => updateStatusIconOffsetY(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconOffsetY}</span>
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Sidebar section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(244, 153, 16, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    onClick={() => setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar })}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      borderBottom: settingsOpen.sidebar ? "1px solid rgba(244, 153, 16, 0.14)" : "none",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sidebar</div>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.sidebar ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                      <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {settingsOpen.sidebar ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                      {(
+                        [
+                          { label: "Icon Size", value: iconSize, min: 8, max: 64, step: 1, update: updateIconSize },
+                          { label: "Font Size", value: sidebarFontSize, min: 10, max: 20, step: 1, update: updateSidebarFontSize },
+                          { label: "Icon Gap", value: sidebarGap, min: 4, max: 20, step: 1, update: updateSidebarGap },
+                          { label: "Header Sz", value: sidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateSidebarHeaderFontSize },
+                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                      ).map(({ label, value, min, max, step, update }) => (
+                        <label key={label} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                          <span style={{ fontWeight: 500 }}>{label}</span>
+                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
+                        </label>
+                      ))}
+                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Font Wt</span>
+                        <select value={sidebarFontWeight} onChange={(e) => updateSidebarFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
+                          <option value="300">Light (300)</option>
+                          <option value="400">Normal (400)</option>
+                          <option value="500">Medium (500)</option>
+                          <option value="600">Semi-Bold (600)</option>
+                          <option value="700">Bold (700)</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Header Wt</span>
+                        <select value={sidebarHeaderFontWeight} onChange={(e) => updateSidebarHeaderFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
+                          <option value="300">Light (300)</option>
+                          <option value="400">Normal (400)</option>
+                          <option value="500">Medium (500)</option>
+                          <option value="600">Semi-Bold (600)</option>
+                          <option value="700">Bold (700)</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Sync conflicts */}
                 {settingSyncConflicts.length ? (
                   <div
                     style={{
-                      marginTop: 10,
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid rgba(255, 122, 122, 0.45)",
-                      background: "linear-gradient(180deg, rgba(114, 35, 35, 0.7) 0%, rgba(82, 24, 24, 0.75) 100%)",
-                      color: "#ffd8d8",
+                      borderRadius: 10,
+                      border: "1px solid rgba(255, 100, 100, 0.35)",
+                      background: "rgba(255, 240, 240, 0.9)",
+                      padding: "10px 12px",
                     }}
                   >
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 4 }}>
-                      {settingSyncConflicts.length} setting sync conflict{settingSyncConflicts.length === 1 ? "" : "s"} detected
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#c0392b", letterSpacing: "0.05em", marginBottom: 4, textTransform: "uppercase" }}>
+                      {settingSyncConflicts.length} Sync Conflict{settingSyncConflicts.length === 1 ? "" : "s"}
                     </div>
-                    <div style={{ fontSize: 10, marginBottom: 8, lineHeight: 1.35, opacity: 0.9 }}>
-                      {`Local ${settingSyncConflicts.length === 1 ? "value" : "values"} for ${settingSyncConflicts[0]}${
-                        settingSyncConflicts.length > 1 ? ", etc." : ""
-                      } differ from this device's sheet values.`
-                    }
+                    <div style={{ fontSize: 10, marginBottom: 8, lineHeight: 1.4, color: "#7b2020" }}>
+                      {`Local ${settingSyncConflicts.length === 1 ? "value" : "values"} for ${settingSyncConflicts[0]}${settingSyncConflicts.length > 1 ? ", etc." : ""} differ from sheet values.`}
                     </div>
                     <button
                       onClick={clearSettingSyncConflicts}
                       style={{
                         width: "100%",
-                        border: "1px solid rgba(255, 185, 185, 0.68)",
-                        background: "linear-gradient(180deg, rgba(160, 56, 56, 0.9) 0%, rgba(130, 44, 44, 0.9) 100%)",
-                        color: "#fff",
+                        border: "1px solid rgba(192, 57, 43, 0.4)",
+                        background: "rgba(192, 57, 43, 0.12)",
+                        color: "#c0392b",
                         borderRadius: 7,
-                        padding: "7px 10px",
+                        padding: "6px 10px",
                         cursor: "pointer",
                         fontSize: 10,
                         fontWeight: 700,
@@ -12632,6 +12294,7 @@ export default function Page() {
                   </div>
                 ) : null}
 
+                </div>
               </div>,
               document.body
             ) : null}
@@ -14595,7 +14258,7 @@ export default function Page() {
                   style={{
                     position: "relative",
                     height: shelfHeights[shelfIndex] || shelfRowHeight,
-                    overflow: "hidden",
+                    overflow: isUpcomingView ? "visible" : "hidden",
                     backgroundImage: isSimpleShelfPresentation ? "none" : `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",

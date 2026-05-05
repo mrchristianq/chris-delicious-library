@@ -58,9 +58,9 @@ const TAG_STYLES: Record<Tag, { bg: string; color: string; border: string; label
     label: "Bug",
   },
   feature: {
-    bg: "rgba(0, 113, 227, 0.08)",
-    color: "#0055b3",
-    border: "rgba(0, 113, 227, 0.22)",
+    bg: "rgba(139, 175, 244, 0.14)",
+    color: "#4a7ed4",
+    border: "rgba(139, 175, 244, 0.38)",
     label: "Feature",
   },
 };
@@ -277,7 +277,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
         ) : null}
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#1d1d1f" }}>
-            Roadmap
+            <span style={{ color: "#8baff4" }}>Road</span>map
           </h1>
           {loading ? (
             <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontWeight: 500 }}>Syncing…</span>
@@ -322,7 +322,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
               style={{
                 padding: "9px 18px", borderRadius: 10,
                 border: "none",
-                background: inputText.trim() ? "#0071e3" : "rgba(0,0,0,0.08)",
+                background: inputText.trim() ? "#8baff4" : "rgba(0,0,0,0.08)",
                 color: inputText.trim() ? "#fff" : "rgba(0,0,0,0.28)",
                 fontSize: 13, fontWeight: 600, cursor: inputText.trim() ? "pointer" : "default",
                 whiteSpace: "nowrap", fontFamily: "inherit",
@@ -341,7 +341,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
         {/* Open items */}
         {openItems.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "rgba(0,0,0,0.38)", textTransform: "uppercase" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "#f49910", textTransform: "uppercase" }}>
               Open · {openItems.length}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -355,9 +355,9 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                   onDragEnd={handleDragEnd}
                   style={{
                     background: "rgba(255,255,255,0.82)",
-                    border: dragOverId === item.id ? "1px solid rgba(0,113,227,0.5)" : "1px solid rgba(0,0,0,0.08)",
+                    border: dragOverId === item.id ? "1px solid rgba(139,175,244,0.6)" : "1px solid rgba(0,0,0,0.08)",
                     borderRadius: 11,
-                    boxShadow: dragOverId === item.id ? "0 0 0 2px rgba(0,113,227,0.12)" : "0 1px 3px rgba(0,0,0,0.05)",
+                    boxShadow: dragOverId === item.id ? "0 0 0 2px rgba(139,175,244,0.18)" : "0 1px 3px rgba(0,0,0,0.05)",
                     overflow: "hidden",
                     transition: "border-color 100ms, box-shadow 100ms",
                   }}
@@ -373,7 +373,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                         onKeyDown={(e) => handleEditKeyDown(e, item.id)}
                         style={{
                           width: "100%", padding: "7px 11px", borderRadius: 8,
-                          border: "1px solid rgba(0,113,227,0.4)",
+                          border: "1px solid rgba(139,175,244,0.5)",
                           background: "rgba(255,255,255,0.95)",
                           fontSize: 13, fontWeight: 450, color: "#1d1d1f",
                           outline: "none", fontFamily: "inherit",
@@ -391,7 +391,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                             Cancel
                           </button>
                           <button type="button" onClick={() => commitEdit(item.id)}
-                            style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#0071e3", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+                            style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#8baff4", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
                             Save
                           </button>
                         </div>
@@ -453,14 +453,14 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
         {/* Completed items */}
         {completedItems.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "rgba(52,199,89,0.8)", textTransform: "uppercase" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: "#8b920e", textTransform: "uppercase" }}>
               Completed · {completedItems.length}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {completedItems.map((item) => (
                 <div key={item.id} style={{
-                  background: "rgba(52,199,89,0.05)",
-                  border: "1px solid rgba(52,199,89,0.14)",
+                  background: "rgba(139,146,14,0.04)",
+                  border: "1px solid rgba(139,146,14,0.13)",
                   borderRadius: 11,
                   overflow: "hidden",
                 }}>
@@ -474,7 +474,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                         onKeyDown={(e) => handleEditKeyDown(e, item.id)}
                         style={{
                           width: "100%", padding: "7px 11px", borderRadius: 8,
-                          border: "1px solid rgba(0,113,227,0.4)",
+                          border: "1px solid rgba(139,175,244,0.5)",
                           background: "rgba(255,255,255,0.95)",
                           fontSize: 13, fontWeight: 450, color: "#1d1d1f",
                           outline: "none", fontFamily: "inherit",
@@ -492,7 +492,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                             Cancel
                           </button>
                           <button type="button" onClick={() => commitEdit(item.id)}
-                            style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#0071e3", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+                            style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#8baff4", fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
                             Save
                           </button>
                         </div>
@@ -506,10 +506,10 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                         aria-label="Mark incomplete"
                         style={{
                           flexShrink: 0, width: 18, height: 18, borderRadius: 5,
-                          border: "1.5px solid rgba(52,199,89,0.6)",
-                          background: "rgba(52,199,89,0.18)", cursor: "pointer",
+                          border: "1.5px solid rgba(139,146,14,0.5)",
+                          background: "rgba(139,146,14,0.14)", cursor: "pointer",
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          padding: 0, color: "#34c759", fontSize: 10, fontWeight: 900,
+                          padding: 0, color: "#8b920e", fontSize: 10, fontWeight: 900,
                         }}
                       >✓</button>
                       <span style={{ flex: 1, fontSize: 13, fontWeight: 400, color: "rgba(0,0,0,0.38)", lineHeight: 1.45, textDecoration: "line-through" }}>
