@@ -10,8 +10,10 @@ type BookDetailsEditModalProps = {
   replaceCoverError?: string | null;
   onClose: () => void;
   onSave: (item: Record<string, unknown>, updates: Record<string, string>) => Promise<void> | void;
+  onSaved?: () => void;
   onReplaceCover: (item: Record<string, unknown>, file: File) => Promise<void> | void;
   onCoverModeChange: (item: Record<string, unknown>, mode: "custom" | "default") => void;
+  isNew?: boolean;
 };
 
 type FieldDef = {
@@ -162,8 +164,10 @@ export function BookDetailsEditModal({
   replaceCoverError,
   onClose,
   onSave,
+  onSaved,
   onReplaceCover,
   onCoverModeChange,
+  isNew,
 }: BookDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -419,7 +423,7 @@ export function BookDetailsEditModal({
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
-            <div style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>Edit Book</div>
+            <div style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>{isNew ? "Add Book" : "Edit Book"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {syncNotice && !syncDiff ? <span style={{ fontSize: 11, color: "#335480" }}>{syncNotice}</span> : null}
@@ -652,18 +656,21 @@ export function BookDetailsEditModal({
                       throw new Error("Custom mode requires a Custom URL (or upload a custom cover first).");
                     }
                     await Promise.resolve(onSave(item, nextValues));
-                    onCoverModeChange(
-                      {
-                        ...item,
-                        imageUrl: nextValues.imageUrl,
-                        customImageUrl: nextValues.customImageUrl,
-                        ImageURL: nextValues.imageUrl,
-                        CustomURL: nextValues.customImageUrl,
-                        CustomImageURL: nextValues.customImageUrl,
-                      },
-                      activeMode
-                    );
-                    setSaveSuccess("Saved to Google Sheet.");
+                    if (!isNew) {
+                      onCoverModeChange(
+                        {
+                          ...item,
+                          imageUrl: nextValues.imageUrl,
+                          customImageUrl: nextValues.customImageUrl,
+                          ImageURL: nextValues.imageUrl,
+                          CustomURL: nextValues.customImageUrl,
+                          CustomImageURL: nextValues.customImageUrl,
+                        },
+                        activeMode
+                      );
+                    }
+                    onSaved?.();
+                    onClose();
                   } catch (error: unknown) {
                     const message = error instanceof Error ? error.message : "Failed to save book changes";
                     setSaveError(message);
@@ -673,7 +680,7 @@ export function BookDetailsEditModal({
                 }}
                 style={{ border: "1px solid rgba(27,83,217,0.5)", borderRadius: 9, padding: "8px 12px", background: "linear-gradient(180deg, rgba(86,150,255,0.95) 0%, rgba(45,109,237,0.98) 100%)", color: "#f6f9ff", fontSize: 12, fontWeight: 750, cursor: "pointer" }}
               >
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving ? "Adding…" : isNew ? "Add to Library" : "Save Changes"}
               </button>
             </div>
           </div>

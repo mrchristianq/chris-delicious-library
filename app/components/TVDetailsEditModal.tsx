@@ -7,6 +7,8 @@ type TVDetailsEditModalProps = {
   item: Record<string, unknown> | null;
   onClose: () => void;
   onSave: (item: Record<string, unknown>, updates: Record<string, string>) => Promise<void> | void;
+  onSaved?: () => void;
+  isNew?: boolean;
 };
 
 type FieldDef = {
@@ -171,7 +173,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: string
   return <input type={field.isDate ? "date" : "text"} value={value} onChange={(e) => onChange(e.target.value)} style={INPUT_STYLE} />;
 }
 
-export function TVDetailsEditModal({ open, item, onClose, onSave }: TVDetailsEditModalProps) {
+export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew }: TVDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -217,7 +219,8 @@ export function TVDetailsEditModal({ open, item, onClose, onSave }: TVDetailsEdi
     setSaveSuccess(null);
     try {
       await Promise.resolve(onSave(item, values));
-      setSaveSuccess("Saved to Google Sheet.");
+      onSaved?.();
+      onClose();
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : "Failed to save.");
     } finally {
@@ -331,7 +334,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave }: TVDetailsEdi
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
-            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>Edit TV Show</span>
+            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>{isNew ? "Add TV Show" : "Edit TV Show"}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {syncNotice && !syncDiff ? (
@@ -522,7 +525,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave }: TVDetailsEdi
                 color: "#f6f9ff", fontSize: 12, fontWeight: 750,
                 cursor: isSaving ? "default" : "pointer",
               }}>
-                {isSaving ? "Saving…" : "Save Changes"}
+                {isSaving ? "Adding…" : isNew ? "Add to Library" : "Save Changes"}
               </button>
             </div>
           </div>

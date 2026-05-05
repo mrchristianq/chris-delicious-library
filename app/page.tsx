@@ -9,7 +9,7 @@ import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEve
 import { createPortal } from "react-dom";
 import Papa from "papaparse";
 import { MediaModal } from "./components/MediaModal";
-import { AddItemModal, type AddItemPayload } from "./components/AddItemModal";
+import { AddItemModal, type AddExtendedType } from "./components/AddItemModal";
 import { StatisticsView } from "./components/StatisticsView";
 import { RoadmapView } from "./components/RoadmapView";
 import { BookDetailsPage } from "./components/BookDetailsPage";
@@ -19,6 +19,7 @@ import { GameDetailsPage } from "./components/GameDetailsPage";
 import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 import { MovieDetailsEditModal } from "./components/MovieDetailsEditModal";
 import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
+import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -2003,6 +2004,7 @@ export default function Page() {
     Record<string, { value: string; category: string; description: string }>
   >({});
   const settingsSheetFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const r2PrefsLoadedRef = useRef(false);
   const suppressCaseClickRef = useRef(false);
   const wishlistPointerDragRef = useRef<WishlistPointerDrag | null>(null);
   const wishlistCaseNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -3130,6 +3132,15 @@ export default function Page() {
   const [tvDetailsEditOpen, setTvDetailsEditOpen] = useState(false);
   const [tvDetailPalette, setTvDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [gameDetailItem, setGameDetailItem] = useState<any>(null);
+  const [gameDetailsEditOpen, setGameDetailsEditOpen] = useState(false);
+  const [gameDetailEditItem, setGameDetailEditItem] = useState<any>(null);
+  const [saveToast, setSaveToast] = useState(false);
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerSaveToast = () => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
+    setSaveToast(true);
+    saveToastTimer.current = setTimeout(() => setSaveToast(false), 5000);
+  };
   const [gameDetailPalette, setGameDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [bookDetailPalette, setBookDetailPalette] = useState<{ key: string; start: string; end: string } | null>(null);
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
@@ -3150,8 +3161,9 @@ export default function Page() {
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [addingItem, setAddingItem] = useState(false);
-  const [addSaveError, setAddSaveError] = useState<string | null>(null);
+  const [isAddingNewItem, setIsAddingNewItem] = useState(false);
+  const [addNewItemType, setAddNewItemType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
+  const [addSuccessMsg, setAddSuccessMsg] = useState<string | null>(null);
   const sidebarIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarIconTargetKeyRef = useRef<string | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
@@ -4862,290 +4874,159 @@ export default function Page() {
     setRefreshNonce((n) => n + 1);
   };
 
-  const handleAddLibraryItem = useCallback(
-    async (payload: AddItemPayload) => {
-      const { type, values } = payload;
-      const title = safeStr(values.title);
-      if (!title) {
-        throw new Error("Title is required.");
-      }
+  // ── Add-new flow: open the appropriate edit modal with prefilled data ──────────
+  const handleAddItemSelectResult = useCallback((type: AddExtendedType, data: Record<string, unknown>, bookFormat: string) => {
+    setAddModalOpen(false);
+    const mediaType = (type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
+    setIsAddingNewItem(true);
+    setAddNewItemType(mediaType === "book" ? "book" : mediaType);
+    const prefill = bookFormat && mediaType === "book" ? { ...data, type: bookFormat } : data;
+    if (mediaType === "movie") {
+      setMovieDetailItem(prefill);
+      setMovieDetailsEditOpen(true);
+    } else if (mediaType === "tv") {
+      setTvDetailItem(prefill);
+      setTvDetailsEditOpen(true);
+    } else if (mediaType === "book") {
+      setBookDetailItem(prefill);
+      setBookDetailsEditOpen(true);
+    } else if (mediaType === "game") {
+      setModalItem(prefill as any);
+      setModalOpen(true);
+    }
+  }, []);
 
-      setAddingItem(true);
-      setAddSaveError(null);
+  const handleAddItemManually = useCallback((type: AddExtendedType, bookFormat: string) => {
+    setAddModalOpen(false);
+    const mediaType = (type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
+    setIsAddingNewItem(true);
+    setAddNewItemType(mediaType === "book" ? "book" : mediaType);
+    const prefill: Record<string, unknown> = mediaType === "book" ? { type: bookFormat } : {};
+    if (mediaType === "movie") {
+      setMovieDetailItem(prefill);
+      setMovieDetailsEditOpen(true);
+    } else if (mediaType === "tv") {
+      setTvDetailItem(prefill);
+      setTvDetailsEditOpen(true);
+    } else if (mediaType === "book") {
+      setBookDetailItem(prefill);
+      setBookDetailsEditOpen(true);
+    } else if (mediaType === "game") {
+      setModalItem(prefill as any);
+      setModalOpen(true);
+    }
+  }, []);
 
-      try {
-        if (type === "book") {
-          if (!booksWriteUrl) {
-            throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
-          }
-          await postSheetWrite(
-            booksWriteUrl,
-            {
-              action: "addBook",
-              values: {
-                Title: title,
-                Subtitle: safeStr(values.subtitle),
-                Series: safeStr(values.series),
-                Author: safeStr(values.author),
-                Ownership: safeStr(values.ownership),
-                Type: safeStr(values.type),
-                Status: safeStr(values.status),
-                CompletedDate: safeStr(values.completedDate),
-                isbn: safeStr(values.isbn),
-                ReleaseDate: safeStr(values.releaseDate),
-                description: safeStr(values.description),
-                ImageURL: safeStr(values.imageUrl),
-                userRating: safeStr(values.userRating),
-                "My Rating": safeStr(values.myRating),
-                pages: safeStr(values.pages),
-                audiobookDuration: safeStr(values.audiobookDuration),
-                genre: safeStr(values.genre),
-                tags: safeStr(values.tags),
-                OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
-                GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
-              },
-            },
-            "Failed to add book"
-          );
-          setBookRows((prev) => [
-            ...prev,
-            {
-              Title: title,
-              Subtitle: safeStr(values.subtitle),
-              Series: safeStr(values.series),
-              Author: safeStr(values.author),
-              Ownership: safeStr(values.ownership),
-              Type: safeStr(values.type),
-              Status: safeStr(values.status),
-              CompletedDate: safeStr(values.completedDate),
-              isbn: safeStr(values.isbn),
-              ReleaseDate: safeStr(values.releaseDate),
-              description: safeStr(values.description),
-              ImageURL: safeStr(values.imageUrl),
-              userRating: safeStr(values.userRating),
-              "My Rating": safeStr(values.myRating),
-              pages: safeStr(values.pages),
-              audiobookDuration: safeStr(values.audiobookDuration),
-              genre: safeStr(values.genre),
-              tags: safeStr(values.tags),
-              OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
-              GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
-            },
-          ]);
-          setNav("books");
-        } else if (type === "tv") {
-          if (!showsWriteUrl) {
-            throw new Error(
-              "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
-            );
-          }
-          const normalizedWatchStatus = normalizeShowWatchStatusForSheet(values.watchStatus);
-          await postSheetWrite(
-            showsWriteUrl,
-            {
-              action: "addShow",
-              values: {
-                Title: title,
-                Year: safeStr(values.year),
-                TMDB_ID: safeStr(values.tmdbId),
-                FirstAirDate: safeStr(values.firstAirDate),
-                LastAirDate: safeStr(values.lastAirDate),
-                "Date Completed": safeStr(values.dateCompleted),
-                CompletedDate: safeStr(values.dateCompleted),
-                NumberOfSeasons: safeStr(values.numberOfSeasons),
-                NumberOfEpisodes: safeStr(values.numberOfEpisodes),
-                WatchStatus: normalizedWatchStatus,
-                Status: safeStr(values.showStatus),
-                Networks: safeStr(values.networks),
-                StreamingUS: safeStr(values.streamingUS),
-                Genres: safeStr(values.genres),
-                TMDB_Rating: safeStr(values.tmdbRating),
-                MyRating: safeStr(values.myRating),
-                BackdropURL: safeStr(values.backdropUrl),
-                Overview: safeStr(values.overview),
-                Ownership: safeStr(values.ownership),
-                Tags: safeStr(values.tags),
-                Tag: safeStr(values.tags),
-                PosterURL: safeStr(values.posterUrl),
-              },
-            },
-            "Failed to add show"
-          );
-          setTvRows((prev) => [
-            ...prev,
-            {
-              Title: title,
-              Year: safeStr(values.year),
-              TMDB_ID: safeStr(values.tmdbId),
-              FirstAirDate: safeStr(values.firstAirDate),
-              LastAirDate: safeStr(values.lastAirDate),
-              "Date Completed": safeStr(values.dateCompleted),
-              CompletedDate: safeStr(values.dateCompleted),
-              NumberOfSeasons: safeStr(values.numberOfSeasons),
-              NumberOfEpisodes: safeStr(values.numberOfEpisodes),
-              WatchStatus: normalizedWatchStatus,
-              Status: safeStr(values.showStatus),
-              Networks: safeStr(values.networks),
-              StreamingUS: safeStr(values.streamingUS),
-              Genres: safeStr(values.genres),
-              TMDB_Rating: safeStr(values.tmdbRating),
-              MyRating: safeStr(values.myRating),
-              BackdropURL: safeStr(values.backdropUrl),
-              Overview: safeStr(values.overview),
-              Ownership: safeStr(values.ownership),
-              Tags: safeStr(values.tags),
-              Tag: safeStr(values.tags),
-              PosterURL: safeStr(values.posterUrl),
-            },
-          ]);
-          setNav("tv");
-        } else if (type === "movie") {
-          if (!moviesWriteUrl) {
-            throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
-          }
-          await postSheetWrite(
-            moviesWriteUrl,
-            {
-              action: "addMovie",
-              values: {
-                Title: title,
-                Year: safeStr(values.year),
-                MyRating: safeStr(values.myRating),
-                TMDB_Rating: safeStr(values.tmdbRating),
-                TMDB_ID: safeStr(values.tmdbId),
-                "Watch Status": safeStr(values.watchStatus),
-                WatchDate: safeStr(values.watchDate),
-                Tags: safeStr(values.tags),
-                ReleaseDate: safeStr(values.releaseDate),
-                Runtime: safeStr(values.runtime),
-                Status: safeStr(values.status),
-                Genres: safeStr(values.genres),
-                Overview: safeStr(values.overview),
-                PosterURL: safeStr(values.posterUrl),
-                BackdropURL: safeStr(values.backdropUrl),
-              },
-            },
-            "Failed to add movie"
-          );
-          setMovieRows((prev) => [
-            ...prev,
-            {
-              Title: title,
-              Year: safeStr(values.year),
-              MyRating: safeStr(values.myRating),
-              TMDB_Rating: safeStr(values.tmdbRating),
-              TMDB_ID: safeStr(values.tmdbId),
-              "Watch Status": safeStr(values.watchStatus),
-              WatchDate: safeStr(values.watchDate),
-              Tags: safeStr(values.tags),
-              ReleaseDate: safeStr(values.releaseDate),
-              Runtime: safeStr(values.runtime),
-              Status: safeStr(values.status),
-              Genres: safeStr(values.genres),
-              Overview: safeStr(values.overview),
-              PosterURL: safeStr(values.posterUrl),
-              BackdropURL: safeStr(values.backdropUrl),
-            },
-          ]);
-          setNav("movies");
-        } else {
-          if (!gamesWriteUrl) {
-            throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
-          }
-          const dateAdded = safeStr(values.dateAdded) || new Date().toISOString().slice(0, 10);
-          const releaseDatePrimary = safeStr(values.releaseDate) || safeStr(values.releaseDateAlt);
-          const releaseDateAlt = safeStr(values.releaseDateAlt) || releaseDatePrimary;
-          await postSheetWrite(
-            gamesWriteUrl,
-            {
-              action: "addGame",
-              values: {
-                Title: title,
-                Cover: safeStr(values.cover),
-                Platform: safeStr(values.platform),
-                Status: safeStr(values.status),
-                Name: safeStr(values.name) || title,
-                ReleaseDate: releaseDatePrimary,
-                "Release Date": releaseDateAlt,
-                Platforms: safeStr(values.platforms),
-                CoverURL: safeStr(values.coverUrl),
-                Rating: safeStr(values.rating),
-                "IGDB Rating": safeStr(values.igdbRating),
-                "My Rating": safeStr(values.myRating),
-                Ownership: safeStr(values.ownership),
-                Format: safeStr(values.format),
-                Backlog: safeStr(values.backlog),
-                Completed: safeStr(values.completed),
-                "Date Completed": safeStr(values.dateCompleted),
-                "Year Played": safeStr(values.yearPlayed),
-                "Date Added": dateAdded,
-                Description: safeStr(values.description),
-                Genres: safeStr(values.genres),
-                "Hours Played": safeStr(values.hoursPlayed),
-                CoverCachedAt: safeStr(values.coverCachedAt),
-                Developer: safeStr(values.developer),
-                ScreensotsURL: safeStr(values.screensotsUrl),
-                WishlistOrder: safeStr(values.wishlistOrder),
-                QueuedOrder: safeStr(values.queuedOrder),
-                IGDB_ID: safeStr(values.igdbId),
-                IGDB_ID_Override: safeStr(values.igdbIdOverride),
-                LocalCoverURL: safeStr(values.localCoverUrl),
-                Tag: safeStr(values.tags),
-              },
-            },
-            "Failed to add game"
-          );
-          setGameRows((prev) => [
-            ...prev,
-            {
-              Title: title,
-              Cover: safeStr(values.cover),
-              Platform: safeStr(values.platform),
-              Status: safeStr(values.status),
-              Name: safeStr(values.name) || title,
-              ReleaseDate: releaseDatePrimary,
-              "Release Date": releaseDateAlt,
-              Platforms: safeStr(values.platforms),
-              CoverURL: safeStr(values.coverUrl),
-              Rating: safeStr(values.rating),
-              "IGDB Rating": safeStr(values.igdbRating),
-              "My Rating": safeStr(values.myRating),
-              Ownership: safeStr(values.ownership),
-              Format: safeStr(values.format),
-              Backlog: safeStr(values.backlog),
-              Completed: safeStr(values.completed),
-              "Date Completed": safeStr(values.dateCompleted),
-              "Year Played": safeStr(values.yearPlayed),
-              "Date Added": dateAdded,
-              Description: safeStr(values.description),
-              Genres: safeStr(values.genres),
-              "Hours Played": safeStr(values.hoursPlayed),
-              CoverCachedAt: safeStr(values.coverCachedAt),
-              Developer: safeStr(values.developer),
-              ScreensotsURL: safeStr(values.screensotsUrl),
-              WishlistOrder: safeStr(values.wishlistOrder),
-              QueuedOrder: safeStr(values.queuedOrder),
-              IGDB_ID: safeStr(values.igdbId),
-              IGDB_ID_Override: safeStr(values.igdbIdOverride),
-              LocalCoverURL: safeStr(values.localCoverUrl),
-              Tag: safeStr(values.tags),
-            },
-          ]);
-          setNav("games");
-        }
+  // Shows a success toast and navigates to the newly-added item's detail page.
+  const showAddSuccess = useCallback((label: string, newItem: Record<string, unknown>) => {
+    setAddSuccessMsg(`${label} added to your library!`);
+    setTimeout(() => setAddSuccessMsg(null), 3500);
+    setIsAddingNewItem(false);
+    setAddNewItemType(null);
+    openSelectedItem(newItem);
+  }, [openSelectedItem]);
 
-        setAddModalOpen(false);
-        setAddSaveError(null);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Failed to add item";
-        setAddSaveError(message);
-        throw error;
-      } finally {
-        setAddingItem(false);
-      }
-    },
-    [booksWriteUrl, gamesWriteUrl, moviesWriteUrl, postSheetWrite, showsWriteUrl]
-  );
+  // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
+  // but then navigates to the new item's detail page instead of just switching nav tabs.
+  const handleSaveNewMovie = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
+    if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
+    const title = safeStr(values.title);
+    if (!title) throw new Error("Title is required.");
+    const row: Record<string, string> = {
+      Title: title, Year: safeStr(values.year),
+      MyRating: safeStr(values.myRating), TMDB_Rating: safeStr(values.tmdbRating),
+      TMDB_ID: safeStr(values.tmdbId), "Watch Status": safeStr(values.watchStatus) || "Backlog",
+      WatchDate: safeStr(values.watchDate), Tags: safeStr(values.tags),
+      ReleaseDate: safeStr(values.releaseDate), Runtime: safeStr(values.runtime),
+      Status: safeStr(values.status), Genres: safeStr(values.genres),
+      Overview: safeStr(values.overview), PosterURL: safeStr(values.posterUrl),
+      BackdropURL: safeStr(values.backdropUrl),
+    };
+    await postSheetWrite(moviesWriteUrl, { action: "addMovie", values: row }, "Failed to add movie");
+    setMovieRows((prev) => [...prev, row]);
+    setNav("movies");
+    setMovieDetailsEditOpen(false);
+    showAddSuccess("Movie", row);
+  }, [moviesWriteUrl, postSheetWrite, showAddSuccess]);
+
+  const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
+    if (!showsWriteUrl) throw new Error("Shows write URL is not configured.");
+    const title = safeStr(values.title);
+    if (!title) throw new Error("Title is required.");
+    const watchStatus = normalizeShowWatchStatusForSheet(values.watchStatus);
+    const row: Record<string, string> = {
+      Title: title, Year: safeStr(values.year), TMDB_ID: safeStr(values.tmdbId),
+      FirstAirDate: safeStr(values.firstAirDate), LastAirDate: safeStr(values.lastAirDate),
+      "Date Completed": safeStr(values.dateCompleted), CompletedDate: safeStr(values.dateCompleted),
+      NumberOfSeasons: safeStr(values.numberOfSeasons), NumberOfEpisodes: safeStr(values.numberOfEpisodes),
+      WatchStatus: watchStatus, Status: safeStr(values.showStatus),
+      Networks: safeStr(values.networks), StreamingUS: safeStr(values.streamingUS),
+      Genres: safeStr(values.genres), TMDB_Rating: safeStr(values.tmdbRating),
+      MyRating: safeStr(values.myRating), BackdropURL: safeStr(values.backdropUrl),
+      Overview: safeStr(values.overview), Tags: safeStr(values.tags),
+      Tag: safeStr(values.tags), PosterURL: safeStr(values.posterUrl),
+    };
+    await postSheetWrite(showsWriteUrl, { action: "addShow", values: row }, "Failed to add show");
+    setTvRows((prev) => [...prev, row]);
+    setNav("tv");
+    setTvDetailsEditOpen(false);
+    showAddSuccess("TV Show", row);
+  }, [showsWriteUrl, postSheetWrite, showAddSuccess]);
+
+  const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
+    if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
+    const title = safeStr(values.title);
+    if (!title) throw new Error("Title is required.");
+    const row: Record<string, string> = {
+      Title: title, Subtitle: safeStr(values.subtitle), Series: safeStr(values.series),
+      Author: safeStr(values.author), Ownership: safeStr(values.ownership) || "Owned",
+      Type: safeStr(values.type) || "Physical", Status: safeStr(values.status) || "Backlog",
+      CompletedDate: safeStr(values.completedDate), isbn: safeStr(values.isbn),
+      ReleaseDate: safeStr(values.releaseDate), description: safeStr(values.description),
+      ImageURL: safeStr(values.imageUrl), userRating: safeStr(values.userRating),
+      "My Rating": safeStr(values.myRating), pages: safeStr(values.pages),
+      audiobookDuration: safeStr(values.audiobookDuration), genre: safeStr(values.genre),
+      tags: safeStr(values.tags), OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
+      GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
+    };
+    await postSheetWrite(booksWriteUrl, { action: "addBook", values: row }, "Failed to add book");
+    setBookRows((prev) => [...prev, row]);
+    setNav("books");
+    setBookDetailsEditOpen(false);
+    showAddSuccess("Book", row);
+  }, [booksWriteUrl, postSheetWrite, showAddSuccess]);
+
+  const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>) => {
+    if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
+    const title = safeStr(values.title);
+    if (!title) throw new Error("Title is required.");
+    const dateAdded = safeStr(values.dateAdded) || new Date().toISOString().slice(0, 10);
+    const releaseDatePrimary = safeStr(values.releaseDate) || safeStr(values.releaseDateAlt);
+    const releaseDateAlt = safeStr(values.releaseDateAlt) || releaseDatePrimary;
+    const row: Record<string, string> = {
+      Title: title, Cover: safeStr(values.cover),
+      Platform: safeStr(values.platform), Status: safeStr(values.status),
+      Name: safeStr(values.name) || title, ReleaseDate: releaseDatePrimary,
+      "Release Date": releaseDateAlt, Platforms: safeStr(values.platforms),
+      CoverURL: safeStr(values.coverUrl), Rating: safeStr(values.rating),
+      "IGDB Rating": safeStr(values.igdbRating), "My Rating": safeStr(values.myRating),
+      Ownership: safeStr(values.ownership), Format: safeStr(values.format),
+      Backlog: safeStr(values.backlog), Completed: safeStr(values.completed),
+      "Date Completed": safeStr(values.dateCompleted), "Year Played": safeStr(values.yearPlayed),
+      "Date Added": dateAdded, Description: safeStr(values.description),
+      Genres: safeStr(values.genres), "Hours Played": safeStr(values.hoursPlayed),
+      CoverCachedAt: safeStr(values.coverCachedAt), Developer: safeStr(values.developer),
+      ScreensotsURL: safeStr(values.screensotsUrl), WishlistOrder: safeStr(values.wishlistOrder),
+      QueuedOrder: safeStr(values.queuedOrder), IGDB_ID: safeStr(values.igdbId),
+      IGDB_ID_Override: safeStr(values.igdbIdOverride), LocalCoverURL: safeStr(values.localCoverUrl),
+      Tag: safeStr(values.tags),
+    };
+    await postSheetWrite(gamesWriteUrl, { action: "addGame", values: row }, "Failed to add game");
+    setGameRows((prev) => [...prev, row]);
+    setNav("games");
+    setModalOpen(false);
+    showAddSuccess("Game", row);
+  }, [gamesWriteUrl, postSheetWrite, showAddSuccess]);
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
@@ -5586,6 +5467,7 @@ export default function Page() {
         if (!data.ok || !data.prefs) return;
         if (typeof data.prefs.showStatusIndicators === "boolean") {
           setShowStatusIndicators(data.prefs.showStatusIndicators);
+          r2PrefsLoadedRef.current = true;
         }
       })
       .catch(() => {});
@@ -5635,7 +5517,9 @@ export default function Page() {
     setCounterLabelLeft(getSetting("counterLabelLeft", 0));
     setCounterTop(getSetting("counterTop", 0));
     setCounterLeft(getSetting("counterLeft", 0));
-    setShowStatusIndicators(getSetting("showStatusIndicators", false));
+    if (!r2PrefsLoadedRef.current) {
+      setShowStatusIndicators(getSetting("showStatusIndicators", false));
+    }
 
     const loadedSmartLists = parseSmartListsSetting(getSetting(SMART_LISTS_SETTING_KEY, "[]"));
     setCustomSmartLists(loadedSmartLists);
@@ -6613,6 +6497,30 @@ export default function Page() {
       return true;
     }) as Game[];
   }, [gameRows]);
+
+  const gameRelated = useMemo(() => {
+    if (!gameDetailItem) return { games: [] as Record<string, unknown>[], label: "Similar Games" };
+    const developer = safeStr(gameDetailItem?.developer);
+    const gameTitle = safeStr(gameDetailItem?.title);
+    const genres = safeStr(gameDetailItem?.genres);
+    if (developer) {
+      const byDeveloper = allGames
+        .filter(g => safeStr(g?.developer) === developer && safeStr(g?.title) !== gameTitle)
+        .slice(0, 20);
+      if (byDeveloper.length > 0) return { games: byDeveloper as unknown as Record<string, unknown>[], label: `More from ${developer}` };
+    }
+    const genreSet = new Set(genres.split(/[,|]/).map(g => g.trim().toLowerCase()).filter(Boolean));
+    if (genreSet.size > 0) {
+      const similar = allGames
+        .filter(g => {
+          if (safeStr(g?.title) === gameTitle) return false;
+          return safeStr(g?.genres).split(/[,|]/).some(g2 => genreSet.has(g2.trim().toLowerCase()));
+        })
+        .slice(0, 20);
+      if (similar.length > 0) return { games: similar as unknown as Record<string, unknown>[], label: "Similar Games" };
+    }
+    return { games: [] as Record<string, unknown>[], label: "Similar Games" };
+  }, [gameDetailItem, allGames]);
 
   const indexedBooks = useMemo(
     () =>
@@ -10396,7 +10304,6 @@ export default function Page() {
                 setSortPopupOpen(false);
                 setSettingsPopupOpen(false);
                 setShowVersionNotes(false);
-                setAddSaveError(null);
                 setAddModalOpen(true);
                 setMobileSettingsOpen(false);
                 setMobileSidebarOpen(false);
@@ -14057,9 +13964,12 @@ export default function Page() {
               isMobileLayout={isMobileLayout}
               usePageBackground={Boolean(activeGameDetailBackground)}
               onBack={() => setGameDetailItem(null)}
-              onEdit={(item) => { setGameDetailItem(null); setModalItem(buildItemWithCoverSelection(item, coverOverrides)); setModalOpen(true); }}
+              onEdit={(item) => { setGameDetailEditItem(buildItemWithCoverSelection(item, coverOverrides)); setGameDetailsEditOpen(true); }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleGameDetailPaletteChange}
+              relatedGames={gameRelated.games}
+              relatedGamesLabel={gameRelated.label}
+              onSelectRelatedGame={(g) => setGameDetailItem(g)}
             />
           ) : (
           <>
@@ -14598,7 +14508,6 @@ export default function Page() {
                         setSortPopupOpen(false);
                         setSettingsPopupOpen(false);
                         setShowVersionNotes(false);
-                        setAddSaveError(null);
                         setAddModalOpen(true);
                       }}
                       title="Add new item"
@@ -15515,22 +15424,30 @@ export default function Page() {
         onChange={handleSidebarIconFileChange}
       />
 
-      {/* MediaModal for cover/info popup - overlays app */}
       <AddItemModal
         open={addModalOpen}
-        onClose={() => {
-          if (addingItem) return;
-          setAddModalOpen(false);
-          setAddSaveError(null);
-        }}
-        onSave={handleAddLibraryItem}
-        isSaving={addingItem}
-        saveError={addSaveError}
-        gamePlatformOptions={gamePlatformOptions}
-        gameOwnershipOptions={gameOwnershipOptions}
-        gameFormatOptions={gameFormatOptions}
-        gameStatusOptions={gameStatusOptions}
+        onClose={() => setAddModalOpen(false)}
+        onSelectResult={handleAddItemSelectResult}
+        onAddManually={handleAddItemManually}
       />
+
+      {/* Add-success toast */}
+      {addSuccessMsg && (
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          zIndex: 9999, pointerEvents: "none",
+          background: "linear-gradient(135deg, rgba(34,197,94,0.95) 0%, rgba(22,163,74,0.97) 100%)",
+          color: "#fff", borderRadius: 14, padding: "12px 22px",
+          fontSize: 13.5, fontWeight: 700, letterSpacing: 0.1,
+          boxShadow: "0 8px 24px rgba(22,163,74,0.36), 0 2px 8px rgba(0,0,0,0.18)",
+          border: "1px solid rgba(255,255,255,0.35)",
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+          display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
+        }}>
+          <span style={{ fontSize: 16 }}>✓</span>
+          {addSuccessMsg}
+        </div>
+      )}
 
       {/* MediaModal for cover/info popup - overlays app */}
       <MediaModal
@@ -15563,28 +15480,79 @@ export default function Page() {
           if (uploadingCoverForKey) return;
           setBookDetailsEditOpen(false);
           setCoverUploadError(null);
+          if (isAddingNewItem) { setIsAddingNewItem(false); setAddNewItemType(null); }
         }}
-        onSave={handleSaveBookEdits}
+        onSave={isAddingNewItem && addNewItemType === "book" ? handleSaveNewBook : handleSaveBookEdits}
+        onSaved={triggerSaveToast}
         onReplaceCover={handleReplaceCover}
         onCoverModeChange={handleBookDetailsCoverModeChange}
         popupCoverMode={bookDetailItem ? getPopupCoverModeForItem(bookDetailItem) : undefined}
         isReplacingCover={Boolean(bookDetailItem && uploadingCoverForKey === getMediaItemKey(bookDetailItem))}
         replaceCoverError={coverUploadError}
+        isNew={isAddingNewItem && addNewItemType === "book"}
       />
 
       <MovieDetailsEditModal
         open={movieDetailsEditOpen && Boolean(movieDetailItem)}
         item={movieDetailItem}
-        onClose={() => setMovieDetailsEditOpen(false)}
-        onSave={handleSaveMovieEdits}
+        onClose={() => {
+          setMovieDetailsEditOpen(false);
+          if (isAddingNewItem) { setIsAddingNewItem(false); setAddNewItemType(null); }
+        }}
+        onSave={isAddingNewItem && addNewItemType === "movie" ? handleSaveNewMovie : handleSaveMovieEdits}
+        onSaved={triggerSaveToast}
+        isNew={isAddingNewItem && addNewItemType === "movie"}
       />
 
       <TVDetailsEditModal
         open={tvDetailsEditOpen && Boolean(tvDetailItem)}
         item={tvDetailItem}
-        onClose={() => setTvDetailsEditOpen(false)}
-        onSave={handleSaveShowEdits}
+        onClose={() => {
+          setTvDetailsEditOpen(false);
+          if (isAddingNewItem) { setIsAddingNewItem(false); setAddNewItemType(null); }
+        }}
+        onSave={isAddingNewItem && addNewItemType === "tv" ? handleSaveNewTV : handleSaveShowEdits}
+        onSaved={triggerSaveToast}
+        isNew={isAddingNewItem && addNewItemType === "tv"}
       />
+
+      <GameDetailsEditModal
+        open={gameDetailsEditOpen && Boolean(gameDetailEditItem)}
+        item={gameDetailEditItem}
+        onClose={() => setGameDetailsEditOpen(false)}
+        onSave={handleSaveGameEdits}
+        onSaved={triggerSaveToast}
+        statusOptions={gameStatusOptions}
+        platformOptions={gamePlatformOptions}
+        ownershipOptions={gameOwnershipOptions}
+        formatOptions={gameFormatOptions}
+      />
+
+      {/* Save toast */}
+      <div style={{
+        position: "fixed", bottom: 28, left: "50%", transform: `translateX(-50%) translateY(${saveToast ? 0 : 24}px)`,
+        zIndex: 99999,
+        pointerEvents: "none",
+        opacity: saveToast ? 1 : 0,
+        transition: "opacity 220ms ease, transform 220ms ease",
+      }}>
+        <div style={{
+          background: "rgba(18,24,35,0.94)",
+          backdropFilter: "blur(18px)",
+          WebkitBackdropFilter: "blur(18px)",
+          border: "1px solid rgba(255,255,255,0.13)",
+          borderRadius: 14,
+          padding: "12px 22px",
+          display: "flex", alignItems: "center", gap: 10,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.38)",
+          whiteSpace: "nowrap",
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", letterSpacing: "0.01em" }}>Saved successfully</span>
+        </div>
+      </div>
 
       {/* Mobile layout: sidebar collapses above */}
       <style>{`
