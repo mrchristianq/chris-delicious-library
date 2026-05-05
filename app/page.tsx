@@ -2095,6 +2095,10 @@ export default function Page() {
     setOpenSection(null);
     setSortField("ReleaseDate");
     setSortOrder("Asc");
+    setBookDetailItem(null);
+    setMovieDetailItem(null);
+    setTvDetailItem(null);
+    setGameDetailItem(null);
   }, []);
 
   const openMediaSidebar = (section: "books" | "movies" | "tv" | "games") => {
@@ -14447,9 +14451,9 @@ export default function Page() {
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        height: 24,
-                        minWidth: 18,
-                        padding: "3px 5px",
+                        height: 30,
+                        minWidth: 24,
+                        padding: "5px 8px",
                         background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
                         border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                         borderRadius: 9,
@@ -14458,7 +14462,7 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="4" y1="6" x2="14" y2="6"></line>
                         <circle cx="17" cy="6" r="2"></circle>
                         <line x1="20" y1="6" x2="21" y2="6"></line>
@@ -14516,9 +14520,9 @@ export default function Page() {
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        height: 24,
-                        minWidth: 18,
-                        padding: "3px 5px",
+                        height: 30,
+                        minWidth: 24,
+                        padding: "5px 8px",
                         background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
                         border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                         borderRadius: 9,
@@ -14527,7 +14531,7 @@ export default function Page() {
                         cursor: "pointer",
                       }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                       </svg>
@@ -14541,9 +14545,9 @@ export default function Page() {
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          height: 24,
-                          minWidth: 18,
-                          padding: "3px 5px",
+                          height: 30,
+                          minWidth: 24,
+                          padding: "5px 8px",
                           background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
                           border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
                           borderRadius: 9,
@@ -14552,7 +14556,7 @@ export default function Page() {
                           cursor: "pointer",
                         }}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <circle cx="12" cy="12" r="3"></circle>
                           <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
                         </svg>
