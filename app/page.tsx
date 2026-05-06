@@ -238,7 +238,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "7.8";
+const APP_VERSION = "8.0";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -391,6 +391,18 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "8.0",
+    date: "2026-05-06",
+    notes: [
+      "Expanded Settings with section-level reset buttons and improved panel ergonomics for heavy customization workflows.",
+      "Rebuilt Sidebar settings with independent controls for Library, Smart Lists, and Discover (font, weight, icon size, spacing, and submenu density).",
+      "Added Highlight Colors settings for Home, Books, Movies, TV, and Games with live updates to sidebar active-state accents.",
+      "Added per-status icon customization with upload + reset-to-default behavior, synced through settings for cross-device reuse.",
+      "Added Rating pillbox controls in Status Icon settings (size and X/Y position) with live preview and persistence.",
+      "Improved settings panel overflow behavior with dedicated scroll handling and visible scroll indicator for long expanded menus.",
+    ],
+  },
   {
     version: "7.8",
     date: "2026-05-03",
