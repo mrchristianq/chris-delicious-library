@@ -385,6 +385,13 @@ const DEFAULT_SIDEBAR_HIGHLIGHT_COLORS = {
   tv: "#ff9934",
   games: "#3492ff",
 } as const;
+type MediaCoverSizePctState = {
+  tv: number;
+  movies: number;
+  books: number;
+  games: number;
+  audiobooks: number;
+};
 const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGroupKey | null => {
   if (nav === "books" || nav === "movies" || nav === "tv" || nav === "games") return nav;
   if (!nav || nav === "statistics" || nav === "roadmap") return null;
@@ -3242,7 +3249,7 @@ export default function Page() {
     game: 0.75,
     audiobook: 0.58,
   } as const;
-  const [mediaCoverSizePct, setMediaCoverSizePct] = useState({
+  const [mediaCoverSizePct, setMediaCoverSizePct] = useState<MediaCoverSizePctState>({
     tv: DEFAULT_MEDIA_COVER_SIZE_PCT.tv,
     movies: DEFAULT_MEDIA_COVER_SIZE_PCT.movies,
     books: DEFAULT_MEDIA_COVER_SIZE_PCT.books,
