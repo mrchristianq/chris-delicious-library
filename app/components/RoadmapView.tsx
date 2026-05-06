@@ -15,6 +15,28 @@ type RoadmapItem = {
   completedAt?: number;
 };
 
+function normalizeRoadmapItems(items: RoadmapItem[]): RoadmapItem[] {
+  return items.map((item) => {
+    const createdAt = Number.isFinite(item.createdAt) && item.createdAt > 0
+      ? item.createdAt
+      : Number.isFinite(item.completedAt) && (item.completedAt ?? 0) > 0
+        ? (item.completedAt as number)
+        : Date.now();
+    return { ...item, createdAt };
+  });
+}
+
+function formatCreatedAt(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "Unknown";
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -22,7 +44,7 @@ function generateId(): string {
 function localLoad(): RoadmapItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as RoadmapItem[]) : [];
+    return raw ? normalizeRoadmapItems(JSON.parse(raw) as RoadmapItem[]) : [];
   } catch {
     return [];
   }
@@ -38,7 +60,7 @@ async function serverLoad(): Promise<RoadmapItem[]> {
   const res = await fetch("/api/roadmap", { cache: "no-store" });
   if (!res.ok) throw new Error("load failed");
   const data = await res.json();
-  return data.items as RoadmapItem[];
+  return normalizeRoadmapItems(data.items as RoadmapItem[]);
 }
 
 async function serverSave(items: RoadmapItem[]): Promise<void> {
@@ -423,9 +445,14 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                           padding: 0, transition: "border-color 120ms, background 120ms",
                         }}
                       />
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 450, color: "#1d1d1f", lineHeight: 1.45 }}>
-                        {item.text}
-                      </span>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 450, color: "#1d1d1f", lineHeight: 1.45 }}>
+                          {item.text}
+                        </span>
+                        <span style={{ fontSize: 10.5, color: "rgba(0,0,0,0.42)", fontWeight: 500 }}>
+                          Created {formatCreatedAt(item.createdAt)}
+                        </span>
+                      </div>
                       {item.tag ? <TagPill tag={item.tag} /> : null}
                       <div className="rm-actions" style={{ display: "flex", alignItems: "center", gap: 2, opacity: 0, transition: "opacity 120ms", flexShrink: 0 }}>
                         <button type="button" onClick={() => startEdit(item)} aria-label="Edit"
@@ -512,9 +539,14 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
                           padding: 0, color: "#8b920e", fontSize: 10, fontWeight: 900,
                         }}
                       >✓</button>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 400, color: "rgba(0,0,0,0.38)", lineHeight: 1.45, textDecoration: "line-through" }}>
-                        {item.text}
-                      </span>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(0,0,0,0.38)", lineHeight: 1.45, textDecoration: "line-through" }}>
+                          {item.text}
+                        </span>
+                        <span style={{ fontSize: 10.5, color: "rgba(0,0,0,0.34)", fontWeight: 500 }}>
+                          Created {formatCreatedAt(item.createdAt)}
+                        </span>
+                      </div>
                       {item.tag ? <TagPill tag={item.tag} /> : null}
                       <div className="rm-actions" style={{ display: "flex", alignItems: "center", gap: 2, opacity: 0, transition: "opacity 120ms", flexShrink: 0 }}>
                         <button type="button" onClick={() => startEdit(item)} aria-label="Edit"

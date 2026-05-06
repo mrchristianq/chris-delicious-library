@@ -322,6 +322,8 @@ const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
 const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
+const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
+const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
@@ -332,6 +334,57 @@ const COVER_SCALE_SETTING_KEYS: Record<CoverScaleGroupKey, string> = {
   tv: "rowHeightScalePct:tv",
   games: "rowHeightScalePct:games",
 };
+const MEDIA_COVER_SIZE_SETTING_KEYS = {
+  tv: "mediaCoverSizePct:tv",
+  movies: "mediaCoverSizePct:movies",
+  books: "mediaCoverSizePct:books",
+  games: "mediaCoverSizePct:games",
+  audiobooks: "mediaCoverSizePct:audiobooks",
+} as const;
+const DEFAULT_MEDIA_COVER_SIZE_PCT = {
+  tv: 93,
+  movies: 100,
+  books: 87,
+  games: 75,
+  audiobooks: 64,
+} as const;
+const DEFAULT_LOGO_SETTINGS = { size: 230, top: 12, left: -28 } as const;
+const DEFAULT_SYNC_ICON_SETTINGS = { size: 12, top: 8 } as const;
+const DEFAULT_STATUS_ICON_SETTINGS = { scale: 100, offsetX: 0, offsetY: 0 } as const;
+const DEFAULT_RATING_BADGE_SETTINGS = { scale: 100, offsetX: 0, offsetY: 0 } as const;
+const DEFAULT_SIDEBAR_SETTINGS = {
+  iconSize: 16,
+  fontSize: 11,
+  fontWeight: "150",
+  iconGap: 8,
+  headerFontSize: 11,
+  headerFontWeight: "600",
+  smartFontSize: 12,
+  smartFontWeight: "500",
+  smartGap: 8,
+  smartHeaderSize: 11,
+  smartHeaderWeight: "700",
+  smartIconSize: 16,
+  discoverFontSize: 12,
+  discoverFontWeight: "500",
+  discoverGap: 8,
+  discoverHeaderSize: 11,
+  discoverHeaderWeight: "700",
+  discoverIconSize: 16,
+  sectionGap: 3,
+  libraryItemGap: 0,
+  smartItemGap: 0,
+  discoverItemGap: 0,
+  submenuGap: 0,
+  rowDensityOffset: 0,
+} as const;
+const DEFAULT_SIDEBAR_HIGHLIGHT_COLORS = {
+  home: "#808893",
+  books: "#5fb85c",
+  movies: "#a168d6",
+  tv: "#ff9934",
+  games: "#3492ff",
+} as const;
 const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGroupKey | null => {
   if (nav === "books" || nav === "movies" || nav === "tv" || nav === "games") return nav;
   if (!nav || nav === "statistics" || nav === "roadmap") return null;
@@ -1008,6 +1061,7 @@ const NOW_PLAYING_TV_STATUS_VALUES = new Set(["currently watching", "watching"])
 const NOW_PLAYING_MOVIE_STATUS_VALUES = new Set(["watching", "started"]);
 const NOW_PLAYING_BOOK_STATUS_VALUES = new Set(["reading"]);
 const PLAY_NEXT_STATUS_VALUES = new Set(["queued", "replay"]);
+const MOVIE_UPCOMING_ONLY_STATUS_VALUES = new Set(["pending digital release"]);
 
 function isMovieWatchedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
   const watched = normalizeStatusToken(movie.watchStatus || movie.watched);
@@ -1017,6 +1071,11 @@ function isMovieWatchedStatus(movie: Pick<Movie, "watchStatus" | "watched">): bo
 function isMovieAbandonedStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
   const status = normalizeStatusToken(movie.watchStatus || movie.watched);
   return ABANDONED_STATUS_VALUES.has(status);
+}
+
+function isMovieUpcomingOnlyStatus(movie: Pick<Movie, "watchStatus" | "watched">): boolean {
+  const status = normalizeStatusToken(movie.watchStatus || movie.watched);
+  return MOVIE_UPCOMING_ONLY_STATUS_VALUES.has(status);
 }
 
 function parsePersonalRatingValue(value: unknown): number | null {
@@ -1442,6 +1501,7 @@ function getBookSourceUrlByMode(item: any, _mode?: "custom" | "default"): string
 }
 
 type StatusIndicator = {
+  key: string;
   color: string;
   label: string;
 };
@@ -2094,7 +2154,7 @@ export default function Page() {
     setNav("home");
     setOpenSection(null);
     setSortField("ReleaseDate");
-    setSortOrder("Asc");
+    setSortOrder("Desc");
     setBookDetailItem(null);
     setMovieDetailItem(null);
     setTvDetailItem(null);
@@ -2351,6 +2411,9 @@ export default function Page() {
   const [statusIconScale, setStatusIconScale] = useState<number>(100);
   const [statusIconOffsetX, setStatusIconOffsetX] = useState<number>(0);
   const [statusIconOffsetY, setStatusIconOffsetY] = useState<number>(0);
+  const [ratingBadgeScale, setRatingBadgeScale] = useState<number>(100);
+  const [ratingBadgeOffsetX, setRatingBadgeOffsetX] = useState<number>(0);
+  const [ratingBadgeOffsetY, setRatingBadgeOffsetY] = useState<number>(0);
 
   // Sidebar icon size
   const [iconSize, setIconSize] = useState<number>(16);
@@ -2361,6 +2424,31 @@ export default function Page() {
   const [sidebarGap, setSidebarGap] = useState<number>(8);
   const [sidebarHeaderFontSize, setSidebarHeaderFontSize] = useState<number>(11);
   const [sidebarHeaderFontWeight, setSidebarHeaderFontWeight] = useState<string>("700");
+  const [smartListsSidebarFontSize, setSmartListsSidebarFontSize] = useState<number>(12);
+  const [smartListsSidebarFontWeight, setSmartListsSidebarFontWeight] = useState<string>("500");
+  const [smartListsSidebarGap, setSmartListsSidebarGap] = useState<number>(8);
+  const [smartListsSidebarHeaderFontSize, setSmartListsSidebarHeaderFontSize] = useState<number>(11);
+  const [smartListsSidebarHeaderFontWeight, setSmartListsSidebarHeaderFontWeight] = useState<string>("700");
+  const [smartListsSidebarIconSize, setSmartListsSidebarIconSize] = useState<number>(16);
+  const [discoverSidebarFontSize, setDiscoverSidebarFontSize] = useState<number>(12);
+  const [discoverSidebarFontWeight, setDiscoverSidebarFontWeight] = useState<string>("500");
+  const [discoverSidebarGap, setDiscoverSidebarGap] = useState<number>(8);
+  const [discoverSidebarHeaderFontSize, setDiscoverSidebarHeaderFontSize] = useState<number>(11);
+  const [discoverSidebarHeaderFontWeight, setDiscoverSidebarHeaderFontWeight] = useState<string>("700");
+  const [discoverSidebarIconSize, setDiscoverSidebarIconSize] = useState<number>(16);
+  const [sidebarSectionGap, setSidebarSectionGap] = useState<number>(3);
+  const [librarySidebarItemGap, setLibrarySidebarItemGap] = useState<number>(0);
+  const [smartListsSidebarItemGap, setSmartListsSidebarItemGap] = useState<number>(0);
+  const [discoverSidebarItemGap, setDiscoverSidebarItemGap] = useState<number>(0);
+  const [sidebarSubmenuGap, setSidebarSubmenuGap] = useState<number>(0);
+  const [sidebarRowDensityOffset, setSidebarRowDensityOffset] = useState<number>(0);
+  const [sidebarHighlightColors, setSidebarHighlightColors] = useState<Record<CoverScaleGroupKey, string>>({
+    home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
+    books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
+    movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
+    tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
+    games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
+  });
 
   // Counter configuration
   const [counterTileSize, setCounterTileSize] = useState<number>(44);
@@ -2504,32 +2592,32 @@ export default function Page() {
   const isElectricBlueSidebarTheme = false;
   const sidebarAccentPalette: Record<CoverScaleGroupKey, { background: string; border: string; text: string; countBubble: string }> = {
     home: {
-      background: "rgba(128, 136, 147, 0.95)",
-      border: "rgba(106, 114, 124, 0.98)",
+      background: hexToRgba(sidebarHighlightColors.home, 0.95, "#808893"),
+      border: hexToRgba(sidebarHighlightColors.home, 0.98, "#6a727c"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.2)",
     },
     books: {
-      background: "rgba(95, 184, 92, 0.96)",
-      border: "rgba(74, 154, 71, 0.98)",
+      background: hexToRgba(sidebarHighlightColors.books, 0.96, "#5fb85c"),
+      border: hexToRgba(sidebarHighlightColors.books, 0.98, "#4a9a47"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
     movies: {
-      background: "rgba(161, 104, 214, 0.96)",
-      border: "rgba(133, 79, 189, 0.98)",
+      background: hexToRgba(sidebarHighlightColors.movies, 0.96, "#a168d6"),
+      border: hexToRgba(sidebarHighlightColors.movies, 0.98, "#854fbd"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
     tv: {
-      background: "rgba(255, 153, 52, 0.96)",
-      border: "rgba(223, 121, 24, 0.98)",
+      background: hexToRgba(sidebarHighlightColors.tv, 0.96, "#ff9934"),
+      border: hexToRgba(sidebarHighlightColors.tv, 0.98, "#df7918"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
     games: {
-      background: "rgba(52, 146, 255, 0.96)",
-      border: "rgba(35, 119, 220, 0.98)",
+      background: hexToRgba(sidebarHighlightColors.games, 0.96, "#3492ff"),
+      border: hexToRgba(sidebarHighlightColors.games, 0.98, "#2377dc"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
@@ -2537,7 +2625,8 @@ export default function Page() {
   const sidebarAccentKey = getCoverScaleGroupForNav(nav) || "home";
   const sidebarActiveAccent = sidebarAccentPalette[sidebarAccentKey];
   const usesThemeCountBubbleColor = true;
-  const sidebarModuleStackGap = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : isMacSidebarTheme ? 3 : 6;
+  const sidebarModuleStackGap = Math.max(0, sidebarSectionGap);
+  const sidebarSubmenuGapValue = Math.max(0, sidebarSubmenuGap);
   const sidebarModuleMarginTop = isSimpleSidebarTheme ? 8 : isMacSidebarTheme ? 0 : 12;
   const sidebarPrimaryModuleMarginTop = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : isMacSidebarTheme ? 0 : 6;
   const sidebarModuleCardPadding = isSimpleSidebarTheme ? "8px 10px" : isMacSidebarTheme ? "8px 8px 4px" : "12px";
@@ -2768,6 +2857,41 @@ export default function Page() {
   const sidebarInlineMetaTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)";
   const sidebarSubItemLabelStyle: CSSProperties = {
     color: sidebarInlineMetaTextColor,
+  };
+  const smartListsSectionHeaderStyle: CSSProperties = {
+    ...sidebarSectionHeaderStyle,
+    fontSize: smartListsSidebarHeaderFontSize,
+    fontWeight: smartListsSidebarHeaderFontWeight,
+  };
+  const smartListsSectionHeaderTextStyle: CSSProperties = {
+    ...sidebarSectionHeaderTextStyle,
+    fontSize: smartListsSidebarHeaderFontSize,
+    fontWeight: smartListsSidebarHeaderFontWeight,
+  };
+  const smartListsRowStyle: CSSProperties = {
+    ...sidebarSubItemRowStyle,
+    fontSize: smartListsSidebarFontSize,
+    fontWeight: smartListsSidebarFontWeight,
+  };
+  const discoverSectionHeaderStyle: CSSProperties = {
+    ...sidebarSectionHeaderStyle,
+    fontSize: discoverSidebarHeaderFontSize,
+    fontWeight: discoverSidebarHeaderFontWeight,
+  };
+  const discoverSectionHeaderTextStyle: CSSProperties = {
+    ...sidebarSectionHeaderTextStyle,
+    fontSize: discoverSidebarHeaderFontSize,
+    fontWeight: discoverSidebarHeaderFontWeight,
+  };
+  const discoverRowStyle: CSSProperties = {
+    ...sidebarSubItemRowStyle,
+    fontSize: discoverSidebarFontSize,
+    fontWeight: discoverSidebarFontWeight,
+  };
+  const discoverLabelStyle: CSSProperties = {
+    ...sidebarSubItemLabelStyle,
+    fontSize: discoverSidebarFontSize,
+    fontWeight: discoverSidebarFontWeight,
   };
   const sidebarInlineCountActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.countBubble;
   const sidebarInlineCountBackground = isSimpleSidebarTheme
@@ -3050,6 +3174,7 @@ export default function Page() {
   const [showVersionNotes, setShowVersionNotes] = useState(false);
   const [settingsWindowPosition, setSettingsWindowPosition] = useState<{ x: number; y: number } | null>(null);
   const settingsWindowRef = useRef<HTMLDivElement | null>(null);
+  const settingsBodyRef = useRef<HTMLDivElement | null>(null);
   const settingsWindowDragRef = useRef<{
     pointerId: number;
     offsetX: number;
@@ -3057,6 +3182,11 @@ export default function Page() {
     width: number;
     height: number;
   } | null>(null);
+  const [settingsScrollMetrics, setSettingsScrollMetrics] = useState({
+    hasOverflow: false,
+    thumbTop: 0,
+    thumbHeight: 24,
+  });
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   const [mobileCoverScalePct, setMobileCoverScalePct] = useState<number>(100);
@@ -3100,6 +3230,13 @@ export default function Page() {
     game: 0.75,
     audiobook: 0.58,
   } as const;
+  const [mediaCoverSizePct, setMediaCoverSizePct] = useState({
+    tv: DEFAULT_MEDIA_COVER_SIZE_PCT.tv,
+    movies: DEFAULT_MEDIA_COVER_SIZE_PCT.movies,
+    books: DEFAULT_MEDIA_COVER_SIZE_PCT.books,
+    games: DEFAULT_MEDIA_COVER_SIZE_PCT.games,
+    audiobooks: DEFAULT_MEDIA_COVER_SIZE_PCT.audiobooks,
+  });
   const shelfContentHeight = Math.max(
     Math.round(posterSizeTv * rawCoverHeightScaleByMedia.tv),
     Math.round(posterSizeMovies * rawCoverHeightScaleByMedia.movie),
@@ -3159,17 +3296,29 @@ export default function Page() {
     } catch {}
     return {};
   });
+  const [statusIconOverrides, setStatusIconOverrides] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem(STATUS_ICON_OVERRIDES_LOCAL_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, string>;
+    } catch {}
+    return {};
+  });
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
+  const [uploadingStatusIconKey, setUploadingStatusIconKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [addNewItemType, setAddNewItemType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
-  const [addSuccessMsg, setAddSuccessMsg] = useState<string | null>(null);
   const sidebarIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarIconTargetKeyRef = useRef<string | null>(null);
+  const statusIconFileInputRef = useRef<HTMLInputElement | null>(null);
+  const statusIconTargetKeyRef = useRef<string | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -3549,6 +3698,36 @@ export default function Page() {
     }
   }, []);
 
+  const updateSettingsScrollMetrics = useCallback(() => {
+    const node = settingsBodyRef.current;
+    if (!node) {
+      setSettingsScrollMetrics({ hasOverflow: false, thumbTop: 0, thumbHeight: 24 });
+      return;
+    }
+    const visible = node.clientHeight;
+    const total = node.scrollHeight;
+    const overflow = total > visible + 1;
+    if (!overflow) {
+      setSettingsScrollMetrics({ hasOverflow: false, thumbTop: 0, thumbHeight: 24 });
+      return;
+    }
+    const trackHeight = Math.max(40, visible - 16);
+    const ratio = Math.max(0, Math.min(1, node.scrollTop / Math.max(1, total - visible)));
+    const thumbHeight = Math.max(24, Math.round((visible / total) * trackHeight));
+    const thumbTop = Math.round(ratio * Math.max(0, trackHeight - thumbHeight));
+    setSettingsScrollMetrics({ hasOverflow: true, thumbTop, thumbHeight });
+  }, []);
+
+  useEffect(() => {
+    if (!settingsPopupOpen) return;
+    const node = settingsBodyRef.current;
+    if (!node) return;
+    updateSettingsScrollMetrics();
+    const onResize = () => updateSettingsScrollMetrics();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [settingsPopupOpen, updateSettingsScrollMetrics]);
+
   useEffect(() => {
     if (!settingsPopupOpen && !sortPopupOpen && !faqPopupOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -3697,6 +3876,7 @@ export default function Page() {
     const fromSheet: Record<string, string> = {};
     const popupModesFromSheet: Record<string, "custom" | "default"> = {};
     const sidebarIconFromSheet: Record<string, string> = {};
+    const statusIconFromSheet: Record<string, string> = {};
     settingsRows.forEach((r) => {
       const key = safeStr(r["Key"]);
       const value = safeStr(r["Value"]);
@@ -3720,6 +3900,12 @@ export default function Page() {
           sidebarIconFromSheet[iconKey] = value;
         }
       }
+      if (key.startsWith(STATUS_ICON_SETTING_PREFIX)) {
+        const iconKey = key.slice(STATUS_ICON_SETTING_PREFIX.length);
+        if (iconKey && value) {
+          statusIconFromSheet[iconKey] = value;
+        }
+      }
     });
     if (Object.keys(fromSheet).length) {
       setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
@@ -3729,6 +3915,9 @@ export default function Page() {
     }
     if (Object.keys(sidebarIconFromSheet).length) {
       setSidebarIconOverrides((prev) => ({ ...prev, ...sidebarIconFromSheet }));
+    }
+    if (Object.keys(statusIconFromSheet).length) {
+      setStatusIconOverrides((prev) => ({ ...prev, ...statusIconFromSheet }));
     }
   }, [settingsRows]);
 
@@ -3829,6 +4018,121 @@ export default function Page() {
       event.target.value = "";
     }
   };
+
+  const getStatusIconSrc = (statusKey: string): string => safeStr(statusIconOverrides[statusKey]);
+
+  const openStatusIconFilePicker = (event: ReactMouseEvent<HTMLElement>, statusKey: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (uploadingStatusIconKey) return;
+    statusIconTargetKeyRef.current = statusKey;
+    const input = statusIconFileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+
+  const handleStatusIconFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const statusKey = statusIconTargetKeyRef.current;
+    if (!file || !statusKey) return;
+    if (!safeStr(file.type).toLowerCase().startsWith("image/")) {
+      alert("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingStatusIconKey(statusKey);
+    try {
+      let iconUrl = "";
+      let uploadedToCloud = false;
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("itemKey", `status-icon-${statusKey}`);
+        formData.append("mediaType", "status-icon");
+        formData.append("title", statusKey);
+        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) {
+          throw new Error(payload?.error || `Upload failed (${res.status})`);
+        }
+        iconUrl = String(payload.url);
+        uploadedToCloud = true;
+      } catch (uploadError) {
+        console.warn("Status icon upload failed, using local fallback:", uploadError);
+        iconUrl = await fileToDataUrl(file);
+      }
+
+      setStatusIconOverrides((prev) => {
+        const next = { ...prev, [statusKey]: iconUrl };
+        try {
+          localStorage.setItem(STATUS_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next));
+        } catch (persistError) {
+          console.warn("Failed to persist status icon overrides locally:", persistError);
+        }
+        return next;
+      });
+
+      if (uploadedToCloud) {
+        saveSetting(
+          `${STATUS_ICON_SETTING_PREFIX}${statusKey}`,
+          iconUrl,
+          "Status Icons",
+          `Custom status icon for ${statusKey}`
+        );
+      }
+
+      setSyncState("ok");
+      setSyncMsg(uploadedToCloud ? "Status icon saved" : "Status icon saved locally");
+      setLastSyncAt(Date.now());
+      setTimeout(() => setSyncMsg("Synced"), 1200);
+    } catch (error: any) {
+      const msg = error?.message || "Failed to update status icon.";
+      console.error("Status icon update failed:", error);
+      setSyncState("error");
+      setSyncMsg(msg);
+      alert(msg);
+    } finally {
+      setUploadingStatusIconKey(null);
+      statusIconTargetKeyRef.current = null;
+      event.target.value = "";
+    }
+  };
+
+  const resetStatusIconOverride = useCallback((statusKey: string) => {
+    setStatusIconOverrides((prev) => {
+      if (!(statusKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[statusKey];
+      try {
+        localStorage.setItem(STATUS_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next));
+      } catch (persistError) {
+        console.warn("Failed to persist status icon overrides locally:", persistError);
+      }
+      return next;
+    });
+    removeSetting(`${STATUS_ICON_SETTING_PREFIX}${statusKey}`);
+    setSyncState("ok");
+    setSyncMsg("Status icon reset");
+    setTimeout(() => setSyncMsg("Synced"), 1200);
+  }, []);
+
+  const resetAllStatusIconOverrides = useCallback(() => {
+    setStatusIconOverrides({});
+    try {
+      localStorage.removeItem(STATUS_ICON_OVERRIDES_LOCAL_KEY);
+    } catch (persistError) {
+      console.warn("Failed to clear status icon overrides locally:", persistError);
+    }
+    ["completed", "watching", "abandoned", "not-started", "pending-return", "paused"].forEach((key) => {
+      removeSetting(`${STATUS_ICON_SETTING_PREFIX}${key}`);
+    });
+    setSyncState("ok");
+    setSyncMsg("All status icons reset");
+    setTimeout(() => setSyncMsg("Synced"), 1200);
+  }, []);
 
   const handleReplaceCover = async (item: any, file: File) => {
     const itemKey = getMediaItemKey(item);
@@ -4921,14 +5225,40 @@ export default function Page() {
     }
   }, []);
 
-  // Shows a success toast and navigates to the newly-added item's detail page.
-  const showAddSuccess = useCallback((label: string, newItem: Record<string, unknown>) => {
-    setAddSuccessMsg(`${label} added to your library!`);
-    setTimeout(() => setAddSuccessMsg(null), 3500);
+  // Navigates to the newly-added item's detail page and resets add-item state.
+  const finalizeAddAndOpen = useCallback((newItem: Record<string, unknown>) => {
     setIsAddingNewItem(false);
     setAddNewItemType(null);
     openSelectedItem(newItem);
   }, [openSelectedItem]);
+
+  const openNewlyAddedItemFromRow = useCallback(
+    (mediaType: "movie" | "tv" | "book" | "game", row: Record<string, string>) => {
+      const typedRow = row as Row;
+      if (mediaType === "movie") {
+        const parsed = rowToMovie(typedRow);
+        if (!parsed) throw new Error("Movie was saved, but details could not be loaded.");
+        finalizeAddAndOpen({ ...parsed, __type: "movie" });
+        return;
+      }
+      if (mediaType === "tv") {
+        const parsed = rowToShow(typedRow);
+        if (!parsed) throw new Error("TV show was saved, but details could not be loaded.");
+        finalizeAddAndOpen({ ...parsed, __type: "tv" });
+        return;
+      }
+      if (mediaType === "book") {
+        const parsed = rowToBook(typedRow);
+        if (!parsed) throw new Error("Book was saved, but details could not be loaded.");
+        finalizeAddAndOpen({ ...parsed, __type: "book" });
+        return;
+      }
+      const parsed = rowToGame(typedRow);
+      if (!parsed) throw new Error("Game was saved, but details could not be loaded.");
+      finalizeAddAndOpen({ ...parsed, __type: "game" });
+    },
+    [finalizeAddAndOpen]
+  );
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
@@ -4948,10 +5278,9 @@ export default function Page() {
     };
     await postSheetWrite(moviesWriteUrl, { action: "addMovie", values: row }, "Failed to add movie");
     setMovieRows((prev) => [...prev, row]);
-    setNav("movies");
     setMovieDetailsEditOpen(false);
-    showAddSuccess("Movie", row);
-  }, [moviesWriteUrl, postSheetWrite, showAddSuccess]);
+    openNewlyAddedItemFromRow("movie", row);
+  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
 
   const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
     if (!showsWriteUrl) throw new Error("Shows write URL is not configured.");
@@ -4972,10 +5301,9 @@ export default function Page() {
     };
     await postSheetWrite(showsWriteUrl, { action: "addShow", values: row }, "Failed to add show");
     setTvRows((prev) => [...prev, row]);
-    setNav("tv");
     setTvDetailsEditOpen(false);
-    showAddSuccess("TV Show", row);
-  }, [showsWriteUrl, postSheetWrite, showAddSuccess]);
+    openNewlyAddedItemFromRow("tv", row);
+  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
 
   const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
     if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
@@ -4995,10 +5323,9 @@ export default function Page() {
     };
     await postSheetWrite(booksWriteUrl, { action: "addBook", values: row }, "Failed to add book");
     setBookRows((prev) => [...prev, row]);
-    setNav("books");
     setBookDetailsEditOpen(false);
-    showAddSuccess("Book", row);
-  }, [booksWriteUrl, postSheetWrite, showAddSuccess]);
+    openNewlyAddedItemFromRow("book", row);
+  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
 
   const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>) => {
     if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
@@ -5027,10 +5354,9 @@ export default function Page() {
     };
     await postSheetWrite(gamesWriteUrl, { action: "addGame", values: row }, "Failed to add game");
     setGameRows((prev) => [...prev, row]);
-    setNav("games");
     setModalOpen(false);
-    showAddSuccess("Game", row);
-  }, [gamesWriteUrl, postSheetWrite, showAddSuccess]);
+    openNewlyAddedItemFromRow("game", row);
+  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
@@ -5493,6 +5819,13 @@ export default function Page() {
     setTight(getSetting("tight", true));
 
     setPosterSizeGames(getSetting("posterSizeGames", 108));
+    setMediaCoverSizePct({
+      tv: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.tv, DEFAULT_MEDIA_COVER_SIZE_PCT.tv))))),
+      movies: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.movies, DEFAULT_MEDIA_COVER_SIZE_PCT.movies))))),
+      books: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.books, DEFAULT_MEDIA_COVER_SIZE_PCT.books))))),
+      games: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.games, DEFAULT_MEDIA_COVER_SIZE_PCT.games))))),
+      audiobooks: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, DEFAULT_MEDIA_COVER_SIZE_PCT.audiobooks))))),
+    });
     
     setLogoSize(getSetting("logoSize", 230));
     setLogoTop(getSetting("logoTop", 12));
@@ -5503,6 +5836,9 @@ export default function Page() {
     setStatusIconScale(getSetting("statusIconScale", 100));
     setStatusIconOffsetX(getSetting("statusIconOffsetX", 0));
     setStatusIconOffsetY(getSetting("statusIconOffsetY", 0));
+    setRatingBadgeScale(getSetting("ratingBadgeScale", 100));
+    setRatingBadgeOffsetX(getSetting("ratingBadgeOffsetX", 0));
+    setRatingBadgeOffsetY(getSetting("ratingBadgeOffsetY", 0));
     
     setIconSize(getSetting("iconSize", 16));
     
@@ -5511,6 +5847,31 @@ export default function Page() {
     setSidebarGap(getSetting("sidebarGap", 8));
     setSidebarHeaderFontSize(getSetting("sidebarHeaderFontSize", 11));
     setSidebarHeaderFontWeight(getSetting("sidebarHeaderFontWeight", "600"));
+    setSmartListsSidebarFontSize(getSetting("smartListsSidebarFontSize", 12));
+    setSmartListsSidebarFontWeight(getSetting("smartListsSidebarFontWeight", "500"));
+    setSmartListsSidebarGap(getSetting("smartListsSidebarGap", 8));
+    setSmartListsSidebarHeaderFontSize(getSetting("smartListsSidebarHeaderFontSize", 11));
+    setSmartListsSidebarHeaderFontWeight(getSetting("smartListsSidebarHeaderFontWeight", "700"));
+    setSmartListsSidebarIconSize(getSetting("smartListsSidebarIconSize", 16));
+    setDiscoverSidebarFontSize(getSetting("discoverSidebarFontSize", 12));
+    setDiscoverSidebarFontWeight(getSetting("discoverSidebarFontWeight", "500"));
+    setDiscoverSidebarGap(getSetting("discoverSidebarGap", 8));
+    setDiscoverSidebarHeaderFontSize(getSetting("discoverSidebarHeaderFontSize", 11));
+    setDiscoverSidebarHeaderFontWeight(getSetting("discoverSidebarHeaderFontWeight", "700"));
+    setDiscoverSidebarIconSize(getSetting("discoverSidebarIconSize", 16));
+    setSidebarSectionGap(getSetting("sidebarSectionGap", 3));
+    setLibrarySidebarItemGap(getSetting("librarySidebarItemGap", 0));
+    setSmartListsSidebarItemGap(getSetting("smartListsSidebarItemGap", 0));
+    setDiscoverSidebarItemGap(getSetting("discoverSidebarItemGap", 0));
+    setSidebarSubmenuGap(getSetting("sidebarSubmenuGap", 0));
+    setSidebarRowDensityOffset(getSetting("sidebarRowDensityOffset", 0));
+    setSidebarHighlightColors({
+      home: normalizeHexColor(getSetting("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home)),
+      books: normalizeHexColor(getSetting("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books)),
+      movies: normalizeHexColor(getSetting("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies)),
+      tv: normalizeHexColor(getSetting("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv)),
+      games: normalizeHexColor(getSetting("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games)),
+    });
     
     setCounterTileSize(getSetting("counterTileSize", 44));
     setCounterTileSpacing(getSetting("counterTileSpacing", 3));
@@ -5993,6 +6354,11 @@ export default function Page() {
       { key: "posterSizeMovies", value: posterSizeMovies, category: "Cover Sizes", description: "Movie Cover Size" },
       { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
       { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
+      { key: MEDIA_COVER_SIZE_SETTING_KEYS.tv, value: mediaCoverSizePct.tv, category: "Cover Sizes", description: "TV Cover Size (%)" },
+      { key: MEDIA_COVER_SIZE_SETTING_KEYS.movies, value: mediaCoverSizePct.movies, category: "Cover Sizes", description: "Movie Cover Size (%)" },
+      { key: MEDIA_COVER_SIZE_SETTING_KEYS.books, value: mediaCoverSizePct.books, category: "Cover Sizes", description: "Book Cover Size (%)" },
+      { key: MEDIA_COVER_SIZE_SETTING_KEYS.games, value: mediaCoverSizePct.games, category: "Cover Sizes", description: "Game Cover Size (%)" },
+      { key: MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, value: mediaCoverSizePct.audiobooks, category: "Cover Sizes", description: "Audiobook Cover Size (%)" },
       { key: COVER_SCALE_SETTING_KEYS.home, value: coverScaleByGroup.home, category: "Cover Sizes", description: "Home Cover Scale (%)" },
       { key: COVER_SCALE_SETTING_KEYS.books, value: coverScaleByGroup.books, category: "Cover Sizes", description: "Books Cover Scale (%)" },
       { key: COVER_SCALE_SETTING_KEYS.movies, value: coverScaleByGroup.movies, category: "Cover Sizes", description: "Movies Cover Scale (%)" },
@@ -6011,12 +6377,38 @@ export default function Page() {
       { key: "statusIconScale", value: statusIconScale, category: "Status Icon", description: "Status Icon Size (%)" },
       { key: "statusIconOffsetX", value: statusIconOffsetX, category: "Status Icon", description: "Status Icon Horizontal Offset (px)" },
       { key: "statusIconOffsetY", value: statusIconOffsetY, category: "Status Icon", description: "Status Icon Vertical Offset (px)" },
+      { key: "ratingBadgeScale", value: ratingBadgeScale, category: "Status Icon", description: "Rating Badge Size (%)" },
+      { key: "ratingBadgeOffsetX", value: ratingBadgeOffsetX, category: "Status Icon", description: "Rating Badge Horizontal Offset (px)" },
+      { key: "ratingBadgeOffsetY", value: ratingBadgeOffsetY, category: "Status Icon", description: "Rating Badge Vertical Offset (px)" },
       { key: "iconSize", value: iconSize, category: "Icons", description: "Sidebar Icon Size (px)" },
       { key: "sidebarFontSize", value: sidebarFontSize, category: "Sidebar", description: "Sidebar Font Size" },
       { key: "sidebarFontWeight", value: sidebarFontWeight, category: "Sidebar", description: "Sidebar Font Weight" },
       { key: "sidebarGap", value: sidebarGap, category: "Sidebar", description: "Sidebar Icon Gap" },
       { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
       { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
+      { key: "smartListsSidebarFontSize", value: smartListsSidebarFontSize, category: "Sidebar", description: "Smart Lists Sidebar Font Size" },
+      { key: "smartListsSidebarFontWeight", value: smartListsSidebarFontWeight, category: "Sidebar", description: "Smart Lists Sidebar Font Weight" },
+      { key: "smartListsSidebarGap", value: smartListsSidebarGap, category: "Sidebar", description: "Smart Lists Sidebar Icon Gap" },
+      { key: "smartListsSidebarHeaderFontSize", value: smartListsSidebarHeaderFontSize, category: "Sidebar", description: "Smart Lists Sidebar Header Font Size" },
+      { key: "smartListsSidebarHeaderFontWeight", value: smartListsSidebarHeaderFontWeight, category: "Sidebar", description: "Smart Lists Sidebar Header Font Weight" },
+      { key: "smartListsSidebarIconSize", value: smartListsSidebarIconSize, category: "Sidebar", description: "Smart Lists Sidebar Icon Size (px)" },
+      { key: "discoverSidebarFontSize", value: discoverSidebarFontSize, category: "Sidebar", description: "Discover Sidebar Font Size" },
+      { key: "discoverSidebarFontWeight", value: discoverSidebarFontWeight, category: "Sidebar", description: "Discover Sidebar Font Weight" },
+      { key: "discoverSidebarGap", value: discoverSidebarGap, category: "Sidebar", description: "Discover Sidebar Icon Gap" },
+      { key: "discoverSidebarHeaderFontSize", value: discoverSidebarHeaderFontSize, category: "Sidebar", description: "Discover Sidebar Header Font Size" },
+      { key: "discoverSidebarHeaderFontWeight", value: discoverSidebarHeaderFontWeight, category: "Sidebar", description: "Discover Sidebar Header Font Weight" },
+      { key: "discoverSidebarIconSize", value: discoverSidebarIconSize, category: "Sidebar", description: "Discover Sidebar Icon Size (px)" },
+      { key: "sidebarSectionGap", value: sidebarSectionGap, category: "Sidebar", description: "Sidebar Vertical Gap Between Sections" },
+      { key: "librarySidebarItemGap", value: librarySidebarItemGap, category: "Sidebar", description: "Library Sidebar Item Gap" },
+      { key: "smartListsSidebarItemGap", value: smartListsSidebarItemGap, category: "Sidebar", description: "Smart Lists Sidebar Item Gap" },
+      { key: "discoverSidebarItemGap", value: discoverSidebarItemGap, category: "Sidebar", description: "Discover Sidebar Item Gap" },
+      { key: "sidebarSubmenuGap", value: sidebarSubmenuGap, category: "Sidebar", description: "Sidebar Submenu Group Gap" },
+      { key: "sidebarRowDensityOffset", value: sidebarRowDensityOffset, category: "Sidebar", description: "Sidebar Row Density Offset" },
+      { key: "sidebarHighlightColor:home", value: sidebarHighlightColors.home, category: "Sidebar", description: "Home Highlight Color" },
+      { key: "sidebarHighlightColor:books", value: sidebarHighlightColors.books, category: "Sidebar", description: "Books Highlight Color" },
+      { key: "sidebarHighlightColor:movies", value: sidebarHighlightColors.movies, category: "Sidebar", description: "Movies Highlight Color" },
+      { key: "sidebarHighlightColor:tv", value: sidebarHighlightColors.tv, category: "Sidebar", description: "TV Highlight Color" },
+      { key: "sidebarHighlightColor:games", value: sidebarHighlightColors.games, category: "Sidebar", description: "Games Highlight Color" },
       { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
     ];
     
@@ -6167,6 +6559,13 @@ export default function Page() {
         setTight(getBool("tight", true));
         
         setPosterSizeGames(getNum("posterSizeGames", 108));
+        setMediaCoverSizePct({
+          tv: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.tv, DEFAULT_MEDIA_COVER_SIZE_PCT.tv)))),
+          movies: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.movies, DEFAULT_MEDIA_COVER_SIZE_PCT.movies)))),
+          books: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.books, DEFAULT_MEDIA_COVER_SIZE_PCT.books)))),
+          games: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.games, DEFAULT_MEDIA_COVER_SIZE_PCT.games)))),
+          audiobooks: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, DEFAULT_MEDIA_COVER_SIZE_PCT.audiobooks)))),
+        });
         
         setLogoSize(getNum("logoSize", 230));
         setLogoTop(getNum("logoTop", 12));
@@ -6177,6 +6576,9 @@ export default function Page() {
         setStatusIconScale(getNum("statusIconScale", 100));
         setStatusIconOffsetX(getNum("statusIconOffsetX", 0));
         setStatusIconOffsetY(getNum("statusIconOffsetY", 0));
+        setRatingBadgeScale(getNum("ratingBadgeScale", 100));
+        setRatingBadgeOffsetX(getNum("ratingBadgeOffsetX", 0));
+        setRatingBadgeOffsetY(getNum("ratingBadgeOffsetY", 0));
         
         setIconSize(getNum("iconSize", 16));
         setSidebarFontSize(getNum("sidebarFontSize", 11));
@@ -6184,6 +6586,31 @@ export default function Page() {
         setSidebarGap(getNum("sidebarGap", 8));
         setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
         setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
+        setSmartListsSidebarFontSize(getNum("smartListsSidebarFontSize", 12));
+        setSmartListsSidebarFontWeight(getStr("smartListsSidebarFontWeight", "500"));
+        setSmartListsSidebarGap(getNum("smartListsSidebarGap", 8));
+        setSmartListsSidebarHeaderFontSize(getNum("smartListsSidebarHeaderFontSize", 11));
+        setSmartListsSidebarHeaderFontWeight(getStr("smartListsSidebarHeaderFontWeight", "700"));
+        setSmartListsSidebarIconSize(getNum("smartListsSidebarIconSize", 16));
+        setDiscoverSidebarFontSize(getNum("discoverSidebarFontSize", 12));
+        setDiscoverSidebarFontWeight(getStr("discoverSidebarFontWeight", "500"));
+        setDiscoverSidebarGap(getNum("discoverSidebarGap", 8));
+        setDiscoverSidebarHeaderFontSize(getNum("discoverSidebarHeaderFontSize", 11));
+        setDiscoverSidebarHeaderFontWeight(getStr("discoverSidebarHeaderFontWeight", "700"));
+        setDiscoverSidebarIconSize(getNum("discoverSidebarIconSize", 16));
+        setSidebarSectionGap(getNum("sidebarSectionGap", 3));
+        setLibrarySidebarItemGap(getNum("librarySidebarItemGap", 0));
+        setSmartListsSidebarItemGap(getNum("smartListsSidebarItemGap", 0));
+        setDiscoverSidebarItemGap(getNum("discoverSidebarItemGap", 0));
+        setSidebarSubmenuGap(getNum("sidebarSubmenuGap", 0));
+        setSidebarRowDensityOffset(getNum("sidebarRowDensityOffset", 0));
+        setSidebarHighlightColors({
+          home: normalizeHexColor(getStr("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home)),
+          books: normalizeHexColor(getStr("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books)),
+          movies: normalizeHexColor(getStr("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies)),
+          tv: normalizeHexColor(getStr("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv)),
+          games: normalizeHexColor(getStr("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games)),
+        });
         const coverScaleFallback = Math.max(0, Math.min(200, Math.round(getNum("rowHeightScalePct", 100))));
         setCoverScaleByGroup({
           home: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.home, coverScaleFallback)))),
@@ -6292,6 +6719,39 @@ export default function Page() {
     setPosterSizeGames(value);
     saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
   };
+  const updateMediaCoverSizePct = useCallback(
+    (key: keyof typeof mediaCoverSizePct, value: number) => {
+      const nextValue = Math.max(40, Math.min(140, Math.round(value)));
+      setMediaCoverSizePct((prev) => ({ ...prev, [key]: nextValue }));
+      const settingKey =
+        key === "tv"
+          ? MEDIA_COVER_SIZE_SETTING_KEYS.tv
+          : key === "movies"
+            ? MEDIA_COVER_SIZE_SETTING_KEYS.movies
+            : key === "books"
+              ? MEDIA_COVER_SIZE_SETTING_KEYS.books
+              : key === "games"
+                ? MEDIA_COVER_SIZE_SETTING_KEYS.games
+                : MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks;
+      saveSetting(settingKey, nextValue, "Cover Sizes", `${key === "audiobooks" ? "Audiobook" : key === "movies" ? "Movie" : key === "books" ? "Book" : key === "games" ? "Game" : "TV"} Cover Size (%)`);
+    },
+    [saveSetting]
+  );
+  const resetMediaCoverSizesToDefault = useCallback(() => {
+    const defaults = {
+      tv: DEFAULT_MEDIA_COVER_SIZE_PCT.tv,
+      movies: DEFAULT_MEDIA_COVER_SIZE_PCT.movies,
+      books: DEFAULT_MEDIA_COVER_SIZE_PCT.books,
+      games: DEFAULT_MEDIA_COVER_SIZE_PCT.games,
+      audiobooks: DEFAULT_MEDIA_COVER_SIZE_PCT.audiobooks,
+    };
+    setMediaCoverSizePct(defaults);
+    saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.tv, defaults.tv, "Cover Sizes", "TV Cover Size (%)");
+    saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.movies, defaults.movies, "Cover Sizes", "Movie Cover Size (%)");
+    saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.books, defaults.books, "Cover Sizes", "Book Cover Size (%)");
+    saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.games, defaults.games, "Cover Sizes", "Game Cover Size (%)");
+    saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, defaults.audiobooks, "Cover Sizes", "Audiobook Cover Size (%)");
+  }, [saveSetting]);
   const updateMobileCoverScalePct = useCallback((value: number) => {
     const nextValue = Math.max(70, Math.min(125, Math.round(value)));
     setMobileCoverScalePct(nextValue);
@@ -6348,6 +6808,18 @@ export default function Page() {
     setStatusIconOffsetY(value);
     saveSetting("statusIconOffsetY", value, "Status Icon", "Status Icon Vertical Offset (px)");
   };
+  const updateRatingBadgeScale = (value: number) => {
+    setRatingBadgeScale(value);
+    saveSetting("ratingBadgeScale", value, "Status Icon", "Rating Badge Size (%)");
+  };
+  const updateRatingBadgeOffsetX = (value: number) => {
+    setRatingBadgeOffsetX(value);
+    saveSetting("ratingBadgeOffsetX", value, "Status Icon", "Rating Badge Horizontal Offset (px)");
+  };
+  const updateRatingBadgeOffsetY = (value: number) => {
+    setRatingBadgeOffsetY(value);
+    saveSetting("ratingBadgeOffsetY", value, "Status Icon", "Rating Badge Vertical Offset (px)");
+  };
   const updateIconSize = (value: number) => {
     setIconSize(value);
     saveSetting("iconSize", value, "Icons", "Sidebar Icon Size (px)");
@@ -6371,6 +6843,176 @@ export default function Page() {
   const updateSidebarHeaderFontWeight = (value: string) => {
     setSidebarHeaderFontWeight(value);
     saveSetting("sidebarHeaderFontWeight", value, "Sidebar", "Sidebar Header Font Weight");
+  };
+  const updateSmartListsSidebarFontSize = (value: number) => {
+    setSmartListsSidebarFontSize(value);
+    saveSetting("smartListsSidebarFontSize", value, "Sidebar", "Smart Lists Sidebar Font Size");
+  };
+  const updateSmartListsSidebarFontWeight = (value: string) => {
+    setSmartListsSidebarFontWeight(value);
+    saveSetting("smartListsSidebarFontWeight", value, "Sidebar", "Smart Lists Sidebar Font Weight");
+  };
+  const updateSmartListsSidebarGap = (value: number) => {
+    setSmartListsSidebarGap(value);
+    saveSetting("smartListsSidebarGap", value, "Sidebar", "Smart Lists Sidebar Icon Gap");
+  };
+  const updateSmartListsSidebarHeaderFontSize = (value: number) => {
+    setSmartListsSidebarHeaderFontSize(value);
+    saveSetting("smartListsSidebarHeaderFontSize", value, "Sidebar", "Smart Lists Sidebar Header Font Size");
+  };
+  const updateSmartListsSidebarHeaderFontWeight = (value: string) => {
+    setSmartListsSidebarHeaderFontWeight(value);
+    saveSetting("smartListsSidebarHeaderFontWeight", value, "Sidebar", "Smart Lists Sidebar Header Font Weight");
+  };
+  const updateSmartListsSidebarIconSize = (value: number) => {
+    setSmartListsSidebarIconSize(value);
+    saveSetting("smartListsSidebarIconSize", value, "Sidebar", "Smart Lists Sidebar Icon Size (px)");
+  };
+  const updateDiscoverSidebarFontSize = (value: number) => {
+    setDiscoverSidebarFontSize(value);
+    saveSetting("discoverSidebarFontSize", value, "Sidebar", "Discover Sidebar Font Size");
+  };
+  const updateDiscoverSidebarFontWeight = (value: string) => {
+    setDiscoverSidebarFontWeight(value);
+    saveSetting("discoverSidebarFontWeight", value, "Sidebar", "Discover Sidebar Font Weight");
+  };
+  const updateDiscoverSidebarGap = (value: number) => {
+    setDiscoverSidebarGap(value);
+    saveSetting("discoverSidebarGap", value, "Sidebar", "Discover Sidebar Icon Gap");
+  };
+  const updateDiscoverSidebarHeaderFontSize = (value: number) => {
+    setDiscoverSidebarHeaderFontSize(value);
+    saveSetting("discoverSidebarHeaderFontSize", value, "Sidebar", "Discover Sidebar Header Font Size");
+  };
+  const updateDiscoverSidebarHeaderFontWeight = (value: string) => {
+    setDiscoverSidebarHeaderFontWeight(value);
+    saveSetting("discoverSidebarHeaderFontWeight", value, "Sidebar", "Discover Sidebar Header Font Weight");
+  };
+  const updateDiscoverSidebarIconSize = (value: number) => {
+    setDiscoverSidebarIconSize(value);
+    saveSetting("discoverSidebarIconSize", value, "Sidebar", "Discover Sidebar Icon Size (px)");
+  };
+  const updateSidebarSectionGap = (value: number) => {
+    setSidebarSectionGap(value);
+    saveSetting("sidebarSectionGap", value, "Sidebar", "Sidebar Vertical Gap Between Sections");
+  };
+  const updateLibrarySidebarItemGap = (value: number) => {
+    setLibrarySidebarItemGap(value);
+    saveSetting("librarySidebarItemGap", value, "Sidebar", "Library Sidebar Item Gap");
+  };
+  const updateSmartListsSidebarItemGap = (value: number) => {
+    setSmartListsSidebarItemGap(value);
+    saveSetting("smartListsSidebarItemGap", value, "Sidebar", "Smart Lists Sidebar Item Gap");
+  };
+  const updateDiscoverSidebarItemGap = (value: number) => {
+    setDiscoverSidebarItemGap(value);
+    saveSetting("discoverSidebarItemGap", value, "Sidebar", "Discover Sidebar Item Gap");
+  };
+  const updateSidebarSubmenuGap = (value: number) => {
+    setSidebarSubmenuGap(value);
+    saveSetting("sidebarSubmenuGap", value, "Sidebar", "Sidebar Submenu Group Gap");
+  };
+  const updateSidebarRowDensityOffset = (value: number) => {
+    setSidebarRowDensityOffset(value);
+    saveSetting("sidebarRowDensityOffset", value, "Sidebar", "Sidebar Row Density Offset");
+  };
+  const updateSidebarHighlightColor = (group: CoverScaleGroupKey, value: string) => {
+    const normalized = normalizeHexColor(value);
+    setSidebarHighlightColors((prev) => ({ ...prev, [group]: normalized }));
+    saveSetting(`sidebarHighlightColor:${group}`, normalized, "Sidebar", `${group} Highlight Color`);
+  };
+  const resetLogoDefaults = () => {
+    setLogoSize(DEFAULT_LOGO_SETTINGS.size);
+    setLogoTop(DEFAULT_LOGO_SETTINGS.top);
+    setLogoLeft(DEFAULT_LOGO_SETTINGS.left);
+    saveSetting("logoSize", DEFAULT_LOGO_SETTINGS.size, "Logo Settings", "Logo Size (px)");
+    saveSetting("logoTop", DEFAULT_LOGO_SETTINGS.top, "Logo Settings", "Logo Top Position");
+    saveSetting("logoLeft", DEFAULT_LOGO_SETTINGS.left, "Logo Settings", "Logo Left Position");
+  };
+  const resetSyncDefaults = () => {
+    setSyncIconSize(DEFAULT_SYNC_ICON_SETTINGS.size);
+    setSyncIconTop(DEFAULT_SYNC_ICON_SETTINGS.top);
+    saveSetting("syncIconSize", DEFAULT_SYNC_ICON_SETTINGS.size, "Sync Icon", "Sync Icon Size (px)");
+    saveSetting("syncIconTop", DEFAULT_SYNC_ICON_SETTINGS.top, "Sync Icon", "Sync Icon Top Position");
+  };
+  const resetStatusIconDefaults = () => {
+    setStatusIconScale(DEFAULT_STATUS_ICON_SETTINGS.scale);
+    setStatusIconOffsetX(DEFAULT_STATUS_ICON_SETTINGS.offsetX);
+    setStatusIconOffsetY(DEFAULT_STATUS_ICON_SETTINGS.offsetY);
+    setRatingBadgeScale(DEFAULT_RATING_BADGE_SETTINGS.scale);
+    setRatingBadgeOffsetX(DEFAULT_RATING_BADGE_SETTINGS.offsetX);
+    setRatingBadgeOffsetY(DEFAULT_RATING_BADGE_SETTINGS.offsetY);
+    saveSetting("statusIconScale", DEFAULT_STATUS_ICON_SETTINGS.scale, "Status Icon", "Status Icon Size (%)");
+    saveSetting("statusIconOffsetX", DEFAULT_STATUS_ICON_SETTINGS.offsetX, "Status Icon", "Status Icon Horizontal Offset (px)");
+    saveSetting("statusIconOffsetY", DEFAULT_STATUS_ICON_SETTINGS.offsetY, "Status Icon", "Status Icon Vertical Offset (px)");
+    saveSetting("ratingBadgeScale", DEFAULT_RATING_BADGE_SETTINGS.scale, "Status Icon", "Rating Badge Size (%)");
+    saveSetting("ratingBadgeOffsetX", DEFAULT_RATING_BADGE_SETTINGS.offsetX, "Status Icon", "Rating Badge Horizontal Offset (px)");
+    saveSetting("ratingBadgeOffsetY", DEFAULT_RATING_BADGE_SETTINGS.offsetY, "Status Icon", "Rating Badge Vertical Offset (px)");
+    resetAllStatusIconOverrides();
+  };
+  const resetSidebarDefaults = () => {
+    setIconSize(DEFAULT_SIDEBAR_SETTINGS.iconSize);
+    setSidebarFontSize(DEFAULT_SIDEBAR_SETTINGS.fontSize);
+    setSidebarFontWeight(DEFAULT_SIDEBAR_SETTINGS.fontWeight);
+    setSidebarGap(DEFAULT_SIDEBAR_SETTINGS.iconGap);
+    setSidebarHeaderFontSize(DEFAULT_SIDEBAR_SETTINGS.headerFontSize);
+    setSidebarHeaderFontWeight(DEFAULT_SIDEBAR_SETTINGS.headerFontWeight);
+    setSmartListsSidebarFontSize(DEFAULT_SIDEBAR_SETTINGS.smartFontSize);
+    setSmartListsSidebarFontWeight(DEFAULT_SIDEBAR_SETTINGS.smartFontWeight);
+    setSmartListsSidebarGap(DEFAULT_SIDEBAR_SETTINGS.smartGap);
+    setSmartListsSidebarHeaderFontSize(DEFAULT_SIDEBAR_SETTINGS.smartHeaderSize);
+    setSmartListsSidebarHeaderFontWeight(DEFAULT_SIDEBAR_SETTINGS.smartHeaderWeight);
+    setSmartListsSidebarIconSize(DEFAULT_SIDEBAR_SETTINGS.smartIconSize);
+    setDiscoverSidebarFontSize(DEFAULT_SIDEBAR_SETTINGS.discoverFontSize);
+    setDiscoverSidebarFontWeight(DEFAULT_SIDEBAR_SETTINGS.discoverFontWeight);
+    setDiscoverSidebarGap(DEFAULT_SIDEBAR_SETTINGS.discoverGap);
+    setDiscoverSidebarHeaderFontSize(DEFAULT_SIDEBAR_SETTINGS.discoverHeaderSize);
+    setDiscoverSidebarHeaderFontWeight(DEFAULT_SIDEBAR_SETTINGS.discoverHeaderWeight);
+    setDiscoverSidebarIconSize(DEFAULT_SIDEBAR_SETTINGS.discoverIconSize);
+    setSidebarSectionGap(DEFAULT_SIDEBAR_SETTINGS.sectionGap);
+    setLibrarySidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.libraryItemGap);
+    setSmartListsSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.smartItemGap);
+    setDiscoverSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.discoverItemGap);
+    setSidebarSubmenuGap(DEFAULT_SIDEBAR_SETTINGS.submenuGap);
+    setSidebarRowDensityOffset(DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset);
+    setSidebarHighlightColors({
+      home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
+      books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
+      movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
+      tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
+      games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
+    });
+    Object.entries({
+      iconSize: DEFAULT_SIDEBAR_SETTINGS.iconSize,
+      sidebarFontSize: DEFAULT_SIDEBAR_SETTINGS.fontSize,
+      sidebarFontWeight: DEFAULT_SIDEBAR_SETTINGS.fontWeight,
+      sidebarGap: DEFAULT_SIDEBAR_SETTINGS.iconGap,
+      sidebarHeaderFontSize: DEFAULT_SIDEBAR_SETTINGS.headerFontSize,
+      sidebarHeaderFontWeight: DEFAULT_SIDEBAR_SETTINGS.headerFontWeight,
+      smartListsSidebarFontSize: DEFAULT_SIDEBAR_SETTINGS.smartFontSize,
+      smartListsSidebarFontWeight: DEFAULT_SIDEBAR_SETTINGS.smartFontWeight,
+      smartListsSidebarGap: DEFAULT_SIDEBAR_SETTINGS.smartGap,
+      smartListsSidebarHeaderFontSize: DEFAULT_SIDEBAR_SETTINGS.smartHeaderSize,
+      smartListsSidebarHeaderFontWeight: DEFAULT_SIDEBAR_SETTINGS.smartHeaderWeight,
+      smartListsSidebarIconSize: DEFAULT_SIDEBAR_SETTINGS.smartIconSize,
+      discoverSidebarFontSize: DEFAULT_SIDEBAR_SETTINGS.discoverFontSize,
+      discoverSidebarFontWeight: DEFAULT_SIDEBAR_SETTINGS.discoverFontWeight,
+      discoverSidebarGap: DEFAULT_SIDEBAR_SETTINGS.discoverGap,
+      discoverSidebarHeaderFontSize: DEFAULT_SIDEBAR_SETTINGS.discoverHeaderSize,
+      discoverSidebarHeaderFontWeight: DEFAULT_SIDEBAR_SETTINGS.discoverHeaderWeight,
+      discoverSidebarIconSize: DEFAULT_SIDEBAR_SETTINGS.discoverIconSize,
+      sidebarSectionGap: DEFAULT_SIDEBAR_SETTINGS.sectionGap,
+      librarySidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.libraryItemGap,
+      smartListsSidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.smartItemGap,
+      discoverSidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.discoverItemGap,
+      sidebarSubmenuGap: DEFAULT_SIDEBAR_SETTINGS.submenuGap,
+      sidebarRowDensityOffset: DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset,
+      "sidebarHighlightColor:home": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
+      "sidebarHighlightColor:books": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
+      "sidebarHighlightColor:movies": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
+      "sidebarHighlightColor:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
+      "sidebarHighlightColor:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
+    }).forEach(([key, value]) => saveSetting(key, value, "Sidebar", key));
   };
 
   // Counter configuration update functions
@@ -6445,6 +7087,16 @@ export default function Page() {
     }) as Movie[];
   }, [movieRows]);
 
+  const sampleRandomItems = useCallback(<T,>(items: T[], count: number): T[] => {
+    if (items.length <= count) return items;
+    const shuffled = [...items];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, count);
+  }, []);
+
   const movieRelated = useMemo(() => {
     if (!movieDetailItem) return { movies: [] as Record<string, unknown>[], label: "Similar Movies" };
     const dir = safeStr(movieDetailItem?.director);
@@ -6452,9 +7104,9 @@ export default function Page() {
     const genres = safeStr(movieDetailItem?.genres);
     if (dir) {
       const byDir = allMovies
-        .filter(m => safeStr(m?.director) === dir && safeStr(m?.title) !== movieTitle)
-        .slice(0, 12);
-      if (byDir.length > 0) return { movies: byDir as unknown as Record<string, unknown>[], label: `More by ${dir}` };
+        .filter(m => safeStr(m?.director) === dir && safeStr(m?.title) !== movieTitle);
+      const randomByDir = sampleRandomItems(byDir, 12);
+      if (randomByDir.length > 0) return { movies: randomByDir as unknown as Record<string, unknown>[], label: `More by ${dir}` };
     }
     const genreSet = new Set(genres.split(/[,|]/).map(g => g.trim().toLowerCase()).filter(Boolean));
     if (genreSet.size > 0) {
@@ -6462,12 +7114,12 @@ export default function Page() {
         .filter(m => {
           if (safeStr(m?.title) === movieTitle) return false;
           return safeStr(m?.genres).split(/[,|]/).some(g => genreSet.has(g.trim().toLowerCase()));
-        })
-        .slice(0, 12);
-      if (similar.length > 0) return { movies: similar as unknown as Record<string, unknown>[], label: "Similar Movies" };
+        });
+      const randomSimilar = sampleRandomItems(similar, 12);
+      if (randomSimilar.length > 0) return { movies: randomSimilar as unknown as Record<string, unknown>[], label: "Similar Movies" };
     }
     return { movies: [] as Record<string, unknown>[], label: "Similar Movies" };
-  }, [movieDetailItem, allMovies]);
+  }, [movieDetailItem, allMovies, sampleRandomItems]);
 
   const tvRelated = useMemo(() => {
     if (!tvDetailItem) return { shows: [] as Record<string, unknown>[], label: "Similar Shows" };
@@ -7261,7 +7913,7 @@ export default function Page() {
 
     if (mediaType === "tv") {
       const status = normalizeStatus(item?.watchStatus || item?.watched || item?.showStatus || item?.status);
-      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (isAbandonedStatus(status)) return { key: "abandoned", color: STATUS_COLOR_ORANGE, label: "Abandoned" };
       if (
         status === "completed" ||
         status === "watched" ||
@@ -7269,13 +7921,13 @@ export default function Page() {
         status === "yes" ||
         status === "1"
       ) {
-        return { color: STATUS_COLOR_GREEN, label: "Watched / Completed" };
+        return { key: "completed", color: STATUS_COLOR_GREEN, label: "Watched / Completed" };
       }
       if (status === "pending return") {
-        return { color: STATUS_COLOR_YELLOW, label: "Pending Return" };
+        return { key: "pending-return", color: STATUS_COLOR_YELLOW, label: "Pending Return" };
       }
       if (status === "paused") {
-        return { color: STATUS_COLOR_YELLOW, label: "Paused" };
+        return { key: "paused", color: STATUS_COLOR_YELLOW, label: "Paused" };
       }
       if (
         status === "currently watching" ||
@@ -7283,29 +7935,29 @@ export default function Page() {
         status === "in progress" ||
         status === "watch next"
       ) {
-        return { color: STATUS_COLOR_YELLOW, label: "Watching" };
+        return { key: "watching", color: STATUS_COLOR_YELLOW, label: "Watching" };
       }
       if (status === "backlog" || status === "wishlist") {
-        return { color: STATUS_COLOR_RED, label: "Not Started" };
+        return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Started" };
       }
-      return { color: STATUS_COLOR_RED, label: "Not Watched" };
+      return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Watched" };
     }
 
     if (mediaType === "movie") {
       const status = normalizeStatus(item?.watchStatus || item?.watched);
-      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
-      if (isMovieWatched(item as Movie)) return { color: STATUS_COLOR_GREEN, label: "Watched" };
+      if (isAbandonedStatus(status)) return { key: "abandoned", color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (isMovieWatched(item as Movie)) return { key: "completed", color: STATUS_COLOR_GREEN, label: "Watched" };
       if (status === "started" || status === "watching" || status === "currently watching" || status === "in progress" || status === "paused") {
-        return { color: STATUS_COLOR_YELLOW, label: "Started" };
+        return { key: "watching", color: STATUS_COLOR_YELLOW, label: "Started" };
       }
-      return { color: STATUS_COLOR_RED, label: "Not Watched" };
+      return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Watched" };
     }
 
     if (mediaType === "game") {
       const status = normalizeStatus(item?.status || item?.playStatus || item?.gameStatus || item?.completed);
-      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (isAbandonedStatus(status)) return { key: "abandoned", color: STATUS_COLOR_ORANGE, label: "Abandoned" };
       if (status === "completed" || status === "done" || status === "beaten" || status === "finished") {
-        return { color: STATUS_COLOR_GREEN, label: "Completed" };
+        return { key: "completed", color: STATUS_COLOR_GREEN, label: "Completed" };
       }
       if (
         status === "playing" ||
@@ -7314,25 +7966,37 @@ export default function Page() {
         status === "in progress" ||
         status === "paused"
       ) {
-        return { color: STATUS_COLOR_YELLOW, label: "Playing" };
+        return { key: "watching", color: STATUS_COLOR_YELLOW, label: "Playing" };
       }
-      return { color: STATUS_COLOR_RED, label: "Not Played" };
+      return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Played" };
     }
 
     if (mediaType === "book") {
       const status = normalizeStatus(item?.status);
-      if (isAbandonedStatus(status)) return { color: STATUS_COLOR_ORANGE, label: "Abandoned" };
+      if (isAbandonedStatus(status)) return { key: "abandoned", color: STATUS_COLOR_ORANGE, label: "Abandoned" };
       if (status === "completed" || status === "finished" || status === "read") {
-        return { color: STATUS_COLOR_GREEN, label: "Completed" };
+        return { key: "completed", color: STATUS_COLOR_GREEN, label: "Completed" };
       }
       if (status === "reading" || status === "currently reading" || status === "in progress" || status === "paused") {
-        return { color: STATUS_COLOR_YELLOW, label: "Reading" };
+        return { key: "watching", color: STATUS_COLOR_YELLOW, label: "Reading" };
       }
-      return { color: STATUS_COLOR_RED, label: "Not Read" };
+      return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Read" };
     }
 
     return null;
   }, [isMovieWatched, normalizeStatus]);
+
+  const statusIconOptions = useMemo(
+    () => [
+      { key: "completed", label: "Completed / Watched", color: STATUS_COLOR_GREEN },
+      { key: "watching", label: "In Progress", color: STATUS_COLOR_YELLOW },
+      { key: "abandoned", label: "Abandoned", color: STATUS_COLOR_ORANGE },
+      { key: "not-started", label: "Not Started", color: STATUS_COLOR_RED },
+      { key: "pending-return", label: "Pending Return", color: STATUS_COLOR_YELLOW },
+      { key: "paused", label: "Paused", color: STATUS_COLOR_YELLOW },
+    ],
+    []
+  );
 
   const watchStatuses = useMemo(
     () => [
@@ -7854,6 +8518,7 @@ export default function Page() {
         (m) =>
           m.watchStatusNorm !== "wishlist" &&
           normalizeStatus(m.item.watchStatus) !== "wishlist" &&
+          !isMovieUpcomingOnlyStatus(m.item) &&
           !isNotYetReleased(m.item.releaseDate)
       );
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
@@ -7883,7 +8548,7 @@ export default function Page() {
         .filter((s) => isUpcomingRelease(s.item.firstAirDate))
         .map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" }));
       const upcomingMovies = indexedMovies
-        .filter((m) => isUpcomingRelease(m.item.releaseDate))
+        .filter((m) => isUpcomingRelease(m.item.releaseDate) || isMovieUpcomingOnlyStatus(m.item))
         .map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" }));
       const upcomingGames = indexedGames
         .filter((g) => isUpcomingRelease(pickBestReleaseDate(g.item.releaseDate, g.item.releaseDateAlt)))
@@ -8107,13 +8772,13 @@ export default function Page() {
     // Movies path
     if (nav === "movies") {
       if (movieUpcomingFilter) {
-        const upcoming = indexedMovies.filter((m) => isUpcomingRelease(m.item.releaseDate));
+        const upcoming = indexedMovies.filter((m) => isUpcomingRelease(m.item.releaseDate) || isMovieUpcomingOnlyStatus(m.item));
         const sorted = applySorting(upcoming.map((m) => m.item), sortField, sortOrder);
         const qf = q ? sorted.filter((m) => safeStr(m.title).toLowerCase().includes(q)) : sorted;
         return qf.map((m) => ({ ...m, __type: "movie" })) as any[];
       }
       let filtered = indexedMovies.filter(
-        (m) => m.watchStatusNorm !== "wishlist" && !isNotYetReleased(m.item.releaseDate)
+        (m) => m.watchStatusNorm !== "wishlist" && !isMovieUpcomingOnlyStatus(m.item) && !isNotYetReleased(m.item.releaseDate)
       );
 
       // Apply watch status filter if set
@@ -9679,14 +10344,14 @@ export default function Page() {
     const isAudiobook = isAudiobookItem(item);
     const coverRowHeight = activeCoverScalePct <= 0 ? 0 : shelfRowHeight;
     const targetHeight = isAudiobook
-      ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.audiobook)
+      ? Math.round(coverRowHeight * (mediaCoverSizePct.audiobooks / 100))
       : isBook
-        ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.book)
+        ? Math.round(coverRowHeight * (mediaCoverSizePct.books / 100))
         : isMovie
-          ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.movie)
+          ? Math.round(coverRowHeight * (mediaCoverSizePct.movies / 100))
           : isGame
-            ? Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.game)
-            : Math.round(coverRowHeight * rawCoverRowHeightRatioByMedia.tv);
+            ? Math.round(coverRowHeight * (mediaCoverSizePct.games / 100))
+            : Math.round(coverRowHeight * (mediaCoverSizePct.tv / 100));
     const coverSrc = getDisplayCoverUrl(item);
     const coverAsset = coverSrc ? coverTrimAssets[coverSrc] : null;
     const fallbackAspect = isAudiobook
@@ -9703,7 +10368,7 @@ export default function Page() {
   }, [
     isAudiobookItem,
     activeCoverScalePct,
-    rawCoverRowHeightRatioByMedia,
+    mediaCoverSizePct,
     shelfRowHeight,
     coverTrimAssets,
     getDisplayCoverUrl,
@@ -9747,7 +10412,7 @@ export default function Page() {
     // tallest cover so the gap between label text and the next row's tallest cover
     // stays consistent regardless of media type.
     const upcomingFixedOffset = isUpcomingView
-      ? (shelfRowHeight + UPCOMING_LABEL_SPACE) - Math.round(shelfRowHeight * rawCoverRowHeightRatioByMedia.game)
+      ? (shelfRowHeight + UPCOMING_LABEL_SPACE) - Math.round(shelfRowHeight * (mediaCoverSizePct.games / 100))
       : 0;
     return shelves.map((shelfShows) => {
       if (isUpcomingView) {
@@ -9766,7 +10431,7 @@ export default function Page() {
       }, 0);
       return Math.max(1, tallestCover + 15);
     });
-  }, [getItemVisualLayout, isUpcomingView, nav, rawCoverRowHeightRatioByMedia, shelfRowHeight, shelves]);
+  }, [getItemVisualLayout, isUpcomingView, mediaCoverSizePct.games, nav, shelfRowHeight, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -10753,13 +11418,13 @@ export default function Page() {
                 padding: sidebarPrimaryModulePadding,
               }}
             >
-              <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
               <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}>
                 <span>LIBRARY</span>
                 <span />
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: librarySidebarItemGap }}>
                 <button
                   onClick={activateHomeLibrary}
                   className={`sideItem ${nav === "home" ? "active" : ""}`}
@@ -10817,7 +11482,7 @@ export default function Page() {
 
                 {nav === "books" ? (
                   <div style={{ marginTop: 4, paddingLeft: 0, display: "flex", flexDirection: "column", gap: 5, order: 10 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                       <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 0 }}>
                         <span style={sidebarSectionHeaderTextStyle}>Reading Status</span>
                         <span />
@@ -10844,7 +11509,7 @@ export default function Page() {
                       })}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                       <div style={{ ...sidebarSectionHeaderStyle, marginBottom: 0, paddingTop: 3 }}>
                         <span style={sidebarSectionHeaderTextStyle}>Formats</span>
                         <span />
@@ -10879,7 +11544,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{seriesOpen ? "−" : "+"}</span>
                     </button>
                     {seriesOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {bookSeries.map((series) => {
                           const active = seriesFilter === series;
                           return (
@@ -10911,7 +11576,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{genreOpen ? "−" : "+"}</span>
                     </button>
                     {genreOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {bookGenres.map((genre) => {
                           const active = genreFilter === genre;
                           return (
@@ -10990,7 +11655,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieStatusOpen ? "−" : "+"}</span>
                     </button>
                     {movieStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {(["Released", "Upcoming"] as const).map((option) => {
                           const active = option === "Upcoming" ? movieUpcomingFilter : !movieUpcomingFilter;
                           return (
@@ -11016,7 +11681,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieTagOpen ? "−" : "+"}</span>
                     </button>
                     {movieTagOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {movieTags.map((tag) => {
                           const active = movieTagFilter === tag;
                           return (
@@ -11043,7 +11708,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{movieGenreOpen ? "−" : "+"}</span>
                     </button>
                     {movieGenreOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {movieGenres.map((genre) => {
                           const active = movieGenreFilter === genre;
                           return (
@@ -11130,7 +11795,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || watchStatusOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "tv" || watchStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {watchStatuses.map((status) => {
                           const active = watchFilter === status;
                           return (
@@ -11173,7 +11838,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || showStatusOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "tv" || showStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {showStatuses.map((status) => {
                           const active = showFilter === status;
                           return (
@@ -11216,7 +11881,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "tv" || tagOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "tv" || tagOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {tvTags.map((tag) => {
                           const active = tagFilter === tag;
                           return (
@@ -11316,7 +11981,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gamePlatformOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gamePlatformOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gamePlatformOptions.map((option) => {
                           const active = gamePlatformFilter === option;
                           return (
@@ -11361,7 +12026,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameStatusOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameStatuses.map((option) => {
                           const active = gameStatusFilter === option;
                           return (
@@ -11406,7 +12071,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameOwnershipOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameOwnershipOptions.map((option) => {
                           const active = gameOwnershipFilter === option;
                           return (
@@ -11451,7 +12116,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameFormatOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameFormatOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameFormatOptions.map((option) => {
                           const active = gameFormatFilter === option;
                           return (
@@ -11496,7 +12161,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameYearPlayedOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameYearPlayedOptions.map((option) => {
                           const active = gameYearPlayedFilter === option;
                           return (
@@ -11541,7 +12206,7 @@ export default function Page() {
                       <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameGenresOpen ? "−" : "+"}</span>
                     </button>
                     {nav === "games" || gameGenresOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameGenres.map((option) => {
                           const active = gameGenreFilter === option;
                           return (
@@ -11585,13 +12250,13 @@ export default function Page() {
                 style={{ display: isHomeSidebar ? "block" : "none", marginTop: 8 }}
               >
                 <div
-                  style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}
+                  style={{ ...smartListsSectionHeaderStyle, marginBottom: 6 }}
                 >
-                  <span style={sidebarSectionHeaderTextStyle}>SMART LISTS</span>
+                  <span style={smartListsSectionHeaderTextStyle}>SMART LISTS</span>
                   <span />
                 </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: smartListsSidebarItemGap }}>
                 {[
                   { key: "year-this" as const, label: "This Year", count: stats.yearThis },
                   { key: "current" as const, label: "Current", count: stats.current },
@@ -11628,9 +12293,11 @@ export default function Page() {
                         justifyContent: "space-between",
                         gap: 6,
                         padding: "3px 4px",
+                        fontSize: smartListsSidebarFontSize,
+                        fontWeight: smartListsSidebarFontWeight,
                       }}
                     >
-                      <span style={{ display: "flex", alignItems: "center", gap: sidebarGap }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: smartListsSidebarGap }}>
                         <span
                           aria-hidden
                           style={{
@@ -11648,14 +12315,14 @@ export default function Page() {
                           <img
                             src={getSidebarIconSrc(iconKey, iconFallback)}
                             alt=""
-                            width={iconSize}
-                            height={iconSize}
+                            width={smartListsSidebarIconSize}
+                            height={smartListsSidebarIconSize}
                             onClick={(event) => openSidebarIconFilePicker(event, iconKey)}
                             title={uploadingSidebarIconKey === iconKey ? "Uploading..." : "Change icon"}
                             style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                           />
                         </span>
-                        <span style={{ color: sidebarInlineMetaTextColor }}>
+                        <span style={{ color: sidebarInlineMetaTextColor, fontSize: smartListsSidebarFontSize, fontWeight: smartListsSidebarFontWeight }}>
                           {item.label}
                         </span>
                       </span>
@@ -11697,9 +12364,9 @@ export default function Page() {
                           setSortOrder(shouldUseManualSort ? "Asc" : smartList.defaultSortOrder);
                         }}
                         className={`sideItem ${isActive ? "active" : ""}`}
-                        style={sidebarSubItemRowStyle}
+                        style={smartListsRowStyle}
                       >
-                        <span style={{ display: "flex", alignItems: "center", gap: sidebarGap, fontWeight: isActive ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight, fontSize: sidebarFontSize + 1 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: smartListsSidebarGap, fontWeight: isActive ? Math.min(Number(smartListsSidebarFontWeight) + 150, 900) : smartListsSidebarFontWeight, fontSize: smartListsSidebarFontSize + 1 }}>
                           <span
                             aria-hidden
                             style={{
@@ -11715,7 +12382,7 @@ export default function Page() {
                             }}
                           >
                             {iconSrc ? (
-                              <img src={iconSrc} alt="" width={iconSize} height={iconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
+                              <img src={iconSrc} alt="" width={smartListsSidebarIconSize} height={smartListsSidebarIconSize} style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none" }} />
                             ) : (
                               <span style={{ fontSize: 10, opacity: 0.6, lineHeight: 1 }}>□</span>
                             )}
@@ -11771,21 +12438,21 @@ export default function Page() {
                 padding: sidebarDiscoverModulePadding,
               }}
             >
-              <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ padding: "0px", display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                 <div
-                  style={{ ...sidebarSectionHeaderStyle, marginBottom: 6 }}
+                  style={{ ...discoverSectionHeaderStyle, marginBottom: 6 }}
                 >
-                  <span style={sidebarSectionHeaderTextStyle}>DISCOVER</span>
+                  <span style={discoverSectionHeaderTextStyle}>DISCOVER</span>
                   <span />
                 </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: discoverSidebarItemGap }}>
                 <button
                   onClick={openStatisticsView}
                   className={`sideSubItem ${nav === "statistics" ? "active" : ""}`}
-                  style={sidebarSubItemRowStyle}
+                  style={discoverRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
                     <span
                       aria-hidden
                       style={{
@@ -11803,23 +12470,23 @@ export default function Page() {
                       <img
                         src={getSidebarIconSrc("statistics", "/icon-statistics.png")}
                         alt=""
-                        width={iconSize}
-                        height={iconSize}
+                        width={discoverSidebarIconSize}
+                        height={discoverSidebarIconSize}
                         onClick={(event) => openSidebarIconFilePicker(event, "statistics")}
                         title={uploadingSidebarIconKey === "statistics" ? "Uploading..." : "Change icon"}
                         style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                       />
                     </span>
-                    <span style={sidebarSubItemLabelStyle}>Statistics</span>
+                    <span style={discoverLabelStyle}>Statistics</span>
                   </span>
                 </button>
 
                 <button
                   onClick={openRoadmapView}
                   className={`sideSubItem ${nav === "roadmap" ? "active" : ""}`}
-                  style={sidebarSubItemRowStyle}
+                  style={discoverRowStyle}
                 >
-                  <span style={{ display: "flex", alignItems: "center", gap: sidebarGap }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
                     <span
                       aria-hidden
                       style={{
@@ -11837,14 +12504,14 @@ export default function Page() {
                       <img
                         src={getSidebarIconSrc("roadmap", "/icon-statistics.png")}
                         alt=""
-                        width={iconSize}
-                        height={iconSize}
+                        width={discoverSidebarIconSize}
+                        height={discoverSidebarIconSize}
                         onClick={(event) => openSidebarIconFilePicker(event, "roadmap")}
                         title={uploadingSidebarIconKey === "roadmap" ? "Uploading..." : "Change icon"}
                         style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                       />
                     </span>
-                    <span style={sidebarSubItemLabelStyle}>Roadmap</span>
+                    <span style={discoverLabelStyle}>Roadmap</span>
                   </span>
                 </button>
 
@@ -11899,7 +12566,7 @@ export default function Page() {
                   ...(settingsWindowPosition ? { left: settingsWindowPosition.x } : { right: SETTINGS_WINDOW_MARGIN }),
                   width: `min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
                   maxHeight: `calc(100vh - ${SETTINGS_WINDOW_START_Y + SETTINGS_WINDOW_MARGIN}px)`,
-                  overflowY: "auto",
+                  minHeight: 0,
                   zIndex: SETTINGS_WINDOW_Z_INDEX,
                   display: "flex",
                   flexDirection: "column",
@@ -11982,7 +12649,53 @@ export default function Page() {
                 </div>
 
                 {/* Scrollable body */}
-                <div style={{ overflowY: "auto", flex: 1, padding: "12px 14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div
+                  ref={settingsBodyRef}
+                  onScroll={updateSettingsScrollMetrics}
+                  style={{
+                    overflowY: "scroll",
+                    overflowX: "hidden",
+                    overscrollBehavior: "contain",
+                    WebkitOverflowScrolling: "touch",
+                    scrollbarWidth: "thin",
+                    position: "relative",
+                    flex: 1,
+                    minHeight: 0,
+                    padding: "12px 14px 16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                  className="settingsScrollArea"
+                >
+                  {settingsScrollMetrics.hasOverflow ? (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        right: 2,
+                        top: 8,
+                        bottom: 8,
+                        width: 6,
+                        borderRadius: 999,
+                        background: "rgba(139, 175, 244, 0.16)",
+                        pointerEvents: "none",
+                        zIndex: 3,
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          top: settingsScrollMetrics.thumbTop,
+                          height: settingsScrollMetrics.thumbHeight,
+                          borderRadius: 999,
+                          background: "rgba(74, 126, 212, 0.68)",
+                        }}
+                      />
+                    </div>
+                  ) : null}
 
                 {/* Version Notes */}
                 {showVersionNotes ? (
@@ -12020,18 +12733,36 @@ export default function Page() {
                   }}
                 >
                   <div style={{ padding: "10px 14px 10px", borderBottom: "1px solid rgba(139, 175, 244, 0.14)" }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Cover Sizes</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Cover Sizes</div>
+                      <button
+                        type="button"
+                        onClick={resetMediaCoverSizesToDefault}
+                        style={{
+                          border: "1px solid rgba(139, 175, 244, 0.35)",
+                          background: "rgba(139,175,244,0.1)",
+                          color: "#4a7ed4",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          borderRadius: 999,
+                          padding: "3px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Reset Defaults
+                      </button>
+                    </div>
                   </div>
                   <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                     {(
                       [
-                        { label: "TV", value: posterSizeTv, min: 70, max: 125, step: 5, update: updatePosterSizeTv },
-                        { label: "Movies", value: posterSizeMovies, min: 70, max: 125, step: 5, update: updatePosterSizeMovies },
-                        { label: "Books", value: posterSizeBooks, min: 70, max: 125, step: 5, update: updatePosterSizeBooks },
-                        { label: "Games", value: posterSizeGames, min: 70, max: 125, step: 5, update: updatePosterSizeGames },
-                        { label: "Gap", value: coverGapSize, min: 0, max: 60, step: 1, update: updateCoverGapSize },
-                      ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                    ).map(({ label, value, min, max, step, update }) => (
+                        { label: "Movies", key: "movies", value: mediaCoverSizePct.movies, min: 40, max: 140, step: 1 },
+                        { label: "TV", key: "tv", value: mediaCoverSizePct.tv, min: 40, max: 140, step: 1 },
+                        { label: "Books", key: "books", value: mediaCoverSizePct.books, min: 40, max: 140, step: 1 },
+                        { label: "Audiobooks", key: "audiobooks", value: mediaCoverSizePct.audiobooks, min: 40, max: 140, step: 1 },
+                        { label: "Games", key: "games", value: mediaCoverSizePct.games, min: 40, max: 140, step: 1 },
+                      ] as { label: string; key: keyof typeof mediaCoverSizePct; value: number; min: number; max: number; step: number }[]
+                    ).map(({ label, key, value, min, max, step }) => (
                       <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
                         <span style={{ fontWeight: 500 }}>{label}</span>
                         <input
@@ -12040,10 +12771,10 @@ export default function Page() {
                           max={max}
                           step={step}
                           value={value}
-                          onChange={(e) => update(Number(e.target.value))}
+                          onChange={(e) => updateMediaCoverSizePct(key, Number(e.target.value))}
                           style={{ width: "100%", accentColor: "#8baff4" }}
                         />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{value}</span>
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{value}%</span>
                       </label>
                     ))}
                   </div>
@@ -12072,10 +12803,15 @@ export default function Page() {
                       borderBottom: settingsOpen.logoSize ? "1px solid rgba(244, 153, 16, 0.14)" : "none",
                     }}
                   >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Logo</div>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.logoSize ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                      <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Logo</div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); resetLogoDefaults(); }} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.logoSize ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                          <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    </div>
                   </button>
                   {settingsOpen.logoSize ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -12119,10 +12855,15 @@ export default function Page() {
                       borderBottom: settingsOpen.syncIcon ? "1px solid rgba(139, 146, 14, 0.14)" : "none",
                     }}
                   >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8b920e", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sync Status</div>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.syncIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                      <path d="M2 4l4 4 4-4" stroke="#8b920e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#8b920e", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sync Status</div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); resetSyncDefaults(); }} style={{ border: "1px solid rgba(139, 146, 14, 0.35)", background: "rgba(139,146,14,0.1)", color: "#6a7006", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.syncIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                          <path d="M2 4l4 4 4-4" stroke="#8b920e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    </div>
                   </button>
                   {settingsOpen.syncIcon ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -12165,10 +12906,15 @@ export default function Page() {
                       borderBottom: settingsOpen.statusIcon ? "1px solid rgba(139, 175, 244, 0.14)" : "none",
                     }}
                   >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Status Icon</div>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.statusIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                      <path d="M2 4l4 4 4-4" stroke="#8baff4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Status Icon</div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); resetStatusIconDefaults(); }} style={{ border: "1px solid rgba(139, 175, 244, 0.35)", background: "rgba(139,175,244,0.1)", color: "#4a7ed4", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.statusIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                          <path d="M2 4l4 4 4-4" stroke="#8baff4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    </div>
                   </button>
                   {settingsOpen.statusIcon ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -12187,6 +12933,90 @@ export default function Page() {
                         <input type="range" min={-30} max={30} step={1} value={statusIconOffsetY} onChange={(e) => updateStatusIconOffsetY(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
                         <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconOffsetY}</span>
                       </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Rating Sz</span>
+                        <input type="range" min={50} max={180} step={5} value={ratingBadgeScale} onChange={(e) => updateRatingBadgeScale(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{ratingBadgeScale}%</span>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Rating X</span>
+                        <input type="range" min={-30} max={30} step={1} value={ratingBadgeOffsetX} onChange={(e) => updateRatingBadgeOffsetX(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{ratingBadgeOffsetX}</span>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Rating Y</span>
+                        <input type="range" min={-30} max={30} step={1} value={ratingBadgeOffsetY} onChange={(e) => updateRatingBadgeOffsetY(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{ratingBadgeOffsetY}</span>
+                      </label>
+                      <div style={{ height: 1, background: "rgba(139, 175, 244, 0.18)", margin: "4px 0" }} />
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#4a7ed4", letterSpacing: "0.05em", textTransform: "uppercase" }}>Status Icon Files</div>
+                      {statusIconOptions.map((option) => {
+                        const customSrc = getStatusIconSrc(option.key);
+                        return (
+                          <div key={`status-icon-option-${option.key}`} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              onClick={(event) => openStatusIconFilePicker(event, option.key)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                width: "100%",
+                                border: "1px solid rgba(139, 175, 244, 0.35)",
+                                background: "rgba(255,255,255,0.9)",
+                                borderRadius: 8,
+                                padding: "6px 8px",
+                                cursor: "pointer",
+                              }}
+                              title={uploadingStatusIconKey === option.key ? "Uploading..." : `Replace ${option.label} icon`}
+                            >
+                              <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: option.color, border: `1px solid color-mix(in srgb, ${option.color} 75%, black)` }}>
+                                {customSrc ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={customSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                ) : null}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#3a3a3c", textAlign: "left" }}>{option.label}</span>
+                            </button>
+                            <span style={{ fontSize: 10, color: customSrc ? "#2f8f5b" : "#6a7484", fontWeight: 700 }}>{customSrc ? "Custom" : "Default"}</span>
+                            <button
+                              type="button"
+                              onClick={() => resetStatusIconOverride(option.key)}
+                              disabled={!customSrc}
+                              style={{
+                                border: "1px solid rgba(139, 175, 244, 0.35)",
+                                background: customSrc ? "rgba(139, 175, 244, 0.12)" : "rgba(200,200,200,0.15)",
+                                color: customSrc ? "#4a7ed4" : "#9aa3af",
+                                borderRadius: 7,
+                                padding: "5px 7px",
+                                cursor: customSrc ? "pointer" : "default",
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={resetAllStatusIconOverrides}
+                        style={{
+                          border: "1px solid rgba(139, 175, 244, 0.35)",
+                          background: "rgba(139, 175, 244, 0.12)",
+                          color: "#4a7ed4",
+                          borderRadius: 8,
+                          padding: "7px 8px",
+                          cursor: "pointer",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        Reset All To Default
+                      </button>
                     </div>
                   ) : null}
                 </div>
@@ -12214,13 +13044,37 @@ export default function Page() {
                       borderBottom: settingsOpen.sidebar ? "1px solid rgba(244, 153, 16, 0.14)" : "none",
                     }}
                   >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sidebar</div>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.sidebar ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                      <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sidebar</div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); resetSidebarDefaults(); }} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.sidebar ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
+                          <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    </div>
                   </button>
                   {settingsOpen.sidebar ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>Sidebar Spacing</div>
+                      {(
+                        [
+                          { label: "Between", value: sidebarSectionGap, min: -8, max: 20, step: 1, update: updateSidebarSectionGap },
+                          { label: "Library", value: librarySidebarItemGap, min: -8, max: 12, step: 1, update: updateLibrarySidebarItemGap },
+                          { label: "Smart", value: smartListsSidebarItemGap, min: -8, max: 12, step: 1, update: updateSmartListsSidebarItemGap },
+                          { label: "Discover", value: discoverSidebarItemGap, min: -8, max: 12, step: 1, update: updateDiscoverSidebarItemGap },
+                          { label: "Submenus", value: sidebarSubmenuGap, min: -8, max: 12, step: 1, update: updateSidebarSubmenuGap },
+                          { label: "Rows", value: sidebarRowDensityOffset, min: -8, max: 8, step: 1, update: updateSidebarRowDensityOffset },
+                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                      ).map(({ label, value, min, max, step, update }) => (
+                        <label key={`global-gap-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                          <span style={{ fontWeight: 500 }}>{label}</span>
+                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
+                        </label>
+                      ))}
+                      <div style={{ height: 1, background: "rgba(244, 153, 16, 0.15)", margin: "4px 0" }} />
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>Library</div>
                       {(
                         [
                           { label: "Icon Size", value: iconSize, min: 8, max: 64, step: 1, update: updateIconSize },
@@ -12229,7 +13083,7 @@ export default function Page() {
                           { label: "Header Sz", value: sidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateSidebarHeaderFontSize },
                         ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
                       ).map(({ label, value, min, max, step, update }) => (
-                        <label key={label} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <label key={`library-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
                           <span style={{ fontWeight: 500 }}>{label}</span>
                           <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
                           <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
@@ -12255,8 +13109,123 @@ export default function Page() {
                           <option value="700">Bold (700)</option>
                         </select>
                       </label>
+
+                      <div style={{ height: 1, background: "rgba(244, 153, 16, 0.15)", margin: "4px 0" }} />
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase" }}>Smart Lists</div>
+                      {(
+                        [
+                          { label: "Icon Size", value: smartListsSidebarIconSize, min: 8, max: 64, step: 1, update: updateSmartListsSidebarIconSize },
+                          { label: "Font Size", value: smartListsSidebarFontSize, min: 10, max: 20, step: 1, update: updateSmartListsSidebarFontSize },
+                          { label: "Icon Gap", value: smartListsSidebarGap, min: 4, max: 20, step: 1, update: updateSmartListsSidebarGap },
+                          { label: "Header Sz", value: smartListsSidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateSmartListsSidebarHeaderFontSize },
+                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                      ).map(({ label, value, min, max, step, update }) => (
+                        <label key={`smart-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                          <span style={{ fontWeight: 500 }}>{label}</span>
+                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
+                        </label>
+                      ))}
+                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Font Wt</span>
+                        <select value={smartListsSidebarFontWeight} onChange={(e) => updateSmartListsSidebarFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
+                          <option value="300">Light (300)</option>
+                          <option value="400">Normal (400)</option>
+                          <option value="500">Medium (500)</option>
+                          <option value="600">Semi-Bold (600)</option>
+                          <option value="700">Bold (700)</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Header Wt</span>
+                        <select value={smartListsSidebarHeaderFontWeight} onChange={(e) => updateSmartListsSidebarHeaderFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
+                          <option value="300">Light (300)</option>
+                          <option value="400">Normal (400)</option>
+                          <option value="500">Medium (500)</option>
+                          <option value="600">Semi-Bold (600)</option>
+                          <option value="700">Bold (700)</option>
+                        </select>
+                      </label>
+
+                      <div style={{ height: 1, background: "rgba(244, 153, 16, 0.15)", margin: "4px 0" }} />
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase" }}>Discover</div>
+                      {(
+                        [
+                          { label: "Icon Size", value: discoverSidebarIconSize, min: 8, max: 64, step: 1, update: updateDiscoverSidebarIconSize },
+                          { label: "Font Size", value: discoverSidebarFontSize, min: 10, max: 20, step: 1, update: updateDiscoverSidebarFontSize },
+                          { label: "Icon Gap", value: discoverSidebarGap, min: 4, max: 20, step: 1, update: updateDiscoverSidebarGap },
+                          { label: "Header Sz", value: discoverSidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateDiscoverSidebarHeaderFontSize },
+                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
+                      ).map(({ label, value, min, max, step, update }) => (
+                        <label key={`discover-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                          <span style={{ fontWeight: 500 }}>{label}</span>
+                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
+                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
+                        </label>
+                      ))}
+                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Font Wt</span>
+                        <select value={discoverSidebarFontWeight} onChange={(e) => updateDiscoverSidebarFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
+                          <option value="300">Light (300)</option>
+                          <option value="400">Normal (400)</option>
+                          <option value="500">Medium (500)</option>
+                          <option value="600">Semi-Bold (600)</option>
+                          <option value="700">Bold (700)</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>Header Wt</span>
+                        <select value={discoverSidebarHeaderFontWeight} onChange={(e) => updateDiscoverSidebarHeaderFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
+                          <option value="300">Light (300)</option>
+                          <option value="400">Normal (400)</option>
+                          <option value="500">Medium (500)</option>
+                          <option value="600">Semi-Bold (600)</option>
+                          <option value="700">Bold (700)</option>
+                        </select>
+                      </label>
                     </div>
                   ) : null}
+                </div>
+
+                {/* Highlight Colors section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(123, 132, 145, 0.25)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      borderBottom: "1px solid rgba(123, 132, 145, 0.14)",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#66707d", letterSpacing: "0.07em", textTransform: "uppercase" }}>Highlight Colors</div>
+                    <button type="button" onClick={resetSidebarDefaults} style={{ border: "1px solid rgba(123, 132, 145, 0.35)", background: "rgba(123,132,145,0.1)", color: "#53606f", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                  </div>
+                  <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(
+                      [
+                        { label: "Home", key: "home" as CoverScaleGroupKey },
+                        { label: "Books", key: "books" as CoverScaleGroupKey },
+                        { label: "Movies", key: "movies" as CoverScaleGroupKey },
+                        { label: "TV", key: "tv" as CoverScaleGroupKey },
+                        { label: "Games", key: "games" as CoverScaleGroupKey },
+                      ]
+                    ).map(({ label, key }) => (
+                      <label key={`highlight-${key}`} style={{ display: "grid", gridTemplateColumns: "64px 1fr 64px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span style={{ fontWeight: 500 }}>{label}</span>
+                        <input type="color" value={sidebarHighlightColors[key]} onChange={(e) => updateSidebarHighlightColor(key, e.target.value)} style={{ width: "100%", height: 28, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, background: "transparent", padding: 2, cursor: "pointer" }} />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#53606f", fontSize: 10 }}>{sidebarHighlightColors[key].toUpperCase()}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Sync conflicts */}
@@ -13591,6 +14560,10 @@ export default function Page() {
               usePageBackground
               onBack={() => setBookDetailItem(null)}
               onEdit={openBookEditModalFromDetails}
+              onDelete={async (item) => {
+                await handleDeleteLibraryItem(item);
+                setBookDetailItem(null);
+              }}
               onSelectRelated={openBookDetailItem}
               getDisplayCoverUrl={getDisplayCoverUrl}
               isAudiobookItem={isAudiobookItem}
@@ -13604,6 +14577,10 @@ export default function Page() {
               usePageBackground={Boolean(activeMovieDetailBackground)}
               onBack={() => setMovieDetailItem(null)}
               onEdit={openMovieEditModalFromDetails}
+              onDelete={async (item) => {
+                await handleDeleteLibraryItem(item);
+                setMovieDetailItem(null);
+              }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
               relatedMovies={movieRelated.movies}
@@ -13618,6 +14595,10 @@ export default function Page() {
               usePageBackground={Boolean(activeTvDetailBackground)}
               onBack={() => setTvDetailItem(null)}
               onEdit={openTVEditModalFromDetails}
+              onDelete={async (item) => {
+                await handleDeleteLibraryItem(item);
+                setTvDetailItem(null);
+              }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleTvDetailPaletteChange}
               relatedShows={tvRelated.shows}
@@ -13632,6 +14613,10 @@ export default function Page() {
               usePageBackground={Boolean(activeGameDetailBackground)}
               onBack={() => setGameDetailItem(null)}
               onEdit={(item) => { setGameDetailEditItem(buildItemWithCoverSelection(item, coverOverrides)); setGameDetailsEditOpen(true); }}
+              onDelete={async (item) => {
+                await handleDeleteLibraryItem(item);
+                setGameDetailItem(null);
+              }}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleGameDetailPaletteChange}
               relatedGames={gameRelated.games}
@@ -14393,8 +15378,9 @@ export default function Page() {
                         insetTop,
                         Math.min(caseHeight - insetBottom - statusDotPixelSize, statusDotTopPx)
                       );
-                      const ratingBadgeTopPx = Math.max(4, insetTop + 4);
-                      const ratingBadgeRightPx = Math.max(4, insetRight + 4);
+                      const ratingBadgeTopPx = Math.max(4, insetTop + 4 + ratingBadgeOffsetY);
+                      const ratingBadgeRightPx = Math.max(4, insetRight + 4 - ratingBadgeOffsetX);
+                      const ratingBadgeScaleFactor = Math.max(0.5, Math.min(1.8, ratingBadgeScale / 100));
                       const itemKey = getMediaItemKey(show);
                       const itemReleaseDateStr = show.__type === "tv"
                         ? safeStr((show as any).firstAirDate)
@@ -14979,13 +15965,13 @@ export default function Page() {
                                 background: "rgba(255, 255, 255, 0.78)",
                                 color: "#1a1206",
                                 boxShadow: "0 1px 4px rgba(0,0,0,0.22)",
-                                padding: "2px 6px 2px 5px",
-                                fontSize: 10,
+                                padding: `${Math.max(1, Math.round(2 * ratingBadgeScaleFactor))}px ${Math.max(4, Math.round(6 * ratingBadgeScaleFactor))}px ${Math.max(1, Math.round(2 * ratingBadgeScaleFactor))}px ${Math.max(4, Math.round(5 * ratingBadgeScaleFactor))}px`,
+                                fontSize: Math.max(8, Math.round(10 * ratingBadgeScaleFactor)),
                                 lineHeight: 1.1,
                                 fontWeight: 700,
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: 3,
+                                gap: Math.max(2, Math.round(3 * ratingBadgeScaleFactor)),
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
                                 pointerEvents: "none",
@@ -14993,7 +15979,7 @@ export default function Page() {
                                 backdropFilter: "blur(3px)",
                               }}
                             >
-                              <span style={{ color: "#1a1206", fontSize: 10, lineHeight: 1, flexShrink: 0 }}>★</span>
+                              <span style={{ color: "#1a1206", fontSize: Math.max(8, Math.round(10 * ratingBadgeScaleFactor)), lineHeight: 1, flexShrink: 0 }}>★</span>
                               {ratingBadgeLabel}
                             </div>
                           ) : null}
@@ -15017,18 +16003,33 @@ export default function Page() {
                                 pointerEvents: "none",
                               }}
                             >
-                              <div
-                                aria-hidden
-                                style={{
-                                  position: "absolute",
-                                  left: 2,
-                                  top: 2,
-                                  width: "40%",
-                                  height: "40%",
-                                  borderRadius: "50%",
-                                  background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
-                                }}
-                              />
+                              {getStatusIconSrc(statusIndicator.key) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={getStatusIconSrc(statusIndicator.key)}
+                                  alt=""
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    borderRadius: "50%",
+                                    objectFit: "cover",
+                                    display: "block",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  aria-hidden
+                                  style={{
+                                    position: "absolute",
+                                    left: 2,
+                                    top: 2,
+                                    width: "40%",
+                                    height: "40%",
+                                    borderRadius: "50%",
+                                    background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
+                                  }}
+                                />
+                              )}
                             </div>
                           ) : null}
 
@@ -15090,6 +16091,13 @@ export default function Page() {
         style={{ display: "none" }}
         onChange={handleSidebarIconFileChange}
       />
+      <input
+        ref={statusIconFileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleStatusIconFileChange}
+      />
 
       <AddItemModal
         open={addModalOpen}
@@ -15097,24 +16105,6 @@ export default function Page() {
         onSelectResult={handleAddItemSelectResult}
         onAddManually={handleAddItemManually}
       />
-
-      {/* Add-success toast */}
-      {addSuccessMsg && (
-        <div style={{
-          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
-          zIndex: 9999, pointerEvents: "none",
-          background: "linear-gradient(135deg, rgba(34,197,94,0.95) 0%, rgba(22,163,74,0.97) 100%)",
-          color: "#fff", borderRadius: 14, padding: "12px 22px",
-          fontSize: 13.5, fontWeight: 700, letterSpacing: 0.1,
-          boxShadow: "0 8px 24px rgba(22,163,74,0.36), 0 2px 8px rgba(0,0,0,0.18)",
-          border: "1px solid rgba(255,255,255,0.35)",
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
-          display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
-        }}>
-          <span style={{ fontSize: 16 }}>✓</span>
-          {addSuccessMsg}
-        </div>
-      )}
 
       {/* MediaModal for cover/info popup - overlays app */}
       <MediaModal
@@ -15483,6 +16473,7 @@ export default function Page() {
         }
         .sideItem {
           width: 100%;
+          margin-top: ${sidebarRowDensityOffset}px;
           padding: ${isMacSidebarTheme ? "4px 6px" : "1px 4px"};
           border-radius: ${isMacSidebarTheme ? "10px" : "8px"};
           border: 1px solid transparent;
@@ -15510,6 +16501,7 @@ export default function Page() {
         .sideItem.primary.active { background: ${sidebarActiveAccent.background}; color: ${sidebarActiveAccent.text}; }
         .sideSubItem {
           width: 100%;
+          margin-top: ${sidebarRowDensityOffset}px;
           padding: ${isMacSidebarTheme ? "3px 7px" : "2px 6px"};
           border-radius: ${isMacSidebarTheme ? "10px" : "8px"};
           border: ${sidebarSubItemBorderColor};
@@ -15535,6 +16527,21 @@ export default function Page() {
         }
         .sidebarTextOnlySection .sideItem > span:first-child > span[aria-hidden] {
           display: none !important;
+        }
+        .settingsScrollArea::-webkit-scrollbar {
+          width: 10px;
+        }
+        .settingsScrollArea::-webkit-scrollbar-track {
+          background: rgba(139, 175, 244, 0.12);
+          border-radius: 999px;
+        }
+        .settingsScrollArea::-webkit-scrollbar-thumb {
+          background: rgba(74, 126, 212, 0.5);
+          border-radius: 999px;
+          border: 2px solid rgba(246, 245, 243, 0.95);
+        }
+        .settingsScrollArea::-webkit-scrollbar-thumb:hover {
+          background: rgba(74, 126, 212, 0.72);
         }
         .case {
           position: relative;

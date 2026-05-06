@@ -87,7 +87,7 @@ const SHOW_WATCH_STATUS_OPTIONS = [
 ];
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"];
 const SHOW_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
-const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Abandoned"];
+const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Pending Digital Release", "Abandoned"];
 const MOVIE_STATUS_OPTIONS = ["Released", "Upcoming", "In Production", "Canceled"];
 const MOVIE_OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Borrowed", "Library", "Subscription"];
 const GAME_STATUS_FALLBACK_OPTIONS = ["Backlog", "Playing", "Completed", "Paused", "Dropped", "Wishlist"];

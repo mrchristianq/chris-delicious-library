@@ -28,7 +28,7 @@ type DiffRow = {
   selected: boolean;
 };
 
-const WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Abandoned"] as const;
+const WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Pending Digital Release", "Abandoned"] as const;
 const RELEASE_STATUS_OPTIONS = ["Released", "Upcoming"] as const;
 
 const MOVIE_FIELDS: FieldDef[] = [

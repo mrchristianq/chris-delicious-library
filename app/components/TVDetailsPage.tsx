@@ -8,6 +8,7 @@ type TVDetailsPageProps = {
   usePageBackground?: boolean;
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
+  onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedShows?: Record<string, unknown>[];
@@ -186,9 +187,10 @@ const PANEL_STYLE: React.CSSProperties = {
 
 export function TVDetailsPage({
   item, isMobileLayout, usePageBackground = false,
-  onBack, onEdit, getDisplayCoverUrl, onPaletteChange,
+  onBack, onEdit, onDelete, getDisplayCoverUrl, onPaletteChange,
   relatedShows, relatedShowsLabel, onSelectRelated,
 }: TVDetailsPageProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
   const backdropUrl = safeStr(item.backdropUrl);
 
@@ -375,6 +377,34 @@ export function TVDetailsPage({
                   color: "#111", cursor: "pointer", whiteSpace: "nowrap",
                   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
                 }}>Edit</button>
+              ) : null}
+              {onDelete ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (isDeleting) return;
+                    const confirmed = window.confirm(`Delete "${safeStr(item.title) || "this item"}" from library? This will remove it from the app and spreadsheet.`);
+                    if (!confirmed) return;
+                    setIsDeleting(true);
+                    try {
+                      await onDelete(item);
+                    } catch (error: any) {
+                      window.alert(error?.message || "Failed to delete show");
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                  disabled={isDeleting}
+                  style={{
+                    borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
+                    border: "1px solid rgba(248, 113, 113, 0.55)", background: "rgba(127, 29, 29, 0.9)",
+                    color: "#fee2e2", cursor: isDeleting ? "default" : "pointer", whiteSpace: "nowrap",
+                    opacity: isDeleting ? 0.75 : 1,
+                    backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+                  }}
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
               ) : null}
               {chipStatus ? (
                 <span style={{ borderRadius: 999, padding: "9px 13px", fontSize: 13, lineHeight: 1, fontWeight: 850, ...statusColor }}>

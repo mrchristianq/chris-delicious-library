@@ -9,6 +9,7 @@ type BookDetailsPageProps = {
   usePageBackground?: boolean;
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
+  onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
   onSelectRelated: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   isAudiobookItem: (item: Record<string, unknown>) => boolean;
@@ -380,11 +381,13 @@ export function BookDetailsPage({
   usePageBackground = false,
   onBack,
   onEdit,
+  onDelete,
   onSelectRelated,
   getDisplayCoverUrl,
   isAudiobookItem,
   onPaletteChange,
 }: BookDetailsPageProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
   const seededPalette = useMemo(() => buildSeedDetailPalette(item, coverUrl), [coverUrl, item]);
   const paletteCacheKey = useMemo(
@@ -446,13 +449,28 @@ export function BookDetailsPage({
     completedDateLabel && completionLikeStatuses.has(statusLabel.toLowerCase())
   );
 
-  const relatedBooks = useMemo(() => {
+  const relatedBooksModule = useMemo(() => {
     const normalizedTitle = title.toLowerCase();
-    return allBooks
-      .filter((book) => safeStr(book.author || book.Author) === author)
-      .filter((book) => safeStr(book.title).toLowerCase() !== normalizedTitle)
-      .slice(0, 6);
-  }, [allBooks, author, title]);
+    const others = allBooks.filter((book) => safeStr(book.title).toLowerCase() !== normalizedTitle);
+
+    const byAuthor = others.filter((book) => safeStr(book.author || book.Author) === author);
+    if (byAuthor.length > 0) {
+      return { label: `More by ${author}`, items: byAuthor.slice(0, 6) };
+    }
+
+    const genreSet = new Set(genres.map((g) => g.toLowerCase()));
+    if (genreSet.size > 0) {
+      const byGenre = others.filter((book) => {
+        const bookGenres = splitList(book.genre || book.categories || book.Genre).map((g) => g.toLowerCase());
+        return bookGenres.some((g) => genreSet.has(g));
+      });
+      if (byGenre.length > 0) {
+        return { label: "Similar to this", items: byGenre.slice(0, 6) };
+      }
+    }
+
+    return { label: "Similar to this", items: others.slice(0, 6) };
+  }, [allBooks, author, genres, title]);
 
   const chips = [typeLabel, statusLabel, ownershipLabel].filter(Boolean);
   const metaLine = [author, releaseDate, ...genres].filter(Boolean).join(" • ");
@@ -675,6 +693,43 @@ export function BookDetailsPage({
                   aria-label="Edit book details"
                 >
                   Edit
+                </button>
+              ) : null}
+              {onDelete ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (isDeleting) return;
+                    const confirmed = window.confirm(`Delete "${safeStr(item.title) || "this item"}" from library? This will remove it from the app and spreadsheet.`);
+                    if (!confirmed) return;
+                    setIsDeleting(true);
+                    try {
+                      await onDelete(item);
+                    } catch (error: any) {
+                      window.alert(error?.message || "Failed to delete book");
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                  disabled={isDeleting}
+                  style={{
+                    borderRadius: 999,
+                    padding: "9px 14px",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    fontWeight: 750,
+                    border: "1px solid rgba(248, 113, 113, 0.55)",
+                    background: "rgba(127, 29, 29, 0.85)",
+                    color: "#fee2e2",
+                    whiteSpace: "nowrap",
+                    cursor: isDeleting ? "default" : "pointer",
+                    opacity: isDeleting ? 0.75 : 1,
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.16), 0 8px 18px rgba(10, 14, 24, 0.14)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                  aria-label="Delete book"
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
                 </button>
               ) : null}
               {chips.length > 0
@@ -907,7 +962,7 @@ export function BookDetailsPage({
             </div>
           </div>
 
-          {relatedBooks.length > 0 ? (
+          {relatedBooksModule.items.length > 0 ? (
             <div
               style={{
                 gridColumn: isMobileLayout ? undefined : "1 / -1",
@@ -922,7 +977,7 @@ export function BookDetailsPage({
               }}
             >
               <div style={{ fontSize: isMobileLayout ? 16 : 14, lineHeight: 1.1, fontWeight: 850, color: palette.text }}>
-                More by {author}
+                {relatedBooksModule.label}
               </div>
               <div
                 style={{
@@ -930,7 +985,7 @@ export function BookDetailsPage({
                   display: "grid",
                   gridTemplateColumns: isMobileLayout
                     ? "repeat(2, minmax(0, 1fr))"
-                    : `repeat(${Math.min(relatedBooks.length, 6)}, 104px)`,
+                    : `repeat(${Math.min(relatedBooksModule.items.length, 6)}, 104px)`,
                   gap: isMobileLayout ? 13 : 13,
                   height: isMobileLayout ? undefined : "calc(100% - 26px)",
                   alignItems: "start",
@@ -938,7 +993,7 @@ export function BookDetailsPage({
                   justifyContent: "start",
                 }}
               >
-                {(isMobileLayout ? relatedBooks : relatedBooks.slice(0, 6)).map((book) => (
+                {(isMobileLayout ? relatedBooksModule.items : relatedBooksModule.items.slice(0, 6)).map((book) => (
                   <button
                     key={`${safeStr(book.title)}-${safeStr(book.isbn)}`}
                     type="button"
@@ -954,20 +1009,27 @@ export function BookDetailsPage({
                       width: isMobileLayout ? "100%" : 104,
                     }}
                   >
-                    <img
-                      src={getDisplayCoverUrl(book)}
-                      alt={safeStr(book.title)}
+                    <div
                       style={{
-                        display: "block",
-                        width: isMobileLayout ? "100%" : "auto",
-                        maxWidth: "100%",
-                        height: isMobileLayout ? "auto" : 132,
-                        objectFit: "contain",
-                        objectPosition: "left center",
                         borderRadius: 6,
+                        overflow: "hidden",
                         filter: "drop-shadow(0 4px 8px rgba(5, 9, 16, 0.28))",
                       }}
-                    />
+                    >
+                      <img
+                        src={getDisplayCoverUrl(book)}
+                        alt={safeStr(book.title)}
+                        style={{
+                          display: "block",
+                          width: isMobileLayout ? "100%" : "auto",
+                          maxWidth: "100%",
+                          height: isMobileLayout ? "auto" : 132,
+                          objectFit: "contain",
+                          objectPosition: "left center",
+                          borderRadius: 6,
+                        }}
+                      />
+                    </div>
                     <div
                       style={{
                         marginTop: 8,
