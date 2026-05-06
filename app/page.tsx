@@ -26,6 +26,32 @@ type CoverCandidate = { label: string; url: string };
 type MediaType = "book" | "movie" | "tv" | "game";
 type CoverScaleSettings = { x: number; y: number };
 type CoverOffsetSettings = { x: number; y: number };
+type SidebarModuleDefaults = {
+  library: {
+    iconSize: number;
+    fontSize: number;
+    fontWeight: string;
+    iconGap: number;
+    headerFontSize: number;
+    headerFontWeight: string;
+  };
+  smartLists: {
+    iconSize: number;
+    fontSize: number;
+    fontWeight: string;
+    iconGap: number;
+    headerFontSize: number;
+    headerFontWeight: string;
+  };
+  discover: {
+    iconSize: number;
+    fontSize: number;
+    fontWeight: string;
+    iconGap: number;
+    headerFontSize: number;
+    headerFontWeight: string;
+  };
+};
 type WishlistPointerDrag = {
   pointerId: number;
   key: string;
@@ -238,7 +264,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "8.0";
+const APP_VERSION = "8.5";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -341,6 +367,7 @@ const MEDIA_COVER_SIZE_SETTING_KEYS = {
   games: "mediaCoverSizePct:games",
   audiobooks: "mediaCoverSizePct:audiobooks",
 } as const;
+const SHELF_THEME_MODE_SETTING_KEY = "shelfThemeMode";
 const DEFAULT_MEDIA_COVER_SIZE_PCT = {
   tv: 93,
   movies: 100,
@@ -385,6 +412,14 @@ const DEFAULT_SIDEBAR_HIGHLIGHT_COLORS = {
   tv: "#ff9934",
   games: "#3492ff",
 } as const;
+const DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK = {
+  home: "#5d6066",
+  books: "#3f8f57",
+  movies: "#6f4fb3",
+  tv: "#cf7c2d",
+  games: "#2d6fca",
+} as const;
+const LEGACY_DARK_HIGHLIGHT_MONO = "#5d6066";
 type MediaCoverSizePctState = {
   tv: number;
   movies: number;
@@ -398,6 +433,17 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "8.5",
+    date: "2026-05-06",
+    notes: [
+      "Restored Library category pill colors (Home/Books/Movies/TV/Games) and preserved consistent sidebar tone behavior across navigation.",
+      "Applied subtler active styling for lower sidebar submenu pills across Light, Dark, and Classic themes.",
+      "Made theme mode (Light/Dark/Classic) persist through settings so the selected mode loads consistently across devices.",
+      "Added localhost read-only settings mode so local sessions pull latest live settings/icons but never overwrite upstream values.",
+      "Updated localhost icon override precedence to favor synced settings over stale local cache for items like Roadmap and Themes.",
+    ],
+  },
   {
     version: "8.0",
     date: "2026-05-06",
@@ -1995,6 +2041,11 @@ type TvViewMode = TvQuickLinkKey | "custom";
 type GameQuickLinkKey = "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
 type GameViewMode = GameQuickLinkKey | "custom";
 type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "upcoming";
+type BuiltInSmartListKey = "year-this" | "current" | "completed" | "abandoned";
+type ShelfThemeMode = "light" | "dark" | "classic";
+const normalizeShelfThemeMode = (value: unknown): ShelfThemeMode =>
+  value === "dark" || value === "classic" ? value : "light";
+type HighlightThemeMode = "light" | "dark";
 
 function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
   return (
@@ -2036,6 +2087,12 @@ export default function Page() {
   const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
   const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
   const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
+  const localhostSettingsReadOnlyDefault = process.env.NEXT_PUBLIC_LOCALHOST_SETTINGS_READ_ONLY !== "false";
+  const isLocalhostRuntime =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname === "::1");
+  const isReadOnlySettingsMode = localhostSettingsReadOnlyDefault && isLocalhostRuntime;
+  const canWriteSettings = Boolean(settingsWriteUrl) && !isReadOnlySettingsMode;
   const writeConfigChecks = useMemo(
     () => [
       {
@@ -2158,6 +2215,26 @@ export default function Page() {
   const [smartListsOpen, setSmartListsOpen] = useState<boolean>(true);
   const [discoverOpen, setDiscoverOpen] = useState<boolean>(true);
   const [customSmartLists, setCustomSmartLists] = useState<SmartList[]>([]);
+  const [smartListsEditMode, setSmartListsEditMode] = useState(false);
+  const [builtInSmartListOrder, setBuiltInSmartListOrder] = useState<BuiltInSmartListKey[]>([
+    "year-this",
+    "current",
+    "completed",
+    "abandoned",
+  ]);
+  const [builtInSmartListLabels, setBuiltInSmartListLabels] = useState<Record<BuiltInSmartListKey, string>>({
+    "year-this": "This Year",
+    "current": "Current",
+    "completed": "Completed",
+    "abandoned": "Abandoned",
+  });
+  const [editingBuiltInSmartListKey, setEditingBuiltInSmartListKey] = useState<BuiltInSmartListKey | null>(null);
+  const [editingCustomSmartListId, setEditingCustomSmartListId] = useState<string | null>(null);
+  const [smartListNameDraft, setSmartListNameDraft] = useState<string>("");
+  const [draggingBuiltInSmartListKey, setDraggingBuiltInSmartListKey] = useState<BuiltInSmartListKey | null>(null);
+  const [builtInSmartListDropTargetKey, setBuiltInSmartListDropTargetKey] = useState<BuiltInSmartListKey | null>(null);
+  const [draggingSmartListId, setDraggingSmartListId] = useState<string | null>(null);
+  const [smartListDropTargetId, setSmartListDropTargetId] = useState<string | null>(null);
   const [selectedSmartListId, setSelectedSmartListId] = useState<string | null>(null);
   const [smartListBuilderOpen, setSmartListBuilderOpen] = useState<boolean>(false);
   const [smartListBuilderError, setSmartListBuilderError] = useState<string | null>(null);
@@ -2254,11 +2331,11 @@ export default function Page() {
     bookInsetsCollapsed: false,
     movieInsetsCollapsed: false,
     gameInsetsCollapsed: false,
-    logoSize: false,
-    syncIcon: false,
-    statusIcon: false,
+    logoSize: true,
+    syncIcon: true,
+    statusIcon: true,
     icons: false,
-    sidebar: false,
+    sidebar: true,
     counter: false,
   });
 
@@ -2455,19 +2532,29 @@ export default function Page() {
   const [discoverSidebarHeaderFontSize, setDiscoverSidebarHeaderFontSize] = useState<number>(11);
   const [discoverSidebarHeaderFontWeight, setDiscoverSidebarHeaderFontWeight] = useState<string>("700");
   const [discoverSidebarIconSize, setDiscoverSidebarIconSize] = useState<number>(16);
+  const [themesOpen, setThemesOpen] = useState<boolean>(false);
+  const [shelfThemeMode, setShelfThemeMode] = useState<ShelfThemeMode>("light");
   const [sidebarSectionGap, setSidebarSectionGap] = useState<number>(3);
   const [librarySidebarItemGap, setLibrarySidebarItemGap] = useState<number>(0);
   const [smartListsSidebarItemGap, setSmartListsSidebarItemGap] = useState<number>(0);
   const [discoverSidebarItemGap, setDiscoverSidebarItemGap] = useState<number>(0);
   const [sidebarSubmenuGap, setSidebarSubmenuGap] = useState<number>(0);
   const [sidebarRowDensityOffset, setSidebarRowDensityOffset] = useState<number>(0);
-  const [sidebarHighlightColors, setSidebarHighlightColors] = useState<Record<CoverScaleGroupKey, string>>({
+  const [sidebarHighlightColorsLight, setSidebarHighlightColorsLight] = useState<Record<CoverScaleGroupKey, string>>({
     home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
     books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
     movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
     tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
     games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
   });
+  const [sidebarHighlightColorsDark, setSidebarHighlightColorsDark] = useState<Record<CoverScaleGroupKey, string>>({
+    home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home,
+    books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books,
+    movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies,
+    tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv,
+    games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games,
+  });
+  const [highlightThemeEditorMode, setHighlightThemeEditorMode] = useState<HighlightThemeMode>("light");
 
   // Counter configuration
   const [counterTileSize, setCounterTileSize] = useState<number>(44);
@@ -2607,42 +2694,59 @@ export default function Page() {
   const isBlueSidebarTheme = false;
   const isSimpleSidebarTheme = false;
   const isDarkSidebarTheme = false;
+  const isDarkShelfMode = shelfThemeMode === "dark";
+  const isClassicShelfMode = shelfThemeMode === "classic";
   const sidebarHasDarkSurface = false;
   const isElectricBlueSidebarTheme = false;
+  const activeSidebarHighlightColors =
+    shelfThemeMode === "dark"
+      ? sidebarHighlightColorsDark
+      : shelfThemeMode === "classic"
+        ? DEFAULT_SIDEBAR_HIGHLIGHT_COLORS
+        : sidebarHighlightColorsLight;
+
   const sidebarAccentPalette: Record<CoverScaleGroupKey, { background: string; border: string; text: string; countBubble: string }> = {
     home: {
-      background: hexToRgba(sidebarHighlightColors.home, 0.95, "#808893"),
-      border: hexToRgba(sidebarHighlightColors.home, 0.98, "#6a727c"),
+      background: hexToRgba(activeSidebarHighlightColors.home, 0.95, "#808893"),
+      border: hexToRgba(activeSidebarHighlightColors.home, 0.98, "#6a727c"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.2)",
     },
     books: {
-      background: hexToRgba(sidebarHighlightColors.books, 0.96, "#5fb85c"),
-      border: hexToRgba(sidebarHighlightColors.books, 0.98, "#4a9a47"),
+      background: hexToRgba(activeSidebarHighlightColors.books, 0.96, "#5fb85c"),
+      border: hexToRgba(activeSidebarHighlightColors.books, 0.98, "#4a9a47"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
     movies: {
-      background: hexToRgba(sidebarHighlightColors.movies, 0.96, "#a168d6"),
-      border: hexToRgba(sidebarHighlightColors.movies, 0.98, "#854fbd"),
+      background: hexToRgba(activeSidebarHighlightColors.movies, 0.96, "#a168d6"),
+      border: hexToRgba(activeSidebarHighlightColors.movies, 0.98, "#854fbd"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
     tv: {
-      background: hexToRgba(sidebarHighlightColors.tv, 0.96, "#ff9934"),
-      border: hexToRgba(sidebarHighlightColors.tv, 0.98, "#df7918"),
+      background: hexToRgba(activeSidebarHighlightColors.tv, 0.96, "#ff9934"),
+      border: hexToRgba(activeSidebarHighlightColors.tv, 0.98, "#df7918"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
     games: {
-      background: hexToRgba(sidebarHighlightColors.games, 0.96, "#3492ff"),
-      border: hexToRgba(sidebarHighlightColors.games, 0.98, "#2377dc"),
+      background: hexToRgba(activeSidebarHighlightColors.games, 0.96, "#3492ff"),
+      border: hexToRgba(activeSidebarHighlightColors.games, 0.98, "#2377dc"),
       text: "#ffffff",
       countBubble: "rgba(255, 255, 255, 0.22)",
     },
   };
-  const sidebarAccentKey = getCoverScaleGroupForNav(nav) || "home";
+  const sidebarAccentKey: CoverScaleGroupKey = "home";
   const sidebarActiveAccent = sidebarAccentPalette[sidebarAccentKey];
+  const getLibraryItemActiveStyle = (key: CoverScaleGroupKey, isActive: boolean): CSSProperties =>
+    isActive
+      ? {
+          background: sidebarAccentPalette[key].background,
+          borderColor: sidebarAccentPalette[key].border,
+          color: sidebarAccentPalette[key].text,
+        }
+      : {};
   const usesThemeCountBubbleColor = true;
   const sidebarModuleStackGap = Math.max(0, sidebarSectionGap);
   const sidebarSubmenuGapValue = Math.max(0, sidebarSubmenuGap);
@@ -2757,16 +2861,24 @@ export default function Page() {
   const sidebarBackplateOpacity = 1;
   const sidebarBackplateBackgroundSize = isSimpleSidebarTheme || isMacSidebarTheme ? "100% 100%" : "auto, 100% 100%";
   const sidebarBackplateBackgroundPosition = isSimpleSidebarTheme || isMacSidebarTheme ? "0 0" : "0 0, 0 0";
-  const sidebarShellBackground = isSimpleSidebarTheme
+  const sidebarShellBackground = isDarkShelfMode
+    ? "linear-gradient(180deg, rgba(182, 190, 201, 0.56) 0%, rgba(160, 168, 179, 0.5) 100%)"
+    : isClassicShelfMode
+      ? "linear-gradient(180deg, rgba(226, 223, 215, 0.76) 0%, rgba(214, 210, 200, 0.72) 100%)"
+    : isSimpleSidebarTheme
     ? "transparent"
     : isMacSidebarTheme
       ? "linear-gradient(180deg, rgba(243, 245, 247, 0.58) 0%, rgba(231, 235, 239, 0.5) 100%)"
       : "rgba(255, 255, 255, 0.125)";
-  const sidebarShellShadow = isSimpleSidebarTheme
+  const sidebarShellShadow = isDarkShelfMode
+    ? "0 18px 42px rgba(38, 41, 46, 0.2), 0 2px 10px rgba(38, 41, 46, 0.12), inset 0 1px 0 rgba(255,255,255,0.34)"
+    : isClassicShelfMode
+      ? "0 18px 42px rgba(58, 50, 34, 0.12), 0 2px 10px rgba(58, 50, 34, 0.08), inset 0 1px 0 rgba(255,255,255,0.4)"
+    : isSimpleSidebarTheme
     ? "none"
     : isMacSidebarTheme
       ? "0 18px 42px rgba(38, 41, 46, 0.16), 0 2px 10px rgba(38, 41, 46, 0.08), inset 0 1px 0 rgba(255,255,255,0.42)"
-    : "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)";
+      : "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)";
   const sidebarChevronColor = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarTextHex, 0.58, simpleSidebarTextHex)
     : isMacSidebarTheme
@@ -2870,7 +2982,21 @@ export default function Page() {
       ? "rgba(36, 71, 122, 0.7)"
       : "rgba(0, 0, 0, 0.05)";
   const sidebarSubItemTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(233, 243, 255, 0.98)" : "rgba(0, 0, 0, 0.7)";
-  const sidebarSubItemActiveTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : sidebarActiveAccent.text;
+  const sidebarSubItemActiveBackground = isSimpleSidebarTheme
+    ? hexToRgba(simpleSidebarOverlayBase, 0.12, simpleSidebarOverlayBase)
+    : isMacSidebarTheme
+      ? "rgba(122, 128, 138, 0.16)"
+      : isDarkSidebarTheme
+        ? "rgba(124, 160, 224, 0.26)"
+        : "rgba(0, 0, 0, 0.08)";
+  const sidebarSubItemActiveBorder = isSimpleSidebarTheme
+    ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.2 : 0.16, simpleSidebarTextHex)}`
+    : isMacSidebarTheme
+      ? "1px solid rgba(95, 103, 114, 0.3)"
+      : isDarkSidebarTheme
+        ? "1px solid rgba(162, 196, 247, 0.5)"
+        : "1px solid rgba(0, 0, 0, 0.14)";
+  const sidebarSubItemActiveTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(240, 248, 255, 0.98)" : "#2A2A2A";
   const sidebarSectionLabelColor = isSimpleSidebarTheme ? currentTheme.primaryColor : isDarkSidebarTheme ? "rgba(233, 245, 255, 0.98)" : "#4A4A4A";
   const sidebarSectionControlColor = isSimpleSidebarTheme ? currentTheme.arrowColor : isDarkSidebarTheme ? "rgba(221, 236, 255, 0.95)" : "#4A4A4A";
   const sidebarInlineMetaTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? "rgba(230, 242, 255, 0.97)" : "rgba(0,0,0,0.7)";
@@ -2912,6 +3038,28 @@ export default function Page() {
     fontSize: discoverSidebarFontSize,
     fontWeight: discoverSidebarFontWeight,
   };
+  const themesOptionTextColor = isSimpleSidebarTheme
+    ? currentTheme.textColor
+    : isMacSidebarTheme
+      ? "rgba(78, 85, 94, 0.9)"
+      : "rgba(233, 243, 255, 0.92)";
+  const themesOptionActiveTextColor = isSimpleSidebarTheme
+    ? currentTheme.secondaryColor
+    : isMacSidebarTheme
+      ? "#2f3742"
+      : "#eef4ff";
+
+  useEffect(() => {
+    if (shelfThemeMode === "dark") {
+      setSimpleShelfBackgroundColor("#151a22");
+      return;
+    }
+    if (shelfThemeMode === "classic") {
+      setSimpleShelfBackgroundColor("#d8cdb8");
+      return;
+    }
+    setSimpleShelfBackgroundColor(DEFAULT_SIMPLE_SHELF_BACKGROUND);
+  }, [shelfThemeMode]);
   const sidebarInlineCountActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.countBubble;
   const sidebarInlineCountBackground = isSimpleSidebarTheme
     ? hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.06 : 0.1, simpleSidebarOverlayBase)
@@ -3161,8 +3309,9 @@ export default function Page() {
   const UPCOMING_LABEL_SPACE = -3;
   const RAW_COVER_STANDARD_GAP = 10;
   const LIP_FROM_BOTTOM = 5;
-  const SETTINGS_WINDOW_DEFAULT_WIDTH = 560;
-  const SETTINGS_WINDOW_MARGIN = 20;
+  const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
+  const SETTINGS_WINDOW_DEFAULT_HEIGHT = 680;
+  const SETTINGS_WINDOW_MARGIN = 16;
   const SETTINGS_WINDOW_START_Y = 84;
   const SETTINGS_WINDOW_Z_INDEX = 9000;
   const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
@@ -3194,6 +3343,7 @@ export default function Page() {
   const [settingsWindowPosition, setSettingsWindowPosition] = useState<{ x: number; y: number } | null>(null);
   const settingsWindowRef = useRef<HTMLDivElement | null>(null);
   const settingsBodyRef = useRef<HTMLDivElement | null>(null);
+  const sidebarModuleDefaultsRef = useRef<SidebarModuleDefaults | null>(null);
   const settingsWindowDragRef = useRef<{
     pointerId: number;
     offsetX: number;
@@ -3306,6 +3456,7 @@ export default function Page() {
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
   const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>(() => {
+    if (isReadOnlySettingsMode) return {};
     if (typeof window === "undefined") return {};
     try {
       const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
@@ -3316,6 +3467,7 @@ export default function Page() {
     return {};
   });
   const [statusIconOverrides, setStatusIconOverrides] = useState<Record<string, string>>(() => {
+    if (isReadOnlySettingsMode) return {};
     if (typeof window === "undefined") return {};
     try {
       const raw = localStorage.getItem(STATUS_ICON_OVERRIDES_LOCAL_KEY);
@@ -3557,6 +3709,29 @@ export default function Page() {
   }, [nav]);
 
   useEffect(() => {
+    const hasDetailOpen =
+      Boolean(bookDetailItem && getMediaType(bookDetailItem) === "book") ||
+      Boolean(movieDetailItem) ||
+      Boolean(tvDetailItem) ||
+      Boolean(gameDetailItem);
+    if (!hasDetailOpen) return;
+
+    const scrollTopNow = () => {
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      }
+      if (typeof document !== "undefined") {
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
+      }
+    };
+
+    scrollTopNow();
+    const rafId = window.requestAnimationFrame(scrollTopNow);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [bookDetailItem, movieDetailItem, tvDetailItem, gameDetailItem]);
+
+  useEffect(() => {
     let rafId: number | null = null;
     const onScroll = () => {
       if (rafId !== null) return;
@@ -3628,35 +3803,35 @@ export default function Page() {
 
   const clampSettingsWindowPosition = useCallback((x: number, y: number, width: number, height: number) => {
     const minX = SETTINGS_WINDOW_MARGIN;
-    const minY = SETTINGS_WINDOW_START_Y;
+    const minY = SETTINGS_WINDOW_MARGIN;
     const maxX = Math.max(minX, window.innerWidth - width - SETTINGS_WINDOW_MARGIN);
     const maxY = Math.max(minY, window.innerHeight - height - SETTINGS_WINDOW_MARGIN);
     return {
       x: Math.round(Math.min(Math.max(x, minX), maxX)),
       y: Math.round(Math.min(Math.max(y, minY), maxY)),
     };
-  }, [SETTINGS_WINDOW_MARGIN, SETTINGS_WINDOW_START_Y]);
+  }, [SETTINGS_WINDOW_MARGIN]);
 
   const getSettingsWindowSize = useCallback(() => {
     const width = Math.min(
       SETTINGS_WINDOW_DEFAULT_WIDTH,
       Math.max(320, window.innerWidth - SETTINGS_WINDOW_MARGIN * 2)
     );
-    const maxHeight = Math.max(320, window.innerHeight - SETTINGS_WINDOW_START_Y - SETTINGS_WINDOW_MARGIN);
+    const maxHeight = Math.max(320, window.innerHeight - SETTINGS_WINDOW_MARGIN * 2);
     const measuredHeight = settingsWindowRef.current?.getBoundingClientRect().height;
     return {
       width,
-      height: measuredHeight ?? Math.min(680, maxHeight),
+      height: measuredHeight ?? Math.min(SETTINGS_WINDOW_DEFAULT_HEIGHT, maxHeight),
     };
-  }, [SETTINGS_WINDOW_DEFAULT_WIDTH, SETTINGS_WINDOW_MARGIN, SETTINGS_WINDOW_START_Y]);
+  }, [SETTINGS_WINDOW_DEFAULT_HEIGHT, SETTINGS_WINDOW_DEFAULT_WIDTH, SETTINGS_WINDOW_MARGIN]);
 
   useEffect(() => {
     if (!settingsPopupOpen) return;
     const syncSettingsWindowPosition = () => {
       const { width, height } = getSettingsWindowSize();
       setSettingsWindowPosition((prev) => {
-        const fallbackX = window.innerWidth - width - SETTINGS_WINDOW_MARGIN;
-        const fallbackY = SETTINGS_WINDOW_START_Y;
+        const fallbackX = Math.round((window.innerWidth - width) / 2);
+        const fallbackY = SETTINGS_WINDOW_MARGIN;
         const source = prev ?? { x: fallbackX, y: fallbackY };
         return clampSettingsWindowPosition(source.x, source.y, width, height);
       });
@@ -3669,7 +3844,6 @@ export default function Page() {
     getSettingsWindowSize,
     settingsPopupOpen,
     SETTINGS_WINDOW_MARGIN,
-    SETTINGS_WINDOW_START_Y,
   ]);
 
   useEffect(() => {
@@ -3767,9 +3941,61 @@ export default function Page() {
     }
     setSortPopupOpen(false);
     setShowVersionNotes(false);
+    sidebarModuleDefaultsRef.current = {
+      library: {
+        iconSize,
+        fontSize: sidebarFontSize,
+        fontWeight: sidebarFontWeight,
+        iconGap: sidebarGap,
+        headerFontSize: sidebarHeaderFontSize,
+        headerFontWeight: sidebarHeaderFontWeight,
+      },
+      smartLists: {
+        iconSize: smartListsSidebarIconSize,
+        fontSize: smartListsSidebarFontSize,
+        fontWeight: smartListsSidebarFontWeight,
+        iconGap: smartListsSidebarGap,
+        headerFontSize: smartListsSidebarHeaderFontSize,
+        headerFontWeight: smartListsSidebarHeaderFontWeight,
+      },
+      discover: {
+        iconSize: discoverSidebarIconSize,
+        fontSize: discoverSidebarFontSize,
+        fontWeight: discoverSidebarFontWeight,
+        iconGap: discoverSidebarGap,
+        headerFontSize: discoverSidebarHeaderFontSize,
+        headerFontWeight: discoverSidebarHeaderFontWeight,
+      },
+    };
+    setSettingsOpen((prev) => ({
+      ...prev,
+      logoSize: true,
+      syncIcon: true,
+      statusIcon: true,
+      sidebar: true,
+    }));
     // Always open (not toggle) to avoid double-event close races after submenu interactions.
     setSettingsPopupOpen(true);
-  }, []);
+  }, [
+    discoverSidebarFontSize,
+    discoverSidebarFontWeight,
+    discoverSidebarGap,
+    discoverSidebarHeaderFontSize,
+    discoverSidebarHeaderFontWeight,
+    discoverSidebarIconSize,
+    iconSize,
+    sidebarFontSize,
+    sidebarFontWeight,
+    sidebarGap,
+    sidebarHeaderFontSize,
+    sidebarHeaderFontWeight,
+    smartListsSidebarFontSize,
+    smartListsSidebarFontWeight,
+    smartListsSidebarGap,
+    smartListsSidebarHeaderFontSize,
+    smartListsSidebarHeaderFontWeight,
+    smartListsSidebarIconSize,
+  ]);
 
   const handleMobileNavSelect = useCallback((nextNav: NavKey) => {
     setNav(nextNav);
@@ -3932,13 +4158,18 @@ export default function Page() {
     if (Object.keys(popupModesFromSheet).length) {
       setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
     }
+    if (isReadOnlySettingsMode) {
+      setSidebarIconOverrides(sidebarIconFromSheet);
+      setStatusIconOverrides(statusIconFromSheet);
+      return;
+    }
     if (Object.keys(sidebarIconFromSheet).length) {
       setSidebarIconOverrides((prev) => ({ ...prev, ...sidebarIconFromSheet }));
     }
     if (Object.keys(statusIconFromSheet).length) {
       setStatusIconOverrides((prev) => ({ ...prev, ...statusIconFromSheet }));
     }
-  }, [settingsRows]);
+  }, [isReadOnlySettingsMode, settingsRows]);
 
   useEffect(() => {
     if (!modalItem) return;
@@ -5610,7 +5841,7 @@ export default function Page() {
   }, [settingSyncConflicts]);
 
   const flushPendingSettingsSheetWrites = useCallback(async () => {
-    if (!settingsWriteUrl) return;
+    if (!canWriteSettings || !settingsWriteUrl) return;
     const pending = pendingSettingsSheetWritesRef.current;
     const entries = Object.entries(pending);
     if (!entries.length) return;
@@ -5650,11 +5881,11 @@ export default function Page() {
     setTimeout(() => {
       setSyncMsg("Synced");
     }, 1200);
-  }, [postSheetWrite, settingsWriteUrl]);
+  }, [canWriteSettings, postSheetWrite, settingsWriteUrl]);
 
   const queueSettingSheetWrite = useCallback(
     (key: string, value: any, category: string = "", description: string = "") => {
-      if (!settingsWriteUrl) return;
+      if (!canWriteSettings || !settingsWriteUrl) return;
 
       const valueStr = String(value);
       if (valueStr.includes("#REF!")) {
@@ -5676,7 +5907,7 @@ export default function Page() {
         void flushPendingSettingsSheetWrites();
       }, 700);
     },
-    [flushPendingSettingsSheetWrites, settingsWriteUrl]
+    [canWriteSettings, flushPendingSettingsSheetWrites, settingsWriteUrl]
   );
 
   const saveSetting = useCallback((key: string, value: any, category: string = "", description: string = "") => {
@@ -5759,7 +5990,7 @@ export default function Page() {
   }, [flushPendingSettingsSheetWrites]);
 
   useEffect(() => {
-    if (!settingsWriteUrl) return;
+    if (!canWriteSettings || !settingsWriteUrl) return;
 
     const flushNow = () => {
       if (settingsSheetFlushTimerRef.current) {
@@ -5781,11 +6012,11 @@ export default function Page() {
       window.removeEventListener("beforeunload", flushNow);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [flushPendingSettingsSheetWrites, settingsWriteUrl]);
+  }, [canWriteSettings, flushPendingSettingsSheetWrites, settingsWriteUrl]);
 
   // Save a specific setting to Google Sheet
   const saveSettingToSheet = useCallback(async (key: string, value: any, category: string = "", description: string = "") => {
-    if (!settingsWriteUrl) {
+    if (!canWriteSettings || !settingsWriteUrl) {
       console.warn("No settings write URL configured");
       return;
     }
@@ -5806,7 +6037,7 @@ export default function Page() {
     } catch (e) {
       console.warn(`✗ Error in saveSettingToSheet:`, e);
     }
-  }, [postSheetWrite, settingsWriteUrl]);
+  }, [canWriteSettings, postSheetWrite, settingsWriteUrl]);
 
   // Load UI prefs from R2 on mount — authoritative cross-device source for UI toggles
   useEffect(() => {
@@ -5858,6 +6089,7 @@ export default function Page() {
     setRatingBadgeScale(getSetting("ratingBadgeScale", 100));
     setRatingBadgeOffsetX(getSetting("ratingBadgeOffsetX", 0));
     setRatingBadgeOffsetY(getSetting("ratingBadgeOffsetY", 0));
+    setShelfThemeMode(normalizeShelfThemeMode(getSetting(SHELF_THEME_MODE_SETTING_KEY, "light")));
     
     setIconSize(getSetting("iconSize", 16));
     
@@ -5884,13 +6116,27 @@ export default function Page() {
     setDiscoverSidebarItemGap(getSetting("discoverSidebarItemGap", 0));
     setSidebarSubmenuGap(getSetting("sidebarSubmenuGap", 0));
     setSidebarRowDensityOffset(getSetting("sidebarRowDensityOffset", 0));
-    setSidebarHighlightColors({
-      home: normalizeHexColor(getSetting("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home)),
-      books: normalizeHexColor(getSetting("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books)),
-      movies: normalizeHexColor(getSetting("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies)),
-      tv: normalizeHexColor(getSetting("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv)),
-      games: normalizeHexColor(getSetting("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games)),
+    setSidebarHighlightColorsLight({
+      home: normalizeHexColor(getSetting("sidebarHighlightColorLight:home", getSetting("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home))),
+      books: normalizeHexColor(getSetting("sidebarHighlightColorLight:books", getSetting("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books))),
+      movies: normalizeHexColor(getSetting("sidebarHighlightColorLight:movies", getSetting("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies))),
+      tv: normalizeHexColor(getSetting("sidebarHighlightColorLight:tv", getSetting("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv))),
+      games: normalizeHexColor(getSetting("sidebarHighlightColorLight:games", getSetting("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games))),
     });
+    const loadedDarkHighlightColors = {
+      home: normalizeHexColor(getSetting("sidebarHighlightColorDark:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home)),
+      books: normalizeHexColor(getSetting("sidebarHighlightColorDark:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books)),
+      movies: normalizeHexColor(getSetting("sidebarHighlightColorDark:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies)),
+      tv: normalizeHexColor(getSetting("sidebarHighlightColorDark:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv)),
+      games: normalizeHexColor(getSetting("sidebarHighlightColorDark:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games)),
+    };
+    const hasLegacyMonoDarkHighlights =
+      loadedDarkHighlightColors.home.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+      loadedDarkHighlightColors.books.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+      loadedDarkHighlightColors.movies.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+      loadedDarkHighlightColors.tv.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+      loadedDarkHighlightColors.games.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO;
+    setSidebarHighlightColorsDark(hasLegacyMonoDarkHighlights ? { ...DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK } : loadedDarkHighlightColors);
     
     setCounterTileSize(getSetting("counterTileSize", 44));
     setCounterTileSpacing(getSetting("counterTileSpacing", 3));
@@ -6184,6 +6430,107 @@ export default function Page() {
     [activateHomeLibrary, customSmartLists, nav, persistSmartLists, removeSetting, saveSetting, selectedSmartListId]
   );
 
+  const handleMoveSmartList = useCallback(
+    (listId: string, direction: "up" | "down") => {
+      const index = customSmartLists.findIndex((list) => list.id === listId);
+      if (index === -1) return;
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= customSmartLists.length) return;
+      const next = [...customSmartLists];
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      persistSmartLists(next);
+      setSyncState("ok");
+      setSyncMsg("Synced");
+      setLastSyncAt(Date.now());
+    },
+    [customSmartLists, persistSmartLists]
+  );
+
+  const handleReorderSmartLists = useCallback(
+    (fromListId: string, toListId: string) => {
+      if (!fromListId || !toListId || fromListId === toListId) return;
+      const fromIndex = customSmartLists.findIndex((list) => list.id === fromListId);
+      const toIndex = customSmartLists.findIndex((list) => list.id === toListId);
+      if (fromIndex === -1 || toIndex === -1) return;
+      const next = [...customSmartLists];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      persistSmartLists(next);
+      setSyncState("ok");
+      setSyncMsg("Synced");
+      setLastSyncAt(Date.now());
+    },
+    [customSmartLists, persistSmartLists]
+  );
+
+  const handleRenameSmartList = useCallback(
+    (listId: string) => {
+      const target = customSmartLists.find((list) => list.id === listId);
+      if (!target || typeof window === "undefined") return;
+      const nextNameRaw = window.prompt("Rename smart list:", target.name);
+      if (nextNameRaw === null) return;
+      const nextName = nextNameRaw.trim();
+      if (!nextName || nextName === target.name) return;
+      const next = customSmartLists.map((list) =>
+        list.id === listId ? { ...list, name: nextName } : list
+      );
+      persistSmartLists(next);
+      setSyncState("ok");
+      setSyncMsg("Synced");
+      setLastSyncAt(Date.now());
+    },
+    [customSmartLists, persistSmartLists]
+  );
+
+  const handleReorderBuiltInSmartLists = useCallback(
+    (fromKey: BuiltInSmartListKey, toKey: BuiltInSmartListKey) => {
+      if (fromKey === toKey) return;
+      const fromIndex = builtInSmartListOrder.indexOf(fromKey);
+      const toIndex = builtInSmartListOrder.indexOf(toKey);
+      if (fromIndex === -1 || toIndex === -1) return;
+      const next = [...builtInSmartListOrder];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      setBuiltInSmartListOrder(next);
+    },
+    [builtInSmartListOrder]
+  );
+
+  const startInlineRenameBuiltInSmartList = useCallback((key: BuiltInSmartListKey) => {
+    setEditingCustomSmartListId(null);
+    setEditingBuiltInSmartListKey(key);
+    setSmartListNameDraft(builtInSmartListLabels[key]);
+  }, [builtInSmartListLabels]);
+
+  const startInlineRenameCustomSmartList = useCallback((listId: string, currentName: string) => {
+    setEditingBuiltInSmartListKey(null);
+    setEditingCustomSmartListId(listId);
+    setSmartListNameDraft(currentName);
+  }, []);
+
+  const commitInlineSmartListRename = useCallback(() => {
+    const nextName = smartListNameDraft.trim();
+    if (!nextName) {
+      setEditingBuiltInSmartListKey(null);
+      setEditingCustomSmartListId(null);
+      return;
+    }
+    if (editingBuiltInSmartListKey) {
+      setBuiltInSmartListLabels((prev) => ({ ...prev, [editingBuiltInSmartListKey]: nextName }));
+    } else if (editingCustomSmartListId) {
+      const next = customSmartLists.map((list) =>
+        list.id === editingCustomSmartListId ? { ...list, name: nextName } : list
+      );
+      persistSmartLists(next);
+      setSyncState("ok");
+      setSyncMsg("Synced");
+      setLastSyncAt(Date.now());
+    }
+    setEditingBuiltInSmartListKey(null);
+    setEditingCustomSmartListId(null);
+  }, [customSmartLists, editingBuiltInSmartListKey, editingCustomSmartListId, persistSmartLists, smartListNameDraft]);
+
   useEffect(() => {
     if (!selectedSmartListId) return;
     if (customSmartLists.some((list) => list.id === selectedSmartListId)) return;
@@ -6351,8 +6698,8 @@ export default function Page() {
 
   // Function to save all current settings to spreadsheet
   const saveAllSettings = async () => {
-    if (!settingsWriteUrl) {
-      alert("No settings write URL configured");
+    if (!canWriteSettings || !settingsWriteUrl) {
+      alert(isReadOnlySettingsMode ? "Localhost settings are read-only. Latest settings are pulled from live, but local changes are not pushed." : "No settings write URL configured");
       return;
     }
     
@@ -6423,12 +6770,18 @@ export default function Page() {
       { key: "discoverSidebarItemGap", value: discoverSidebarItemGap, category: "Sidebar", description: "Discover Sidebar Item Gap" },
       { key: "sidebarSubmenuGap", value: sidebarSubmenuGap, category: "Sidebar", description: "Sidebar Submenu Group Gap" },
       { key: "sidebarRowDensityOffset", value: sidebarRowDensityOffset, category: "Sidebar", description: "Sidebar Row Density Offset" },
-      { key: "sidebarHighlightColor:home", value: sidebarHighlightColors.home, category: "Sidebar", description: "Home Highlight Color" },
-      { key: "sidebarHighlightColor:books", value: sidebarHighlightColors.books, category: "Sidebar", description: "Books Highlight Color" },
-      { key: "sidebarHighlightColor:movies", value: sidebarHighlightColors.movies, category: "Sidebar", description: "Movies Highlight Color" },
-      { key: "sidebarHighlightColor:tv", value: sidebarHighlightColors.tv, category: "Sidebar", description: "TV Highlight Color" },
-      { key: "sidebarHighlightColor:games", value: sidebarHighlightColors.games, category: "Sidebar", description: "Games Highlight Color" },
+      { key: "sidebarHighlightColorLight:home", value: sidebarHighlightColorsLight.home, category: "Sidebar", description: "Home Highlight Color (Light)" },
+      { key: "sidebarHighlightColorLight:books", value: sidebarHighlightColorsLight.books, category: "Sidebar", description: "Books Highlight Color (Light)" },
+      { key: "sidebarHighlightColorLight:movies", value: sidebarHighlightColorsLight.movies, category: "Sidebar", description: "Movies Highlight Color (Light)" },
+      { key: "sidebarHighlightColorLight:tv", value: sidebarHighlightColorsLight.tv, category: "Sidebar", description: "TV Highlight Color (Light)" },
+      { key: "sidebarHighlightColorLight:games", value: sidebarHighlightColorsLight.games, category: "Sidebar", description: "Games Highlight Color (Light)" },
+      { key: "sidebarHighlightColorDark:home", value: sidebarHighlightColorsDark.home, category: "Sidebar", description: "Home Highlight Color (Dark)" },
+      { key: "sidebarHighlightColorDark:books", value: sidebarHighlightColorsDark.books, category: "Sidebar", description: "Books Highlight Color (Dark)" },
+      { key: "sidebarHighlightColorDark:movies", value: sidebarHighlightColorsDark.movies, category: "Sidebar", description: "Movies Highlight Color (Dark)" },
+      { key: "sidebarHighlightColorDark:tv", value: sidebarHighlightColorsDark.tv, category: "Sidebar", description: "TV Highlight Color (Dark)" },
+      { key: "sidebarHighlightColorDark:games", value: sidebarHighlightColorsDark.games, category: "Sidebar", description: "Games Highlight Color (Dark)" },
       { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
+      { key: SHELF_THEME_MODE_SETTING_KEY, value: shelfThemeMode, category: "Themes", description: "Shelf Theme Mode" },
     ];
     
     try {
@@ -6598,6 +6951,7 @@ export default function Page() {
         setRatingBadgeScale(getNum("ratingBadgeScale", 100));
         setRatingBadgeOffsetX(getNum("ratingBadgeOffsetX", 0));
         setRatingBadgeOffsetY(getNum("ratingBadgeOffsetY", 0));
+        setShelfThemeMode(normalizeShelfThemeMode(getStr(SHELF_THEME_MODE_SETTING_KEY, "light")));
         
         setIconSize(getNum("iconSize", 16));
         setSidebarFontSize(getNum("sidebarFontSize", 11));
@@ -6623,13 +6977,27 @@ export default function Page() {
         setDiscoverSidebarItemGap(getNum("discoverSidebarItemGap", 0));
         setSidebarSubmenuGap(getNum("sidebarSubmenuGap", 0));
         setSidebarRowDensityOffset(getNum("sidebarRowDensityOffset", 0));
-        setSidebarHighlightColors({
-          home: normalizeHexColor(getStr("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home)),
-          books: normalizeHexColor(getStr("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books)),
-          movies: normalizeHexColor(getStr("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies)),
-          tv: normalizeHexColor(getStr("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv)),
-          games: normalizeHexColor(getStr("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games)),
+        setSidebarHighlightColorsLight({
+          home: normalizeHexColor(getStr("sidebarHighlightColorLight:home", getStr("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home))),
+          books: normalizeHexColor(getStr("sidebarHighlightColorLight:books", getStr("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books))),
+          movies: normalizeHexColor(getStr("sidebarHighlightColorLight:movies", getStr("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies))),
+          tv: normalizeHexColor(getStr("sidebarHighlightColorLight:tv", getStr("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv))),
+          games: normalizeHexColor(getStr("sidebarHighlightColorLight:games", getStr("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games))),
         });
+        const loadedDarkHighlightColors = {
+          home: normalizeHexColor(getStr("sidebarHighlightColorDark:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home)),
+          books: normalizeHexColor(getStr("sidebarHighlightColorDark:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books)),
+          movies: normalizeHexColor(getStr("sidebarHighlightColorDark:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies)),
+          tv: normalizeHexColor(getStr("sidebarHighlightColorDark:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv)),
+          games: normalizeHexColor(getStr("sidebarHighlightColorDark:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games)),
+        };
+        const hasLegacyMonoDarkHighlights =
+          loadedDarkHighlightColors.home.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+          loadedDarkHighlightColors.books.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+          loadedDarkHighlightColors.movies.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+          loadedDarkHighlightColors.tv.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
+          loadedDarkHighlightColors.games.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO;
+        setSidebarHighlightColorsDark(hasLegacyMonoDarkHighlights ? { ...DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK } : loadedDarkHighlightColors);
         const coverScaleFallback = Math.max(0, Math.min(200, Math.round(getNum("rowHeightScalePct", 100))));
         setCoverScaleByGroup({
           home: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.home, coverScaleFallback)))),
@@ -6716,6 +7084,11 @@ export default function Page() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prefs: { showStatusIndicators: value } }),
     }).catch(() => {});
+  };
+  const updateShelfThemeMode = (value: ShelfThemeMode) => {
+    const nextMode = normalizeShelfThemeMode(value);
+    setShelfThemeMode(nextMode);
+    saveSetting(SHELF_THEME_MODE_SETTING_KEY, nextMode, "Themes", "Shelf Theme Mode");
   };
   
   // Update UI immediately; debounce only persistence so controls remain responsive.
@@ -6935,11 +7308,60 @@ export default function Page() {
     setSidebarRowDensityOffset(value);
     saveSetting("sidebarRowDensityOffset", value, "Sidebar", "Sidebar Row Density Offset");
   };
-  const updateSidebarHighlightColor = (group: CoverScaleGroupKey, value: string) => {
+  const updateSidebarHighlightColor = (group: CoverScaleGroupKey, value: string, mode: HighlightThemeMode = highlightThemeEditorMode) => {
     const normalized = normalizeHexColor(value);
-    setSidebarHighlightColors((prev) => ({ ...prev, [group]: normalized }));
-    saveSetting(`sidebarHighlightColor:${group}`, normalized, "Sidebar", `${group} Highlight Color`);
+    if (mode === "dark") {
+      setSidebarHighlightColorsDark((prev) => ({ ...prev, [group]: normalized }));
+      saveSetting(`sidebarHighlightColorDark:${group}`, normalized, "Sidebar", `${group} Highlight Color (Dark)`);
+      return;
+    }
+    setSidebarHighlightColorsLight((prev) => ({ ...prev, [group]: normalized }));
+    saveSetting(`sidebarHighlightColorLight:${group}`, normalized, "Sidebar", `${group} Highlight Color (Light)`);
   };
+  const resetLibrarySidebarDefaults = useCallback(() => {
+    const defaults = sidebarModuleDefaultsRef.current?.library;
+    if (!defaults) return;
+    updateIconSize(defaults.iconSize);
+    updateSidebarFontSize(defaults.fontSize);
+    updateSidebarFontWeight(defaults.fontWeight);
+    updateSidebarGap(defaults.iconGap);
+    updateSidebarHeaderFontSize(defaults.headerFontSize);
+    updateSidebarHeaderFontWeight(defaults.headerFontWeight);
+  }, [updateIconSize, updateSidebarFontSize, updateSidebarFontWeight, updateSidebarGap, updateSidebarHeaderFontSize, updateSidebarHeaderFontWeight]);
+  const resetSmartListsSidebarDefaults = useCallback(() => {
+    const defaults = sidebarModuleDefaultsRef.current?.smartLists;
+    if (!defaults) return;
+    updateSmartListsSidebarIconSize(defaults.iconSize);
+    updateSmartListsSidebarFontSize(defaults.fontSize);
+    updateSmartListsSidebarFontWeight(defaults.fontWeight);
+    updateSmartListsSidebarGap(defaults.iconGap);
+    updateSmartListsSidebarHeaderFontSize(defaults.headerFontSize);
+    updateSmartListsSidebarHeaderFontWeight(defaults.headerFontWeight);
+  }, [
+    updateSmartListsSidebarFontSize,
+    updateSmartListsSidebarFontWeight,
+    updateSmartListsSidebarGap,
+    updateSmartListsSidebarHeaderFontSize,
+    updateSmartListsSidebarHeaderFontWeight,
+    updateSmartListsSidebarIconSize,
+  ]);
+  const resetDiscoverSidebarDefaults = useCallback(() => {
+    const defaults = sidebarModuleDefaultsRef.current?.discover;
+    if (!defaults) return;
+    updateDiscoverSidebarIconSize(defaults.iconSize);
+    updateDiscoverSidebarFontSize(defaults.fontSize);
+    updateDiscoverSidebarFontWeight(defaults.fontWeight);
+    updateDiscoverSidebarGap(defaults.iconGap);
+    updateDiscoverSidebarHeaderFontSize(defaults.headerFontSize);
+    updateDiscoverSidebarHeaderFontWeight(defaults.headerFontWeight);
+  }, [
+    updateDiscoverSidebarFontSize,
+    updateDiscoverSidebarFontWeight,
+    updateDiscoverSidebarGap,
+    updateDiscoverSidebarHeaderFontSize,
+    updateDiscoverSidebarHeaderFontWeight,
+    updateDiscoverSidebarIconSize,
+  ]);
   const resetLogoDefaults = () => {
     setLogoSize(DEFAULT_LOGO_SETTINGS.size);
     setLogoTop(DEFAULT_LOGO_SETTINGS.top);
@@ -6994,12 +7416,19 @@ export default function Page() {
     setDiscoverSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.discoverItemGap);
     setSidebarSubmenuGap(DEFAULT_SIDEBAR_SETTINGS.submenuGap);
     setSidebarRowDensityOffset(DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset);
-    setSidebarHighlightColors({
+    setSidebarHighlightColorsLight({
       home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
       books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
       movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
       tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
       games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
+    });
+    setSidebarHighlightColorsDark({
+      home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home,
+      books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books,
+      movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies,
+      tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv,
+      games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games,
     });
     Object.entries({
       iconSize: DEFAULT_SIDEBAR_SETTINGS.iconSize,
@@ -7026,11 +7455,16 @@ export default function Page() {
       discoverSidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.discoverItemGap,
       sidebarSubmenuGap: DEFAULT_SIDEBAR_SETTINGS.submenuGap,
       sidebarRowDensityOffset: DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset,
-      "sidebarHighlightColor:home": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
-      "sidebarHighlightColor:books": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
-      "sidebarHighlightColor:movies": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
-      "sidebarHighlightColor:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
-      "sidebarHighlightColor:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
+      "sidebarHighlightColorLight:home": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
+      "sidebarHighlightColorLight:books": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
+      "sidebarHighlightColorLight:movies": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
+      "sidebarHighlightColorLight:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
+      "sidebarHighlightColorLight:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
+      "sidebarHighlightColorDark:home": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home,
+      "sidebarHighlightColorDark:books": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books,
+      "sidebarHighlightColorDark:movies": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies,
+      "sidebarHighlightColorDark:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv,
+      "sidebarHighlightColorDark:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games,
     }).forEach(([key, value]) => saveSetting(key, value, "Sidebar", key));
   };
 
@@ -10607,7 +11041,11 @@ export default function Page() {
     setGameDetailPalette({ key: getMediaItemKey(gameDetailItem), start: nextPalette.start, end: nextPalette.end });
   }, [gameDetailItem]);
 
-  const sidebarFloatOverPageBackground = Boolean(activeBookDetailBackground) || Boolean(activeMovieDetailBackground) || Boolean(activeTvDetailBackground) || Boolean(activeGameDetailBackground) || nav === "home";
+  const sidebarFloatOverPageBackground =
+    Boolean(activeBookDetailBackground) ||
+    Boolean(activeMovieDetailBackground) ||
+    Boolean(activeTvDetailBackground) ||
+    Boolean(activeGameDetailBackground);
   const sidebarDetailGradientActive = sidebarFloatOverPageBackground;
   const sidebarDetailShellBackground = sidebarShellBackground;
   const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
@@ -11308,7 +11746,11 @@ export default function Page() {
               borderRadius: isSimpleSidebarTheme ? 12 : 16,
               overflow: "hidden",
               opacity: sidebarDetailGradientActive ? 0 : sidebarDetailBackplateOpacity,
-              backgroundImage: currentTheme.background,
+              backgroundImage: isDarkShelfMode
+                ? "linear-gradient(180deg, rgba(201, 208, 218, 0.58) 0%, rgba(176, 184, 195, 0.54) 100%)"
+                : isClassicShelfMode
+                  ? "linear-gradient(180deg, rgba(235, 232, 224, 0.82) 0%, rgba(220, 216, 206, 0.78) 100%)"
+                : currentTheme.background,
               backgroundSize: sidebarBackplateBackgroundSize,
               backgroundPosition: sidebarBackplateBackgroundPosition,
             }}
@@ -11447,7 +11889,7 @@ export default function Page() {
                 <button
                   onClick={activateHomeLibrary}
                   className={`sideItem ${nav === "home" ? "active" : ""}`}
-                  style={sidebarPrimaryItemRowStyle}
+                  style={{ ...sidebarPrimaryItemRowStyle, ...getLibraryItemActiveStyle("home", nav === "home") }}
                 >
                   <span style={sidebarPrimaryItemLabelStyle}>
                     <span
@@ -11465,7 +11907,7 @@ export default function Page() {
                 <button
                   onClick={() => openMediaSidebar("books")}
                   className={`sideItem ${nav === "books" ? "active" : ""}`}
-                  style={sidebarPrimaryItemRowStyle}
+                  style={{ ...sidebarPrimaryItemRowStyle, ...getLibraryItemActiveStyle("books", nav === "books") }}
                 >
                   <span style={sidebarPrimaryItemLabelStyle}>
                     <span
@@ -11490,7 +11932,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: nav === "books" ? sidebarActiveAccent.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#6ba56a",
+                        background: nav === "books" ? sidebarAccentPalette.books.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#6ba56a",
                         color: "#fff",
                       }}
                     >
@@ -11629,7 +12071,7 @@ export default function Page() {
                     openMediaSidebar("movies");
                   }}
                   className={`sideItem ${nav === "movies" ? "active" : ""}`}
-                  style={sidebarPrimaryItemRowStyle}
+                  style={{ ...sidebarPrimaryItemRowStyle, ...getLibraryItemActiveStyle("movies", nav === "movies") }}
                 >
                   <span style={sidebarPrimaryItemLabelStyle}>
                     <span
@@ -11654,7 +12096,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
-                        background: nav === "movies" ? sidebarActiveAccent.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#5b9bd5",
+                        background: nav === "movies" ? sidebarAccentPalette.movies.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#5b9bd5",
                         color: "#fff",
                       }}
                     >
@@ -11770,7 +12212,7 @@ export default function Page() {
                     openMediaSidebar("tv");
                   }}
                   className={`sideItem primary ${nav === "tv" ? "active" : ""}`}
-                  style={sidebarPrimaryItemRowStyle}
+                  style={{ ...sidebarPrimaryItemRowStyle, ...getLibraryItemActiveStyle("tv", nav === "tv") }}
                 >
                   <span style={sidebarPrimaryItemLabelStyle}>
                     <span
@@ -11795,7 +12237,7 @@ export default function Page() {
                         justifyContent: "center",
                         fontSize: sidebarFontSize,
                         fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
-                        background: nav === "tv" ? sidebarActiveAccent.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#d97642",
+                        background: nav === "tv" ? sidebarAccentPalette.tv.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#d97642",
                         color: "#fff",
                       }}
                     >
@@ -11949,7 +12391,7 @@ export default function Page() {
                     openMediaSidebar("games");
                   }}
                   className={`sideItem ${nav === "games" ? "active" : ""}`}
-                  style={{ ...sidebarPrimaryItemRowStyle, marginBottom: 15 }}
+                  style={{ ...sidebarPrimaryItemRowStyle, ...getLibraryItemActiveStyle("games", nav === "games"), marginBottom: 15 }}
                 >
                   <span style={sidebarPrimaryItemLabelStyle}>
                     <span
@@ -11976,7 +12418,7 @@ export default function Page() {
                         fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
                         background:
                           nav === "games"
-                            ? sidebarActiveAccent.countBubble
+                            ? sidebarAccentPalette.games.countBubble
                             : isBlueSidebarTheme
                               ? "rgba(26, 47, 92, 0.95)"
                               : usesThemeCountBubbleColor
@@ -12276,13 +12718,23 @@ export default function Page() {
                 </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: smartListsSidebarItemGap }}>
-                {[
-                  { key: "year-this" as const, label: "This Year", count: stats.yearThis },
-                  { key: "current" as const, label: "Current", count: stats.current },
-                  { key: "completed" as const, label: "Completed", count: stats.completed },
-                  { key: "abandoned" as const, label: "Abandoned", count: stats.abandoned },
-                ].map((item) => {
+                {builtInSmartListOrder.map((key) => {
+                  const item = {
+                    key,
+                    label: builtInSmartListLabels[key],
+                    count:
+                      key === "year-this"
+                        ? stats.yearThis
+                        : key === "current"
+                          ? stats.current
+                          : key === "completed"
+                            ? stats.completed
+                            : stats.abandoned,
+                  };
                   const active = nav === item.key;
+                  const subtleActiveBackground = "rgba(120, 128, 140, 0.09)";
+                  const subtleActiveBorder = "1px solid rgba(146, 154, 166, 0.26)";
+                  const subtleActiveText = "rgba(62, 70, 80, 0.92)";
                   const iconKey =
                     item.key === "year-this"
                       ? "year-this"
@@ -12300,9 +12752,41 @@ export default function Page() {
                           ? "/icon-completed.png"
                           : "/icon-abandoned.png";
                   return (
-                    <button
+                    <div
                       key={`smart-list-${item.key}`}
-                      onClick={() => setNav(item.key)}
+                      style={{
+                        width: "100%",
+                        opacity: draggingBuiltInSmartListKey === item.key ? 0.75 : 1,
+                        borderRadius: 10,
+                        outline: builtInSmartListDropTargetKey === item.key ? "1px dashed rgba(80, 128, 196, 0.55)" : "none",
+                      }}
+                      draggable={smartListsEditMode}
+                      onDragStart={() => {
+                        if (!smartListsEditMode) return;
+                        setDraggingBuiltInSmartListKey(item.key);
+                      }}
+                      onDragOver={(event) => {
+                        if (!smartListsEditMode || !draggingBuiltInSmartListKey || draggingBuiltInSmartListKey === item.key) return;
+                        event.preventDefault();
+                        setBuiltInSmartListDropTargetKey(item.key);
+                      }}
+                      onDrop={(event) => {
+                        if (!smartListsEditMode || !draggingBuiltInSmartListKey || draggingBuiltInSmartListKey === item.key) return;
+                        event.preventDefault();
+                        handleReorderBuiltInSmartLists(draggingBuiltInSmartListKey, item.key);
+                        setDraggingBuiltInSmartListKey(null);
+                        setBuiltInSmartListDropTargetKey(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingBuiltInSmartListKey(null);
+                        setBuiltInSmartListDropTargetKey(null);
+                      }}
+                    >
+                    <button
+                      onClick={() => {
+                        if (smartListsEditMode) return;
+                        setNav(item.key);
+                      }}
                       className={`sideSubItem ${active ? "active" : ""}`}
                       style={{
                         width: "100%",
@@ -12314,9 +12798,13 @@ export default function Page() {
                         padding: "3px 4px",
                         fontSize: smartListsSidebarFontSize,
                         fontWeight: smartListsSidebarFontWeight,
+                        background: active ? subtleActiveBackground : "transparent",
+                        border: active ? subtleActiveBorder : "1px solid transparent",
+                        borderRadius: 10,
+                        color: active ? subtleActiveText : undefined,
                       }}
                     >
-                      <span style={{ display: "flex", alignItems: "center", gap: smartListsSidebarGap }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: smartListsSidebarGap, minWidth: 0 }}>
                         <span
                           aria-hidden
                           style={{
@@ -12341,21 +12829,65 @@ export default function Page() {
                             style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                           />
                         </span>
-                        <span style={{ color: sidebarInlineMetaTextColor, fontSize: smartListsSidebarFontSize, fontWeight: smartListsSidebarFontWeight }}>
-                          {item.label}
-                        </span>
+                        {smartListsEditMode && editingBuiltInSmartListKey === item.key ? (
+                          <input
+                            value={smartListNameDraft}
+                            onChange={(event) => setSmartListNameDraft(event.target.value)}
+                            onBlur={commitInlineSmartListRename}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") commitInlineSmartListRename();
+                              if (event.key === "Escape") {
+                                setEditingBuiltInSmartListKey(null);
+                                setEditingCustomSmartListId(null);
+                              }
+                            }}
+                            autoFocus
+                            style={{
+                              width: 118,
+                              border: "1px solid rgba(0,0,0,0.2)",
+                              borderRadius: 6,
+                              fontSize: smartListsSidebarFontSize,
+                              fontWeight: smartListsSidebarFontWeight,
+                              padding: "1px 5px",
+                              background: "rgba(255,255,255,0.86)",
+                              color: "#2f3338",
+                            }}
+                          />
+                        ) : (
+                          <span
+                            onClick={() => {
+                              if (!smartListsEditMode) return;
+                              startInlineRenameBuiltInSmartList(item.key);
+                            }}
+                            style={{
+                              color: sidebarInlineMetaTextColor,
+                              fontSize: smartListsSidebarFontSize,
+                              fontWeight: smartListsSidebarFontWeight,
+                              cursor: smartListsEditMode ? "text" : "default",
+                            }}
+                          >
+                            {item.label}
+                          </span>
+                        )}
                       </span>
-                      <span
-                        style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
-                      >
-                        {item.count}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <span
+                          style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
+                        >
+                          {item.count}
+                        </span>
+                        {null}
                       </span>
                     </button>
+                    </div>
                   );
                 })}
 
-                {customSmartLists.map((smartList) => {
+                {customSmartLists.map((smartList, smartListIndex) => {
                   const isActive = nav === "smart-custom" && selectedSmartListId === smartList.id;
+                  const subtleActiveBackground = "rgba(120, 128, 140, 0.09)";
+                  const subtleActiveBorder = "1px solid rgba(146, 154, 166, 0.26)";
+                  const subtleActiveText = "rgba(62, 70, 80, 0.92)";
                   const iconSrc = safeStr(smartList.icon);
                   const defaultSortField =
                     smartList.allowManualSort || smartList.defaultSortField !== MANUAL_SORT_FIELD
@@ -12372,18 +12904,49 @@ export default function Page() {
                       key={smartList.id}
                       style={{
                         width: "100%",
+                        opacity: draggingSmartListId === smartList.id ? 0.75 : 1,
+                        borderRadius: 10,
+                        outline: smartListDropTargetId === smartList.id ? "1px dashed rgba(80, 128, 196, 0.55)" : "none",
+                      }}
+                      draggable={smartListsEditMode}
+                      onDragStart={() => {
+                        if (!smartListsEditMode) return;
+                        setDraggingSmartListId(smartList.id);
+                      }}
+                      onDragOver={(event) => {
+                        if (!smartListsEditMode || !draggingSmartListId || draggingSmartListId === smartList.id) return;
+                        event.preventDefault();
+                        setSmartListDropTargetId(smartList.id);
+                      }}
+                      onDrop={(event) => {
+                        if (!smartListsEditMode || !draggingSmartListId || draggingSmartListId === smartList.id) return;
+                        event.preventDefault();
+                        handleReorderSmartLists(draggingSmartListId, smartList.id);
+                        setDraggingSmartListId(null);
+                        setSmartListDropTargetId(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingSmartListId(null);
+                        setSmartListDropTargetId(null);
                       }}
                     >
                       <button
                         type="button"
                         onClick={() => {
+                          if (smartListsEditMode) return;
                           setSelectedSmartListId(smartList.id);
                           setNav("smart-custom");
                           setSortField(shouldUseManualSort ? MANUAL_SORT_FIELD : defaultSortField);
                           setSortOrder(shouldUseManualSort ? "Asc" : smartList.defaultSortOrder);
                         }}
                         className={`sideItem ${isActive ? "active" : ""}`}
-                        style={smartListsRowStyle}
+                        style={{
+                          ...smartListsRowStyle,
+                          background: isActive ? subtleActiveBackground : "transparent",
+                          border: isActive ? subtleActiveBorder : "1px solid transparent",
+                          borderRadius: 10,
+                          color: isActive ? subtleActiveText : undefined,
+                        }}
                       >
                         <span style={{ display: "flex", alignItems: "center", gap: smartListsSidebarGap, fontWeight: isActive ? Math.min(Number(smartListsSidebarFontWeight) + 150, 900) : smartListsSidebarFontWeight, fontSize: smartListsSidebarFontSize + 1 }}>
                           <span
@@ -12406,38 +12969,175 @@ export default function Page() {
                               <span style={{ fontSize: 10, opacity: 0.6, lineHeight: 1 }}>□</span>
                             )}
                           </span>
-                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 126 }}>
-                            {smartList.name}
-                          </span>
+                          {smartListsEditMode && editingCustomSmartListId === smartList.id ? (
+                            <input
+                              value={smartListNameDraft}
+                              onChange={(event) => setSmartListNameDraft(event.target.value)}
+                              onBlur={commitInlineSmartListRename}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") commitInlineSmartListRename();
+                                if (event.key === "Escape") {
+                                  setEditingBuiltInSmartListKey(null);
+                                  setEditingCustomSmartListId(null);
+                                }
+                              }}
+                              autoFocus
+                              style={{
+                                width: 118,
+                                border: "1px solid rgba(0,0,0,0.2)",
+                                borderRadius: 6,
+                                fontSize: smartListsSidebarFontSize,
+                                fontWeight: smartListsSidebarFontWeight,
+                                padding: "1px 5px",
+                                background: "rgba(255,255,255,0.86)",
+                                color: "#2f3338",
+                              }}
+                            />
+                          ) : (
+                            <span
+                              onClick={() => {
+                                if (!smartListsEditMode) return;
+                                startInlineRenameCustomSmartList(smartList.id, smartList.name);
+                              }}
+                              style={{
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: 126,
+                                cursor: smartListsEditMode ? "text" : "default",
+                              }}
+                            >
+                              {smartList.name}
+                            </span>
+                          )}
                         </span>
+                        {smartListsEditMode ? (
+                          <span
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8 }}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSmartList(smartList.id, "up")}
+                              disabled={smartListIndex === 0}
+                              title="Move up"
+                              aria-label={`Move ${smartList.name} up`}
+                              style={{
+                                border: "1px solid rgba(0,0,0,0.16)",
+                                background: "rgba(255,255,255,0.78)",
+                                color: "#3a3a3c",
+                                borderRadius: 6,
+                                width: 22,
+                                height: 20,
+                                lineHeight: 1,
+                                padding: 0,
+                                cursor: smartListIndex === 0 ? "default" : "pointer",
+                                opacity: smartListIndex === 0 ? 0.45 : 1,
+                              }}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSmartList(smartList.id, "down")}
+                              disabled={smartListIndex === customSmartLists.length - 1}
+                              title="Move down"
+                              aria-label={`Move ${smartList.name} down`}
+                              style={{
+                                border: "1px solid rgba(0,0,0,0.16)",
+                                background: "rgba(255,255,255,0.78)",
+                                color: "#3a3a3c",
+                                borderRadius: 6,
+                                width: 22,
+                                height: 20,
+                                lineHeight: 1,
+                                padding: 0,
+                                cursor: smartListIndex === customSmartLists.length - 1 ? "default" : "pointer",
+                                opacity: smartListIndex === customSmartLists.length - 1 ? 0.45 : 1,
+                              }}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSmartList(smartList.id)}
+                              title={`Delete ${smartList.name}`}
+                              aria-label={`Delete ${smartList.name}`}
+                              style={{
+                                border: "1px solid rgba(176,65,65,0.5)",
+                                background: "rgba(145, 52, 52, 0.14)",
+                                color: "#8a2f2f",
+                                borderRadius: 6,
+                                padding: "0 6px",
+                                height: 20,
+                                lineHeight: 1,
+                                cursor: "pointer",
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Del
+                            </button>
+                          </span>
+                        ) : null}
                       </button>
                     </div>
                   );
                 })}
 
-                <button
-                  type="button"
-                  onClick={handleOpenSmartListBuilder}
-                  style={{
-                    width: "fit-content",
-                    marginTop: 4,
-                    marginBottom: customSmartLists.length ? 0 : 4,
-                    textAlign: "left",
-                    border: "none",
-                    borderRadius: 0,
-                    padding: 0,
-                    background: "transparent",
-                    boxShadow: "none",
-                    color: sidebarSectionLabelColor,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    fontFamily: sidebarSectionFontFamily,
-                    letterSpacing: "0",
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4, marginBottom: customSmartLists.length ? 0 : 4 }}>
+                  <button
+                    type="button"
+                    onClick={handleOpenSmartListBuilder}
+                    style={{
+                      width: "fit-content",
+                      marginLeft: 10,
+                      textAlign: "left",
+                      border: "none",
+                      borderRadius: 0,
+                      padding: 0,
+                      background: "transparent",
+                      boxShadow: "none",
+                      color: sidebarSectionLabelColor,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: sidebarSectionFontFamily,
+                      letterSpacing: "0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSmartListsEditMode((prev) => !prev);
+                      setEditingBuiltInSmartListKey(null);
+                      setEditingCustomSmartListId(null);
+                      setDraggingBuiltInSmartListKey(null);
+                      setBuiltInSmartListDropTargetKey(null);
+                      setDraggingSmartListId(null);
+                      setSmartListDropTargetId(null);
+                    }}
+                    style={{
+                      width: "fit-content",
+                      textAlign: "left",
+                      border: "none",
+                      borderRadius: 0,
+                      padding: 0,
+                      background: "transparent",
+                      boxShadow: "none",
+                      color: sidebarSectionLabelColor,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: sidebarSectionFontFamily,
+                      letterSpacing: "0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {smartListsEditMode ? "Done" : "Edit"}
+                  </button>
+                </div>
 
               </div>
             </div>
@@ -12469,7 +13169,13 @@ export default function Page() {
                 <button
                   onClick={openStatisticsView}
                   className={`sideSubItem ${nav === "statistics" ? "active" : ""}`}
-                  style={discoverRowStyle}
+                  style={{
+                    ...discoverRowStyle,
+                    background: nav === "statistics" ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: nav === "statistics" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    borderRadius: 10,
+                    color: nav === "statistics" ? "rgba(62, 70, 80, 0.92)" : undefined,
+                  }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
                     <span
@@ -12503,7 +13209,13 @@ export default function Page() {
                 <button
                   onClick={openRoadmapView}
                   className={`sideSubItem ${nav === "roadmap" ? "active" : ""}`}
-                  style={discoverRowStyle}
+                  style={{
+                    ...discoverRowStyle,
+                    background: nav === "roadmap" ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: nav === "roadmap" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    borderRadius: 10,
+                    color: nav === "roadmap" ? "rgba(62, 70, 80, 0.92)" : undefined,
+                  }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
                     <span
@@ -12533,6 +13245,83 @@ export default function Page() {
                     <span style={discoverLabelStyle}>Roadmap</span>
                   </span>
                 </button>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setThemesOpen((prev) => !prev)}
+                    className={`sideSubItem ${themesOpen ? "active" : ""}`}
+                    style={{
+                      ...discoverRowStyle,
+                      background: themesOpen ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                      border: themesOpen ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                      borderRadius: 10,
+                      color: themesOpen ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 18,
+                          height: 14,
+                          borderRadius: 4,
+                          background: themesOpen ? "rgba(0,0,0,0.05)" : "transparent",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flex: "0 0 auto",
+                          overflow: "visible",
+                        }}
+                      >
+                        <img
+                          src={getSidebarIconSrc("themes", "/icon-theme.png")}
+                          alt=""
+                          width={discoverSidebarIconSize}
+                          height={discoverSidebarIconSize}
+                          onClick={(event) => openSidebarIconFilePicker(event, "themes")}
+                          title={uploadingSidebarIconKey === "themes" ? "Uploading..." : "Change icon"}
+                          style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
+                        />
+                      </span>
+                      <span style={discoverLabelStyle}>Themes</span>
+                    </span>
+                  </button>
+
+                  {themesOpen ? (
+                    <div style={{ marginLeft: 18 + discoverSidebarGap, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {[
+                        { key: "light" as const, label: "Light" },
+                        { key: "dark" as const, label: "Dark" },
+                        { key: "classic" as const, label: "Classic" },
+                      ].map((themeOption) => {
+                        const active = shelfThemeMode === themeOption.key;
+                        return (
+                          <button
+                            key={`theme-option-${themeOption.key}`}
+                            type="button"
+                            onClick={() => updateShelfThemeMode(themeOption.key)}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              boxShadow: "none",
+                              padding: 0,
+                              margin: 0,
+                              textAlign: "left",
+                              cursor: "pointer",
+                              fontSize: discoverSidebarFontSize,
+                              fontWeight: active ? 700 : 500,
+                              color: active ? themesOptionActiveTextColor : themesOptionTextColor,
+                              letterSpacing: "0",
+                            }}
+                          >
+                            {themeOption.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
 
               </div>
 
@@ -12574,29 +13363,43 @@ export default function Page() {
 
             {settingsPopupOpen && typeof document !== "undefined" ? createPortal(
               <div
-                ref={settingsWindowRef}
-                onPointerDown={handleSettingsWindowPointerDown}
-                onPointerMove={handleSettingsWindowPointerMove}
-                onPointerUp={handleSettingsWindowPointerUp}
-                onPointerCancel={handleSettingsWindowPointerUp}
                 style={{
                   position: "fixed",
-                  top: settingsWindowPosition?.y ?? SETTINGS_WINDOW_START_Y,
-                  ...(settingsWindowPosition ? { left: settingsWindowPosition.x } : { right: SETTINGS_WINDOW_MARGIN }),
-                  width: `min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
-                  maxHeight: `calc(100vh - ${SETTINGS_WINDOW_START_Y + SETTINGS_WINDOW_MARGIN}px)`,
-                  minHeight: 0,
                   zIndex: SETTINGS_WINDOW_Z_INDEX,
                   display: "flex",
-                  flexDirection: "column",
-                  background: "rgba(246, 245, 243, 0.98)",
-                  border: "1px solid rgba(139, 175, 244, 0.28)",
-                  borderRadius: 16,
-                  boxShadow: "0 24px 60px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(139, 175, 244, 0.12)",
-                  backdropFilter: "blur(20px)",
-                  overflow: "hidden",
+                  inset: 0,
+                  justifyContent: "center",
+                  alignItems: "stretch",
+                  padding: `${SETTINGS_WINDOW_MARGIN}px`,
+                  pointerEvents: "none",
                 }}
               >
+                <div
+                  ref={settingsWindowRef}
+                  onPointerDown={handleSettingsWindowPointerDown}
+                  onPointerMove={handleSettingsWindowPointerMove}
+                  onPointerUp={handleSettingsWindowPointerUp}
+                  onPointerCancel={handleSettingsWindowPointerUp}
+                  style={{
+                    position: "fixed",
+                    top: settingsWindowPosition?.y ?? SETTINGS_WINDOW_MARGIN,
+                    left: settingsWindowPosition?.x ?? `calc((100vw - min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))) / 2)`,
+                    display: "flex",
+                    flexDirection: "column",
+                    width: `min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
+                    height: `min(${SETTINGS_WINDOW_DEFAULT_HEIGHT}px, calc(100dvh - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
+                    maxHeight: `min(${SETTINGS_WINDOW_DEFAULT_HEIGHT}px, calc(100dvh - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
+                    minHeight: 0,
+                    background: "rgba(246, 245, 243, 0.76)",
+                    border: "1px solid rgba(255, 255, 255, 0.42)",
+                    borderRadius: 16,
+                    boxShadow: "0 28px 70px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(139, 175, 244, 0.16)",
+                    backdropFilter: "blur(18px) saturate(1.12)",
+                    WebkitBackdropFilter: "blur(18px) saturate(1.12)",
+                    overflow: "hidden",
+                    pointerEvents: "auto",
+                  }}
+                >
                 {/* Title bar */}
                 <div
                   data-settings-window-drag-handle="true"
@@ -12609,7 +13412,7 @@ export default function Page() {
                     cursor: "grab",
                     userSelect: "none",
                     touchAction: "none",
-                    background: "rgba(255,255,255,0.55)",
+                    background: "rgba(255,255,255,0.48)",
                     flexShrink: 0,
                   }}
                 >
@@ -12672,50 +13475,25 @@ export default function Page() {
                   ref={settingsBodyRef}
                   onScroll={updateSettingsScrollMetrics}
                   style={{
-                    overflowY: "scroll",
+                    overflowY: "auto",
                     overflowX: "hidden",
                     overscrollBehavior: "contain",
                     WebkitOverflowScrolling: "touch",
                     scrollbarWidth: "thin",
+                    scrollbarGutter: "stable",
                     position: "relative",
                     flex: 1,
                     minHeight: 0,
-                    padding: "12px 14px 16px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
+                    padding: "14px 16px 28px",
+                    display: "grid",
+                    gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                    alignContent: "start",
+                    alignItems: "start",
+                    gap: 12,
                   }}
                   className="settingsScrollArea"
                 >
-                  {settingsScrollMetrics.hasOverflow ? (
-                    <div
-                      aria-hidden
-                      style={{
-                        position: "absolute",
-                        right: 2,
-                        top: 8,
-                        bottom: 8,
-                        width: 6,
-                        borderRadius: 999,
-                        background: "rgba(139, 175, 244, 0.16)",
-                        pointerEvents: "none",
-                        zIndex: 3,
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          right: 0,
-                          top: settingsScrollMetrics.thumbTop,
-                          height: settingsScrollMetrics.thumbHeight,
-                          borderRadius: 999,
-                          background: "rgba(74, 126, 212, 0.68)",
-                        }}
-                      />
-                    </div>
-                  ) : null}
-
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
                 {/* Version Notes */}
                 {showVersionNotes ? (
                   <div
@@ -12808,8 +13586,13 @@ export default function Page() {
                     overflow: "hidden",
                   }}
                 >
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSettingsOpen({ ...settingsOpen, logoSize: !settingsOpen.logoSize })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, logoSize: !settingsOpen.logoSize });
+                    }}
                     style={{
                       width: "100%",
                       display: "flex",
@@ -12831,7 +13614,7 @@ export default function Page() {
                         </svg>
                       </div>
                     </div>
-                  </button>
+                  </div>
                   {settingsOpen.logoSize ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       {(
@@ -12860,8 +13643,13 @@ export default function Page() {
                     overflow: "hidden",
                   }}
                 >
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSettingsOpen({ ...settingsOpen, syncIcon: !settingsOpen.syncIcon })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, syncIcon: !settingsOpen.syncIcon });
+                    }}
                     style={{
                       width: "100%",
                       display: "flex",
@@ -12883,7 +13671,7 @@ export default function Page() {
                         </svg>
                       </div>
                     </div>
-                  </button>
+                  </div>
                   {settingsOpen.syncIcon ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       {(
@@ -12901,7 +13689,6 @@ export default function Page() {
                     </div>
                   ) : null}
                 </div>
-
                 {/* Status Icon section */}
                 <div
                   style={{
@@ -12911,8 +13698,13 @@ export default function Page() {
                     overflow: "hidden",
                   }}
                 >
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon });
+                    }}
                     style={{
                       width: "100%",
                       display: "flex",
@@ -12934,7 +13726,7 @@ export default function Page() {
                         </svg>
                       </div>
                     </div>
-                  </button>
+                  </div>
                   {settingsOpen.statusIcon ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
@@ -13040,6 +13832,8 @@ export default function Page() {
                   ) : null}
                 </div>
 
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
                 {/* Sidebar section */}
                 <div
                   style={{
@@ -13049,8 +13843,13 @@ export default function Page() {
                     overflow: "hidden",
                   }}
                 >
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar });
+                    }}
                     style={{
                       width: "100%",
                       display: "flex",
@@ -13064,7 +13863,7 @@ export default function Page() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sidebar</div>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sidebar Spacing</div>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                         <button type="button" onClick={(e) => { e.stopPropagation(); resetSidebarDefaults(); }} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.sidebar ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
@@ -13072,7 +13871,7 @@ export default function Page() {
                         </svg>
                       </div>
                     </div>
-                  </button>
+                  </div>
                   {settingsOpen.sidebar ? (
                     <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>Sidebar Spacing</div>
@@ -13092,7 +13891,25 @@ export default function Page() {
                           <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
                         </label>
                       ))}
-                      <div style={{ height: 1, background: "rgba(244, 153, 16, 0.15)", margin: "4px 0" }} />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Library Sidebar section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(244, 153, 16, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(244, 153, 16, 0.14)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Library</div>
+                    <button type="button" onClick={resetLibrarySidebarDefaults} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                  </div>
+                  {settingsOpen.sidebar ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>Library</div>
                       {(
                         [
@@ -13129,7 +13946,25 @@ export default function Page() {
                         </select>
                       </label>
 
-                      <div style={{ height: 1, background: "rgba(244, 153, 16, 0.15)", margin: "4px 0" }} />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Smart Lists Sidebar section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(244, 153, 16, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(244, 153, 16, 0.14)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Smart Lists</div>
+                    <button type="button" onClick={resetSmartListsSidebarDefaults} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                  </div>
+                  {settingsOpen.sidebar ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase" }}>Smart Lists</div>
                       {(
                         [
@@ -13166,7 +14001,25 @@ export default function Page() {
                         </select>
                       </label>
 
-                      <div style={{ height: 1, background: "rgba(244, 153, 16, 0.15)", margin: "4px 0" }} />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Discover Sidebar section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(244, 153, 16, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(244, 153, 16, 0.14)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Discover</div>
+                    <button type="button" onClick={resetDiscoverSidebarDefaults} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
+                  </div>
+                  {settingsOpen.sidebar ? (
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase" }}>Discover</div>
                       {(
                         [
@@ -13229,6 +14082,40 @@ export default function Page() {
                     <button type="button" onClick={resetSidebarDefaults} style={{ border: "1px solid rgba(123, 132, 145, 0.35)", background: "rgba(123,132,145,0.1)", color: "#53606f", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
                   </div>
                   <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "inline-flex", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => setHighlightThemeEditorMode("light")}
+                        style={{
+                          borderRadius: 999,
+                          border: highlightThemeEditorMode === "light" ? "1px solid rgba(123, 132, 145, 0.46)" : "1px solid rgba(123, 132, 145, 0.26)",
+                          background: highlightThemeEditorMode === "light" ? "rgba(123,132,145,0.16)" : "rgba(255,255,255,0.64)",
+                          color: "#53606f",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "3px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Light
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHighlightThemeEditorMode("dark")}
+                        style={{
+                          borderRadius: 999,
+                          border: highlightThemeEditorMode === "dark" ? "1px solid rgba(123, 132, 145, 0.46)" : "1px solid rgba(123, 132, 145, 0.26)",
+                          background: highlightThemeEditorMode === "dark" ? "rgba(123,132,145,0.16)" : "rgba(255,255,255,0.64)",
+                          color: "#53606f",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "3px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Dark
+                      </button>
+                    </div>
                     {(
                       [
                         { label: "Home", key: "home" as CoverScaleGroupKey },
@@ -13240,8 +14127,15 @@ export default function Page() {
                     ).map(({ label, key }) => (
                       <label key={`highlight-${key}`} style={{ display: "grid", gridTemplateColumns: "64px 1fr 64px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
                         <span style={{ fontWeight: 500 }}>{label}</span>
-                        <input type="color" value={sidebarHighlightColors[key]} onChange={(e) => updateSidebarHighlightColor(key, e.target.value)} style={{ width: "100%", height: 28, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, background: "transparent", padding: 2, cursor: "pointer" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#53606f", fontSize: 10 }}>{sidebarHighlightColors[key].toUpperCase()}</span>
+                        <input
+                          type="color"
+                          value={(highlightThemeEditorMode === "dark" ? sidebarHighlightColorsDark : sidebarHighlightColorsLight)[key]}
+                          onChange={(e) => updateSidebarHighlightColor(key, e.target.value, highlightThemeEditorMode)}
+                          style={{ width: "100%", height: 28, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, background: "transparent", padding: 2, cursor: "pointer" }}
+                        />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#53606f", fontSize: 10 }}>
+                          {(highlightThemeEditorMode === "dark" ? sidebarHighlightColorsDark : sidebarHighlightColorsLight)[key].toUpperCase()}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -13282,8 +14176,10 @@ export default function Page() {
                   </div>
                 ) : null}
 
+                  </div>
                 </div>
-              </div>,
+              </div>
+            </div>,
               document.body
             ) : null}
             </div>
@@ -13391,21 +14287,6 @@ export default function Page() {
                         {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
                       </div>
                     </div>
-                    {syncMsg && syncMsg !== "Synced" ? (
-                      <div
-                        style={{
-                          color: syncStatusTextColor,
-                          fontSize: 11,
-                          fontWeight: 800,
-                          marginTop: 4,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {syncMsg}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
 
@@ -13583,15 +14464,12 @@ export default function Page() {
 	                display: "flex",
 	                flexDirection: "column",
 	                gap: 10,
-	                background: isMobileLayout
-	                  ? mobilePanelBackground
-	                  : "rgba(248, 244, 236, 0.98)",
-	                border: isMobileLayout
-	                  ? mobilePanelBorder
-	                  : "1px solid rgba(58, 37, 24, 0.38)",
+	                background: mobilePanelBackground,
+	                border: mobilePanelBorder,
 	                borderRadius: 14,
 	                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
-	                backdropFilter: "blur(2px)",
+	                backdropFilter: "blur(14px) saturate(1.15)",
+                  WebkitBackdropFilter: "blur(14px) saturate(1.15)",
               }}
             >
               <div
@@ -13600,18 +14478,18 @@ export default function Page() {
 	                  alignItems: "center",
 	                  justifyContent: "space-between",
 	                  paddingBottom: 8,
-	                  borderBottom: isMobileLayout ? mobilePanelDivider : "1px solid rgba(0,0,0,0.12)",
+	                  borderBottom: mobilePanelDivider,
 	                }}
 	              >
-	                <span style={{ fontSize: 14, fontWeight: 800, color: isMobileLayout ? mobilePanelTextColor : "#5c3c38" }}>
+	                <span style={{ fontSize: 14, fontWeight: 800, color: mobilePanelTextColor }}>
 	                  Sort
 	                </span>
 	                <button
 	                  onClick={() => setSortPopupOpen(false)}
 	                  style={{
-	                    border: isMobileLayout ? mobilePanelButtonBorder : "1px solid rgba(0,0,0,0.2)",
-	                    background: isMobileLayout ? mobilePanelButtonBackground : "rgba(255,255,255,0.85)",
-	                    color: isMobileLayout ? mobilePanelButtonTextColor : "#5c3c38",
+	                    border: mobilePanelButtonBorder,
+	                    background: mobilePanelButtonBackground,
+	                    color: mobilePanelButtonTextColor,
 	                    borderRadius: 8,
 	                    padding: "4px 8px",
 	                    cursor: "pointer",
@@ -13629,27 +14507,14 @@ export default function Page() {
 	                  gap: 6,
 	                  fontSize: 11,
 	                  fontWeight: 700,
-	                  color: isMobileLayout ? mobilePanelSectionLabelColor : "#8A8A8A",
+	                  color: mobilePanelSectionLabelColor,
 	                }}
 	              >
 	                SORT BY
 	                <select
 	                  value={sortField}
                   onChange={(e) => handleSortFieldChange(e.target.value)}
-	                  style={{
-	                    ...(isMobileLayout ? mobilePanelSelectStyle : {
-	                      width: "100%",
-	                      padding: "9px 10px",
-	                      borderRadius: 9,
-	                      border: "1px solid rgba(0,0,0,0.2)",
-	                      background: "rgba(255,255,255,0.9)",
-	                      color: "#3a2f28",
-	                      fontSize: 14,
-	                      fontWeight: 600,
-	                      outline: "none",
-	                      cursor: "pointer",
-	                    }),
-                  }}
+	                  style={mobilePanelSelectStyle}
                 >
                   {nav === "books" && (
                     <>
@@ -13704,7 +14569,7 @@ export default function Page() {
 	                  gap: 6,
 	                  fontSize: 11,
 	                  fontWeight: 700,
-	                  color: isMobileLayout ? mobilePanelSectionLabelColor : "#8A8A8A",
+	                  color: mobilePanelSectionLabelColor,
 	                }}
 	              >
 	                ORDER
@@ -13712,20 +14577,7 @@ export default function Page() {
 	                  value={sortOrder}
                   onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
 	                  disabled={(nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
-	                  style={{
-	                    ...(isMobileLayout ? mobilePanelSelectStyle : {
-	                      width: "100%",
-	                      padding: "9px 10px",
-	                      borderRadius: 9,
-	                      border: "1px solid rgba(0,0,0,0.2)",
-	                      background: "rgba(255,255,255,0.9)",
-	                      color: "#3a2f28",
-	                      fontSize: 14,
-	                      fontWeight: 600,
-	                      outline: "none",
-	                      cursor: "pointer",
-	                    }),
-                  }}
+	                  style={mobilePanelSelectStyle}
                 >
                   <option value="Asc">Asc</option>
                   <option value="Desc">Desc</option>
@@ -15408,7 +16260,19 @@ export default function Page() {
                       const upcomingDaysRaw = itemReleaseDate
                         ? Math.round((itemReleaseDate.getTime() - todayMidnight().getTime()) / 86400000)
                         : null;
+                      const statusForUpcomingLabel = (
+                        safeStr((show as any).watchStatus) ||
+                        safeStr((show as any).watched) ||
+                        safeStr((show as any).status) ||
+                        safeStr((show as any).movieStatus)
+                      ).trim().toLowerCase();
+                      const showPendingDigitalReleaseLabel =
+                        isUpcomingView &&
+                        upcomingDaysRaw !== null &&
+                        upcomingDaysRaw < 0 &&
+                        statusForUpcomingLabel === "pending digital release";
                       const upcomingLabel = upcomingDaysRaw === null ? null
+                        : showPendingDigitalReleaseLabel ? "Pending Digital Release"
                         : upcomingDaysRaw === 0 ? "Today"
                         : upcomingDaysRaw === 1 ? "Tomorrow"
                         : `In ${upcomingDaysRaw} days`;
@@ -16536,8 +17400,8 @@ export default function Page() {
           background: ${sidebarSubItemHoverBackground};
         }
         .sideSubItem.active {
-          background: ${sidebarActiveAccent.background};
-          border: none;
+          background: ${sidebarSubItemActiveBackground};
+          border: ${sidebarSubItemActiveBorder};
           color: ${sidebarSubItemActiveTextColor};
           font-weight: 700;
         }
