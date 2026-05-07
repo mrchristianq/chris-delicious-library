@@ -264,7 +264,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "8.5";
+const APP_VERSION = "8.6";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -433,6 +433,17 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "8.6",
+    date: "2026-05-07",
+    notes: [
+      "Expanded and refined Statistics view with Year in Review enhancements and a new CDL Wrapped fullscreen story experience.",
+      "Added Wrapped slide controls, autoplay progression, background audio controls, and richer visual motion for story slides.",
+      "Reworked Statistics cards for clearer layout density, including refreshed Highlights metrics and compacted comparison modules.",
+      "Updated Release by Year visualization to a line graph with cleaner 5-year x-axis labels and larger inline release count labels.",
+      "Adjusted release-year aggregation and readability to better match expected scoped totals and improve on-chart legibility.",
+    ],
+  },
   {
     version: "8.5",
     date: "2026-05-06",
@@ -697,6 +708,11 @@ const GAME_FRAME_IMAGE = "/game-frame.png";
 const DEFAULT_COVER_SCALE: CoverScaleSettings = { x: 100, y: 100 };
 const DEFAULT_COVER_OFFSET: CoverOffsetSettings = { x: 0, y: 0 };
 const APP_ICON = "/logo4.png";
+const APP_PRIMARY_LOGO_COLORS = {
+  amber: "#c07800",
+  olive: "#8b920d",
+  sky: "#8baff4",
+} as const;
 const SHOW_HEADER_DEBUG_CONTROLS = false;
 
 const COMPACT_GAME_FRAME_SIZE = { width: 646, height: 800 } as const;
@@ -15369,6 +15385,14 @@ export default function Page() {
               games={allGames}
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
+              themeMode={shelfThemeMode}
+              mediaTabColors={{
+                book: activeSidebarHighlightColors.books,
+                movie: activeSidebarHighlightColors.movies,
+                tv: activeSidebarHighlightColors.tv,
+                game: activeSidebarHighlightColors.games,
+                yearReview: APP_PRIMARY_LOGO_COLORS.sky,
+              }}
             />
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
