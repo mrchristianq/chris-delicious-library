@@ -2175,6 +2175,8 @@ export default function Page() {
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const [loading, setLoading] = useState(false);
+  const [startupSettingsHydrated, setStartupSettingsHydrated] = useState(false);
+  const [startupLockVisible, setStartupLockVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tvRows, setTvRows] = useState<Row[]>([]);
   const [bookRows, setBookRows] = useState<Row[]>([]);
@@ -2339,7 +2341,6 @@ export default function Page() {
     counter: false,
   });
 
-  const [showThemes, setShowThemes] = useState(false);
 
   // UI
   const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
@@ -2569,21 +2570,15 @@ export default function Page() {
 
   // Mac redesign baseline: Simple shelf is the only shelf presentation.
   const shelfTheme = SIMPLE_SHELF_THEME;
-  const setShelfTheme = (_value: string) => {};
   const [simpleShelfBackgroundColor, setSimpleShelfBackgroundColor] = useState<string>(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   const MOBILE_LAYOUT_MAX_WIDTH = 980;
   const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
   const useSimpleMobileTheme = isMobileLayout;
-  const isElectricBlueShelfTheme = false;
-  const isSimpleShelfTheme = true;
   const isSimpleShelfPresentation = true;
   const isElectricBlueShelfPresentation = false;
   const currentTopHeaderImage = "";
   
   // Mac redesign baseline: Mac sidebar is the only sidebar theme.
-  const sidebarTheme = "mac";
-  const setSidebarTheme = (_value: string) => {};
-  const isElectricBlueThemeActive = false;
   
   // Theme configurations
   const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
@@ -2691,12 +2686,10 @@ export default function Page() {
   const simplePresentationBackground = simpleSidebarTheme.background;
   const isMacSidebarTheme = true;
   const isMacCoverMode = true;
-  const isBlueSidebarTheme = false;
   const isSimpleSidebarTheme = false;
   const isDarkSidebarTheme = false;
   const isDarkShelfMode = shelfThemeMode === "dark";
   const isClassicShelfMode = shelfThemeMode === "classic";
-  const sidebarHasDarkSurface = false;
   const isElectricBlueSidebarTheme = false;
   const activeSidebarHighlightColors =
     shelfThemeMode === "dark"
@@ -2889,28 +2882,6 @@ export default function Page() {
     : isMacSidebarTheme
       ? "rgba(97, 103, 112, 0.76)"
     : "rgba(0,0,0,0.5)";
-  const sidebarThemePanelTextColor = isSimpleSidebarTheme
-    ? hexToRgba(simpleSidebarTextHex, 0.8, simpleSidebarTextHex)
-    : isDarkSidebarTheme
-      ? "rgba(225, 236, 238, 0.8)"
-      : "rgba(0,0,0,0.68)";
-  const sidebarThemePanelSectionColor = isSimpleSidebarTheme
-    ? hexToRgba(simpleSidebarTextHex, 0.68, simpleSidebarTextHex)
-    : isDarkSidebarTheme
-      ? "rgba(200, 217, 220, 0.78)"
-      : "#8A8A8A";
-  const sidebarThemeOptionBorder = isSimpleSidebarTheme
-    ? `1px solid ${hexToRgba(simpleSidebarTextHex, 0.14, simpleSidebarTextHex)}`
-    : isDarkSidebarTheme
-      ? "1px solid rgba(232, 243, 245, 0.14)"
-      : "1px solid rgba(0,0,0,0.1)";
-  const sidebarThemeOptionBackground = isSimpleSidebarTheme
-    ? hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.04 : 0.06, simpleSidebarOverlayBase)
-    : isDarkSidebarTheme
-      ? "rgba(255,255,255,0.06)"
-      : "rgba(255,255,255,0.5)";
-  const sidebarThemeOptionTextColor = isSimpleSidebarTheme ? currentTheme.textColor : isDarkSidebarTheme ? currentTheme.textColor : "#2A2A2A";
-  const smartListsExpanded = isSimpleSidebarTheme || smartListsOpen;
   const sidebarOptionActiveBorder = isSimpleSidebarTheme ? `2px solid ${currentTheme.highlightBorder}` : `2px solid ${sidebarActiveAccent.border}`;
   const sidebarOptionActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.background;
   const simpleShelfColorPanelBorder =
@@ -3261,17 +3232,11 @@ export default function Page() {
     : counterNumberFontSize;
   const neonSyncStartOffset = useMemo(() => `-${(Math.random() * 96).toFixed(3)}s`, []);
   const syncStatusTextColor =
-    sidebarHasDarkSurface
-      ? syncState === "error"
-        ? "#ffd4d4"
-        : syncState === "ok"
-          ? "#d6f5e3"
-          : "#dbe8ff"
-      : syncState === "error"
-        ? "#8b0000"
-        : syncState === "ok"
-          ? "#0d6b3c"
-          : "#754738";
+    syncState === "error"
+      ? "#8b0000"
+      : syncState === "ok"
+        ? "#0d6b3c"
+        : "#754738";
 
   // Apply cached theme settings immediately on mount so we don't flash the default theme
   // while waiting for CSV/settings sync.
@@ -4009,16 +3974,8 @@ export default function Page() {
     }
   }, [nav]);
 
-  useEffect(() => {
-    setMovieDetailItem(null);
-    setTvDetailItem(null);
-    setGameDetailItem(null);
-    setBookDetailItem(null);
-  }, [nav]);
-
   const openStatisticsView = useCallback(() => {
     setNav("statistics");
-    setShowThemes(false);
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
@@ -4035,7 +3992,6 @@ export default function Page() {
 
   const openRoadmapView = useCallback(() => {
     setNav("roadmap");
-    setShowThemes(false);
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
@@ -6179,7 +6135,21 @@ export default function Page() {
     setSmartListManualOrderKeysById(loadedSmartListManualOrders);
     
     setSimpleShelfBackgroundColor("#ececec");
+    setStartupSettingsHydrated(true);
   }, [getCachedNumericSetting, getSetting, settingsRows]);
+
+  useEffect(() => {
+    if (!loading && settingsRows.length === 0) {
+      setStartupSettingsHydrated(true);
+    }
+  }, [loading, settingsRows.length]);
+
+  useEffect(() => {
+    if (!startupLockVisible) return;
+    if (!loading && startupSettingsHydrated) {
+      setStartupLockVisible(false);
+    }
+  }, [loading, startupLockVisible, startupSettingsHydrated]);
 
   const persistSmartLists = useCallback(
     (nextLists: SmartList[]) => {
@@ -10989,7 +10959,6 @@ export default function Page() {
     { key: "completed", label: "Completed" },
     { key: "abandoned", label: "Abandoned" },
   ];
-  const useElectricBlueStatsBackdrop = nav === "statistics" && isElectricBlueThemeActive;
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics";
   const activeBookDetailKey =
     bookDetailItem && getMediaType(bookDetailItem) === "book" ? getMediaItemKey(bookDetailItem) : "";
@@ -11062,8 +11031,6 @@ export default function Page() {
           ? activeGameDetailBackground
           : activeBookDetailBackground
           ? activeBookDetailBackground
-          : useElectricBlueStatsBackdrop
-          ? "radial-gradient(120% 90% at 10% 0%, rgba(68, 128, 214, 0.24) 0%, rgba(68, 128, 214, 0) 44%), linear-gradient(180deg, rgba(11, 24, 48, 0.98) 0%, rgba(6, 14, 30, 0.98) 100%)"
           : isSimpleShelfPresentation
             ? simplePresentationBackground
             : "#ececec",
@@ -11073,6 +11040,30 @@ export default function Page() {
         "--neon-sync-offset": isElectricBlueSidebarTheme ? neonSyncStartOffset : "0s",
       } as CSSProperties}
     >
+      {startupLockVisible ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            background: "linear-gradient(180deg, rgba(12, 18, 31, 0.98) 0%, rgba(7, 11, 20, 0.98) 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              border: "4px solid rgba(117, 161, 234, 0.32)",
+              borderTopColor: "rgba(117, 161, 234, 0.98)",
+              animation: "cdlSpin 1s linear infinite",
+            }}
+          />
+        </div>
+      ) : null}
       {nav !== "statistics" ? (
         <div
           aria-hidden
@@ -11794,7 +11785,7 @@ export default function Page() {
             {/* Logo taking full width */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={isBlueSidebarTheme ? "/logo5.png" : APP_ICON}
+              src={APP_ICON}
               alt={APP_TITLE}
               style={{
                 width: logoSize,
@@ -12419,9 +12410,7 @@ export default function Page() {
                         background:
                           nav === "games"
                             ? sidebarAccentPalette.games.countBubble
-                            : isBlueSidebarTheme
-                              ? "rgba(26, 47, 92, 0.95)"
-                              : usesThemeCountBubbleColor
+                            : usesThemeCountBubbleColor
                                 ? currentTheme.countBubbleColor
                                 : "#333",
                         color: "#fff",
@@ -14331,7 +14320,7 @@ export default function Page() {
             position: "relative",
             marginLeft: isMobileLayout ? 0 : "-1px",
             minWidth: 0,
-            background: useElectricBlueStatsBackdrop ? "rgba(6, 14, 30, 0.66)" : "transparent",
+            background: "transparent",
           }}
         >
           {nav !== "statistics" ? null : null}
@@ -16168,14 +16157,8 @@ export default function Page() {
                     {(() => {
                       let runningVisualX = 0;
                       return shelfShows.map((show, i) => {
-                      const isBook = show.__type === "book";
-                      const isMovie = show.__type === "movie";
                       const isGame = show.__type === "game";
                       const isAudiobook = isAudiobookItem(show);
-                      const renderableGame = isGame ? (show as Game & { __renderPlatform?: string }) : null;
-                      const gamePlatformRaw = renderableGame ? safeStr(renderableGame.__renderPlatform || renderableGame.platform) : undefined;
-                      // Determine primary platform from the row to keep shelf rendering deterministic.
-                      const gamePlatform = isGame ? getRenderPlatform(gamePlatformRaw) : undefined;
                       const { caseWidth, caseHeight } = getItemVisualLayout(show);
                       const x = Math.round(runningVisualX);
                       runningVisualX += caseWidth + shelfGap;
@@ -16229,7 +16212,6 @@ export default function Page() {
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
                       const coverImageRadiusPx = 6;
-                      const coverContainerRadius = coverImageRadiusPx;
                       const coverTrimAsset = selectedCoverUrl ? coverTrimAssets[selectedCoverUrl] : null;
                       const macDisplayCoverUrl = (DISABLE_INSETS || isMacCoverMode) && coverTrimAsset ? coverTrimAsset.url : selectedCoverUrl;
                       const rawCoverObjectFit = coverTrimAsset ? "cover" : "contain";
@@ -16344,8 +16326,6 @@ export default function Page() {
                       const dragPushX = wishlistDragState ? 0 : hoverPushX;
                       const dragPushY = wishlistDragState ? 0 : hoverPushY;
                       const dragScale = wishlistDragState ? 1 : isDragHoverTarget ? 1.008 : isDragHoverNeighbor ? 1.003 : 1;
-                      const gapX = Math.round(x + caseWidth + shelfGap / 2);
-
                       return (
                         <div
                           key={isWishlistCase ? itemKey : `${show.tmdbId ?? show.title}-${i}`}
@@ -17159,6 +17139,14 @@ export default function Page() {
         .sidebarModuleCard.neon:hover::before {
           opacity: 0.98;
           animation-duration: 72s;
+        }
+        @keyframes cdlSpin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
         }
         @keyframes moduleNeonPulseColor {
           0% {
