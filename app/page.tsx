@@ -2584,7 +2584,7 @@ export default function Page() {
   const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
   const sidebarThemes = {
     standard: {
-      background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+      background: "url('/Sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
       primaryColor: "#954949",
       secondaryColor: "#8a4c4c",
       textColor: "rgba(0,0,0,0.85)",
