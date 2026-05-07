@@ -264,7 +264,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "8.5";
+const APP_VERSION = "8.6";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -433,6 +433,17 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "8.6",
+    date: "2026-05-07",
+    notes: [
+      "Expanded and refined Statistics view with Year in Review enhancements and a new CDL Wrapped fullscreen story experience.",
+      "Added Wrapped slide controls, autoplay progression, background audio controls, and richer visual motion for story slides.",
+      "Reworked Statistics cards for clearer layout density, including refreshed Highlights metrics and compacted comparison modules.",
+      "Updated Release by Year visualization to a line graph with cleaner 5-year x-axis labels and larger inline release count labels.",
+      "Adjusted release-year aggregation and readability to better match expected scoped totals and improve on-chart legibility.",
+    ],
+  },
   {
     version: "8.5",
     date: "2026-05-06",
@@ -697,6 +708,11 @@ const GAME_FRAME_IMAGE = "/game-frame.png";
 const DEFAULT_COVER_SCALE: CoverScaleSettings = { x: 100, y: 100 };
 const DEFAULT_COVER_OFFSET: CoverOffsetSettings = { x: 0, y: 0 };
 const APP_ICON = "/logo4.png";
+const APP_PRIMARY_LOGO_COLORS = {
+  amber: "#c07800",
+  olive: "#8b920d",
+  sky: "#8baff4",
+} as const;
 const SHOW_HEADER_DEBUG_CONTROLS = false;
 
 const COMPACT_GAME_FRAME_SIZE = { width: 646, height: 800 } as const;
@@ -2397,8 +2413,7 @@ export default function Page() {
   const [movieStatusOpen, setMovieStatusOpen] = useState<boolean>(true);
   const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
   const [genreOpen, setGenreOpen] = useState<boolean>(false);
-  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(false);
-  const [gameStatusOpen, setGameStatusOpen] = useState<boolean>(false);
+  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(true);
   const [gameOwnershipOpen, setGameOwnershipOpen] = useState<boolean>(false);
   const [gameFormatOpen, setGameFormatOpen] = useState<boolean>(false);
   const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
@@ -2584,7 +2599,7 @@ export default function Page() {
   const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
   const sidebarThemes = {
     standard: {
-      background: "url('/sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
+      background: "url('/Sidebar.png'), linear-gradient(180deg, #f4f1ea 0%, #efe7db 100%)",
       primaryColor: "#954949",
       secondaryColor: "#8a4c4c",
       textColor: "rgba(0,0,0,0.85)",
@@ -12379,6 +12394,11 @@ export default function Page() {
                     setGameFormatFilter(null);
                     setGameYearPlayedFilter(null);
                     setGameGenreFilter(null);
+                    setGamePlatformOpen(true);
+                    setGameOwnershipOpen(false);
+                    setGameFormatOpen(false);
+                    setGameYearPlayedOpen(false);
+                    setGameGenresOpen(false);
                     openMediaSidebar("games");
                   }}
                   className={`sideItem ${nav === "games" ? "active" : ""}`}
@@ -12428,11 +12448,11 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Platform</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gamePlatformOpen ? (
+                    {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
-                        {gamePlatformOptions.map((option) => {
+                        {gamePlatformOptions.map((option, index) => {
                           const active = gamePlatformFilter === option;
                           return (
                             <button
@@ -12454,6 +12474,7 @@ export default function Page() {
                                 alignItems: "center",
                                 justifyContent: "space-between",
                                 gap: 8,
+                                marginTop: index === 0 ? 0 : -6,
                               }}
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
@@ -12469,58 +12490,13 @@ export default function Page() {
                     ) : null}
 
                     <button
-                      onClick={() => setGameStatusOpen((v) => !v)}
-                      style={sidebarSubSectionHeaderButtonStyle}
-                    >
-                      <span style={sidebarSectionHeaderTextStyle}>Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameStatusOpen ? "−" : "+"}</span>
-                    </button>
-                    {nav === "games" || gameStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
-                        {gameStatuses.map((option) => {
-                          const active = gameStatusFilter === option;
-                          return (
-                            <button
-                              key={`game-status-${option}`}
-                              onClick={() => {
-                                const nextGameStatusFilter = active ? null : option;
-                                setGameViewMode(
-                                  !gamePlatformFilter && !nextGameStatusFilter && !gameOwnershipFilter && !gameFormatFilter && !gameYearPlayedFilter && !gameGenreFilter
-                                    ? "library"
-                                    : "custom"
-                                );
-                                setGameStatusFilter(nextGameStatusFilter);
-                              }}
-                              className={`sideSubItem ${active ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
-                              <span
-                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
-                              >
-                                {gameStatusCounts[option] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
-                    <button
                       onClick={() => setGameOwnershipOpen((v) => !v)}
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Ownership</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameOwnershipOpen ? (
+                    {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameOwnershipOptions.map((option) => {
                           const active = gameOwnershipFilter === option;
@@ -12563,9 +12539,9 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Format</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameFormatOpen ? (
+                    {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameFormatOptions.map((option) => {
                           const active = gameFormatFilter === option;
@@ -12608,9 +12584,9 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Year Played</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameYearPlayedOpen ? (
+                    {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameYearPlayedOptions.map((option) => {
                           const active = gameYearPlayedFilter === option;
@@ -12653,9 +12629,9 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Genres</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameGenresOpen ? (
+                    {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameGenres.map((option) => {
                           const active = gameGenreFilter === option;
@@ -13138,6 +13114,7 @@ export default function Page() {
               className={`sidebarModuleCard sidebarTextOnlySection${isElectricBlueSidebarTheme ? " neon" : ""}`}
               style={{
                 display: isHomeSidebar ? "block" : "none",
+                marginTop: 6,
                 background: sidebarModuleCardBackground,
                 borderRadius: 16,
                 boxShadow: sidebarModuleCardShadow,
@@ -15408,6 +15385,14 @@ export default function Page() {
               games={allGames}
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
+              themeMode={shelfThemeMode}
+              mediaTabColors={{
+                book: activeSidebarHighlightColors.books,
+                movie: activeSidebarHighlightColors.movies,
+                tv: activeSidebarHighlightColors.tv,
+                game: activeSidebarHighlightColors.games,
+                yearReview: APP_PRIMARY_LOGO_COLORS.sky,
+              }}
             />
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
