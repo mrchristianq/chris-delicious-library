@@ -2397,8 +2397,7 @@ export default function Page() {
   const [movieStatusOpen, setMovieStatusOpen] = useState<boolean>(true);
   const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
   const [genreOpen, setGenreOpen] = useState<boolean>(false);
-  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(false);
-  const [gameStatusOpen, setGameStatusOpen] = useState<boolean>(false);
+  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(true);
   const [gameOwnershipOpen, setGameOwnershipOpen] = useState<boolean>(false);
   const [gameFormatOpen, setGameFormatOpen] = useState<boolean>(false);
   const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
@@ -12379,6 +12378,11 @@ export default function Page() {
                     setGameFormatFilter(null);
                     setGameYearPlayedFilter(null);
                     setGameGenreFilter(null);
+                    setGamePlatformOpen(true);
+                    setGameOwnershipOpen(false);
+                    setGameFormatOpen(false);
+                    setGameYearPlayedOpen(false);
+                    setGameGenresOpen(false);
                     openMediaSidebar("games");
                   }}
                   className={`sideItem ${nav === "games" ? "active" : ""}`}
@@ -12428,11 +12432,11 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Platform</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gamePlatformOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gamePlatformOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gamePlatformOpen ? (
+                    {gamePlatformOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
-                        {gamePlatformOptions.map((option) => {
+                        {gamePlatformOptions.map((option, index) => {
                           const active = gamePlatformFilter === option;
                           return (
                             <button
@@ -12454,6 +12458,7 @@ export default function Page() {
                                 alignItems: "center",
                                 justifyContent: "space-between",
                                 gap: 8,
+                                marginTop: index === 0 ? 0 : -6,
                               }}
                             >
                               <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
@@ -12469,58 +12474,13 @@ export default function Page() {
                     ) : null}
 
                     <button
-                      onClick={() => setGameStatusOpen((v) => !v)}
-                      style={sidebarSubSectionHeaderButtonStyle}
-                    >
-                      <span style={sidebarSectionHeaderTextStyle}>Status</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameStatusOpen ? "−" : "+"}</span>
-                    </button>
-                    {nav === "games" || gameStatusOpen ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
-                        {gameStatuses.map((option) => {
-                          const active = gameStatusFilter === option;
-                          return (
-                            <button
-                              key={`game-status-${option}`}
-                              onClick={() => {
-                                const nextGameStatusFilter = active ? null : option;
-                                setGameViewMode(
-                                  !gamePlatformFilter && !nextGameStatusFilter && !gameOwnershipFilter && !gameFormatFilter && !gameYearPlayedFilter && !gameGenreFilter
-                                    ? "library"
-                                    : "custom"
-                                );
-                                setGameStatusFilter(nextGameStatusFilter);
-                              }}
-                              className={`sideSubItem ${active ? "active" : ""}`}
-                              style={{
-                                width: "100%",
-                                textAlign: "left",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{ color: sidebarInlineMetaTextColor }}>{option}</span>
-                              <span
-                                style={{ fontSize: 11, fontWeight: 600, color: sidebarInlineCountColor }}
-                              >
-                                {gameStatusCounts[option] ?? 0}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-
-                    <button
                       onClick={() => setGameOwnershipOpen((v) => !v)}
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Ownership</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameOwnershipOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameOwnershipOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameOwnershipOpen ? (
+                    {gameOwnershipOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameOwnershipOptions.map((option) => {
                           const active = gameOwnershipFilter === option;
@@ -12563,9 +12523,9 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Format</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameFormatOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameFormatOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameFormatOpen ? (
+                    {gameFormatOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameFormatOptions.map((option) => {
                           const active = gameFormatFilter === option;
@@ -12608,9 +12568,9 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Year Played</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameYearPlayedOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameYearPlayedOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameYearPlayedOpen ? (
+                    {gameYearPlayedOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameYearPlayedOptions.map((option) => {
                           const active = gameYearPlayedFilter === option;
@@ -12653,9 +12613,9 @@ export default function Page() {
                       style={sidebarSubSectionHeaderButtonStyle}
                     >
                       <span style={sidebarSectionHeaderTextStyle}>Genres</span>
-                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{nav === "games" || gameGenresOpen ? "−" : "+"}</span>
+                      <span style={{ color: sidebarSectionControlColor, fontWeight: 600, fontSize: 12, fontFamily: sidebarSectionFontFamily }}>{gameGenresOpen ? "−" : "+"}</span>
                     </button>
-                    {nav === "games" || gameGenresOpen ? (
+                    {gameGenresOpen ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: sidebarSubmenuGap }}>
                         {gameGenres.map((option) => {
                           const active = gameGenreFilter === option;
@@ -13138,6 +13098,7 @@ export default function Page() {
               className={`sidebarModuleCard sidebarTextOnlySection${isElectricBlueSidebarTheme ? " neon" : ""}`}
               style={{
                 display: isHomeSidebar ? "block" : "none",
+                marginTop: 6,
                 background: sidebarModuleCardBackground,
                 borderRadius: 16,
                 boxShadow: sidebarModuleCardShadow,
