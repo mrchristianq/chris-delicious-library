@@ -413,9 +413,11 @@ function formatMinutesAsHours(value: number): string {
 
 function getTop20CoverClass(item: UnifiedStatsItem): string {
   if (item.mediaType === "game") return "yearTopRatedCover yearTopRatedCoverGame";
+  if (item.mediaType === "tv") return "yearTopRatedCover yearTopRatedCoverTv";
   if (
     item.mediaType === "book" &&
-    item.formats.some((format) => normalizeToken(format).includes("audiobook"))
+    (item.audiobookMinutes > 0 ||
+      item.formats.some((format) => normalizeToken(format).includes("audiobook")))
   ) {
     return "yearTopRatedCover yearTopRatedCoverAudiobook";
   }
@@ -2008,7 +2010,8 @@ export function StatisticsView({
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
     const ratedItems = filteredItems.filter((item) => typeof item.rating === "number" && Number.isFinite(item.rating));
     const audiobookItems = filteredItems.filter((item) => item.mediaType === "book" && item.audiobookMinutes > 0);
-    const audiobookMinutesTotal = audiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0);
+    const completedAudiobookItems = audiobookItems.filter((item) => item.statusBucket === "completed");
+    const audiobookMinutesTotal = completedAudiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0);
     const isBookScope = filter === "book";
     const averageRatingDisplay =
       typeof averageRating === "number" && Number.isFinite(averageRating)
@@ -2079,13 +2082,13 @@ export function StatisticsView({
       },
       {
         id: `BASE_${scopeId}_AUDIOBOOK_HOURS`,
-        label: "Audiobook Hours",
+        label: "Audiobook Hours Listened",
         value: formatMinutesAsHours(audiobookMinutesTotal),
-        subLabel: `${audiobookItems.length} audiobook entries`,
+        subLabel: `${completedAudiobookItems.length} completed audiobook entries`,
         accent: "var(--stats-accent-4)",
-        summary: `Total audiobook listening time in ${scopeLabel}.`,
-        calculation: "Sum audiobookMinutes for book items in scope with audiobookMinutes > 0.",
-        items: audiobookItems,
+        summary: `Total audiobook hours you've listened to from completed audiobooks in ${scopeLabel}.`,
+        calculation: "Sum audiobookMinutes for book items in scope where audiobookMinutes > 0 and statusBucket=completed.",
+        items: completedAudiobookItems,
       },
     ];
   }, [averageRating, filter, filteredItems, ratingValues.length, selectedStatsYear, statusCounts.completed]);
@@ -2102,7 +2105,7 @@ export function StatisticsView({
   const statsThemeVars = useMemo(() => {
     const themeMap: Record<"light" | "dark" | "classic", Record<string, string>> = {
       light: {
-        "--stats-bg": "rgba(227, 232, 239, 0.94)",
+        "--stats-bg": "#ecececf0",
         "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.84), rgba(16, 34, 70, 0.92))",
         "--stats-border": "rgba(122, 156, 201, 0.38)",
         "--stats-text": "rgba(233, 243, 255, 0.96)",
@@ -2113,7 +2116,7 @@ export function StatisticsView({
         "--stats-glow-2": "rgba(176, 188, 206, 0.14)",
       },
       dark: {
-        "--stats-bg": "rgba(8, 20, 44, 0.86)",
+        "--stats-bg": "#1b1f26f0",
         "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.82), rgba(16, 34, 70, 0.9))",
         "--stats-border": "rgba(125, 171, 242, 0.3)",
         "--stats-text": "rgba(233, 243, 255, 0.96)",
@@ -2124,7 +2127,7 @@ export function StatisticsView({
         "--stats-glow-2": "rgba(43, 218, 170, 0.19)",
       },
       classic: {
-        "--stats-bg": "rgba(37, 33, 28, 0.9)",
+        "--stats-bg": "#d8cdb8f0",
         "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.84), rgba(16, 34, 70, 0.92))",
         "--stats-border": "rgba(140, 175, 228, 0.34)",
         "--stats-text": "rgba(236, 243, 252, 0.96)",
@@ -2291,7 +2294,7 @@ export function StatisticsView({
                 }}
               >
                 <div className="metricLabel">{metric.label}</div>
-                <div className="metricValue">{metric.value}</div>
+                <div className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""}`}>{metric.value}</div>
                 <div className="metricSubLabel">{metric.subLabel}</div>
               </article>
             ))}
@@ -3088,7 +3091,10 @@ export function StatisticsView({
           </div>
 
           {statusRows.length > 0 ? (
-            <div className="statusVerticalChart">
+            <div
+              className="statusVerticalChart"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, statusRows.length)}, minmax(0, 1fr))` }}
+            >
               {statusRows.map((entry) => {
                 const total = Math.max(1, filteredItems.length);
                 const pct = (entry.value / total) * 100;
@@ -3524,13 +3530,12 @@ export function StatisticsView({
                       >
                         <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.rating)}</div>
                         {item.coverUrl ? (
-                          <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
                         ) : (
                           <div className="topRatedFallback">No Cover</div>
                         )}
                         <figcaption>
                           <span className="topRatedTitle">{item.title}</span>
-                          <span className="topRatedMeta">{formatScoreValue(item.rating)}</span>
                         </figcaption>
                       </figure>
                     ))}
@@ -3579,13 +3584,12 @@ export function StatisticsView({
                       >
                         <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.externalRating)}</div>
                         {item.coverUrl ? (
-                          <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
                         ) : (
                           <div className="topRatedFallback">No Cover</div>
                         )}
                         <figcaption>
                           <span className="topRatedTitle">{item.title}</span>
-                          <span className="topRatedMeta">{formatScoreValue(item.externalRating)}</span>
                         </figcaption>
                       </figure>
                     ))}
@@ -3854,33 +3858,20 @@ export function StatisticsView({
           --stats-glow-1: rgba(78, 144, 250, 0.25);
           --stats-glow-2: rgba(43, 218, 170, 0.19);
           position: relative;
-          min-height: calc(100vh - 12px);
-          margin: 8px 10px 0 10px;
-          border-radius: 20px;
+          min-height: 100vh;
+          margin: 0;
+          border-radius: 0;
           padding: clamp(14px, 2vw, 24px);
           overflow: hidden;
           color: var(--stats-text);
-          background:
-            radial-gradient(circle at 12% -8%, var(--stats-glow-1), transparent 42%),
-            radial-gradient(circle at 96% 12%, var(--stats-glow-2), transparent 34%),
-            var(--stats-bg);
-          border: 1px solid rgba(117, 160, 228, 0.36);
-          box-shadow:
-            inset 0 1px 0 rgba(214, 234, 255, 0.22),
-            0 26px 70px rgba(4, 12, 29, 0.54),
-            0 6px 18px rgba(0, 0, 0, 0.35);
+          background: transparent;
+          border: none;
+          box-shadow: none;
           animation: statsFadeRise 480ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .statsBackgroundGlow {
-          position: absolute;
-          width: 460px;
-          height: 460px;
-          right: -130px;
-          bottom: -210px;
-          border-radius: 50%;
-          background: radial-gradient(circle, color-mix(in srgb, var(--stats-accent-1) 28%, transparent), transparent 70%);
-          pointer-events: none;
+          display: none;
         }
 
         .statsHeader {
@@ -4634,6 +4625,11 @@ export function StatisticsView({
           padding: 4px;
         }
 
+        .yearTopRatedCoverTv {
+          transform: scale(0.93);
+          transform-origin: top center;
+        }
+
         .topRatedComparison {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4716,6 +4712,23 @@ export function StatisticsView({
           display: block;
         }
 
+        .topRatedTile img.yearTopRatedCoverAudiobook {
+          aspect-ratio: 1 / 1;
+          margin-top: 33.333%;
+        }
+
+        .topRatedTile img.yearTopRatedCoverGame {
+          aspect-ratio: 1.4 / 1;
+          object-fit: contain;
+          background: rgba(9, 19, 41, 0.9);
+          padding: 4px;
+        }
+
+        .topRatedTile img.yearTopRatedCoverTv {
+          transform: scale(0.93);
+          transform-origin: top center;
+        }
+
         .topRatedScoreBubble {
           position: absolute;
           top: 4px;
@@ -4751,15 +4764,15 @@ export function StatisticsView({
           font-weight: 700;
           line-height: 1.2;
           overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          white-space: normal;
+          min-height: 3.6em;
         }
 
         .topRatedMeta {
-          font-size: 9px;
-          color: rgba(166, 196, 233, 0.76);
-          font-weight: 700;
-          line-height: 1.2;
+          display: none;
         }
 
         .cardEmpty.compactEmpty {
@@ -4826,6 +4839,11 @@ export function StatisticsView({
           font-weight: 900;
           color: #ffffff;
           white-space: nowrap;
+        }
+
+        .metricValueCompact {
+          font-size: clamp(11px, 1vw, 16px);
+          line-height: 1;
         }
 
         .metricSubLabel {
@@ -5199,10 +5217,14 @@ export function StatisticsView({
 
         .statusVerticalChart {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(6, minmax(0, 1fr));
           gap: 6px;
-          align-items: end;
-          min-height: 122px;
+          align-items: stretch;
+          min-height: 0;
+          flex: 1;
+          width: min(100%, 560px);
+          margin-left: auto;
+          margin-right: auto;
           margin-top: 0;
         }
 
@@ -5210,6 +5232,8 @@ export function StatisticsView({
           display: flex;
           flex-direction: column;
           align-items: center;
+          justify-content: flex-end;
+          height: 100%;
           gap: 3px;
         }
 
@@ -5232,7 +5256,8 @@ export function StatisticsView({
         .statusVerticalTrack {
           width: 100%;
           max-width: 34px;
-          height: 70px;
+          height: auto;
+          flex: 1;
           display: flex;
           align-items: flex-end;
           justify-content: center;
@@ -5274,15 +5299,17 @@ export function StatisticsView({
           display: grid;
           grid-template-columns: repeat(10, minmax(0, 1fr));
           gap: 6px;
-          align-items: end;
+          align-items: stretch;
           flex: 1;
-          min-height: 122px;
+          min-height: 0;
         }
 
         .ratingCol {
           display: flex;
           flex-direction: column;
           align-items: center;
+          justify-content: flex-end;
+          height: 100%;
           gap: 4px;
         }
 
@@ -5310,7 +5337,8 @@ export function StatisticsView({
         }
 
         .ratingBarTrack.scaledTrack {
-          height: 90px;
+          height: auto;
+          flex: 1;
           border-radius: 8px;
           background: linear-gradient(180deg, rgba(17, 40, 78, 0.22), rgba(11, 25, 50, 0.62));
           border: 1px solid rgba(119, 163, 233, 0.28);
@@ -5360,12 +5388,15 @@ export function StatisticsView({
           display: flex;
           flex-direction: column;
           gap: 6px;
-          min-height: 122px;
+          min-height: 0;
+          flex: 1;
         }
 
         .releaseLineSvg {
           width: 100%;
-          height: 92px;
+          height: auto;
+          min-height: 170px;
+          flex: 1;
           border-radius: 8px;
           border: 1px solid rgba(128, 170, 234, 0.35);
           background: rgba(12, 30, 60, 0.5);
@@ -5396,11 +5427,11 @@ export function StatisticsView({
 
         .releaseLineValueLabel {
           fill: rgba(239, 248, 255, 0.98);
-          font-size: 18px;
+          font-size: 36px;
           font-weight: 900;
           paint-order: stroke;
           stroke: rgba(8, 23, 49, 0.9);
-          stroke-width: 4px;
+          stroke-width: 8px;
           stroke-linejoin: round;
           letter-spacing: 0.01em;
         }
