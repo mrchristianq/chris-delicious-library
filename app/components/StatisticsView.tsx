@@ -51,6 +51,7 @@ type MovieStatsItem = {
   metadataCoverUrl?: string;
   poster?: string;
   runtime?: string;
+  director?: string;
 };
 
 type ShowStatsItem = {
@@ -58,6 +59,10 @@ type ShowStatsItem = {
   firstAirDate?: string;
   lastAirDate?: string;
   dateCompleted?: string;
+  numberOfEpisodes?: string;
+  runtime?: string;
+  episodeRuntime?: string;
+  averageEpisodeRuntime?: string;
   watchStatus?: string;
   watched?: string;
   showStatus?: string;
@@ -119,6 +124,7 @@ type UnifiedStatsItem = {
   formats: string[];
   tags: string[];
   authors: string[];
+  directors: string[];
   coverUrl: string | null;
   audiobookMinutes: number;
   runtimeMinutes: number;
@@ -363,6 +369,27 @@ function parseRuntimeToMinutes(value: unknown): number {
   return numeric;
 }
 
+function parsePositiveNumber(value: unknown): number {
+  const raw = safeText(value).replace(/,/g, "");
+  if (!raw) return 0;
+  const numeric = Number.parseFloat(raw.match(/\d+(?:\.\d+)?/)?.[0] || "");
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function parseTvRuntimeToMinutes(show: ShowStatsItem): number {
+  const explicitRuntime = parseRuntimeToMinutes(show.runtime);
+  if (explicitRuntime > 0) return explicitRuntime;
+
+  const episodeRuntime =
+    parseRuntimeToMinutes(show.episodeRuntime) || parseRuntimeToMinutes(show.averageEpisodeRuntime);
+  const episodeCount = parsePositiveNumber(show.numberOfEpisodes);
+  if (episodeRuntime > 0 && episodeCount > 0) return episodeRuntime * episodeCount;
+
+  // Fallback for TV rows that only have an episode count in the sheet.
+  if (episodeCount > 0) return episodeCount * 45;
+  return 0;
+}
+
 function parseHoursValue(value: unknown): number {
   const raw = safeText(value).toLowerCase();
   const compactRaw = raw.replace(/,/g, "");
@@ -426,7 +453,8 @@ function getTop20CoverClass(item: UnifiedStatsItem): string {
 
 function formatScoreValue(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-";
-  return (Math.round(value * 10) / 10).toFixed(1);
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 function formatStarRowFive(valueOutOfFive: number): string {
@@ -896,6 +924,7 @@ export function StatisticsView({
         formats,
         tags,
         authors,
+        directors: [],
         statusBucket,
         primaryStatusToken,
         coverUrl,
@@ -914,6 +943,7 @@ export function StatisticsView({
       const externalRating = parseRatingValue(movie.tmdbRating);
       const genres = splitList(movie.genres);
       const tags = [...splitList(movie.tag), ...splitList(movie.tags)];
+      const directors = splitList(movie.director);
       const movieStatusRaw = firstNonEmpty([movie.watchStatus, movie.watched, movie.status, movie.movieStatus]);
       const completionHint = isTruthyToken(movie.watched) || normalizeToken(movie.watchStatus) === "watched";
       const statusBucket = inferStatusBucket(movieStatusRaw, completionHint);
@@ -940,6 +970,7 @@ export function StatisticsView({
         formats: [],
         tags,
         authors: [],
+        directors,
         statusBucket,
         primaryStatusToken,
         coverUrl,
@@ -962,6 +993,7 @@ export function StatisticsView({
       const completionHint = Boolean(completionDate) || isTruthyToken(show.watched);
       const statusBucket = inferStatusBucket(showStatusRaw, completionHint);
       const primaryStatusToken = normalizeToken(showStatusRaw);
+      const runtimeMinutes = parseTvRuntimeToMinutes(show);
       const coverUrl = resolveCoverUrl(
         "tv",
         title,
@@ -983,11 +1015,12 @@ export function StatisticsView({
         formats: [],
         tags,
         authors: [],
+        directors: [],
         statusBucket,
         primaryStatusToken,
         coverUrl,
         audiobookMinutes: 0,
-        runtimeMinutes: 0,
+        runtimeMinutes,
         gameplayHours: 0,
       };
     });
@@ -1059,6 +1092,7 @@ export function StatisticsView({
         formats,
         tags,
         authors: [],
+        directors: [],
         statusBucket,
         primaryStatusToken,
         coverUrl,
@@ -1091,6 +1125,9 @@ export function StatisticsView({
         : ALL_STATS_YEARS;
   const statsYearLabel = selectedStatsYear === ALL_STATS_YEARS ? "All Years" : `${selectedStatsYear}`;
   const statsYearScopePhrase = selectedStatsYear === ALL_STATS_YEARS ? "all-years scope" : `${selectedStatsYear} scope`;
+  const mediaYearScopeLabel = filter === "all" ? "media entries" : MEDIA_LABELS[filter].toLowerCase();
+  const mediaYearLabel =
+    filter === "all" ? "Most Popular Media Year" : `Most Popular ${MEDIA_LABELS[filter].replace("TV Shows", "TV Show")} Year`;
   const selectedReviewYear = reviewYearOptions.includes(reviewYear)
     ? reviewYear
     : (reviewYearOptions[0] || currentYear);
@@ -1393,22 +1430,21 @@ export function StatisticsView({
     const bestMonth = [...monthPool].sort((a, b) => b.total - a.total).find((month) => month.total > 0) || null;
 
     const topGenre = topGenres[0] || null;
-    const authorCounts = new Map<string, number>();
-    filteredItems
-      .filter((item) => item.mediaType === "book")
-      .forEach((item) => {
-        item.authors.forEach((author) => {
-          authorCounts.set(author, (authorCounts.get(author) || 0) + 1);
-        });
-      });
-    const favoriteAuthor = getTopN(authorCounts, 1)[0] || null;
+    const releaseYearCounts = new Map<string, number>();
+    filteredItems.forEach((item) => {
+      const releaseYear = item.releaseDate?.getUTCFullYear();
+      if (!releaseYear) return;
+      const key = String(releaseYear);
+      releaseYearCounts.set(key, (releaseYearCounts.get(key) || 0) + 1);
+    });
+    const mostPopularMediaYear = getTopN(releaseYearCounts, 1)[0] || null;
 
     return {
       yearLogged,
       yearCompleted,
       bestMonth,
       topGenre,
-      favoriteAuthor,
+      mostPopularMediaYear,
     };
   }, [filteredItems, monthlySeries, selectedStatsYear, topGenres]);
 
@@ -2011,7 +2047,32 @@ export function StatisticsView({
     const ratedItems = filteredItems.filter((item) => typeof item.rating === "number" && Number.isFinite(item.rating));
     const audiobookItems = filteredItems.filter((item) => item.mediaType === "book" && item.audiobookMinutes > 0);
     const completedAudiobookItems = audiobookItems.filter((item) => item.statusBucket === "completed");
-    const audiobookMinutesTotal = completedAudiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0);
+    const watchedMovieItems = filteredItems.filter(
+      (item) =>
+        item.mediaType === "movie" &&
+        item.runtimeMinutes > 0 &&
+        (item.statusBucket === "completed" || item.primaryStatusToken === "watched")
+    );
+    const watchedTvItems = filteredItems.filter(
+      (item) =>
+        item.mediaType === "tv" &&
+        item.runtimeMinutes > 0 &&
+        (item.statusBucket === "completed" || item.primaryStatusToken === "watched")
+    );
+    const completedGameItems = filteredItems.filter(
+      (item) => item.mediaType === "game" && item.gameplayHours > 0 && item.statusBucket === "completed"
+    );
+    const consumedDurationItems = [
+      ...completedAudiobookItems,
+      ...watchedMovieItems,
+      ...watchedTvItems,
+      ...completedGameItems,
+    ];
+    const totalConsumedMinutes =
+      completedAudiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0) +
+      watchedMovieItems.reduce((sum, item) => sum + item.runtimeMinutes, 0) +
+      watchedTvItems.reduce((sum, item) => sum + item.runtimeMinutes, 0) +
+      completedGameItems.reduce((sum, item) => sum + item.gameplayHours * 60, 0);
     const isBookScope = filter === "book";
     const averageRatingDisplay =
       typeof averageRating === "number" && Number.isFinite(averageRating)
@@ -2037,6 +2098,61 @@ export function StatisticsView({
         : selectedStatsYear === ALL_STATS_YEARS
           ? `${filter.toUpperCase()}_ALL_YEARS`
           : `${filter.toUpperCase()}_${selectedStatsYear}`;
+    const durationMetricByFilter = {
+      all: {
+        label: "Total Hours Consumed",
+        items: consumedDurationItems,
+        minutes: totalConsumedMinutes,
+        subLabel: `${consumedDurationItems.length} completed entries with duration`,
+        summary: `Total consumed hours from completed or watched media in ${scopeLabel}.`,
+        calculation: "Sum completed audiobook minutes, watched movie runtime, watched TV runtime where available, and completed game hours played.",
+      },
+      book: {
+        label: "Audiobook Hours Listened",
+        items: completedAudiobookItems,
+        minutes: completedAudiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0),
+        subLabel: `${completedAudiobookItems.length} completed audiobook entries`,
+        summary: `Total audiobook hours listened from completed audiobooks in ${scopeLabel}.`,
+        calculation: "Sum audiobookMinutes for completed audiobook items in the current scope.",
+      },
+      movie: {
+        label: "Movie Hours Watched",
+        items: watchedMovieItems,
+        minutes: watchedMovieItems.reduce((sum, item) => sum + item.runtimeMinutes, 0),
+        subLabel: `${watchedMovieItems.length} watched movies with runtime`,
+        summary: `Total movie hours watched in ${scopeLabel}.`,
+        calculation: "Sum movie runtimeMinutes for watched or completed movies in the current scope.",
+      },
+      tv: {
+        label: "TV Show Hours Consumed",
+        items: watchedTvItems,
+        minutes: watchedTvItems.reduce((sum, item) => sum + item.runtimeMinutes, 0),
+        subLabel: `${watchedTvItems.length} completed TV shows with runtime`,
+        summary: `Total TV show hours consumed in ${scopeLabel}.`,
+        calculation: "Sum TV runtimeMinutes for completed or watched TV shows. If total runtime is missing, estimate from episode count and episode runtime; if episode runtime is missing, estimate 45 minutes per episode.",
+      },
+      game: {
+        label: "Game Hours Played",
+        items: completedGameItems,
+        minutes: completedGameItems.reduce((sum, item) => sum + item.gameplayHours * 60, 0),
+        subLabel: `${completedGameItems.length} completed games with hours`,
+        summary: `Total game hours played for completed games in ${scopeLabel}.`,
+        calculation: "Sum gameplayHours for completed games in the current scope.",
+      },
+    }[filter];
+    const mediaYearScopeLabel = filter === "all" ? "media entries" : MEDIA_LABELS[filter].toLowerCase();
+    const mediaYearLabel =
+      filter === "all" ? "Most Popular Media Year" : `Most Popular ${MEDIA_LABELS[filter].replace("TV Shows", "TV Show")} Year`;
+    const consumedHoursMetric = {
+      id: `BASE_${scopeId}_TOTAL_HOURS_CONSUMED`,
+      label: durationMetricByFilter.label,
+      value: formatMinutesAsHours(durationMetricByFilter.minutes),
+      subLabel: durationMetricByFilter.subLabel,
+      accent: "var(--stats-accent-4)",
+      summary: durationMetricByFilter.summary,
+      calculation: durationMetricByFilter.calculation,
+      items: durationMetricByFilter.items,
+    };
 
     return [
       {
@@ -2080,16 +2196,7 @@ export function StatisticsView({
           : "Mean(filteredItems.rating where rating is numeric).",
         items: ratedItems,
       },
-      {
-        id: `BASE_${scopeId}_AUDIOBOOK_HOURS`,
-        label: "Audiobook Hours Listened",
-        value: formatMinutesAsHours(audiobookMinutesTotal),
-        subLabel: `${completedAudiobookItems.length} completed audiobook entries`,
-        accent: "var(--stats-accent-4)",
-        summary: `Total audiobook hours you've listened to from completed audiobooks in ${scopeLabel}.`,
-        calculation: "Sum audiobookMinutes for book items in scope where audiobookMinutes > 0 and statusBucket=completed.",
-        items: completedAudiobookItems,
-      },
+      consumedHoursMetric,
     ];
   }, [averageRating, filter, filteredItems, ratingValues.length, selectedStatsYear, statusCounts.completed]);
 
@@ -2775,17 +2882,19 @@ export function StatisticsView({
                         );
                       }}
                     >
-                      <div className="yearTopRatedRank">#{index + 1}</div>
-                      {getPersonalRatingBadgeLabel(item) ? (
-                        <div className="statsCoverRatingBadge">
-                          {getPersonalRatingBadgeLabel(item)}
-                        </div>
-                      ) : null}
-                      {item.coverUrl ? (
-                        <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
-                      ) : (
-                        <div className="yearSpotlightFallback">No Cover</div>
-                      )}
+                      <div className="yearTopRatedMedia">
+                        <div className="yearTopRatedRank">#{index + 1}</div>
+                        {getPersonalRatingBadgeLabel(item) ? (
+                          <div className="statsCoverRatingBadge">
+                            {getPersonalRatingBadgeLabel(item)}
+                          </div>
+                        ) : null}
+                        {item.coverUrl ? (
+                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                        ) : (
+                          <div className="yearSpotlightFallback">No Cover</div>
+                        )}
+                      </div>
                       <figcaption>
                         <span className="yearTopRatedTitle">{item.title}</span>
                         <span className="yearTopRatedMeta">
@@ -2866,17 +2975,19 @@ export function StatisticsView({
                         );
                       }}
                     >
-                      <div className="yearTopRatedRank">#{index + 1}</div>
-                      {getPersonalRatingBadgeLabel(item) ? (
-                        <div className="statsCoverRatingBadge">
-                          {getPersonalRatingBadgeLabel(item)}
-                        </div>
-                      ) : null}
-                      {item.coverUrl ? (
-                        <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
-                      ) : (
-                        <div className="yearSpotlightFallback">No Cover</div>
-                      )}
+                      <div className="yearTopRatedMedia">
+                        <div className="yearTopRatedRank">#{index + 1}</div>
+                        {getPersonalRatingBadgeLabel(item) ? (
+                          <div className="statsCoverRatingBadge">
+                            {getPersonalRatingBadgeLabel(item)}
+                          </div>
+                        ) : null}
+                        {item.coverUrl ? (
+                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                        ) : (
+                          <div className="yearSpotlightFallback">No Cover</div>
+                        )}
+                      </div>
                       <figcaption>
                         <span className="yearTopRatedTitle">{item.title}</span>
                         <span className="yearTopRatedMeta">
@@ -2930,7 +3041,7 @@ export function StatisticsView({
             }}
           >
             <div className="metricLabel">{metric.label}</div>
-            <div className="metricValue">{metric.value}</div>
+            <div className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""}`}>{metric.value}</div>
             <div className="metricSubLabel">{metric.subLabel}</div>
           </article>
         ))}
@@ -3154,12 +3265,13 @@ export function StatisticsView({
               {ratingBuckets.map((bucket) => {
                 const pct = ratingValues.length ? (bucket.value / ratingValues.length) * 100 : 0;
                 const bucketValue = Number.parseInt(bucket.name, 10);
+                const maxBucketValue = Math.max(1, ...ratingBuckets.map((entry) => entry.value));
                 const bucketItems = filteredItems.filter((item) => {
                   if (typeof item.rating !== "number" || !Number.isFinite(item.rating)) return false;
                   const rounded = Math.max(1, Math.min(10, Math.round(item.rating)));
                   return rounded === bucketValue;
                 });
-                const scaledHeight = `${(bucketValue / 10) * 100}%`;
+                const scaledHeight = `${(bucket.value / maxBucketValue) * 100}%`;
                 const hasData = bucket.value > 0;
                 return (
                   <div
@@ -3219,6 +3331,8 @@ export function StatisticsView({
                 {releaseLinePoints.map((point, index) => {
                   const yearItems = filteredItems.filter((item) => item.releaseDate?.getUTCFullYear() === point.year);
                   const showValueLabel = index % 4 === 0;
+                  const valueLabelX = Math.max(14, Math.min(546, point.x));
+                  const valueLabelY = Math.max(12, point.y - (index === 0 ? 16 : 10));
                   return (
                     <g
                       key={point.year}
@@ -3251,7 +3365,7 @@ export function StatisticsView({
                     >
                       <circle cx={point.x} cy={point.y} r="3.6" className="releaseLinePoint" />
                       {showValueLabel ? (
-                        <text x={point.x} y={Math.max(10, point.y - 8)} textAnchor="middle" className="releaseLineValueLabel">
+                        <text x={valueLabelX} y={valueLabelY} textAnchor="middle" className="releaseLineValueLabel">
                           {point.value}
                         </text>
                       ) : null}
@@ -3468,10 +3582,29 @@ export function StatisticsView({
               </button>
             </div>
             <div className="highlightItem">
-              <div className="highlightLabel">Favorite Author</div>
-              <div className="highlightValue">
-                {highlightStats.favoriteAuthor ? highlightStats.favoriteAuthor.name : "-"}
-              </div>
+              <div className="highlightLabel">{mediaYearLabel}</div>
+              <button
+                type="button"
+                className="highlightValueButton"
+                onClick={() =>
+                  openStatisticDetail({
+                    id: `HIGHLIGHT_MEDIA_YEAR_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                    title: mediaYearLabel,
+                    value: highlightStats.mostPopularMediaYear ? highlightStats.mostPopularMediaYear.name : "-",
+                    summary: `Release year with the most ${mediaYearScopeLabel} in the current stats scope.`,
+                    calculation: `Count releaseDate year across filtered ${mediaYearScopeLabel} and select the highest.`,
+                    items: highlightStats.mostPopularMediaYear
+                      ? filteredItems.filter(
+                          (item) => String(item.releaseDate?.getUTCFullYear() || "") === highlightStats.mostPopularMediaYear?.name
+                        )
+                      : [],
+                  })
+                }
+              >
+                {highlightStats.mostPopularMediaYear
+                  ? `${highlightStats.mostPopularMediaYear.name}`
+                  : "-"}
+              </button>
             </div>
             <div className="highlightItem">
               <div className="highlightLabel">Average Score</div>
@@ -3498,10 +3631,23 @@ export function StatisticsView({
                 </div>
                 {topMyRatedItems.length > 0 ? (
                   <div className="topRatedGrid">
-                    {topMyRatedItems.map((item, index) => (
+                    {topMyRatedItems.map((item, index) => {
+                      const topRatedCoverClass = getTop20CoverClass(item);
+                      const isAudiobookSquare = topRatedCoverClass.includes("yearTopRatedCoverAudiobook");
+                      const isBookCover = item.mediaType === "book" && !isAudiobookSquare;
+                      const isGameCover = item.mediaType === "game";
+                      const isPosterCover = !isAudiobookSquare && !isBookCover && !isGameCover;
+                      const tileShapeClass = isAudiobookSquare
+                        ? "topRatedTileAudiobook"
+                        : isGameCover
+                          ? "topRatedTileGame"
+                          : isPosterCover
+                            ? "topRatedTilePoster"
+                            : "";
+                      return (
                       <figure
                         key={`my-${item.mediaType}-${item.title}-${index + 1}`}
-                        className="topRatedTile topRatedTileInteractive"
+                        className={`topRatedTile topRatedTileInteractive ${tileShapeClass}`}
                         title={`${index + 1}. ${item.title}`}
                         role="button"
                         tabIndex={0}
@@ -3528,17 +3674,25 @@ export function StatisticsView({
                           )
                         }
                       >
-                        <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.rating)}</div>
-                        {item.coverUrl ? (
-                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
-                        ) : (
-                          <div className="topRatedFallback">No Cover</div>
-                        )}
+                        <div
+                          className={`topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`}
+                        >
+                          <div
+                            className={`topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`}
+                          >
+                            {item.coverUrl ? (
+                              <img className={topRatedCoverClass} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                            ) : (
+                              <div className="topRatedFallback">No Cover</div>
+                            )}
+                            <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.rating)}</div>
+                          </div>
+                        </div>
                         <figcaption>
                           <span className="topRatedTitle">{item.title}</span>
                         </figcaption>
                       </figure>
-                    ))}
+                    )})}
                   </div>
                 ) : (
                   <div className="cardEmpty compactEmpty">No personal ratings in the {statsYearScopePhrase}.</div>
@@ -3552,10 +3706,23 @@ export function StatisticsView({
                 </div>
                 {topExternalRatedItems.length > 0 ? (
                   <div className="topRatedGrid">
-                    {topExternalRatedItems.map((item, index) => (
+                    {topExternalRatedItems.map((item, index) => {
+                      const topRatedCoverClass = getTop20CoverClass(item);
+                      const isAudiobookSquare = topRatedCoverClass.includes("yearTopRatedCoverAudiobook");
+                      const isBookCover = item.mediaType === "book" && !isAudiobookSquare;
+                      const isGameCover = item.mediaType === "game";
+                      const isPosterCover = !isAudiobookSquare && !isBookCover && !isGameCover;
+                      const tileShapeClass = isAudiobookSquare
+                        ? "topRatedTileAudiobook"
+                        : isGameCover
+                          ? "topRatedTileGame"
+                          : isPosterCover
+                            ? "topRatedTilePoster"
+                            : "";
+                      return (
                       <figure
                         key={`ext-${item.mediaType}-${item.title}-${index + 1}`}
-                        className="topRatedTile topRatedTileInteractive"
+                        className={`topRatedTile topRatedTileInteractive ${tileShapeClass}`}
                         title={`${index + 1}. ${item.title}`}
                         role="button"
                         tabIndex={0}
@@ -3582,17 +3749,25 @@ export function StatisticsView({
                           )
                         }
                       >
-                        <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.externalRating)}</div>
-                        {item.coverUrl ? (
-                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
-                        ) : (
-                          <div className="topRatedFallback">No Cover</div>
-                        )}
+                        <div
+                          className={`topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`}
+                        >
+                          <div
+                            className={`topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`}
+                          >
+                            {item.coverUrl ? (
+                              <img className={topRatedCoverClass} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                            ) : (
+                              <div className="topRatedFallback">No Cover</div>
+                            )}
+                            <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.externalRating)}</div>
+                          </div>
+                        </div>
                         <figcaption>
                           <span className="topRatedTitle">{item.title}</span>
                         </figcaption>
                       </figure>
-                    ))}
+                    )})}
                   </div>
                 ) : (
                   <div className="cardEmpty compactEmpty">No external ratings in the {statsYearScopePhrase}.</div>
@@ -3825,7 +4000,6 @@ export function StatisticsView({
                       <div className="statDetailItemMain">
                         <div className="statDetailItemTitle">{item.title}</div>
                         <div className="statDetailItemMeta">
-                          <span></span>
                           <span>{STATUS_LABELS[item.statusBucket]}</span>
                           <span>
                             {anchorLabel}: {formatDetailDate(anchorDate)}
@@ -4457,17 +4631,23 @@ export function StatisticsView({
           position: relative;
           width: 100%;
           aspect-ratio: 3 / 4;
-          border-radius: 10px;
-          overflow: hidden;
-          border: 1px solid rgba(137, 175, 236, 0.44);
-          background: rgba(9, 20, 42, 0.85);
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+          border-radius: 6px;
+          overflow: visible;
+          border: none;
+          background: transparent;
+          box-shadow: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .yearSpotlightCover img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
+          width: auto;
+          height: auto;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          border-radius: 6px;
           display: block;
         }
 
@@ -4511,11 +4691,22 @@ export function StatisticsView({
 
         .yearTopRatedTile {
           margin: 0;
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-rows: clamp(92px, 8vw, 132px) minmax(3.6em, auto);
           gap: 5px;
           min-width: 0;
           position: relative;
+        }
+
+        .yearTopRatedMedia {
+          position: relative;
+          width: 100%;
+          height: clamp(92px, 8vw, 132px);
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          overflow: visible;
+          border-radius: 6px;
         }
 
         .yearTopRatedTileInteractive {
@@ -4551,13 +4742,15 @@ export function StatisticsView({
         }
 
         .yearTopRatedTile img {
-          width: 100%;
-          aspect-ratio: 3 / 4;
-          object-fit: cover;
-          border-radius: 9px;
-          border: 1px solid rgba(136, 174, 237, 0.42);
-          background: rgba(9, 19, 41, 0.76);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+          width: auto;
+          height: auto;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          border-radius: 6px !important;
+          border: none;
+          background: transparent;
+          box-shadow: none;
           display: block;
         }
 
@@ -4584,6 +4777,7 @@ export function StatisticsView({
           display: flex;
           flex-direction: column;
           gap: 2px;
+          min-height: 3.6em;
         }
 
         .yearTopRatedTitle {
@@ -4604,25 +4798,30 @@ export function StatisticsView({
         }
 
         .yearTopRatedCover {
-          width: 100%;
-          aspect-ratio: 3 / 4;
-          object-fit: cover;
-          border-radius: 9px;
-          border: 1px solid rgba(136, 174, 237, 0.42);
-          background: rgba(9, 19, 41, 0.76);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+          width: auto;
+          height: auto;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          border-radius: 6px;
+          border: none;
+          background: transparent;
+          box-shadow: none;
           display: block;
         }
 
         .yearTopRatedCoverAudiobook {
           aspect-ratio: 1 / 1;
+          width: 100%;
+          height: auto;
+          align-self: flex-end;
         }
 
         .yearTopRatedCoverGame {
           aspect-ratio: 1.4 / 1;
           object-fit: contain;
-          background: rgba(9, 19, 41, 0.9);
-          padding: 4px;
+          background: transparent;
+          padding: 0;
         }
 
         .yearTopRatedCoverTv {
@@ -4678,11 +4877,75 @@ export function StatisticsView({
 
         .topRatedTile {
           margin: 0;
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-rows: clamp(92px, 8vw, 132px) minmax(3.6em, auto);
           gap: 4px;
           min-width: 0;
           position: relative;
+        }
+
+        .topRatedMedia {
+          position: relative;
+          width: 100%;
+          height: clamp(92px, 8vw, 132px);
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          overflow: visible;
+          border-radius: 6px;
+        }
+
+        .topRatedMediaPoster {
+          border-radius: 6px;
+        }
+
+        .topRatedMediaBook {
+          height: clamp(92px, 8vw, 132px);
+        }
+
+        .topRatedTileGame {
+          grid-template-rows: clamp(126px, 10.5vw, 178px) minmax(3.6em, auto);
+        }
+
+        .topRatedMediaGame {
+          height: clamp(126px, 10.5vw, 178px);
+        }
+
+        .topRatedCoverWrap {
+          position: relative;
+          display: inline-flex;
+          align-items: flex-end;
+          justify-content: center;
+          max-width: 100%;
+          height: 100%;
+          width: fit-content;
+          line-height: 0;
+          border-radius: 6px;
+        }
+
+        .topRatedCoverWrapAudiobook {
+          width: min(100%, clamp(92px, 8vw, 132px));
+          height: auto;
+        }
+
+        .topRatedCoverWrapBook {
+          align-items: flex-start;
+        }
+
+        .topRatedCoverWrapPoster {
+          width: auto;
+          height: 100%;
+          aspect-ratio: 3 / 4;
+          overflow: visible;
+          isolation: isolate;
+          border-radius: 6px;
+        }
+
+        .topRatedCoverWrapGame {
+          width: fit-content;
+          height: 100%;
+          align-items: flex-end;
+          max-width: 100%;
         }
 
         .topRatedTileInteractive {
@@ -4702,26 +4965,73 @@ export function StatisticsView({
         }
 
         .topRatedTile img {
-          width: 100%;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
           aspect-ratio: 3 / 4;
-          object-fit: cover;
-          border-radius: 9px;
-          border: 1px solid rgba(136, 174, 237, 0.42);
-          background: rgba(9, 19, 41, 0.76);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+          object-fit: contain;
+          border-radius: 6px !important;
+          border: none;
+          background: transparent;
+          box-shadow: none;
           display: block;
+          clip-path: inset(0 round 6px);
+          overflow: hidden;
+          transform: translateZ(0);
+          -webkit-mask-image: -webkit-radial-gradient(white, black);
+          mask-image: radial-gradient(white, black);
+        }
+
+        .topRatedCoverWrapPoster img.yearTopRatedCover {
+          width: 100%;
+          height: 100%;
+          max-width: none;
+          max-height: none;
+          border-radius: 6px !important;
+          clip-path: inset(0 round 6px);
+          overflow: hidden;
+          transform: translateZ(0);
+          -webkit-mask-image: -webkit-radial-gradient(white, black);
+          mask-image: radial-gradient(white, black);
+        }
+
+        .topRatedMediaBook img.yearTopRatedCover {
+          height: auto;
+          width: auto;
+          max-width: 100%;
+          max-height: 100%;
+          aspect-ratio: auto;
+          object-fit: contain;
+          overflow: hidden;
         }
 
         .topRatedTile img.yearTopRatedCoverAudiobook {
           aspect-ratio: 1 / 1;
-          margin-top: 33.333%;
+          width: 100%;
+          display: block;
+          height: auto;
+          align-self: flex-end;
         }
 
         .topRatedTile img.yearTopRatedCoverGame {
-          aspect-ratio: 1.4 / 1;
+          aspect-ratio: auto;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
           object-fit: contain;
-          background: rgba(9, 19, 41, 0.9);
-          padding: 4px;
+          border-radius: 6px !important;
+          clip-path: inset(0 round 6px);
+          background: transparent;
+          padding: 0;
+        }
+
+        .topRatedCoverWrapGame img.yearTopRatedCoverGame {
+          flex: 0 1 auto;
+          border-radius: 6px !important;
+          clip-path: inset(0 round 6px);
+          overflow: hidden;
         }
 
         .topRatedTile img.yearTopRatedCoverTv {
@@ -4731,20 +5041,22 @@ export function StatisticsView({
 
         .topRatedScoreBubble {
           position: absolute;
-          top: 4px;
-          right: 4px;
+          top: 2px;
+          right: 5px;
           z-index: 3;
           font-size: 8px;
           min-width: 22px;
           text-align: center;
+          transform: none;
         }
 
         .topRatedFallback {
           width: 100%;
+          height: 100%;
           aspect-ratio: 3 / 4;
-          border-radius: 9px;
-          border: 1px solid rgba(136, 174, 237, 0.42);
-          background: rgba(9, 19, 41, 0.76);
+          border-radius: 6px;
+          border: 1px solid rgba(136, 174, 237, 0.22);
+          background: rgba(9, 19, 41, 0.35);
           display: grid;
           place-items: center;
           font-size: 9px;
@@ -4752,10 +5064,33 @@ export function StatisticsView({
           font-weight: 700;
         }
 
+        .topRatedMediaAudiobook .topRatedScoreBubble {
+          top: 2px;
+        }
+
+        .topRatedCoverWrapBook .topRatedScoreBubble {
+          top: 3px;
+          right: 5px;
+        }
+
         .topRatedTile figcaption {
           display: flex;
           flex-direction: column;
           gap: 2px;
+          justify-self: center;
+          width: 100%;
+        }
+
+        .topRatedTilePoster figcaption {
+          width: min(100%, calc(clamp(92px, 8vw, 132px) * 0.75));
+        }
+
+        .topRatedTileAudiobook figcaption {
+          width: min(100%, clamp(92px, 8vw, 132px));
+        }
+
+        .topRatedTileGame figcaption {
+          width: 100%;
         }
 
         .topRatedTitle {
@@ -4842,8 +5177,15 @@ export function StatisticsView({
         }
 
         .metricValueCompact {
-          font-size: clamp(11px, 1vw, 16px);
-          line-height: 1;
+          font-size: clamp(24px, 2.2vw, 34px);
+          line-height: 1.02;
+          max-width: 100%;
+          overflow: hidden;
+        }
+
+        .metricValueCompact * {
+          font-size: inherit !important;
+          line-height: inherit !important;
         }
 
         .metricSubLabel {
@@ -5720,8 +6062,9 @@ export function StatisticsView({
           position: fixed;
           inset: 0;
           z-index: 2500;
-          background: rgba(3, 9, 20, 0.6);
-          backdrop-filter: blur(3px);
+          background: rgba(27, 31, 38, 0.32);
+          backdrop-filter: blur(18px) saturate(1.12);
+          -webkit-backdrop-filter: blur(18px) saturate(1.12);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -5732,23 +6075,27 @@ export function StatisticsView({
           width: min(980px, 100%);
           max-height: min(88vh, 860px);
           overflow: auto;
-          border-radius: 16px;
-          border: 1px solid rgba(123, 177, 245, 0.46);
-          background: linear-gradient(165deg, rgba(15, 33, 65, 0.97), rgba(7, 18, 38, 0.98));
-          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-          padding: 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(255, 255, 255, 0.72);
+          background:
+            linear-gradient(180deg, rgba(249, 250, 252, 0.97), rgba(232, 236, 242, 0.96));
+          box-shadow:
+            0 28px 76px rgba(27, 31, 38, 0.36),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+          padding: 16px;
           display: flex;
           flex-direction: column;
           gap: 12px;
+          color: #242a32;
         }
 
         .statDetailHeader {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 10px;
-          border-bottom: 1px solid rgba(111, 158, 230, 0.36);
-          padding-bottom: 10px;
+          gap: 14px;
+          border-bottom: 1px solid rgba(160, 169, 183, 0.34);
+          padding: 2px 2px 12px 2px;
         }
 
         .statDetailHeaderMain {
@@ -5760,14 +6107,14 @@ export function StatisticsView({
           font-weight: 800;
           letter-spacing: 0.05em;
           text-transform: uppercase;
-          color: rgba(157, 201, 255, 0.9);
+          color: rgba(84, 109, 143, 0.86);
         }
 
         .statDetailHeaderMain h3 {
           margin: 6px 0 0 0;
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 900;
-          color: #f3f9ff;
+          color: #20242b;
         }
 
         .statDetailValue {
@@ -5775,19 +6122,22 @@ export function StatisticsView({
           font-size: 28px;
           line-height: 1;
           font-weight: 900;
-          color: #fff;
+          color: #2f7bd7;
         }
 
         .statDetailClose {
-          border: 1px solid rgba(152, 196, 250, 0.7);
-          background: linear-gradient(160deg, rgba(42, 90, 164, 0.92), rgba(25, 58, 109, 0.92));
-          color: #e9f4ff;
+          border: 1px solid rgba(110, 116, 126, 0.28);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 229, 234, 0.94));
+          color: #555d68;
           border-radius: 999px;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 800;
           letter-spacing: 0.03em;
-          padding: 6px 10px;
+          padding: 7px 14px;
           cursor: pointer;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.9),
+            0 1px 2px rgba(23, 28, 36, 0.08);
         }
 
         .statDetailSummaryGrid {
@@ -5797,11 +6147,12 @@ export function StatisticsView({
         }
 
         .statDetailSummaryCard {
-          border: 1px solid rgba(118, 162, 233, 0.35);
-          border-radius: 10px;
-          background: rgba(9, 21, 44, 0.78);
-          padding: 10px;
+          border: 1px solid rgba(174, 184, 198, 0.46);
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.62);
+          padding: 12px;
           min-height: 78px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
         }
 
         .statDetailSummaryLabel {
@@ -5809,13 +6160,13 @@ export function StatisticsView({
           font-weight: 800;
           letter-spacing: 0.04em;
           text-transform: uppercase;
-          color: rgba(161, 203, 255, 0.9);
+          color: rgba(60, 121, 204, 0.88);
         }
 
         .statDetailSummaryCard p {
           margin: 7px 0 0 0;
           font-size: 12px;
-          color: rgba(215, 231, 251, 0.94);
+          color: rgba(45, 54, 66, 0.88);
           line-height: 1.42;
         }
 
@@ -5827,41 +6178,51 @@ export function StatisticsView({
           font-weight: 800;
           letter-spacing: 0.03em;
           text-transform: uppercase;
-          color: rgba(177, 214, 255, 0.9);
+          color: rgba(82, 96, 116, 0.9);
         }
 
         .statDetailItemsHeader span {
-          color: #f8fcff;
+          color: #2f7bd7;
         }
 
         .statDetailItemsList {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 0;
           min-height: 120px;
+          border-top: 1px solid rgba(164, 174, 188, 0.28);
+          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
         }
 
         .statDetailItemRow {
           display: grid;
-          grid-template-columns: 28px 42px minmax(0, 1fr);
-          gap: 8px;
-          border: 1px solid rgba(121, 169, 238, 0.33);
-          border-radius: 10px;
-          background: rgba(9, 21, 44, 0.7);
-          padding: 8px 9px;
+          grid-template-columns: 44px 63px minmax(0, 1fr);
+          gap: 12px;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          padding: 12px 2px;
+          box-shadow: none;
+          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
+        }
+
+        .statDetailItemRow:last-child {
+          border-bottom: 0;
         }
 
         .statDetailItemRank {
-          width: 28px;
-          height: 28px;
-          border-radius: 999px;
+          width: 44px;
+          min-height: 63px;
+          border-radius: 0;
           display: grid;
-          place-items: center;
-          font-size: 10px;
+          place-items: start center;
+          padding-top: 4px;
+          font-size: 22px;
+          line-height: 1;
           font-weight: 900;
-          color: rgba(239, 249, 255, 0.98);
-          border: 1px solid rgba(142, 191, 255, 0.52);
-          background: rgba(28, 63, 118, 0.8);
+          color: #2f7bd7;
+          border: 0;
+          background: transparent;
         }
 
         .statDetailItemMain {
@@ -5873,30 +6234,30 @@ export function StatisticsView({
 
         .statDetailItemCover {
           position: relative;
-          width: 42px;
+          width: 63px;
           align-self: start;
         }
 
         .statDetailItemCoverBadge {
-          top: 2px;
-          right: 2px;
-          font-size: 7px;
-          padding: 1px 4px;
+          top: -4px;
+          right: -4px;
+          font-size: 8px;
+          padding: 2px 5px;
         }
 
         .statDetailItemCoverImage,
         .statDetailItemCoverPlaceholder {
           display: block;
-          width: 42px;
+          width: 63px;
           aspect-ratio: 2 / 3;
-          border-radius: 8px;
-          border: 1px solid rgba(130, 176, 244, 0.3);
-          background: rgba(15, 33, 63, 0.9);
-          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+          border-radius: 6px;
+          border: 1px solid rgba(156, 168, 184, 0.45);
+          background: rgba(238, 241, 245, 0.8);
+          box-shadow: 0 5px 12px rgba(26, 32, 42, 0.16);
         }
 
         .statDetailItemCoverImage {
-          object-fit: cover;
+          object-fit: contain;
         }
 
         .statDetailItemCoverPlaceholder {
@@ -5906,13 +6267,13 @@ export function StatisticsView({
           font-size: 8px;
           font-weight: 900;
           letter-spacing: 0.08em;
-          color: rgba(196, 220, 251, 0.72);
+          color: rgba(82, 96, 116, 0.72);
         }
 
         .statDetailItemTitle {
           font-size: 13px;
           font-weight: 800;
-          color: #f7fbff;
+          color: #232832;
           line-height: 1.25;
         }
 
@@ -5930,8 +6291,8 @@ export function StatisticsView({
           padding: 2px 7px;
           font-size: 10px;
           font-weight: 700;
-          color: rgba(201, 223, 249, 0.94);
-          background: rgba(12, 30, 60, 0.65);
+          color: rgba(54, 75, 105, 0.9);
+          background: rgba(239, 244, 250, 0.86);
         }
 
         @keyframes statsFadeRise {

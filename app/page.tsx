@@ -88,6 +88,9 @@ type Show = {
   lastAirDate?: string;
   numberOfSeasons?: string;
   numberOfEpisodes?: string;
+  runtime?: string;
+  episodeRuntime?: string;
+  averageEpisodeRuntime?: string;
   watchStatus?: string;
   watched?: string;
   dateCompleted?: string;
@@ -1817,6 +1820,19 @@ function rowToShow(r: Row): Show | null {
     lastAirDate: safeStr(r["LastAirDate"]) || safeStr(r["Last Air Date"]) || undefined,
     numberOfSeasons: safeStr(r["NumberOfSeasons"]) || undefined,
     numberOfEpisodes: safeStr(r["NumberOfEpisodes"]) || undefined,
+    runtime: safeStr(r["Runtime"]) || safeStr(r["TotalRuntime"]) || safeStr(r["Total Runtime"]) || undefined,
+    episodeRuntime:
+      safeStr(r["EpisodeRuntime"]) ||
+      safeStr(r["Episode Runtime"]) ||
+      safeStr(r["AverageEpisodeRuntime"]) ||
+      safeStr(r["Average Episode Runtime"]) ||
+      undefined,
+    averageEpisodeRuntime:
+      safeStr(r["AverageEpisodeRuntime"]) ||
+      safeStr(r["Average Episode Runtime"]) ||
+      safeStr(r["EpisodeRuntime"]) ||
+      safeStr(r["Episode Runtime"]) ||
+      undefined,
     watchStatus: safeStr(r["WatchStatus"]) || undefined,
     watched: safeStr(r["Watched"]) || undefined,
     dateCompleted:
