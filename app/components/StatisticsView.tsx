@@ -813,6 +813,113 @@ function compareRankedItems(
   return a.title.localeCompare(b.title);
 }
 
+type TopRatedColumnProps = {
+  title: string;
+  items: UnifiedStatsItem[];
+  scoreKey: "rating" | "externalRating";
+  filter: StatsFilter;
+  selectedStatsYear: StatsYearFilter;
+  detailIdPrefix: string;
+  detailTitlePrefix: string;
+  detailSummary: string;
+  detailCalculation: string;
+  emptyMessage: string;
+  onOpenDetail: (detail: StatisticDetail) => void;
+};
+
+function getTopRatedShapeClasses(item: UnifiedStatsItem) {
+  const coverClass = getTop20CoverClass(item);
+  const isAudiobookSquare = coverClass.includes("yearTopRatedCoverAudiobook");
+  const isBookCover = item.mediaType === "book" && !isAudiobookSquare;
+  const isGameCover = item.mediaType === "game";
+  const isPosterCover = !isAudiobookSquare && !isBookCover && !isGameCover;
+
+  return {
+    coverClass,
+    tileShapeClass: isAudiobookSquare
+      ? "topRatedTileAudiobook"
+      : isGameCover
+        ? "topRatedTileGame"
+        : isPosterCover
+          ? "topRatedTilePoster"
+          : "",
+    mediaClassName: `topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`,
+    wrapClassName: `topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`,
+  };
+}
+
+function TopRatedColumn({
+  title,
+  items,
+  scoreKey,
+  filter,
+  selectedStatsYear,
+  detailIdPrefix,
+  detailTitlePrefix,
+  detailSummary,
+  detailCalculation,
+  emptyMessage,
+  onOpenDetail,
+}: TopRatedColumnProps) {
+  const openDetail = (item: UnifiedStatsItem, index: number) => {
+    onOpenDetail({
+      id: `${detailIdPrefix}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+      title: `${detailTitlePrefix} #${index + 1}`,
+      value: formatScoreValue(item[scoreKey]),
+      summary: detailSummary,
+      calculation: detailCalculation,
+      items: [item],
+    });
+  };
+
+  return (
+    <section className="topRatedColumn">
+      <div className="topRatedColumnHeader">
+        <h3>{title}</h3>
+        <span>{items.length} ranked</span>
+      </div>
+      {items.length > 0 ? (
+        <div className="topRatedGrid">
+          {items.map((item, index) => {
+            const shape = getTopRatedShapeClasses(item);
+            return (
+              <figure
+                key={`${detailIdPrefix}-${item.mediaType}-${item.title}-${index + 1}`}
+                className={`topRatedTile topRatedTileInteractive ${shape.tileShapeClass}`}
+                title={`${index + 1}. ${item.title}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => openDetail(item, index)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  openDetail(item, index);
+                }}
+              >
+                <div className={shape.mediaClassName}>
+                  <div className={shape.wrapClassName}>
+                    {item.coverUrl ? (
+                      <img className={shape.coverClass} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                    ) : (
+                      <div className="topRatedFallback">No Cover</div>
+                    )}
+                    <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item[scoreKey])}</div>
+                  </div>
+                </div>
+                <figcaption>
+                  <span className="topRatedTitle">{item.title}</span>
+                </figcaption>
+              </figure>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="cardEmpty compactEmpty">{emptyMessage}</div>
+      )}
+    </section>
+  );
+}
+
 export function StatisticsView({
   books,
   movies,
@@ -3624,155 +3731,33 @@ export function StatisticsView({
               <span>{MEDIA_LABELS[filter]} · {statsYearLabel}</span>
             </div>
             <div className="topRatedComparison">
-              <section className="topRatedColumn">
-                <div className="topRatedColumnHeader">
-                  <h3>Top 10 Rated by Me</h3>
-                  <span>{topMyRatedItems.length} ranked</span>
-                </div>
-                {topMyRatedItems.length > 0 ? (
-                  <div className="topRatedGrid">
-                    {topMyRatedItems.map((item, index) => {
-                      const topRatedCoverClass = getTop20CoverClass(item);
-                      const isAudiobookSquare = topRatedCoverClass.includes("yearTopRatedCoverAudiobook");
-                      const isBookCover = item.mediaType === "book" && !isAudiobookSquare;
-                      const isGameCover = item.mediaType === "game";
-                      const isPosterCover = !isAudiobookSquare && !isBookCover && !isGameCover;
-                      const tileShapeClass = isAudiobookSquare
-                        ? "topRatedTileAudiobook"
-                        : isGameCover
-                          ? "topRatedTileGame"
-                          : isPosterCover
-                            ? "topRatedTilePoster"
-                            : "";
-                      return (
-                      <figure
-                        key={`my-${item.mediaType}-${item.title}-${index + 1}`}
-                        className={`topRatedTile topRatedTileInteractive ${tileShapeClass}`}
-                        title={`${index + 1}. ${item.title}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() =>
-                          openStatisticDetail({
-                            id: `TOP10_MY_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
-                            title: `Top Rated by Me #${index + 1}`,
-                            value: formatScoreValue(item.rating),
-                            summary: "Individual entry from the Top 10 Rated by Me list.",
-                            calculation: "Rank by personal rating desc with date/title tie-breakers.",
-                            items: [item],
-                          })
-                        }
-                        onKeyDown={(event) =>
-                          handleInteractiveKeyDown(event, () =>
-                            openStatisticDetail({
-                              id: `TOP10_MY_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
-                              title: `Top Rated by Me #${index + 1}`,
-                              value: formatScoreValue(item.rating),
-                              summary: "Individual entry from the Top 10 Rated by Me list.",
-                              calculation: "Rank by personal rating desc with date/title tie-breakers.",
-                              items: [item],
-                            })
-                          )
-                        }
-                      >
-                        <div
-                          className={`topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`}
-                        >
-                          <div
-                            className={`topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`}
-                          >
-                            {item.coverUrl ? (
-                              <img className={topRatedCoverClass} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
-                            ) : (
-                              <div className="topRatedFallback">No Cover</div>
-                            )}
-                            <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.rating)}</div>
-                          </div>
-                        </div>
-                        <figcaption>
-                          <span className="topRatedTitle">{item.title}</span>
-                        </figcaption>
-                      </figure>
-                    )})}
-                  </div>
-                ) : (
-                  <div className="cardEmpty compactEmpty">No personal ratings in the {statsYearScopePhrase}.</div>
-                )}
-              </section>
+              <TopRatedColumn
+                title="Top 10 Rated by Me"
+                items={topMyRatedItems}
+                scoreKey="rating"
+                filter={filter}
+                selectedStatsYear={selectedStatsYear}
+                detailIdPrefix="TOP10_MY"
+                detailTitlePrefix="Top Rated by Me"
+                detailSummary="Individual entry from the Top 10 Rated by Me list."
+                detailCalculation="Rank by personal rating desc with date/title tie-breakers."
+                emptyMessage={`No personal ratings in the ${statsYearScopePhrase}.`}
+                onOpenDetail={openStatisticDetail}
+              />
 
-              <section className="topRatedColumn">
-                <div className="topRatedColumnHeader">
-                  <h3>{EXTERNAL_RATING_LABELS[filter]}</h3>
-                  <span>{topExternalRatedItems.length} ranked</span>
-                </div>
-                {topExternalRatedItems.length > 0 ? (
-                  <div className="topRatedGrid">
-                    {topExternalRatedItems.map((item, index) => {
-                      const topRatedCoverClass = getTop20CoverClass(item);
-                      const isAudiobookSquare = topRatedCoverClass.includes("yearTopRatedCoverAudiobook");
-                      const isBookCover = item.mediaType === "book" && !isAudiobookSquare;
-                      const isGameCover = item.mediaType === "game";
-                      const isPosterCover = !isAudiobookSquare && !isBookCover && !isGameCover;
-                      const tileShapeClass = isAudiobookSquare
-                        ? "topRatedTileAudiobook"
-                        : isGameCover
-                          ? "topRatedTileGame"
-                          : isPosterCover
-                            ? "topRatedTilePoster"
-                            : "";
-                      return (
-                      <figure
-                        key={`ext-${item.mediaType}-${item.title}-${index + 1}`}
-                        className={`topRatedTile topRatedTileInteractive ${tileShapeClass}`}
-                        title={`${index + 1}. ${item.title}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() =>
-                          openStatisticDetail({
-                            id: `TOP10_EXTERNAL_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
-                            title: `Top External Rated #${index + 1}`,
-                            value: formatScoreValue(item.externalRating),
-                            summary: "Individual entry from the Top 10 external rating list.",
-                            calculation: "Rank by external rating desc with date/title tie-breakers.",
-                            items: [item],
-                          })
-                        }
-                        onKeyDown={(event) =>
-                          handleInteractiveKeyDown(event, () =>
-                            openStatisticDetail({
-                              id: `TOP10_EXTERNAL_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
-                              title: `Top External Rated #${index + 1}`,
-                              value: formatScoreValue(item.externalRating),
-                              summary: "Individual entry from the Top 10 external rating list.",
-                              calculation: "Rank by external rating desc with date/title tie-breakers.",
-                              items: [item],
-                            })
-                          )
-                        }
-                      >
-                        <div
-                          className={`topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`}
-                        >
-                          <div
-                            className={`topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`}
-                          >
-                            {item.coverUrl ? (
-                              <img className={topRatedCoverClass} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
-                            ) : (
-                              <div className="topRatedFallback">No Cover</div>
-                            )}
-                            <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item.externalRating)}</div>
-                          </div>
-                        </div>
-                        <figcaption>
-                          <span className="topRatedTitle">{item.title}</span>
-                        </figcaption>
-                      </figure>
-                    )})}
-                  </div>
-                ) : (
-                  <div className="cardEmpty compactEmpty">No external ratings in the {statsYearScopePhrase}.</div>
-                )}
-              </section>
+              <TopRatedColumn
+                title={EXTERNAL_RATING_LABELS[filter]}
+                items={topExternalRatedItems}
+                scoreKey="externalRating"
+                filter={filter}
+                selectedStatsYear={selectedStatsYear}
+                detailIdPrefix="TOP10_EXTERNAL"
+                detailTitlePrefix="Top External Rated"
+                detailSummary="Individual entry from the Top 10 external rating list."
+                detailCalculation="Rank by external rating desc with date/title tie-breakers."
+                emptyMessage={`No external ratings in the ${statsYearScopePhrase}.`}
+                onOpenDetail={openStatisticDetail}
+              />
             </div>
           </article>
         ) : null}
