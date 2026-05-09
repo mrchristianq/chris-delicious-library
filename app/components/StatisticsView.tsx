@@ -827,6 +827,11 @@ type TopRatedColumnProps = {
   onOpenDetail: (detail: StatisticDetail) => void;
 };
 
+type StatDetailModalProps = {
+  detail: StatisticDetail;
+  onClose: () => void;
+};
+
 function getTopRatedShapeClasses(item: UnifiedStatsItem) {
   const coverClass = getTop20CoverClass(item);
   const isAudiobookSquare = coverClass.includes("yearTopRatedCoverAudiobook");
@@ -917,6 +922,108 @@ function TopRatedColumn({
         <div className="cardEmpty compactEmpty">{emptyMessage}</div>
       )}
     </section>
+  );
+}
+
+function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
+  return (
+    <div
+      className="statDetailOverlay"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        className="statDetailDialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Statistic details for ${detail.title}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="statDetailHeader">
+          <div className="statDetailHeaderMain">
+            <div className="statDetailId">ID: {detail.id}</div>
+            <h3>{detail.title}</h3>
+            <div className="statDetailValue">{detail.value}</div>
+          </div>
+          <button
+            type="button"
+            className="statDetailClose"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="statDetailSummaryGrid">
+          <div className="statDetailSummaryCard">
+            <div className="statDetailSummaryLabel">What This Tracks</div>
+            <p>{detail.summary}</p>
+          </div>
+          <div className="statDetailSummaryCard">
+            <div className="statDetailSummaryLabel">How It Is Calculated</div>
+            <p>{detail.calculation}</p>
+          </div>
+        </div>
+
+        <div className="statDetailItemsHeader">
+          Matching Items <span>{detail.items.length}</span>
+        </div>
+
+        <div className="statDetailItemsList">
+          {detail.items.length > 0 ? (
+            detail.items.map((item, index) => {
+              const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
+              const anchorLabel = item.activityDate
+                ? "Activity"
+                : item.completionDate
+                  ? "Completed"
+                  : "Release";
+              return (
+                <div
+                  key={`${detail.id}-${item.mediaType}-${item.title}-${index}`}
+                  className="statDetailItemRow"
+                >
+                  <div className="statDetailItemRank">{index + 1}</div>
+                  <div className="statDetailItemCover">
+                    {item.coverUrl ? (
+                      <>
+                        <img
+                          src={item.coverUrl}
+                          alt={`Cover for ${item.title}`}
+                          className="statDetailItemCoverImage"
+                          loading="lazy"
+                        />
+                        {getPersonalRatingBadgeLabel(item) ? (
+                          <div className="statsCoverRatingBadge statDetailItemCoverBadge">
+                            {getPersonalRatingBadgeLabel(item)}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
+                        {item.mediaType.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="statDetailItemMain">
+                    <div className="statDetailItemTitle">{item.title}</div>
+                    <div className="statDetailItemMeta">
+                      <span>{STATUS_LABELS[item.statusBucket]}</span>
+                      <span>
+                        {anchorLabel}: {formatDetailDate(anchorDate)}
+                      </span>
+                      <span>Rating: {formatPersonalRatingDisplay(item)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="cardEmpty">No matching items for this statistic.</div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3904,103 +4011,7 @@ export function StatisticsView({
         : null}
 
       {activeStatDetail ? (
-        <div
-          className="statDetailOverlay"
-          role="presentation"
-          onClick={() => setActiveStatDetail(null)}
-        >
-          <div
-            className="statDetailDialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Statistic details for ${activeStatDetail.title}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="statDetailHeader">
-              <div className="statDetailHeaderMain">
-                <div className="statDetailId">ID: {activeStatDetail.id}</div>
-                <h3>{activeStatDetail.title}</h3>
-                <div className="statDetailValue">{activeStatDetail.value}</div>
-              </div>
-              <button
-                type="button"
-                className="statDetailClose"
-                onClick={() => setActiveStatDetail(null)}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="statDetailSummaryGrid">
-              <div className="statDetailSummaryCard">
-                <div className="statDetailSummaryLabel">What This Tracks</div>
-                <p>{activeStatDetail.summary}</p>
-              </div>
-              <div className="statDetailSummaryCard">
-                <div className="statDetailSummaryLabel">How It Is Calculated</div>
-                <p>{activeStatDetail.calculation}</p>
-              </div>
-            </div>
-
-            <div className="statDetailItemsHeader">
-              Matching Items <span>{activeStatDetail.items.length}</span>
-            </div>
-
-            <div className="statDetailItemsList">
-              {activeStatDetail.items.length > 0 ? (
-                activeStatDetail.items.map((item, index) => {
-                  const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
-                  const anchorLabel = item.activityDate
-                    ? "Activity"
-                    : item.completionDate
-                      ? "Completed"
-                      : "Release";
-                  return (
-                    <div
-                      key={`${activeStatDetail.id}-${item.mediaType}-${item.title}-${index}`}
-                      className="statDetailItemRow"
-                    >
-                      <div className="statDetailItemRank">{index + 1}</div>
-                      <div className="statDetailItemCover">
-                        {item.coverUrl ? (
-                          <>
-                            <img
-                              src={item.coverUrl}
-                              alt={`Cover for ${item.title}`}
-                              className="statDetailItemCoverImage"
-                              loading="lazy"
-                            />
-                            {getPersonalRatingBadgeLabel(item) ? (
-                              <div className="statsCoverRatingBadge statDetailItemCoverBadge">
-                                {getPersonalRatingBadgeLabel(item)}
-                              </div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
-                            {item.mediaType.toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                      <div className="statDetailItemMain">
-                        <div className="statDetailItemTitle">{item.title}</div>
-                        <div className="statDetailItemMeta">
-                          <span>{STATUS_LABELS[item.statusBucket]}</span>
-                          <span>
-                            {anchorLabel}: {formatDetailDate(anchorDate)}
-                          </span>
-                          <span>Rating: {formatPersonalRatingDisplay(item)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="cardEmpty">No matching items for this statistic.</div>
-              )}
-            </div>
-          </div>
-        </div>
+        <StatDetailModal detail={activeStatDetail} onClose={() => setActiveStatDetail(null)} />
       ) : null}
 
       <style jsx>{`
