@@ -438,6 +438,14 @@ function formatMinutesAsHours(value: number): string {
   return formatHours(value / 60);
 }
 
+const COVER_IMAGE_RADIUS_STYLE: CSSProperties = {
+  borderRadius: 6,
+  clipPath: "inset(0 round 6px)",
+  WebkitClipPath: "inset(0 round 6px)",
+  overflow: "hidden",
+  display: "block",
+};
+
 function getTop20CoverClass(item: UnifiedStatsItem): string {
   if (item.mediaType === "game") return "yearTopRatedCover yearTopRatedCoverGame";
   if (item.mediaType === "tv") return "yearTopRatedCover yearTopRatedCoverTv";
@@ -850,6 +858,7 @@ function getTopRatedShapeClasses(item: UnifiedStatsItem) {
           : "",
     mediaClassName: `topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`,
     wrapClassName: `topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`,
+    clipClassName: `topRatedImageClip ${isAudiobookSquare ? "topRatedImageClipAudiobook" : ""} ${isBookCover ? "topRatedImageClipBook" : ""} ${isGameCover ? "topRatedImageClipGame" : ""} ${isPosterCover ? "topRatedImageClipPoster" : ""}`,
   };
 }
 
@@ -904,7 +913,15 @@ function TopRatedColumn({
                 <div className={shape.mediaClassName}>
                   <div className={shape.wrapClassName}>
                     {item.coverUrl ? (
-                      <img className={shape.coverClass} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                      <div className={shape.clipClassName} style={COVER_IMAGE_RADIUS_STYLE}>
+                        <img
+                          className={shape.coverClass}
+                          src={item.coverUrl}
+                          alt={`${item.title} cover`}
+                          loading="lazy"
+                          style={COVER_IMAGE_RADIUS_STYLE}
+                        />
+                      </div>
                     ) : (
                       <div className="topRatedFallback">No Cover</div>
                     )}
@@ -992,6 +1009,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
                           alt={`Cover for ${item.title}`}
                           className="statDetailItemCoverImage"
                           loading="lazy"
+                          style={COVER_IMAGE_RADIUS_STYLE}
                         />
                         {getPersonalRatingBadgeLabel(item) ? (
                           <div className="statsCoverRatingBadge statDetailItemCoverBadge">
@@ -2855,7 +2873,12 @@ export function StatisticsView({
                       </div>
                     ) : null}
                     {yearReview.topRated.coverUrl ? (
-                      <img src={yearReview.topRated.coverUrl} alt={`${yearReview.topRated.title} cover`} loading="lazy" />
+                      <img
+                        src={yearReview.topRated.coverUrl}
+                        alt={`${yearReview.topRated.title} cover`}
+                        loading="lazy"
+                        style={COVER_IMAGE_RADIUS_STYLE}
+                      />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
@@ -2908,7 +2931,12 @@ export function StatisticsView({
                 >
                   <div className="yearSpotlightCover">
                     {yearReview.longestAudiobook.coverUrl ? (
-                      <img src={yearReview.longestAudiobook.coverUrl} alt={`${yearReview.longestAudiobook.title} cover`} loading="lazy" />
+                      <img
+                        src={yearReview.longestAudiobook.coverUrl}
+                        alt={`${yearReview.longestAudiobook.title} cover`}
+                        loading="lazy"
+                        style={COVER_IMAGE_RADIUS_STYLE}
+                      />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
@@ -2959,7 +2987,12 @@ export function StatisticsView({
                 >
                   <div className="yearSpotlightCover">
                     {yearReview.mostPlayedGame.coverUrl ? (
-                      <img src={yearReview.mostPlayedGame.coverUrl} alt={`${yearReview.mostPlayedGame.title} cover`} loading="lazy" />
+                      <img
+                        src={yearReview.mostPlayedGame.coverUrl}
+                        alt={`${yearReview.mostPlayedGame.title} cover`}
+                        loading="lazy"
+                        style={COVER_IMAGE_RADIUS_STYLE}
+                      />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
@@ -3015,7 +3048,12 @@ export function StatisticsView({
                       </div>
                     ) : null}
                     {yearReview.lowestRated.coverUrl ? (
-                      <img src={yearReview.lowestRated.coverUrl} alt={`${yearReview.lowestRated.title} cover`} loading="lazy" />
+                      <img
+                        src={yearReview.lowestRated.coverUrl}
+                        alt={`${yearReview.lowestRated.title} cover`}
+                        loading="lazy"
+                        style={COVER_IMAGE_RADIUS_STYLE}
+                      />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
@@ -3104,7 +3142,13 @@ export function StatisticsView({
                           </div>
                         ) : null}
                         {item.coverUrl ? (
-                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                          <img
+                            className={getTop20CoverClass(item)}
+                            src={item.coverUrl}
+                            alt={`${item.title} cover`}
+                            loading="lazy"
+                            style={COVER_IMAGE_RADIUS_STYLE}
+                          />
                         ) : (
                           <div className="yearSpotlightFallback">No Cover</div>
                         )}
@@ -3197,7 +3241,13 @@ export function StatisticsView({
                           </div>
                         ) : null}
                         {item.coverUrl ? (
-                          <img className={getTop20CoverClass(item)} src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                          <img
+                            className={getTop20CoverClass(item)}
+                            src={item.coverUrl}
+                            alt={`${item.title} cover`}
+                            loading="lazy"
+                            style={COVER_IMAGE_RADIUS_STYLE}
+                          />
                         ) : (
                           <div className="yearSpotlightFallback">No Cover</div>
                         )}
@@ -3940,7 +3990,12 @@ export function StatisticsView({
                   key={activeWrappedSlide.id}
                   className={`wrappedCoverFrame wrappedCoverSlideIn ${wrappedCoverShape === "square" ? "isSquare" : ""}`}
                 >
-                  <img src={activeWrappedSlide.coverUrl} alt={`${activeWrappedSlide.title} cover`} loading="lazy" />
+                  <img
+                    src={activeWrappedSlide.coverUrl}
+                    alt={`${activeWrappedSlide.title} cover`}
+                    loading="lazy"
+                    style={COVER_IMAGE_RADIUS_STYLE}
+                  />
                 </div>
               ) : null}
               <p className="wrappedHint">Use ← / → keys, side arrows, or Prev/Next buttons.</p>
@@ -4919,6 +4974,44 @@ export function StatisticsView({
           border-radius: 6px;
         }
 
+        .topRatedImageClip {
+          display: inline-flex;
+          align-items: flex-end;
+          justify-content: center;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
+          line-height: 0;
+          border-radius: 6px !important;
+          overflow: hidden;
+          clip-path: inset(0 round 6px) !important;
+          -webkit-clip-path: inset(0 round 6px) !important;
+          transform: translateZ(0);
+        }
+
+        .topRatedImageClipPoster {
+          width: 100%;
+          height: 100%;
+          aspect-ratio: 2 / 3;
+        }
+
+        .topRatedImageClipAudiobook {
+          width: 100%;
+          height: auto;
+          aspect-ratio: 1 / 1;
+        }
+
+        .topRatedImageClipGame {
+          width: auto;
+          height: 100%;
+        }
+
+        .topRatedImageClipBook {
+          width: auto;
+          height: auto;
+        }
+
         .topRatedCoverWrapAudiobook {
           width: min(100%, clamp(92px, 8vw, 132px));
           height: auto;
@@ -4931,7 +5024,7 @@ export function StatisticsView({
         .topRatedCoverWrapPoster {
           width: auto;
           height: 100%;
-          aspect-ratio: 3 / 4;
+          aspect-ratio: 2 / 3;
           overflow: visible;
           isolation: isolate;
           border-radius: 6px;
@@ -4965,7 +5058,7 @@ export function StatisticsView({
           height: 100%;
           max-width: 100%;
           max-height: 100%;
-          aspect-ratio: 3 / 4;
+          aspect-ratio: 2 / 3;
           object-fit: contain;
           border-radius: 6px !important;
           border: none;
@@ -4984,8 +5077,10 @@ export function StatisticsView({
           height: 100%;
           max-width: none;
           max-height: none;
+          object-fit: contain;
           border-radius: 6px !important;
-          clip-path: inset(0 round 6px);
+          clip-path: inset(0 round 6px) !important;
+          -webkit-clip-path: inset(0 round 6px) !important;
           overflow: hidden;
           transform: translateZ(0);
           -webkit-mask-image: -webkit-radial-gradient(white, black);
@@ -5049,7 +5144,7 @@ export function StatisticsView({
         .topRatedFallback {
           width: 100%;
           height: 100%;
-          aspect-ratio: 3 / 4;
+          aspect-ratio: 2 / 3;
           border-radius: 6px;
           border: 1px solid rgba(136, 174, 237, 0.22);
           background: rgba(9, 19, 41, 0.35);
@@ -5078,7 +5173,7 @@ export function StatisticsView({
         }
 
         .topRatedTilePoster figcaption {
-          width: min(100%, calc(clamp(92px, 8vw, 132px) * 0.75));
+          width: min(100%, calc(clamp(116px, 9.8vw, 164px) * 0.6667));
         }
 
         .topRatedTileAudiobook figcaption {
@@ -5104,6 +5199,283 @@ export function StatisticsView({
 
         .topRatedMeta {
           display: none;
+        }
+
+        :global(.statsRoot img) {
+          border-radius: 6px;
+        }
+
+        :global(.topRatedColumn) {
+          border: 1px solid rgba(121, 163, 233, 0.34);
+          border-radius: 12px;
+          background: rgba(8, 21, 46, 0.44);
+          padding: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-height: 0;
+        }
+
+        :global(.topRatedColumnHeader) {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        :global(.topRatedColumnHeader h3) {
+          margin: 0;
+          font-size: 12px;
+          font-weight: 900;
+          color: #f5f9ff;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        :global(.topRatedColumnHeader span) {
+          color: rgba(186, 208, 238, 0.82);
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        :global(.topRatedGrid) {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        :global(.topRatedTile) {
+          margin: 0;
+          display: grid;
+          grid-template-rows: clamp(82px, 7vw, 118px) minmax(3.45em, auto);
+          gap: 4px;
+          min-width: 0;
+          position: relative;
+        }
+
+        :global(.topRatedMedia) {
+          position: relative;
+          width: 100%;
+          height: clamp(82px, 7vw, 118px);
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          overflow: visible;
+          border-radius: 6px;
+        }
+
+        :global(.topRatedTilePoster) {
+          grid-template-rows: clamp(116px, 9.8vw, 164px) minmax(3.45em, auto);
+        }
+
+        :global(.topRatedMediaPoster) {
+          height: clamp(116px, 9.8vw, 164px);
+        }
+
+        :global(.topRatedImageClip) {
+          display: inline-flex;
+          align-items: flex-end;
+          justify-content: center;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
+          line-height: 0;
+          border-radius: 6px !important;
+          overflow: hidden;
+          clip-path: inset(0 round 6px) !important;
+          -webkit-clip-path: inset(0 round 6px) !important;
+          transform: translateZ(0);
+        }
+
+        :global(.topRatedImageClipPoster) {
+          width: 100%;
+          height: 100%;
+          aspect-ratio: 2 / 3;
+        }
+
+        :global(.topRatedImageClipAudiobook) {
+          width: 100%;
+          height: auto;
+          aspect-ratio: 1 / 1;
+        }
+
+        :global(.topRatedImageClipGame) {
+          width: auto;
+          height: 100%;
+        }
+
+        :global(.topRatedImageClipBook) {
+          width: auto;
+          height: auto;
+        }
+
+        :global(.topRatedTileGame) {
+          grid-template-rows: clamp(104px, 8.7vw, 148px) minmax(3.45em, auto);
+        }
+
+        :global(.topRatedMediaGame) {
+          height: clamp(104px, 8.7vw, 148px);
+        }
+
+        :global(.topRatedCoverWrap) {
+          position: relative;
+          display: inline-flex;
+          align-items: flex-end;
+          justify-content: center;
+          max-width: 100%;
+          height: 100%;
+          width: fit-content;
+          line-height: 0;
+          border-radius: 6px;
+        }
+
+        :global(.topRatedCoverWrapAudiobook) {
+          width: min(100%, clamp(82px, 7vw, 118px));
+          height: auto;
+        }
+
+        :global(.topRatedCoverWrapPoster) {
+          width: auto;
+          height: 100%;
+          aspect-ratio: 2 / 3;
+          overflow: visible;
+          isolation: isolate;
+          border-radius: 6px;
+        }
+
+        :global(.topRatedCoverWrapGame) {
+          width: fit-content;
+          height: 100%;
+          align-items: flex-end;
+          max-width: 100%;
+        }
+
+        :global(.topRatedTileInteractive) {
+          cursor: pointer;
+          border-radius: 10px;
+          padding: 2px;
+          transition: background 120ms ease;
+        }
+
+        :global(.topRatedTileInteractive:hover) {
+          background: rgba(115, 169, 245, 0.14);
+        }
+
+        :global(.topRatedTileInteractive:focus-visible) {
+          outline: 2px solid rgba(157, 208, 255, 0.95);
+          outline-offset: 2px;
+        }
+
+        :global(.topRatedTile img) {
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
+          aspect-ratio: 2 / 3;
+          object-fit: contain;
+          border-radius: 6px !important;
+          border: none;
+          background: transparent;
+          box-shadow: none;
+          display: block;
+          clip-path: inset(0 round 6px);
+          overflow: hidden;
+          transform: translateZ(0);
+          -webkit-mask-image: -webkit-radial-gradient(white, black);
+          mask-image: radial-gradient(white, black);
+        }
+
+        :global(.topRatedCoverWrapPoster img.yearTopRatedCover) {
+          width: 100%;
+          height: 100%;
+          max-width: none;
+          max-height: none;
+          object-fit: contain;
+          border-radius: 6px !important;
+          clip-path: inset(0 round 6px) !important;
+          -webkit-clip-path: inset(0 round 6px) !important;
+        }
+
+        :global(.topRatedMediaBook img.yearTopRatedCover) {
+          height: auto;
+          width: auto;
+          max-width: 100%;
+          max-height: 100%;
+          aspect-ratio: auto;
+        }
+
+        :global(.topRatedTile img.yearTopRatedCoverAudiobook) {
+          aspect-ratio: 1 / 1;
+          width: 100%;
+          display: block;
+          height: auto;
+          align-self: flex-end;
+        }
+
+        :global(.topRatedTile img.yearTopRatedCoverGame) {
+          aspect-ratio: auto;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          background: transparent;
+          padding: 0;
+        }
+
+        :global(.topRatedScoreBubble) {
+          position: absolute;
+          top: 2px;
+          right: 5px;
+          z-index: 3;
+          font-size: 8px;
+          min-width: 22px;
+          text-align: center;
+          transform: none;
+        }
+
+        :global(.topRatedFallback) {
+          width: 100%;
+          height: 100%;
+          aspect-ratio: 2 / 3;
+          border-radius: 6px;
+          border: 1px solid rgba(136, 174, 237, 0.22);
+          background: rgba(9, 19, 41, 0.35);
+          display: grid;
+          place-items: center;
+          font-size: 9px;
+          color: rgba(184, 207, 240, 0.8);
+          font-weight: 700;
+        }
+
+        :global(.topRatedTile figcaption) {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          justify-self: center;
+          width: 100%;
+        }
+
+        :global(.topRatedTilePoster figcaption) {
+          width: min(100%, calc(clamp(116px, 9.8vw, 164px) * 0.6667));
+        }
+
+        :global(.topRatedTileAudiobook figcaption) {
+          width: min(100%, clamp(82px, 7vw, 118px));
+        }
+
+        :global(.topRatedTitle) {
+          font-size: 10px;
+          color: rgba(186, 210, 240, 0.82);
+          font-weight: 700;
+          line-height: 1.15;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          white-space: normal;
+          min-height: 3.45em;
         }
 
         .cardEmpty.compactEmpty {
