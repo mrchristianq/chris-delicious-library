@@ -10,11 +10,13 @@ type MovieDetailsPageProps = {
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
   onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
+  onRate?: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedMovies?: Record<string, unknown>[];
   relatedMoviesLabel?: string;
   onSelectRelated?: (item: Record<string, unknown>) => void;
+  highlightColor?: string;
 };
 
 type PaletteState = {
@@ -207,8 +209,8 @@ const PANEL_STYLE: React.CSSProperties = {
 
 export function MovieDetailsPage({
   item, isMobileLayout, usePageBackground = false,
-  onBack, onEdit, onDelete, getDisplayCoverUrl, onPaletteChange,
-  relatedMovies, relatedMoviesLabel, onSelectRelated,
+  onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, onPaletteChange,
+  relatedMovies, relatedMoviesLabel, onSelectRelated, highlightColor,
 }: MovieDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
@@ -395,20 +397,17 @@ export function MovieDetailsPage({
             background: `linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.04) 35%, ${rgba(palette.start, 0.55)} 78%, ${rgba(palette.start, 0.98)} 100%)`,
           }} />
 
-          {/* Top bar: back + edit/status */}
+          {/* Top bar: buttons (left) + back (right) */}
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "14px 16px" }}>
-            <button type="button" onClick={onBack} style={{
-              width: 38, height: 38, borderRadius: "50%",
-              border: "1px solid rgba(255,255,255,0.28)", background: "rgba(0,0,0,0.45)",
-              color: "#fff", cursor: "pointer",
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              backdropFilter: "blur(8px)",
-            }} aria-label="Back">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </button>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              {onRate ? (
+                <button type="button" onClick={() => onRate(item)} style={{
+                  borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
+                  border: `1px solid rgba(255,255,255,0.4)`, background: `${highlightColor || "#007AFF"}`,
+                  color: "#fff", cursor: "pointer", whiteSpace: "nowrap",
+                  backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+                }}>Rate It</button>
+              ) : null}
               {onEdit ? (
                 <button type="button" onClick={() => onEdit(item)} style={{
                   borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
@@ -445,6 +444,19 @@ export function MovieDetailsPage({
                   {isDeleting ? "Deleting..." : "Delete"}
                 </button>
               ) : null}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <button type="button" onClick={onBack} style={{
+                width: 38, height: 38, borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.28)", background: "rgba(0,0,0,0.45)",
+                color: "#fff", cursor: "pointer",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                backdropFilter: "blur(8px)",
+              }} aria-label="Back">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
               {watchStatus ? (
                 <span style={{ borderRadius: 999, padding: "9px 13px", fontSize: 13, lineHeight: 1, fontWeight: 850, ...statusColor }}>
                   {watchStatus.charAt(0).toUpperCase() + watchStatus.slice(1)}

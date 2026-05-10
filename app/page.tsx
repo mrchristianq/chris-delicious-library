@@ -20,6 +20,7 @@ import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
 import { MovieDetailsEditModal } from "./components/MovieDetailsEditModal";
 import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
 import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
+import { RateItModal } from "./components/RateItModal";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -1544,6 +1545,13 @@ function getMediaType(item: any): MediaType {
   if (item?.platform || item?.yearPlayed || item?.gameStatus) return "game";
   if (item?.isbn || item?.series) return "book";
   if (item?.firstAirDate || item?.lastAirDate || item?.showStatus) return "tv";
+
+  // Audiobook detection: check for Type field or iTunes/Apple Music ImageURL pattern
+  const type = safeStr(item?.type || item?.Type || item?.MediaType || "").toLowerCase();
+  const imageUrl = safeStr(item?.ImageURL || item?.imageUrl || "");
+  if (type === "audiobook" || type.includes("audio")) return "book";
+  if (imageUrl.includes("mzstatic.com")) return "book"; // iTunes/Apple Music URLs indicate audiobooks
+
   return "movie";
 }
 
@@ -1584,12 +1592,64 @@ function getBookCustomUrl(item: any): string {
 }
 
 function getBookImageUrl(item: any): string {
-  return safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image);
+  const title = safeStr(item?.title || item?.Title);
+  const titleLower = title.toLowerCase().trim();
+  const isDebugItem = titleLower.includes("malibu burning") || titleLower.includes("lost hills") ||
+                      title.includes("Final Empire") || title.includes("Well of Ascention") || title.includes("Hero of Ages");
+
+  // Check all possible field name variations
+  const candidates = [
+    item?.imageUrl,
+    item?.ImageURL,
+    item?.ImageUrl,  // Mixed case variant
+    item?.["Image URL"],
+    item?.Image,
+    // Also try some audiobook-specific variations
+    item?.image,
+    item?.image_url
+  ];
+
+  if (isDebugItem) {
+    console.log(`[DEBUG getBookImageUrl] "${title}" - checking candidates:`, {
+      imageUrl: item?.imageUrl,
+      ImageURL: item?.ImageURL,
+      ImageUrl: item?.ImageUrl,
+      "Image URL": item?.["Image URL"],
+      Image: item?.Image,
+      image: item?.image,
+      image_url: item?.image_url,
+      candidateValues: candidates,
+      firstValidCandidate: candidates.find(c => c),
+      allKeys: Object.keys(item || {}).filter(k => k.toLowerCase().includes('image'))
+    });
+  }
+
+  const result = safeStr(candidates.find(c => c) || "");
+
+  if (isDebugItem) {
+    console.log(`[DEBUG getBookImageUrl] "${title}" - FINAL RESULT:`, result);
+  }
+
+  return result;
 }
 
 function getBookSourceUrlByMode(item: any, _mode?: "custom" | "default"): string {
   const imageUrl = getBookImageUrl(item);
   const customUrl = getBookCustomUrl(item);
+  const title = safeStr(item?.title || item?.Title);
+  const titleLower = title.toLowerCase().trim();
+  const isDebugItem = titleLower.includes("malibu burning") || titleLower.includes("lost hills") ||
+                      title.includes("Final Empire") || title.includes("Well of Ascention") || title.includes("Hero of Ages");
+
+  if (isDebugItem) {
+    console.log(`[DEBUG getBookSourceUrlByMode] "${title}":`, {
+      imageUrl,
+      customUrl,
+      finalResult: customUrl || imageUrl,
+      modeParam: _mode
+    });
+  }
+
   // For books, custom URL is always the source of truth when present.
   return customUrl || imageUrl;
 }
@@ -3501,6 +3561,10 @@ export default function Page() {
     tv: { current: 0, total: 0, succeeded: 0, failed: 0 },
     game: { current: 0, total: 0, succeeded: 0, failed: 0 },
   });
+  const [rateItModalOpen, setRateItModalOpen] = useState(false);
+  const [rateItItem, setRateItItem] = useState<any>(null);
+  const [rateItMediaType, setRateItMediaType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
+  const [rateItHighlightColor, setRateItHighlightColor] = useState<string>("#007AFF");
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [addNewItemType, setAddNewItemType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
@@ -3588,9 +3652,9 @@ export default function Page() {
     };
   };
 
-  const getDisplayCoverUrl = (item: any) => {
+  const getDisplayCoverUrl = (item: any, skipFailedFilter?: boolean) => {
     const itemKey = getMediaItemKey(item);
-    const failed = new Set(failedCoverUrls[itemKey] || []);
+    const failed = skipFailedFilter ? new Set<string>() : new Set(failedCoverUrls[itemKey] || []);
     const coverMode = getPopupCoverModeForItem(item);
     const isBook = getMediaType(item) === "book";
     const metadataUrl =
@@ -3602,7 +3666,33 @@ export default function Page() {
       ? [overrideUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
       : [metadataUrl, overrideUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
-    return uniqueCandidates.find((url) => !failed.has(url)) || "";
+    const result = uniqueCandidates.find((url) => !failed.has(url)) || "";
+
+    // Debug logging for problem items - check for audiobooks with ImageURL
+    const title = safeStr(item?.title || item?.Title);
+    const titleLower = title.toLowerCase().trim();
+    const isProblemItem = titleLower.includes("malibu burning") || titleLower.includes("lost hills") ||
+                         title.includes("Final Empire") || title.includes("Well of Ascention") || title.includes("Hero of Ages");
+
+    if (isProblemItem) {
+      console.log(`[DEBUG getDisplayCoverUrl] "${title}":`, {
+        isBook,
+        coverMode,
+        metadataUrl,
+        metadataUrlEmpty: !metadataUrl,
+        overrideUrl,
+        posterUrl: safeStr(item?.posterUrl),
+        posterUrlFallback: safeStr(item?.posterUrlFallback),
+        candidates,
+        uniqueCandidates,
+        skipFailedFilter,
+        failed: Array.from(failed),
+        result,
+        failedSetSize: failed.size
+      });
+    }
+
+    return result;
   };
 
   const getPopupCoverModeForItem = (item: any): "custom" | "default" | undefined => {
@@ -4572,8 +4662,19 @@ export default function Page() {
 
     if (writeUrl) {
       try {
-        await postSheetWrite(writeUrl, { [fieldName]: payload.url }, `Failed to save ${fieldName}`);
-        console.log(`✓ Successfully saved ${fieldName} to sheet`);
+        const action =
+          mediaType === "book" ? "updateBook" :
+          mediaType === "movie" ? "updateMovie" :
+          mediaType === "tv" ? "updateShow" :
+          "updateGame";
+        const title = safeStr(item?.title || item?.Title || item?.name);
+        console.log(`[R2] Writing ${fieldName} to sheet for "${title}" (${mediaType}):`, payload.url);
+        await postSheetWrite(writeUrl, {
+          action,
+          match: { title },
+          updates: { [fieldName]: payload.url }
+        }, `Failed to save ${fieldName}`);
+        console.log(`✓ Successfully saved ${fieldName} to sheet for "${title}"`);
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
         console.error(`Failed to save ${fieldName} to sheet:`, errorMsg);
@@ -4583,6 +4684,8 @@ export default function Page() {
         }
         // Don't throw - we successfully uploaded to R2, just failed to save the URL to sheet
       }
+    } else {
+      console.warn(`[R2] No write URL available for ${mediaType}`);
     }
 
     return payload.url;
@@ -4601,9 +4704,32 @@ export default function Page() {
       // Books
       if (!filterByType || filterByType === "book") {
         bookRows.forEach((item) => {
-          const defaultUrl = getDisplayCoverUrl(item);
-          if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          const title = safeStr(item?.title || item?.Title);
+          const mediaType = getMediaType(item);
+          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
+          const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+
+          // Debug audiobook issues
+          if (title === "Malibu Burning" || title === "Lost Hills") {
+            console.log(`[Sync DEBUG] "${title}":`, {
+              detectedMediaType: mediaType,
+              imageUrl: item?.imageUrl,
+              ImageURL: item?.ImageURL,
+              "Image URL": item?.["Image URL"],
+              Image: item?.Image,
+              customImageUrl: item?.customImageUrl,
+              posterUrl: item?.posterUrl,
+              getDisplayCoverUrlResult: defaultUrl,
+              hasR2,
+            });
+          }
+
+          if (defaultUrl && !hasR2) {
             itemsToSync.push({ item, mediaType: "book", defaultUrl });
+          } else if (!defaultUrl) {
+            console.log(`[Sync] Skipping "${title}" - no defaultUrl`);
+          } else if (hasR2) {
+            console.log(`[Sync] Skipping "${title}" - already has r2CoverUrl`);
           }
         });
       }
@@ -4611,8 +4737,8 @@ export default function Page() {
       // Movies
       if (!filterByType || filterByType === "movie") {
         movieRows.forEach((item) => {
-          const defaultUrl = getDisplayCoverUrl(item);
-          if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
+          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
             itemsToSync.push({ item, mediaType: "movie", defaultUrl });
           }
         });
@@ -4621,8 +4747,8 @@ export default function Page() {
       // TV Shows
       if (!filterByType || filterByType === "tv") {
         tvRows.forEach((item) => {
-          const defaultUrl = getDisplayCoverUrl(item);
-          if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
+          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
             itemsToSync.push({ item, mediaType: "tv", defaultUrl });
           }
         });
@@ -4631,8 +4757,8 @@ export default function Page() {
       // Games - covers
       if (!filterByType || filterByType === "game") {
         gameRows.forEach((item) => {
-          const defaultUrl = getDisplayCoverUrl(item);
-          if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
+          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
             itemsToSync.push({ item, mediaType: "game", defaultUrl, imageType: "cover" as const });
           }
         });
@@ -4642,7 +4768,7 @@ export default function Page() {
       if (!filterByType || filterByType === "game") {
         gameRows.forEach((item) => {
           const screenshotUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
-          if (screenshotUrl && !safeStr(item?.r2BackdropUrl)) {
+          if (screenshotUrl && !safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl)) {
             itemsToSync.push({ item, mediaType: "game", defaultUrl: screenshotUrl, imageType: "backdrop" as const });
           }
         });
@@ -4672,11 +4798,40 @@ export default function Page() {
         const title = safeStr(item?.title || item?.Title);
 
         try {
-          await uploadCoverToR2(item, defaultUrl, mediaType, imageType);
+          const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, imageType);
           const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
           details.push({ title, status: "success", message: `${typeLabel} backed up` });
           typeStats[mediaType].succeeded++;
           totalSucceeded++;
+
+          // Update the local row data to reflect the synced r2CoverUrl
+          const fieldName = imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
+          const itemKey = getMediaItemKey(item);
+          if (mediaType === "book") {
+            setBookRows((prev) =>
+              prev.map((row) =>
+                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              )
+            );
+          } else if (mediaType === "movie") {
+            setMovieRows((prev) =>
+              prev.map((row) =>
+                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              )
+            );
+          } else if (mediaType === "tv") {
+            setTvRows((prev) =>
+              prev.map((row) =>
+                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              )
+            );
+          } else if (mediaType === "game") {
+            setGameRows((prev) =>
+              prev.map((row) =>
+                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              )
+            );
+          }
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : "Unknown error";
           const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
@@ -4698,10 +4853,12 @@ export default function Page() {
       setSyncResults({ succeeded: totalSucceeded, failed: totalFailed });
       setSyncStatus("complete");
       setSyncInProgress(false);
+      console.log(`✅ R2 SYNC COMPLETE: ${totalSucceeded} succeeded${totalFailed > 0 ? `, ${totalFailed} failed` : ""}`);
     } catch (e) {
       console.error("Sync error:", e);
       setSyncStatus("error");
       setSyncInProgress(false);
+      console.error("❌ R2 SYNC FAILED");
     }
   };
 
@@ -5711,6 +5868,62 @@ export default function Page() {
     },
     [finalizeAddAndOpen]
   );
+
+  // Rate It handler — opens the rate it modal
+  const handleOpenRateIt = useCallback((item: Record<string, unknown>, mediaType: "movie" | "tv" | "book" | "game", highlightColor: string) => {
+    setRateItItem(item);
+    setRateItMediaType(mediaType);
+    setRateItHighlightColor(highlightColor);
+    setRateItModalOpen(true);
+  }, []);
+
+  const handleRateItSave = useCallback(async (data: Record<string, unknown>) => {
+    if (!rateItItem || !rateItMediaType) return;
+
+    try {
+      if (rateItMediaType === "movie") {
+        if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
+        const updates: Record<string, string> = {};
+        if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
+        if (data.watchStatus) updates["Watch Status"] = safeStr(data.watchStatus);
+        if (data.watchDate) updates["WatchDate"] = safeStr(data.watchDate);
+        await postSheetWrite(moviesWriteUrl, { action: "updateMovie", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save movie rating");
+        setMovieDetailItem((prev: any) => ({ ...prev, ...updates }));
+      } else if (rateItMediaType === "tv") {
+        if (!showsWriteUrl) throw new Error("TV write URL is not configured.");
+        const updates: Record<string, string> = {};
+        if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
+        if (data.watchStatus) updates["Watch Status"] = safeStr(data.watchStatus);
+        if (data.dateCompleted) updates["Date Completed"] = safeStr(data.dateCompleted);
+        await postSheetWrite(showsWriteUrl, { action: "updateShow", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save show rating");
+        setTvDetailItem((prev: any) => ({ ...prev, ...updates }));
+      } else if (rateItMediaType === "book") {
+        if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
+        const updates: Record<string, string> = {};
+        if (data.myRating) updates["MyRating"] = safeStr(data.myRating);
+        if (data.dateCompleted) updates["CompletedDate"] = safeStr(data.dateCompleted);
+        if (data.tags) updates["Tag"] = safeStr(data.tags);
+        await postSheetWrite(booksWriteUrl, { action: "updateBook", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save book rating");
+        setBookDetailItem((prev: any) => ({ ...prev, ...updates }));
+      } else if (rateItMediaType === "game") {
+        if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
+        const updates: Record<string, string> = {};
+        if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
+        if (data.status) updates["Status"] = safeStr(data.status);
+        if (data.hoursPlayed) updates["Hours Played"] = safeStr(data.hoursPlayed);
+        if (data.dateCompleted) updates["Date Completed"] = safeStr(data.dateCompleted);
+        if (data.yearPlayed) updates["Year Played"] = safeStr(data.yearPlayed);
+        if (data.backlog !== undefined) updates["Backlog"] = data.backlog ? "Yes" : "";
+        if (data.completed !== undefined) updates["Completed"] = data.completed ? "Yes" : "";
+        await postSheetWrite(gamesWriteUrl, { action: "updateGame", match: { title: safeStr(rateItItem.title || rateItItem.name) }, updates }, "Failed to save game rating");
+        setGameDetailItem((prev: any) => ({ ...prev, ...updates }));
+      }
+      setRateItModalOpen(false);
+      triggerSaveToast();
+    } catch (e: any) {
+      window.alert(e?.message || "Failed to save rating");
+    }
+  }, [rateItItem, rateItMediaType, moviesWriteUrl, showsWriteUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, triggerSaveToast]);
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
@@ -15937,10 +16150,12 @@ export default function Page() {
                 await handleDeleteLibraryItem(item);
                 setBookDetailItem(null);
               }}
+              onRate={(item) => handleOpenRateIt(item, "book", sidebarHighlightColorsLight.books)}
               onSelectRelated={openBookDetailItem}
               getDisplayCoverUrl={getDisplayCoverUrl}
               isAudiobookItem={isAudiobookItem}
               onPaletteChange={handleBookDetailPaletteChange}
+              highlightColor={sidebarHighlightColorsLight.books}
             />
           ) : movieDetailItem ? (
             <MovieDetailsPage
@@ -15954,11 +16169,13 @@ export default function Page() {
                 await handleDeleteLibraryItem(item);
                 setMovieDetailItem(null);
               }}
+              onRate={(item) => handleOpenRateIt(item, "movie", sidebarHighlightColorsLight.movies)}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
               relatedMovies={movieRelated.movies}
               relatedMoviesLabel={movieRelated.label}
               onSelectRelated={(m) => setMovieDetailItem(m)}
+              highlightColor={sidebarHighlightColorsLight.movies}
             />
           ) : tvDetailItem ? (
             <TVDetailsPage
@@ -15972,11 +16189,13 @@ export default function Page() {
                 await handleDeleteLibraryItem(item);
                 setTvDetailItem(null);
               }}
+              onRate={(item) => handleOpenRateIt(item, "tv", sidebarHighlightColorsLight.tv)}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleTvDetailPaletteChange}
               relatedShows={tvRelated.shows}
               relatedShowsLabel={tvRelated.label}
               onSelectRelated={(s) => setTvDetailItem(s)}
+              highlightColor={sidebarHighlightColorsLight.tv}
             />
           ) : gameDetailItem ? (
             <GameDetailsPage
@@ -15990,11 +16209,13 @@ export default function Page() {
                 await handleDeleteLibraryItem(item);
                 setGameDetailItem(null);
               }}
+              onRate={(item) => handleOpenRateIt(item, "game", sidebarHighlightColorsLight.games)}
               getDisplayCoverUrl={getDisplayCoverUrl}
               onPaletteChange={handleGameDetailPaletteChange}
               relatedGames={gameRelated.games}
               relatedGamesLabel={gameRelated.label}
               onSelectRelatedGame={(g) => setGameDetailItem(g)}
+              highlightColor={sidebarHighlightColorsLight.games}
             />
           ) : (
           <>
@@ -17559,6 +17780,15 @@ export default function Page() {
         platformOptions={gamePlatformOptions}
         ownershipOptions={gameOwnershipOptions}
         formatOptions={gameFormatOptions}
+      />
+
+      <RateItModal
+        open={rateItModalOpen}
+        onClose={() => setRateItModalOpen(false)}
+        onSave={handleRateItSave}
+        item={rateItItem}
+        mediaType={rateItMediaType || "movie"}
+        highlightColor={rateItHighlightColor}
       />
 
       {/* Save toast */}

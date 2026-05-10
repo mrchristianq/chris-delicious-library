@@ -131,6 +131,33 @@ function firstNonEmpty(item: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+function formatDateForInput(dateStr: string): string {
+  if (!dateStr) return "";
+
+  // Try to parse various date formats and convert to YYYY-MM-DD
+  // Handle formats like: 4/25/26, 04/25/2026, 4/25/2026, 2025-12-01, 12/1/2025, etc.
+  const trimmed = dateStr.trim();
+
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Try M/DD/YY or MM/DD/YY or M/D/YY or M/D/YYYY format
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slashMatch) {
+    let [, month, day, year] = slashMatch;
+    // Convert 2-digit year to 4-digit
+    if (year.length === 2) {
+      const yNum = parseInt(year, 10);
+      year = (yNum > 50 ? "19" : "20") + year;
+    }
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return "";
+}
+
 function buildBookEditValues(item: Record<string, unknown>): Record<string, string> {
   return {
     title: firstNonEmpty(item, ["title", "Title"]),
@@ -140,9 +167,9 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
     type: firstNonEmpty(item, ["types", "type", "Type"]),
     status: firstNonEmpty(item, ["status", "Status"]),
-    completedDate: firstNonEmpty(item, ["completedDate", "CompletedDate", "Completed Date", "Date Completed"]),
+    completedDate: formatDateForInput(firstNonEmpty(item, ["completedDate", "CompletedDate", "Completed Date", "Date Completed"])),
     isbn: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]),
-    releaseDate: firstNonEmpty(item, ["releaseDate", "ReleaseDate"]),
+    releaseDate: formatDateForInput(firstNonEmpty(item, ["releaseDate", "ReleaseDate"])),
     imageUrl: firstNonEmpty(item, ["imageUrl", "ImageURL", "Image URL"]),
     customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "Custom URL", "CustomImageURL"]),
     userRating: firstNonEmpty(item, ["userRating", "UserRating", "externalAverageRating"]),

@@ -11,10 +11,12 @@ type BookDetailsPageProps = {
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
   onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
+  onRate?: (item: Record<string, unknown>) => void;
   onSelectRelated: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   isAudiobookItem: (item: Record<string, unknown>) => boolean;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
+  highlightColor?: string;
 };
 
 type PaletteState = {
@@ -383,10 +385,12 @@ export function BookDetailsPage({
   onBack,
   onEdit,
   onDelete,
+  onRate,
   onSelectRelated,
   getDisplayCoverUrl,
   isAudiobookItem,
   onPaletteChange,
+  highlightColor,
 }: BookDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
@@ -648,31 +652,30 @@ export function BookDetailsPage({
               minHeight: 0,
             }}
           >
-            <button
-              type="button"
-              onClick={onBack}
-              style={{
-                width: 42,
-                height: 42,
-                flex: "0 0 auto",
-                borderRadius: "50%",
-                border: `1px solid ${palette.surfaceBorder}`,
-                background: palette.surface,
-                color: palette.text,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
-              }}
-              aria-label="Back to library"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </button>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+              {onRate ? (
+                <button
+                  type="button"
+                  onClick={() => onRate(item)}
+                  style={{
+                    borderRadius: 999,
+                    padding: "9px 14px",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    fontWeight: 750,
+                    border: `1px solid rgba(255,255,255,0.3)`,
+                    background: `${highlightColor || "#007AFF"}`,
+                    color: "#fff",
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.32), 0 8px 18px rgba(10, 14, 24, 0.14)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                  aria-label="Rate this book"
+                >
+                  Rate It
+                </button>
+              ) : null}
               {onEdit ? (
                 <button
                   type="button"
@@ -733,6 +736,32 @@ export function BookDetailsPage({
                   {isDeleting ? "Deleting..." : "Delete"}
                 </button>
               ) : null}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={onBack}
+                style={{
+                  width: 42,
+                  height: 42,
+                  flex: "0 0 auto",
+                  borderRadius: "50%",
+                  border: `1px solid ${palette.surfaceBorder}`,
+                  background: palette.surface,
+                  color: palette.text,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
+                }}
+                aria-label="Back to library"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
               {chips.length > 0
                 ? chips.map((chip, index) => {
                   const isCompletedChip = chip.toLowerCase() === "completed";
