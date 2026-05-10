@@ -607,6 +607,16 @@ export function BookDetailsEditModal({
               <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>CustomURL:</strong> {customSourceUrl || "—"}</div>
               <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2 Backup:</strong> {backupUrl || "—"}</div>
             </div>
+            <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP STATUS</div>
+              <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
+                <span><strong>R2 Cover URL:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>{safeStr(item?.r2CoverUrl)}</span> : <span style={{ color: "#8a929d" }}>Not backed up yet</span>}</span>
+              </div>
+              {!safeStr(item?.r2CoverUrl) && (defaultUrl || customSourceUrl) && (
+                <div style={{ fontSize: 10, color: "#8a929d" }}>Will be backed up when you save this item.</div>
+              )}
+            </div>
             <input
               ref={fileInputRef}
               type="file"

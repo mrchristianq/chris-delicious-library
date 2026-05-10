@@ -541,6 +541,13 @@ export function GameDetailsEditModal({
             <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}>
               <strong>CoverURL:</strong> {values.coverUrl || "—"}
             </div>
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP</div>
+              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
+                <span><strong>Cover:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
+              </div>
+            </div>
           </div>
 
           {/* Fields panel */}
