@@ -4573,8 +4573,14 @@ export default function Page() {
     if (writeUrl) {
       try {
         await postSheetWrite(writeUrl, { [fieldName]: payload.url }, `Failed to save ${fieldName}`);
+        console.log(`✓ Successfully saved ${fieldName} to sheet`);
       } catch (e) {
-        console.error(`Failed to save ${fieldName} to sheet:`, e);
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        console.error(`Failed to save ${fieldName} to sheet:`, errorMsg);
+        // Check if it's a column not found error
+        if (errorMsg.includes("column") || errorMsg.includes("not found") || errorMsg.includes("INVALID_ARGUMENT")) {
+          console.warn(`⚠️ Column "${fieldName}" may not exist in your sheet. Please add this column manually.`);
+        }
         // Don't throw - we successfully uploaded to R2, just failed to save the URL to sheet
       }
     }
