@@ -14465,14 +14465,19 @@ export default function Page() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
                       {(["book", "movie", "tv", "game"] as const).map((mediaType) => {
                         const label = mediaType === "tv" ? "TV Shows" : mediaType.charAt(0).toUpperCase() + mediaType.slice(1) + "s";
-                        const total = mediaType === "book" ? bookRows.filter(r => r?.title).length :
-                                     mediaType === "movie" ? movieRows.filter(r => r?.title).length :
-                                     mediaType === "tv" ? tvRows.filter(r => r?.title).length :
-                                     gameRows.filter(r => r?.title).length;
-                        const synced = mediaType === "book" ? bookRows.filter(r => safeStr(r?.r2CoverUrl)).length :
-                                      mediaType === "movie" ? movieRows.filter(r => safeStr(r?.r2CoverUrl)).length :
-                                      mediaType === "tv" ? tvRows.filter(r => safeStr(r?.r2CoverUrl)).length :
-                                      gameRows.filter(r => safeStr(r?.r2CoverUrl)).length;
+
+                        // Count total items (with title or Title field)
+                        const total = mediaType === "book" ? bookRows.filter(r => safeStr(r?.title || r?.Title)).length :
+                                     mediaType === "movie" ? movieRows.filter(r => safeStr(r?.title || r?.Title)).length :
+                                     mediaType === "tv" ? tvRows.filter(r => safeStr(r?.title || r?.Title)).length :
+                                     gameRows.filter(r => safeStr(r?.title || r?.Title)).length;
+
+                        // Count synced items (with r2CoverUrl field)
+                        const synced = mediaType === "book" ? bookRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
+                                      mediaType === "movie" ? movieRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
+                                      mediaType === "tv" ? tvRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
+                                      gameRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length;
+
                         const syncedPct = total > 0 ? Math.round((synced / total) * 100) : 0;
 
                         // Get highlight color for this media type
@@ -14488,9 +14493,9 @@ export default function Page() {
                           <div
                             key={mediaType}
                             style={{
-                              border: `1px solid ${highlightColor}33`,
+                              border: `1px solid ${highlightColor}4d`,
                               borderRadius: 12,
-                              background: `${highlightColor}08`,
+                              background: `${highlightColor}1a`,
                               padding: 12,
                               display: "flex",
                               flexDirection: "column",
@@ -14505,7 +14510,7 @@ export default function Page() {
                               width: "100%",
                               height: 6,
                               borderRadius: 3,
-                              background: `${highlightColor}20`,
+                              background: `${highlightColor}30`,
                               overflow: "hidden",
                             }}>
                               <div style={{
@@ -14523,10 +14528,10 @@ export default function Page() {
                                 syncCoversToR2(mediaType);
                               }}
                               style={{
-                                border: `1px solid ${highlightColor}66`,
+                                border: `1px solid ${highlightColor}80`,
                                 borderRadius: 8,
                                 padding: "6px 10px",
-                                background: syncInProgress ? `${highlightColor}0d` : `${highlightColor}17`,
+                                background: syncInProgress ? `${highlightColor}1a` : `${highlightColor}26`,
                                 color: highlightColor,
                                 cursor: syncInProgress ? "default" : "pointer",
                                 fontSize: 11,
