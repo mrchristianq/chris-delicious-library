@@ -1549,8 +1549,13 @@ function getMediaType(item: any): MediaType {
   // Audiobook detection: check for Type field or iTunes/Apple Music ImageURL pattern
   const type = safeStr(item?.type || item?.Type || item?.MediaType || "").toLowerCase();
   const imageUrl = safeStr(item?.ImageURL || item?.imageUrl || "");
+  const audiobookDuration = safeStr(item?.audiobookDuration || item?.AudiobookDuration || "");
+
+  // Explicit audiobook indicators
   if (type === "audiobook" || type.includes("audio")) return "book";
+  if (audiobookDuration) return "book"; // If audiobookDuration is present, it's an audiobook
   if (imageUrl.includes("mzstatic.com")) return "book"; // iTunes/Apple Music URLs indicate audiobooks
+  if (imageUrl.includes("books.apple.com") || imageUrl.includes("itunes.apple.com")) return "book"; // Apple Books URLs
 
   return "movie";
 }
@@ -3657,10 +3662,17 @@ export default function Page() {
     const failed = skipFailedFilter ? new Set<string>() : new Set(failedCoverUrls[itemKey] || []);
     const coverMode = getPopupCoverModeForItem(item);
     const isBook = getMediaType(item) === "book";
-    const metadataUrl =
+    let metadataUrl =
       isBook
         ? getBookSourceUrlByMode(item, coverMode)
         : safeStr(item?.metadataCoverUrl);
+
+    // Fallback for books/audiobooks: if metadataUrl is empty, directly check for ImageURL field
+    // This ensures audiobooks with ImageURL but no explicit detection are still found
+    if (isBook && !metadataUrl) {
+      metadataUrl = safeStr(item?.ImageURL || item?.imageUrl || item?.["Image URL"] || "");
+    }
+
     const overrideUrl = safeStr(coverOverrides[itemKey]);
     const candidates = isBook
       ? [overrideUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
@@ -3680,6 +3692,7 @@ export default function Page() {
         coverMode,
         metadataUrl,
         metadataUrlEmpty: !metadataUrl,
+        fallbackImageUrl: safeStr(item?.ImageURL || ""),
         overrideUrl,
         posterUrl: safeStr(item?.posterUrl),
         posterUrlFallback: safeStr(item?.posterUrlFallback),
