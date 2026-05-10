@@ -3489,6 +3489,10 @@ export default function Page() {
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [uploadingStatusIconKey, setUploadingStatusIconKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
+  const [syncInProgress, setSyncInProgress] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
+  const [syncResults, setSyncResults] = useState<{ succeeded: number; failed: number } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "complete" | "error">("idle");
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [addNewItemType, setAddNewItemType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
@@ -4510,6 +4514,148 @@ export default function Page() {
     }
 
     return String(payload.url);
+  };
+
+  const uploadCoverToR2 = async (
+    item: any,
+    sourceUrl: string,
+    mediaType: "book" | "movie" | "tv" | "game",
+    imageType: "cover" | "backdrop" = "cover"
+  ) => {
+    if (!item || !sourceUrl) throw new Error("Missing item or source URL");
+
+    const itemKey = getMediaItemKey(item);
+    const formData = new FormData();
+    formData.append("sourceUrl", sourceUrl);
+    formData.append("itemKey", itemKey);
+    formData.append("mediaType", mediaType);
+    formData.append("imageType", imageType);
+    formData.append("title", safeStr(item?.title));
+
+    const res = await fetch("/api/upload-cover", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.url) {
+      throw new Error(payload?.error || `Upload failed (${res.status})`);
+    }
+
+    // Update the sheet with the R2 URL
+    const fieldName = payload.fieldName || (imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl");
+
+    // Determine which write URL to use based on media type
+    let writeUrl: string | null = null;
+    switch (mediaType) {
+      case "book":
+        writeUrl = booksWriteUrl || null;
+        break;
+      case "movie":
+        writeUrl = moviesWriteUrl || null;
+        break;
+      case "tv":
+        writeUrl = showsWriteUrl || null;
+        break;
+      case "game":
+        writeUrl = gamesWriteUrl || null;
+        break;
+    }
+
+    if (writeUrl) {
+      try {
+        await postSheetWrite(writeUrl, { [fieldName]: payload.url }, `Failed to save ${fieldName}`);
+      } catch (e) {
+        console.error(`Failed to save ${fieldName} to sheet:`, e);
+        // Don't throw - we successfully uploaded to R2, just failed to save the URL to sheet
+      }
+    }
+
+    return payload.url;
+  };
+
+  const syncAllCoversToR2 = async () => {
+    setSyncStatus("syncing");
+    setSyncProgress({ current: 0, total: 0 });
+    setSyncResults(null);
+
+    try {
+      // Collect all items that need R2 backups
+      const itemsToSync: Array<{ item: any; mediaType: "book" | "movie" | "tv" | "game"; defaultUrl: string }> = [];
+
+      // Books
+      bookRows.forEach((item) => {
+        const defaultUrl = getDisplayCoverUrl(item);
+        if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          itemsToSync.push({ item, mediaType: "book", defaultUrl });
+        }
+      });
+
+      // Movies
+      movieRows.forEach((item) => {
+        const defaultUrl = getDisplayCoverUrl(item);
+        if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          itemsToSync.push({ item, mediaType: "movie", defaultUrl });
+        }
+      });
+
+      // TV Shows
+      tvRows.forEach((item) => {
+        const defaultUrl = getDisplayCoverUrl(item);
+        if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          itemsToSync.push({ item, mediaType: "tv", defaultUrl });
+        }
+      });
+
+      // Games
+      gameRows.forEach((item) => {
+        const defaultUrl = getDisplayCoverUrl(item);
+        if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
+          itemsToSync.push({ item, mediaType: "game", defaultUrl });
+        }
+      });
+
+      setSyncProgress({ current: 0, total: itemsToSync.length });
+
+      let succeeded = 0;
+      let failed = 0;
+
+      // Upload each item
+      for (let i = 0; i < itemsToSync.length; i++) {
+        const { item, mediaType, defaultUrl } = itemsToSync[i];
+
+        try {
+          await uploadCoverToR2(item, defaultUrl, mediaType, "cover");
+          succeeded++;
+        } catch (e) {
+          console.error(`Failed to sync cover for ${safeStr(item?.title)}:`, e);
+          failed++;
+        }
+
+        setSyncProgress({ current: i + 1, total: itemsToSync.length });
+
+        // Add delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      setSyncResults({ succeeded, failed });
+      setSyncStatus("complete");
+      setSyncInProgress(false);
+
+      // Auto-clear the status message after 5 seconds
+      setTimeout(() => {
+        setSyncStatus("idle");
+        setSyncResults(null);
+      }, 5000);
+    } catch (e) {
+      console.error("Sync error:", e);
+      setSyncStatus("error");
+      setSyncInProgress(false);
+      setTimeout(() => {
+        setSyncStatus("idle");
+        setSyncResults(null);
+      }, 5000);
+    }
   };
 
   const handleBookDetailsCoverModeChange = (item: any, mode: "custom" | "default") => {
@@ -13314,6 +13460,97 @@ export default function Page() {
                     </div>
                   ) : null}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSyncInProgress(true);
+                    syncAllCoversToR2();
+                  }}
+                  disabled={syncInProgress}
+                  className={`sideSubItem ${syncInProgress ? "active" : ""}`}
+                  style={{
+                    ...discoverRowStyle,
+                    background: syncInProgress ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: syncInProgress ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    borderRadius: 10,
+                    color: syncInProgress ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    cursor: syncInProgress ? "default" : "pointer",
+                    opacity: syncInProgress ? 1 : undefined,
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap, width: "100%" }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: syncInProgress ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <svg
+                        width={discoverSidebarIconSize}
+                        height={discoverSidebarIconSize}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{
+                          animation: syncInProgress ? "cdlSpin 1s linear infinite" : "none",
+                        }}
+                      >
+                        <path d="M23 4v6h-6" />
+                        <path d="M1 20v-6h6" />
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" />
+                      </svg>
+                    </span>
+                    <span style={{ ...discoverLabelStyle, flex: 1 }}>
+                      {syncInProgress ? `Syncing (${syncProgress.current}/${syncProgress.total})` : "Sync Covers"}
+                    </span>
+                  </span>
+                </button>
+
+                {syncStatus === "complete" && syncResults && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "rgba(76, 175, 80, 0.1)",
+                      border: "1px solid rgba(76, 175, 80, 0.3)",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "rgba(76, 175, 80, 0.9)",
+                      marginTop: 4,
+                    }}
+                  >
+                    ✓ {syncResults.succeeded} synced{syncResults.failed > 0 ? `, ${syncResults.failed} failed` : ""}
+                  </div>
+                )}
+
+                {syncStatus === "error" && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "rgba(244, 67, 54, 0.1)",
+                      border: "1px solid rgba(244, 67, 54, 0.3)",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "rgba(244, 67, 54, 0.9)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Error during sync
+                  </div>
+                )}
 
               </div>
 
