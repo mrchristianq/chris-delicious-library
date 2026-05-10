@@ -202,7 +202,7 @@ export function GameDetailsPage({
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
-  const screenshotUrl = safeStr(item.screensotsUrl);
+  const screenshotUrl = safeStr(item.ScreenshotsURL || item.screenshotsUrl || item.screensotsUrl);
 
   const cacheKey = useMemo(() => [safeStr(item.title), screenshotUrl, coverUrl].join("|"), [item, screenshotUrl, coverUrl]);
   const [ready, setReady] = useState(false);

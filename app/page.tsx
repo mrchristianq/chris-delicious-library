@@ -4596,7 +4596,7 @@ export default function Page() {
 
     try {
       // Collect all items that need R2 backups
-      const itemsToSync: Array<{ item: any; mediaType: "book" | "movie" | "tv" | "game"; defaultUrl: string }> = [];
+      const itemsToSync: Array<{ item: any; mediaType: "book" | "movie" | "tv" | "game"; defaultUrl: string; imageType?: "cover" | "backdrop" }> = [];
 
       // Books
       if (!filterByType || filterByType === "book") {
@@ -4628,12 +4628,22 @@ export default function Page() {
         });
       }
 
-      // Games
+      // Games - covers
       if (!filterByType || filterByType === "game") {
         gameRows.forEach((item) => {
           const defaultUrl = getDisplayCoverUrl(item);
           if (defaultUrl && !safeStr(item?.r2CoverUrl)) {
-            itemsToSync.push({ item, mediaType: "game", defaultUrl });
+            itemsToSync.push({ item, mediaType: "game", defaultUrl, imageType: "cover" as const });
+          }
+        });
+      }
+
+      // Games - backdrops (screenshots)
+      if (!filterByType || filterByType === "game") {
+        gameRows.forEach((item) => {
+          const screenshotUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
+          if (screenshotUrl && !safeStr(item?.r2BackdropUrl)) {
+            itemsToSync.push({ item, mediaType: "game", defaultUrl: screenshotUrl, imageType: "backdrop" as const });
           }
         });
       }
@@ -4658,17 +4668,19 @@ export default function Page() {
 
       // Upload each item
       for (let i = 0; i < itemsToSync.length; i++) {
-        const { item, mediaType, defaultUrl } = itemsToSync[i];
+        const { item, mediaType, defaultUrl, imageType = "cover" } = itemsToSync[i];
         const title = safeStr(item?.title || item?.Title);
 
         try {
-          await uploadCoverToR2(item, defaultUrl, mediaType, "cover");
-          details.push({ title, status: "success" });
+          await uploadCoverToR2(item, defaultUrl, mediaType, imageType);
+          const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
+          details.push({ title, status: "success", message: `${typeLabel} backed up` });
           typeStats[mediaType].succeeded++;
           totalSucceeded++;
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : "Unknown error";
-          console.error(`Failed to sync cover for ${title}:`, e);
+          const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
+          console.error(`Failed to sync ${typeLabel} for ${title}:`, e);
           details.push({ title, status: "error", message: errorMsg });
           typeStats[mediaType].failed++;
           totalFailed++;
@@ -5287,7 +5299,7 @@ export default function Page() {
       "Hours Played": ["hoursPlayed", "Hours Played"],
       CoverCachedAt: ["coverCachedAt", "CoverCachedAt"],
       Developer: ["developer", "Developer"],
-      ScreensotsURL: ["screensotsUrl", "ScreensotsURL"],
+      ScreenshotsURL: ["ScreenshotsURL", "screenshotsUrl", "screensotsUrl"],
       WishlistOrder: ["wishlistOrder", "WishlistOrder"],
       QueuedOrder: ["queuedOrder", "QueuedOrder"],
       IGDB_ID: ["igdbId", "IGDB_ID"],
@@ -5321,7 +5333,7 @@ export default function Page() {
       "Hours Played": safeStr(updates.hoursPlayed),
       CoverCachedAt: safeStr(updates.coverCachedAt),
       Developer: safeStr(updates.developer),
-      ScreensotsURL: safeStr(updates.screensotsUrl),
+      ScreenshotsURL: safeStr(updates.screensotsUrl),
       WishlistOrder: safeStr(updates.wishlistOrder),
       QueuedOrder: safeStr(updates.queuedOrder),
       IGDB_ID: safeStr(updates.igdbId),
@@ -5361,6 +5373,18 @@ export default function Page() {
       await postSheetWrite(gamesWriteUrl, payload, "Failed to save game edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save game edits");
+    }
+
+    // Backup game screenshot (backdrop) to R2 if it exists
+    const screenshotUrl = safeStr(updates.screensotsUrl || item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
+    if (screenshotUrl && !safeStr(item?.r2BackdropUrl)) {
+      void (async () => {
+        try {
+          await uploadCoverToR2(item, screenshotUrl, "game", "backdrop");
+        } catch (e) {
+          console.error("Failed to backup game screenshot to R2:", e);
+        }
+      })();
     }
 
     setModalItem((prev: any) => {
