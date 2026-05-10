@@ -14502,8 +14502,8 @@ export default function Page() {
                               gap: 8,
                             }}
                           >
-                            <div style={{ fontSize: 11, fontWeight: 700, color: highlightColor }}>{label}</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: "#1d2735" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: highlightColor }}>{label}</div>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: "#1d2735" }}>
                               {synced} / {total}
                             </div>
                             <div style={{
