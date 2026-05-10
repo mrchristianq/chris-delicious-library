@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type MovieDetailsEditModalProps = {
   open: boolean;
@@ -434,13 +435,13 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
                       {row.label.toUpperCase()}
                     </span>
                     {isImg && row.before !== "—" ? (
-                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
                     )}
                     <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
                     {isImg && row.after !== "—" ? (
-                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms" }} />
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: row.selected ? "#0055b3" : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
                     )}
@@ -499,7 +500,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
               <img
                 src={posterUrl}
                 alt={safeStr(item.title) || "Movie poster"}
-                style={{ width: "100%", borderRadius: 8, display: "block", objectFit: "cover", maxHeight: 280 }}
+                style={{ width: "100%", objectFit: "cover", maxHeight: 280, ...COVER_IMAGE_RADIUS_STYLE }}
               />
             ) : (
               <div style={{

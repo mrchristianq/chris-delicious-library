@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type StatsMediaType = "book" | "movie" | "tv" | "game";
 type StatsFilter = "all" | StatsMediaType;
@@ -438,14 +439,6 @@ function formatMinutesAsHours(value: number): string {
   return formatHours(value / 60);
 }
 
-const COVER_IMAGE_RADIUS_STYLE: CSSProperties = {
-  borderRadius: 6,
-  clipPath: "inset(0 round 6px)",
-  WebkitClipPath: "inset(0 round 6px)",
-  overflow: "hidden",
-  display: "block",
-};
-
 function getTop20CoverClass(item: UnifiedStatsItem): string {
   if (item.mediaType === "game") return "yearTopRatedCover yearTopRatedCoverGame";
   if (item.mediaType === "tv") return "yearTopRatedCover yearTopRatedCoverTv";
@@ -457,6 +450,18 @@ function getTop20CoverClass(item: UnifiedStatsItem): string {
     return "yearTopRatedCover yearTopRatedCoverAudiobook";
   }
   return "yearTopRatedCover";
+}
+
+function getTop20CoverFrameClass(item: UnifiedStatsItem): string {
+  if (item.mediaType === "game") return "yearTopRatedCoverFrameGame";
+  if (
+    item.mediaType === "book" &&
+    (item.audiobookMinutes > 0 ||
+      item.formats.some((format) => normalizeToken(format).includes("audiobook")))
+  ) {
+    return "yearTopRatedCoverFrameAudiobook";
+  }
+  return "";
 }
 
 function formatScoreValue(value: number | null | undefined): string {
@@ -1003,20 +1008,13 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
                   <div className="statDetailItemRank">{index + 1}</div>
                   <div className="statDetailItemCover">
                     {item.coverUrl ? (
-                      <>
-                        <img
-                          src={item.coverUrl}
-                          alt={`Cover for ${item.title}`}
-                          className="statDetailItemCoverImage"
-                          loading="lazy"
-                          style={COVER_IMAGE_RADIUS_STYLE}
-                        />
-                        {getPersonalRatingBadgeLabel(item) ? (
-                          <div className="statsCoverRatingBadge statDetailItemCoverBadge">
-                            {getPersonalRatingBadgeLabel(item)}
-                          </div>
-                        ) : null}
-                      </>
+                      <img
+                        src={item.coverUrl}
+                        alt={`Cover for ${item.title}`}
+                        className="statDetailItemCoverImage"
+                        loading="lazy"
+                        style={COVER_IMAGE_RADIUS_STYLE}
+                      />
                     ) : (
                       <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
                         {item.mediaType.toUpperCase()}
@@ -1041,6 +1039,248 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
           )}
         </div>
       </div>
+      <style jsx>{`
+        .statDetailOverlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2500;
+          background: rgba(27, 31, 38, 0.32);
+          backdrop-filter: blur(18px) saturate(1.12);
+          -webkit-backdrop-filter: blur(18px) saturate(1.12);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 14px;
+        }
+
+        .statDetailDialog {
+          width: min(980px, 100%);
+          max-height: min(88vh, 860px);
+          overflow: auto;
+          border-radius: 18px;
+          border: 1px solid rgba(255, 255, 255, 0.72);
+          background:
+            linear-gradient(180deg, rgba(249, 250, 252, 0.97), rgba(232, 236, 242, 0.96));
+          box-shadow:
+            0 28px 76px rgba(27, 31, 38, 0.36),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          color: #242a32;
+        }
+
+        .statDetailHeader {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 14px;
+          border-bottom: 1px solid rgba(160, 169, 183, 0.34);
+          padding: 2px 2px 12px 2px;
+        }
+
+        .statDetailHeaderMain {
+          min-width: 0;
+        }
+
+        .statDetailId {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          color: rgba(84, 109, 143, 0.86);
+        }
+
+        .statDetailHeaderMain h3 {
+          margin: 6px 0 0 0;
+          font-size: 20px;
+          font-weight: 900;
+          color: #20242b;
+        }
+
+        .statDetailValue {
+          margin-top: 4px;
+          font-size: 28px;
+          line-height: 1;
+          font-weight: 900;
+          color: #2f7bd7;
+        }
+
+        .statDetailClose {
+          border: 1px solid rgba(110, 116, 126, 0.28);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 229, 234, 0.94));
+          color: #555d68;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          padding: 7px 14px;
+          cursor: pointer;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.9),
+            0 1px 2px rgba(23, 28, 36, 0.08);
+        }
+
+        .statDetailSummaryGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .statDetailSummaryCard {
+          border: 1px solid rgba(174, 184, 198, 0.46);
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.62);
+          padding: 12px;
+          min-height: 78px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+        }
+
+        .statDetailSummaryLabel {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: rgba(60, 121, 204, 0.88);
+        }
+
+        .statDetailSummaryCard p {
+          margin: 7px 0 0 0;
+          font-size: 12px;
+          color: rgba(45, 54, 66, 0.88);
+          line-height: 1.42;
+        }
+
+        .statDetailItemsHeader {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          color: rgba(82, 96, 116, 0.9);
+        }
+
+        .statDetailItemsHeader span {
+          color: #2f7bd7;
+        }
+
+        .statDetailItemsList {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+          min-height: 120px;
+          border-top: 1px solid rgba(164, 174, 188, 0.28);
+          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
+        }
+
+        .statDetailItemRow {
+          display: grid;
+          grid-template-columns: 52px 92px minmax(0, 1fr);
+          gap: 16px;
+          align-items: center;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          padding: 14px 4px;
+          box-shadow: none;
+          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
+        }
+
+        .statDetailItemRow:last-child {
+          border-bottom: 0;
+        }
+
+        .statDetailItemRank {
+          width: 52px;
+          min-height: 138px;
+          border-radius: 0;
+          display: grid;
+          place-items: center;
+          font-size: 28px;
+          line-height: 1;
+          font-weight: 900;
+          color: #2f7bd7;
+          border: 0;
+          background: transparent;
+        }
+
+        .statDetailItemMain {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 6px;
+        }
+
+        .statDetailItemCover {
+          position: relative;
+          width: 92px;
+          align-self: center;
+        }
+
+        .statDetailItemCoverImage {
+          /* Freestanding: render at the image's natural shape (no fixed
+             aspect-ratio, no object-fit letterboxing), capped at 92px wide.
+             Border-radius then rounds the actual visible image edges. */
+          display: block;
+          width: 92px;
+          height: auto;
+          border-radius: 6px;
+          border: 0;
+          background: transparent;
+        }
+
+        .statDetailItemCoverPlaceholder {
+          display: grid;
+          place-items: center;
+          width: 92px;
+          aspect-ratio: 2 / 3;
+          padding: 4px;
+          border-radius: 6px;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          color: rgba(82, 96, 116, 0.72);
+          /* Empty-state tile keeps a soft framed look so it's still visible
+             without an actual image inside it. */
+          border: 1px solid rgba(156, 168, 184, 0.45);
+          background: rgba(238, 241, 245, 0.8);
+        }
+
+        .statDetailItemTitle {
+          font-size: 16px;
+          font-weight: 800;
+          color: #232832;
+          line-height: 1.3;
+        }
+
+        .statDetailItemMeta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+        }
+
+        .statDetailItemMeta span {
+          display: inline-flex;
+          align-items: center;
+          border: 1px solid rgba(120, 166, 236, 0.34);
+          border-radius: 999px;
+          padding: 3px 9px;
+          font-size: 12px;
+          font-weight: 700;
+          color: rgba(54, 75, 105, 0.9);
+          background: rgba(239, 244, 250, 0.86);
+        }
+
+        @media (max-width: 720px) {
+          .statDetailSummaryGrid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -2473,7 +2713,7 @@ export function StatisticsView({
         "--stats-muted": "rgba(196, 212, 236, 0.82)",
         "--stats-heading-primary": "rgba(236, 228, 210, 0.98)",
         "--stats-heading-secondary": "rgba(222, 212, 193, 0.95)",
-        "--stats-glow-1": "rgba(192, 120, 0, 0.14)",
+        "--stats-glow-1": "rgba(240, 183, 86, 0.14)",
         "--stats-glow-2": "rgba(139, 146, 13, 0.1)",
       },
     };
@@ -2483,7 +2723,7 @@ export function StatisticsView({
       // App/logo-inspired accents for consistent branding across stats modules.
       "--stats-accent-1": "#8baff4",
       "--stats-accent-2": "#8b920d",
-      "--stats-accent-3": "#c07800",
+      "--stats-accent-3": "#f0b756",
       "--stats-accent-4": "#8baff4",
     } as CSSProperties;
   }, [themeMode]);
@@ -2633,7 +2873,13 @@ export function StatisticsView({
                 }}
               >
                 <div className="metricLabel">{metric.label}</div>
-                <div className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""}`}>{metric.value}</div>
+                <div
+                  className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""} ${
+                    String(metric.value).includes("hours") ? "metricValueHours" : ""
+                  }`}
+                >
+                  {metric.value}
+                </div>
                 <div className="metricSubLabel">{metric.subLabel}</div>
               </article>
             ))}
@@ -2641,7 +2887,7 @@ export function StatisticsView({
 
           <div className="statsGrid">
             <article
-              className="statsCard spanTwo statsCardInteractive"
+              className="statsCard spanTwo statsCardInteractive yearStoryCard"
               role="button"
               tabIndex={0}
               aria-label="Open details for Year in Review storyline"
@@ -2677,11 +2923,6 @@ export function StatisticsView({
                   You logged <strong>{yearReview.yearItems.length}</strong> titles in {selectedReviewYear}, with{" "}
                   <strong>{yearReview.completedTotal}</strong> completed and <strong>{yearReview.abandonedCount}</strong>{" "}
                   abandoned.
-                </p>
-                <p>
-                  {yearReview.busiestMonth && !isExcludedBusiestMonthKey(yearReview.busiestMonth.key)
-                    ? `Peak month: ${yearReview.busiestMonth.label} with ${yearReview.busiestMonth.count} logged titles.`
-                    : "No monthly trend data yet for this year."}
                 </p>
                 <div className="yearStoryChips">
                   <div
@@ -2835,11 +3076,10 @@ export function StatisticsView({
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Top Rated Pick</h2>
-                <span>{getPersonalRatingBadgeLabel(yearReview.topRated) || "-"}</span>
               </div>
               {yearReview.topRated ? (
                 <div
-                  className="yearSpotlightBody yearSpotlightBodyInteractive"
+                  className="yearSpotlightBody yearSpotlightBodyInteractive yearSpotlightBodyScored"
                   role="button"
                   tabIndex={0}
                   aria-label={`Open details for top rated pick ${yearReview.topRated.title}`}
@@ -2867,11 +3107,6 @@ export function StatisticsView({
                   }
                 >
                   <div className="yearSpotlightCover">
-                    {getPersonalRatingBadgeLabel(yearReview.topRated) ? (
-                      <div className="statsCoverRatingBadge">
-                        {getPersonalRatingBadgeLabel(yearReview.topRated)}
-                      </div>
-                    ) : null}
                     {yearReview.topRated.coverUrl ? (
                       <img
                         src={yearReview.topRated.coverUrl}
@@ -2883,9 +3118,10 @@ export function StatisticsView({
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
                   </div>
-                  <div className="yearSpotlightMeta">
+                  <div className="yearSpotlightMeta yearSpotlightMetaScored">
                     <div className="yearSpotlightTitle">{yearReview.topRated.title}</div>
                     <div className="yearSpotlightNote">{MEDIA_LABELS[yearReview.topRated.mediaType]}</div>
+                    <div className="yearSpotlightScoreLarge">{getPersonalRatingBadgeLabel(yearReview.topRated) || "-"}</div>
                   </div>
                 </div>
               ) : (
@@ -2943,7 +3179,7 @@ export function StatisticsView({
                   </div>
                   <div className="yearSpotlightMeta">
                     <div className="yearSpotlightTitle">{yearReview.longestAudiobook.title}</div>
-                    <div className="yearSpotlightNote">{formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes)} listened</div>
+                    <div className="yearSpotlightNote yearSpotlightNoteLarge">{formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes)} listened</div>
                   </div>
                 </div>
               ) : (
@@ -2999,7 +3235,7 @@ export function StatisticsView({
                   </div>
                   <div className="yearSpotlightMeta">
                     <div className="yearSpotlightTitle">{yearReview.mostPlayedGame.title}</div>
-                    <div className="yearSpotlightNote">{formatHours(yearReview.mostPlayedGame.gameplayHours)} played</div>
+                    <div className="yearSpotlightNote yearSpotlightNoteLarge">{formatHours(yearReview.mostPlayedGame.gameplayHours)} played</div>
                   </div>
                 </div>
               ) : (
@@ -3010,11 +3246,10 @@ export function StatisticsView({
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Lowest Rated Item</h2>
-                <span>{getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-"}</span>
               </div>
               {yearReview.lowestRated ? (
                 <div
-                  className="yearSpotlightBody yearSpotlightBodyInteractive"
+                  className="yearSpotlightBody yearSpotlightBodyInteractive yearSpotlightBodyScored"
                   role="button"
                   tabIndex={0}
                   aria-label={`Open details for lowest rated item ${yearReview.lowestRated.title}`}
@@ -3042,11 +3277,6 @@ export function StatisticsView({
                   }
                 >
                   <div className="yearSpotlightCover">
-                    {getPersonalRatingBadgeLabel(yearReview.lowestRated) ? (
-                      <div className="statsCoverRatingBadge">
-                        {getPersonalRatingBadgeLabel(yearReview.lowestRated)}
-                      </div>
-                    ) : null}
                     {yearReview.lowestRated.coverUrl ? (
                       <img
                         src={yearReview.lowestRated.coverUrl}
@@ -3058,9 +3288,10 @@ export function StatisticsView({
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
                   </div>
-                  <div className="yearSpotlightMeta">
+                  <div className="yearSpotlightMeta yearSpotlightMetaScored">
                     <div className="yearSpotlightTitle">{yearReview.lowestRated.title}</div>
                     <div className="yearSpotlightNote">{MEDIA_LABELS[yearReview.lowestRated.mediaType]}</div>
+                    <div className="yearSpotlightScoreLarge">{getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-"}</div>
                   </div>
                 </div>
               ) : (
@@ -3102,27 +3333,18 @@ export function StatisticsView({
               </div>
               {yearReview.topRatedItems.length > 0 ? (
                 <div className="yearTopRatedGrid">
-                  {yearReview.topRatedItems.map((item, index) => (
-                    <figure
-                      key={`${index + 1}-${item.mediaType}-${item.title}`}
-                      className="yearTopRatedTile yearTopRatedTileInteractive"
-                      title={`${index + 1}. ${item.title} ($)`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openStatisticDetail({
-                          id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
-                          title: `Top 20 Item #${index + 1}`,
-                          value: formatPersonalRatingDisplay(item),
-                          summary: "Single item from the Year in Review top-20 rated list.",
-                          calculation: "Selected index from sorted year top-rated list.",
-                          items: [item],
-                        });
-                      }}
-                      onKeyDown={(event) => {
-                        event.stopPropagation();
-                        handleInteractiveKeyDown(event, () =>
+                  {yearReview.topRatedItems.map((item, index) => {
+                    const coverClass = getTop20CoverClass(item);
+                    const coverFrameClass = getTop20CoverFrameClass(item);
+                    return (
+                      <figure
+                        key={`${index + 1}-${item.mediaType}-${item.title}`}
+                        className="yearTopRatedTile yearTopRatedTileInteractive"
+                        title={`${index + 1}. ${item.title}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
                           openStatisticDetail({
                             id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
                             title: `Top 20 Item #${index + 1}`,
@@ -3130,37 +3352,48 @@ export function StatisticsView({
                             summary: "Single item from the Year in Review top-20 rated list.",
                             calculation: "Selected index from sorted year top-rated list.",
                             items: [item],
-                          })
-                        );
-                      }}
-                    >
-                      <div className="yearTopRatedMedia">
-                        <div className="yearTopRatedRank">#{index + 1}</div>
-                        {getPersonalRatingBadgeLabel(item) ? (
-                          <div className="statsCoverRatingBadge">
-                            {getPersonalRatingBadgeLabel(item)}
+                          });
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                          handleInteractiveKeyDown(event, () =>
+                            openStatisticDetail({
+                              id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
+                              title: `Top 20 Item #${index + 1}`,
+                              value: formatPersonalRatingDisplay(item),
+                              summary: "Single item from the Year in Review top-20 rated list.",
+                              calculation: "Selected index from sorted year top-rated list.",
+                              items: [item],
+                            })
+                          );
+                        }}
+                      >
+                        <div className="yearTopRatedMedia">
+                          <div className={`yearTopRatedCoverFrame ${coverFrameClass}`}>
+                            {item.coverUrl ? (
+                              <img
+                                className={coverClass}
+                                src={item.coverUrl}
+                                alt={`${item.title} cover`}
+                                loading="lazy"
+                                style={COVER_IMAGE_RADIUS_STYLE}
+                              />
+                            ) : (
+                              <div className="yearSpotlightFallback">No Cover</div>
+                            )}
                           </div>
-                        ) : null}
-                        {item.coverUrl ? (
-                          <img
-                            className={getTop20CoverClass(item)}
-                            src={item.coverUrl}
-                            alt={`${item.title} cover`}
-                            loading="lazy"
-                            style={COVER_IMAGE_RADIUS_STYLE}
-                          />
-                        ) : (
-                          <div className="yearSpotlightFallback">No Cover</div>
-                        )}
-                      </div>
-                      <figcaption>
-                        <span className="yearTopRatedTitle">{item.title}</span>
-                        <span className="yearTopRatedMeta">
-                          
-                        </span>
-                      </figcaption>
-                    </figure>
-                  ))}
+                        </div>
+                        <figcaption>
+                          <span className="yearTopRatedStatsRow">
+                            <span className="yearTopRatedRankText">#{index + 1}</span>
+                            <span className="yearTopRatedScoreText">{getPersonalRatingBadgeLabel(item) || "-"}</span>
+                          </span>
+                          <span className="yearTopRatedTitle">{item.title}</span>
+                          <span className="yearTopRatedMeta"></span>
+                        </figcaption>
+                      </figure>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="cardEmpty">No rated items available for {selectedReviewYear}.</div>
@@ -3201,27 +3434,18 @@ export function StatisticsView({
               </div>
               {yearReview.bottomRatedItems.length > 0 ? (
                 <div className="yearTopRatedGrid">
-                  {yearReview.bottomRatedItems.map((item, index) => (
-                    <figure
-                      key={`${index + 1}-${item.mediaType}-${item.title}-bottom`}
-                      className="yearTopRatedTile yearTopRatedTileInteractive"
-                      title={`${index + 1}. ${item.title} ($)`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openStatisticDetail({
-                          id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
-                          title: `Bottom 20 Item #${index + 1}`,
-                          value: formatPersonalRatingDisplay(item),
-                          summary: "Single item from the Year in Review bottom-20 rated list.",
-                          calculation: "Selected index from sorted year bottom-rated list.",
-                          items: [item],
-                        });
-                      }}
-                      onKeyDown={(event) => {
-                        event.stopPropagation();
-                        handleInteractiveKeyDown(event, () =>
+                  {yearReview.bottomRatedItems.map((item, index) => {
+                    const coverClass = getTop20CoverClass(item);
+                    const coverFrameClass = getTop20CoverFrameClass(item);
+                    return (
+                      <figure
+                        key={`${index + 1}-${item.mediaType}-${item.title}-bottom`}
+                        className="yearTopRatedTile yearTopRatedTileInteractive"
+                        title={`${index + 1}. ${item.title}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
                           openStatisticDetail({
                             id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
                             title: `Bottom 20 Item #${index + 1}`,
@@ -3229,37 +3453,48 @@ export function StatisticsView({
                             summary: "Single item from the Year in Review bottom-20 rated list.",
                             calculation: "Selected index from sorted year bottom-rated list.",
                             items: [item],
-                          })
-                        );
-                      }}
-                    >
-                      <div className="yearTopRatedMedia">
-                        <div className="yearTopRatedRank">#{index + 1}</div>
-                        {getPersonalRatingBadgeLabel(item) ? (
-                          <div className="statsCoverRatingBadge">
-                            {getPersonalRatingBadgeLabel(item)}
+                          });
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                          handleInteractiveKeyDown(event, () =>
+                            openStatisticDetail({
+                              id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
+                              title: `Bottom 20 Item #${index + 1}`,
+                              value: formatPersonalRatingDisplay(item),
+                              summary: "Single item from the Year in Review bottom-20 rated list.",
+                              calculation: "Selected index from sorted year bottom-rated list.",
+                              items: [item],
+                            })
+                          );
+                        }}
+                      >
+                        <div className="yearTopRatedMedia">
+                          <div className={`yearTopRatedCoverFrame ${coverFrameClass}`}>
+                            {item.coverUrl ? (
+                              <img
+                                className={coverClass}
+                                src={item.coverUrl}
+                                alt={`${item.title} cover`}
+                                loading="lazy"
+                                style={COVER_IMAGE_RADIUS_STYLE}
+                              />
+                            ) : (
+                              <div className="yearSpotlightFallback">No Cover</div>
+                            )}
                           </div>
-                        ) : null}
-                        {item.coverUrl ? (
-                          <img
-                            className={getTop20CoverClass(item)}
-                            src={item.coverUrl}
-                            alt={`${item.title} cover`}
-                            loading="lazy"
-                            style={COVER_IMAGE_RADIUS_STYLE}
-                          />
-                        ) : (
-                          <div className="yearSpotlightFallback">No Cover</div>
-                        )}
-                      </div>
-                      <figcaption>
-                        <span className="yearTopRatedTitle">{item.title}</span>
-                        <span className="yearTopRatedMeta">
-                          
-                        </span>
-                      </figcaption>
-                    </figure>
-                  ))}
+                        </div>
+                        <figcaption>
+                          <span className="yearTopRatedStatsRow">
+                            <span className="yearTopRatedRankText">#{index + 1}</span>
+                            <span className="yearTopRatedScoreText">{getPersonalRatingBadgeLabel(item) || "-"}</span>
+                          </span>
+                          <span className="yearTopRatedTitle">{item.title}</span>
+                          <span className="yearTopRatedMeta"></span>
+                        </figcaption>
+                      </figure>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="cardEmpty">No rated items available for {selectedReviewYear}.</div>
@@ -3305,7 +3540,13 @@ export function StatisticsView({
             }}
           >
             <div className="metricLabel">{metric.label}</div>
-            <div className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""}`}>{metric.value}</div>
+            <div
+              className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""} ${
+                String(metric.value).includes("hours") ? "metricValueHours" : ""
+              }`}
+            >
+              {metric.value}
+            </div>
             <div className="metricSubLabel">{metric.subLabel}</div>
           </article>
         ))}
@@ -4078,7 +4319,7 @@ export function StatisticsView({
           --stats-muted: rgba(191, 211, 240, 0.8);
           --stats-accent-1: #8baff4;
           --stats-accent-2: #8b920d;
-          --stats-accent-3: #c07800;
+          --stats-accent-3: #f0b756;
           --stats-accent-4: #8baff4;
           --stats-glow-1: rgba(78, 144, 250, 0.25);
           --stats-glow-2: rgba(43, 218, 170, 0.19);
@@ -4146,8 +4387,8 @@ export function StatisticsView({
           line-height: 1;
           letter-spacing: 0.02em;
           font-weight: 900;
-          color: #c07800;
-          text-shadow: 0 4px 24px rgba(192, 120, 0, 0.42);
+          color: #f0b756;
+          text-shadow: 0 4px 24px rgba(240, 183, 86, 0.32);
         }
 
         .statsSubtitle {
@@ -4592,14 +4833,28 @@ export function StatisticsView({
         .yearStoryBody {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 12px;
         }
 
         .yearStoryBody p {
           margin: 0;
-          font-size: 13px;
+          font-size: 14px;
           color: rgba(206, 224, 248, 0.92);
           line-height: 1.45;
+        }
+
+        .yearStoryCard {
+          background:
+            radial-gradient(circle at 14% 10%, rgba(240, 183, 86, 0.24), transparent 34%),
+            radial-gradient(circle at 86% 18%, rgba(139, 175, 244, 0.22), transparent 32%),
+            linear-gradient(156deg, rgba(34, 68, 112, 0.9), rgba(15, 35, 73, 0.96));
+          border-color: rgba(240, 183, 86, 0.5);
+        }
+
+        .yearStoryCard .cardHeader h2,
+        .yearStoryCard .cardHeader span {
+          color: var(--stats-accent-3);
+          text-shadow: 0 0 18px rgba(240, 183, 86, 0.22);
         }
 
         .yearStoryChips {
@@ -4609,15 +4864,17 @@ export function StatisticsView({
         }
 
         .yearStoryChip {
-          border: 1px solid rgba(126, 169, 238, 0.34);
+          border: 1px solid rgba(240, 183, 86, 0.34);
           border-radius: 10px;
-          background: rgba(10, 24, 50, 0.58);
+          background:
+            linear-gradient(180deg, rgba(17, 38, 75, 0.72), rgba(8, 22, 48, 0.72));
           padding: 10px 10px;
           display: flex;
           flex-direction: column;
           gap: 6px;
           align-items: center;
           text-align: center;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
 
         .yearStoryChipInteractive {
@@ -4626,8 +4883,9 @@ export function StatisticsView({
         }
 
         .yearStoryChipInteractive:hover {
-          background: rgba(19, 40, 74, 0.72);
-          border-color: rgba(155, 198, 255, 0.52);
+          background:
+            linear-gradient(180deg, rgba(27, 54, 96, 0.78), rgba(10, 27, 56, 0.78));
+          border-color: rgba(240, 183, 86, 0.68);
         }
 
         .yearStoryChipInteractive:focus-visible {
@@ -4636,7 +4894,7 @@ export function StatisticsView({
         }
 
         .yearStoryChip span {
-          color: rgba(195, 219, 252, 0.9);
+          color: rgba(244, 188, 92, 0.94);
           font-size: 10px;
           font-weight: 900;
           text-transform: uppercase;
@@ -4660,6 +4918,11 @@ export function StatisticsView({
           align-items: center;
           flex: 1;
           min-height: 0;
+        }
+
+        .yearSpotlightBodyScored {
+          grid-template-columns: minmax(70px, 92px) minmax(0, 1fr);
+          gap: 14px;
         }
 
         .yearSpotlightBodyInteractive {
@@ -4719,6 +4982,11 @@ export function StatisticsView({
           min-width: 0;
         }
 
+        .yearSpotlightMetaScored {
+          align-self: center;
+          justify-content: center;
+        }
+
         .yearSpotlightTitle {
           font-size: 14px;
           font-weight: 800;
@@ -4733,17 +5001,35 @@ export function StatisticsView({
           font-weight: 700;
         }
 
+        .yearSpotlightNoteLarge {
+          font-size: 17px;
+          line-height: 1.2;
+          color: rgba(211, 230, 255, 0.92);
+          font-weight: 900;
+        }
+
+        .yearSpotlightScoreLarge {
+          margin-top: 2px;
+          color: var(--stats-accent-3);
+          font-size: clamp(32px, 4vw, 52px);
+          font-weight: 950;
+          line-height: 0.9;
+          letter-spacing: 0;
+          text-shadow: 0 8px 22px rgba(0, 0, 0, 0.22), 0 0 24px rgba(240, 183, 86, 0.25);
+          white-space: nowrap;
+        }
+
         .yearTopRatedGrid {
           display: grid;
           grid-template-columns: repeat(10, minmax(0, 1fr));
-          gap: 8px;
+          gap: 4px;
           width: 100%;
         }
 
         .yearTopRatedTile {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(92px, 8vw, 132px) minmax(3.6em, auto);
+          grid-template-rows: clamp(110px, 10.5vw, 160px) minmax(5em, auto);
           gap: 5px;
           min-width: 0;
           position: relative;
@@ -4752,12 +5038,37 @@ export function StatisticsView({
         .yearTopRatedMedia {
           position: relative;
           width: 100%;
-          height: clamp(92px, 8vw, 132px);
+          height: clamp(110px, 10.5vw, 160px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
           overflow: visible;
           border-radius: 6px;
+        }
+
+        .yearTopRatedCoverFrame {
+          position: relative;
+          display: inline-flex;
+          align-items: flex-end;
+          justify-content: center;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
+          line-height: 0;
+          border-radius: 6px;
+          overflow: visible;
+        }
+
+        .yearTopRatedCoverFrameAudiobook {
+          width: min(100%, clamp(110px, 10.5vw, 160px));
+          height: auto;
+          aspect-ratio: 1 / 1;
+        }
+
+        .yearTopRatedCoverFrameGame {
+          width: fit-content;
+          height: 100%;
         }
 
         .yearTopRatedTileInteractive {
@@ -4778,8 +5089,8 @@ export function StatisticsView({
 
         .yearTopRatedRank {
           position: absolute;
-          top: 5px;
-          left: 5px;
+          top: 4px;
+          left: 4px;
           z-index: 2;
           font-size: 10px;
           font-weight: 900;
@@ -4805,10 +5116,25 @@ export function StatisticsView({
           display: block;
         }
 
+        .yearTopRatedCoverFrame img.yearTopRatedCoverAudiobook {
+          width: 100%;
+          height: auto;
+          max-width: 100%;
+          max-height: 100%;
+          aspect-ratio: 1 / 1;
+        }
+
+        .yearTopRatedCoverFrame img.yearTopRatedCoverGame {
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
+        }
+
         .statsCoverRatingBadge {
           position: absolute;
-          top: 6px;
-          right: 6px;
+          top: 4px;
+          right: 4px;
           z-index: 2;
           font-size: 9px;
           font-weight: 900;
@@ -4827,8 +5153,33 @@ export function StatisticsView({
         .yearTopRatedTile figcaption {
           display: flex;
           flex-direction: column;
-          gap: 2px;
-          min-height: 3.6em;
+          gap: 3px;
+          min-height: 5em;
+        }
+
+        .yearTopRatedStatsRow {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          width: 100%;
+          min-height: 14px;
+          color: rgba(218, 234, 255, 0.9);
+          font-size: 10px;
+          line-height: 1.1;
+          font-weight: 900;
+        }
+
+        .yearTopRatedRankText,
+        .yearTopRatedScoreText {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .yearTopRatedScoreText {
+          color: #f0b756;
         }
 
         .yearTopRatedTitle {
@@ -4869,7 +5220,14 @@ export function StatisticsView({
         }
 
         .yearTopRatedCoverGame {
-          aspect-ratio: 1.4 / 1;
+          /* Fill the slot height like portrait covers do, instead of being
+             forced into a 1.4:1 landscape rectangle that letterboxed the
+             actual game artwork to a fraction of its intended size. */
+          aspect-ratio: auto;
+          width: auto;
+          height: 100%;
+          max-width: 100%;
+          max-height: 100%;
           object-fit: contain;
           background: transparent;
           padding: 0;
@@ -5537,15 +5895,21 @@ export function StatisticsView({
 
         .metricValue {
           margin-top: 8px;
-          font-size: clamp(22px, 3.2vw, 34px);
+          max-width: 100%;
+          overflow: hidden;
+          font-size: clamp(20px, 2.8vw, 31px);
           line-height: 1.02;
           font-weight: 900;
           color: #ffffff;
           white-space: nowrap;
         }
 
+        .metricValueHours {
+          font-size: clamp(19px, 2.15vw, 25px);
+        }
+
         .metricValueCompact {
-          font-size: clamp(24px, 2.2vw, 34px);
+          font-size: clamp(18px, 1.65vw, 25px);
           line-height: 1.02;
           max-width: 100%;
           overflow: hidden;
@@ -6426,242 +6790,9 @@ export function StatisticsView({
           }
         }
 
-        .statDetailOverlay {
-          position: fixed;
-          inset: 0;
-          z-index: 2500;
-          background: rgba(27, 31, 38, 0.32);
-          backdrop-filter: blur(18px) saturate(1.12);
-          -webkit-backdrop-filter: blur(18px) saturate(1.12);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 14px;
-        }
-
-        .statDetailDialog {
-          width: min(980px, 100%);
-          max-height: min(88vh, 860px);
-          overflow: auto;
-          border-radius: 18px;
-          border: 1px solid rgba(255, 255, 255, 0.72);
-          background:
-            linear-gradient(180deg, rgba(249, 250, 252, 0.97), rgba(232, 236, 242, 0.96));
-          box-shadow:
-            0 28px 76px rgba(27, 31, 38, 0.36),
-            inset 0 1px 0 rgba(255, 255, 255, 0.9);
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          color: #242a32;
-        }
-
-        .statDetailHeader {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 14px;
-          border-bottom: 1px solid rgba(160, 169, 183, 0.34);
-          padding: 2px 2px 12px 2px;
-        }
-
-        .statDetailHeaderMain {
-          min-width: 0;
-        }
-
-        .statDetailId {
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          color: rgba(84, 109, 143, 0.86);
-        }
-
-        .statDetailHeaderMain h3 {
-          margin: 6px 0 0 0;
-          font-size: 20px;
-          font-weight: 900;
-          color: #20242b;
-        }
-
-        .statDetailValue {
-          margin-top: 4px;
-          font-size: 28px;
-          line-height: 1;
-          font-weight: 900;
-          color: #2f7bd7;
-        }
-
-        .statDetailClose {
-          border: 1px solid rgba(110, 116, 126, 0.28);
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 229, 234, 0.94));
-          color: #555d68;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.03em;
-          padding: 7px 14px;
-          cursor: pointer;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.9),
-            0 1px 2px rgba(23, 28, 36, 0.08);
-        }
-
-        .statDetailSummaryGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .statDetailSummaryCard {
-          border: 1px solid rgba(174, 184, 198, 0.46);
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.62);
-          padding: 12px;
-          min-height: 78px;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-        }
-
-        .statDetailSummaryLabel {
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: rgba(60, 121, 204, 0.88);
-        }
-
-        .statDetailSummaryCard p {
-          margin: 7px 0 0 0;
-          font-size: 12px;
-          color: rgba(45, 54, 66, 0.88);
-          line-height: 1.42;
-        }
-
-        .statDetailItemsHeader {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-          color: rgba(82, 96, 116, 0.9);
-        }
-
-        .statDetailItemsHeader span {
-          color: #2f7bd7;
-        }
-
-        .statDetailItemsList {
-          display: flex;
-          flex-direction: column;
-          gap: 0;
-          min-height: 120px;
-          border-top: 1px solid rgba(164, 174, 188, 0.28);
-          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
-        }
-
-        .statDetailItemRow {
-          display: grid;
-          grid-template-columns: 44px 63px minmax(0, 1fr);
-          gap: 12px;
-          border: 0;
-          border-radius: 0;
-          background: transparent;
-          padding: 12px 2px;
-          box-shadow: none;
-          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
-        }
-
-        .statDetailItemRow:last-child {
-          border-bottom: 0;
-        }
-
-        .statDetailItemRank {
-          width: 44px;
-          min-height: 63px;
-          border-radius: 0;
-          display: grid;
-          place-items: start center;
-          padding-top: 4px;
-          font-size: 22px;
-          line-height: 1;
-          font-weight: 900;
-          color: #2f7bd7;
-          border: 0;
-          background: transparent;
-        }
-
-        .statDetailItemMain {
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .statDetailItemCover {
-          position: relative;
-          width: 63px;
-          align-self: start;
-        }
-
-        .statDetailItemCoverBadge {
-          top: -4px;
-          right: -4px;
-          font-size: 8px;
-          padding: 2px 5px;
-        }
-
-        .statDetailItemCoverImage,
-        .statDetailItemCoverPlaceholder {
-          display: block;
-          width: 63px;
-          aspect-ratio: 2 / 3;
-          border-radius: 6px;
-          border: 1px solid rgba(156, 168, 184, 0.45);
-          background: rgba(238, 241, 245, 0.8);
-          box-shadow: 0 5px 12px rgba(26, 32, 42, 0.16);
-        }
-
-        .statDetailItemCoverImage {
-          object-fit: contain;
-        }
-
-        .statDetailItemCoverPlaceholder {
-          display: grid;
-          place-items: center;
-          padding: 4px;
-          font-size: 8px;
-          font-weight: 900;
-          letter-spacing: 0.08em;
-          color: rgba(82, 96, 116, 0.72);
-        }
-
-        .statDetailItemTitle {
-          font-size: 13px;
-          font-weight: 800;
-          color: #232832;
-          line-height: 1.25;
-        }
-
-        .statDetailItemMeta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px;
-        }
-
-        .statDetailItemMeta span {
-          display: inline-flex;
-          align-items: center;
-          border: 1px solid rgba(120, 166, 236, 0.34);
-          border-radius: 999px;
-          padding: 2px 7px;
-          font-size: 10px;
-          font-weight: 700;
-          color: rgba(54, 75, 105, 0.9);
-          background: rgba(239, 244, 250, 0.86);
-        }
+        /* .statDetail* rules live inside StatDetailModal's own
+           <style jsx> block — styled-jsx is component-scoped, so the
+           rules need to sit with the JSX they style. */
 
         @keyframes statsFadeRise {
           0% {
@@ -6795,10 +6926,6 @@ export function StatisticsView({
 
           .barRow {
             grid-template-columns: minmax(60px, 78px) 1fr auto;
-          }
-
-          .statDetailSummaryGrid {
-            grid-template-columns: minmax(0, 1fr);
           }
 
           .releaseSvg {

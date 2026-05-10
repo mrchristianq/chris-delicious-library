@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type MovieDetailsPageProps = {
   item: Record<string, unknown>;
@@ -505,12 +506,11 @@ export function MovieDetailsPage({
             }}>
               {coverUrl ? (
                 <img src={coverUrl} alt={title} style={{
-                  display: "block",
                   width: POSTER_W,
                   flexShrink: 0,
-                  borderRadius: 8,
                   border: "2px solid rgba(255,255,255,0.16)",
                   filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.75))",
+                  ...COVER_IMAGE_RADIUS_STYLE,
                 }} />
               ) : null}
             </div>
@@ -654,8 +654,9 @@ export function MovieDetailsPage({
                         >
                           {mCover ? (
                             <img src={mCover} alt={mTitle} style={{
-                              display: "block", width: RELATED_ITEM_W, borderRadius: 6,
+                              width: RELATED_ITEM_W,
                               border: `1px solid ${palette.surfaceBorder}`,
+                              ...COVER_IMAGE_RADIUS_STYLE,
                             }} />
                           ) : (
                             <div style={{

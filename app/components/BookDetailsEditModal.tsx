@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type BookDetailsEditModalProps = {
   open: boolean;
@@ -486,7 +487,7 @@ export function BookDetailsEditModal({
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
                   {book.imageUrl ? (
-                    <img src={book.imageUrl} alt={book.title} style={{ width: 36, height: 52, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
+                    <img src={book.imageUrl} alt={book.title} style={{ width: 36, height: 52, objectFit: "cover", flexShrink: 0, ...COVER_IMAGE_RADIUS_STYLE }} />
                   ) : (
                     <div style={{ width: 36, height: 52, borderRadius: 4, background: "#e8eaf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>?</div>
                   )}
@@ -519,7 +520,7 @@ export function BookDetailsEditModal({
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#7c3aed22"; e.currentTarget.style.background = "rgba(255,255,255,0.7)"; }}
                 >
                   {ed.imageUrl ? (
-                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6 }} />
+                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", height: 100, objectFit: "cover", ...COVER_IMAGE_RADIUS_STYLE }} />
                   ) : (
                     <div style={{ width: "100%", height: 100, borderRadius: 6, background: "#e8eaf0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>No cover</div>
                   )}
@@ -556,13 +557,13 @@ export function BookDetailsEditModal({
                     <input type="checkbox" checked={row.selected} onChange={() => toggleDiffRow(row.key)} style={{ marginTop: 2, accentColor: syncAccent, cursor: "pointer" }} />
                     <span style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.2, paddingTop: 1 }}>{row.label.toUpperCase()}</span>
                     {isImg && row.before !== "—" ? (
-                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
                     )}
                     <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
                     {isImg && row.after !== "—" ? (
-                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? `2px solid ${syncAccent}` : "none", transition: "outline 100ms" }} />
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", objectFit: "cover", outline: row.selected ? `2px solid ${syncAccent}` : "none", transition: "outline 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: row.selected ? syncAccent : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
                     )}
@@ -587,7 +588,7 @@ export function BookDetailsEditModal({
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
             <div style={{ marginTop: 8 }}>
               {previewUrl ? (
-                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ width: "100%", borderRadius: 8, display: "block", objectFit: activeMode === "custom" ? "contain" : "cover", maxHeight: 250 }} />
+                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ width: "100%", objectFit: activeMode === "custom" ? "contain" : "cover", maxHeight: 250, ...COVER_IMAGE_RADIUS_STYLE }} />
               ) : (
                 <div style={{ height: 180, borderRadius: 8, border: "1px dashed rgba(149,161,178,0.58)", display: "flex", alignItems: "center", justifyContent: "center", color: "#5f6e82", fontSize: 11 }}>
                   No cover

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type BookDetailsPageProps = {
   item: Record<string, unknown>;
@@ -782,12 +783,11 @@ export function BookDetailsPage({
                   src={coverUrl}
                   alt={title}
                   style={{
-                    display: "block",
                     width: "100%",
                     maxHeight: isMobileLayout ? undefined : 258,
                     objectFit: "contain",
-                    borderRadius: 6,
                     filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
+                    ...COVER_IMAGE_RADIUS_STYLE,
                   }}
                 />
               </div>
@@ -1020,13 +1020,12 @@ export function BookDetailsPage({
                         src={getDisplayCoverUrl(book)}
                         alt={safeStr(book.title)}
                         style={{
-                          display: "block",
                           width: isMobileLayout ? "100%" : "auto",
                           maxWidth: "100%",
                           height: isMobileLayout ? "auto" : 132,
                           objectFit: "contain",
                           objectPosition: "left center",
-                          borderRadius: 6,
+                          ...COVER_IMAGE_RADIUS_STYLE,
                         }}
                       />
                     </div>

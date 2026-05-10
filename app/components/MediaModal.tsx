@@ -2524,7 +2524,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
         .posterFallback {
           width: 100%;
           aspect-ratio: 2 / 3;
-          border-radius: 16px;
+          border-radius: 6px;
           border: 1px solid rgba(80, 108, 164, 0.35);
         }
 
@@ -2532,6 +2532,10 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           display: block;
           object-fit: cover;
           box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+          /* Belt-and-suspenders so the rendered image pixels actually clip,
+             not just the box. Matches COVER_IMAGE_RADIUS_STYLE. */
+          clip-path: inset(0 round 6px);
+          -webkit-clip-path: inset(0 round 6px);
         }
 
         .posterWrap {
@@ -2556,7 +2560,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
           justify-content: center;
           padding: 16px;
           text-align: center;
-          border-radius: 16px;
+          border-radius: 6px;
           background: rgba(6, 16, 35, 0.82);
           color: #dff0ff;
           font-size: 11px;
