@@ -14465,7 +14465,6 @@ export default function Page() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
                       {(["book", "movie", "tv", "game"] as const).map((mediaType) => {
                         const label = mediaType === "tv" ? "TV Shows" : mediaType.charAt(0).toUpperCase() + mediaType.slice(1) + "s";
-                        const stats = syncByType[mediaType];
                         const total = mediaType === "book" ? bookRows.filter(r => r?.title).length :
                                      mediaType === "movie" ? movieRows.filter(r => r?.title).length :
                                      mediaType === "tv" ? tvRows.filter(r => r?.title).length :
@@ -14476,20 +14475,29 @@ export default function Page() {
                                       gameRows.filter(r => safeStr(r?.r2CoverUrl)).length;
                         const syncedPct = total > 0 ? Math.round((synced / total) * 100) : 0;
 
+                        // Get highlight color for this media type
+                        const highlightColorMap: Record<string, string> = {
+                          book: sidebarHighlightColorsLight.books,
+                          movie: sidebarHighlightColorsLight.movies,
+                          tv: sidebarHighlightColorsLight.tv,
+                          game: sidebarHighlightColorsLight.games,
+                        };
+                        const highlightColor = highlightColorMap[mediaType] || "#0071e3";
+
                         return (
                           <div
                             key={mediaType}
                             style={{
-                              border: "1px solid rgba(167,177,191,0.42)",
+                              border: `1px solid ${highlightColor}33`,
                               borderRadius: 12,
-                              background: "rgba(255,255,255,0.78)",
+                              background: `${highlightColor}08`,
                               padding: 12,
                               display: "flex",
                               flexDirection: "column",
                               gap: 8,
                             }}
                           >
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#516279" }}>{label}</div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: highlightColor }}>{label}</div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: "#1d2735" }}>
                               {synced} / {total}
                             </div>
@@ -14497,13 +14505,13 @@ export default function Page() {
                               width: "100%",
                               height: 6,
                               borderRadius: 3,
-                              background: "rgba(149,161,178,0.2)",
+                              background: `${highlightColor}20`,
                               overflow: "hidden",
                             }}>
                               <div style={{
                                 height: "100%",
                                 width: `${syncedPct}%`,
-                                background: "#0071e3",
+                                background: highlightColor,
                                 transition: "width 300ms",
                               }} />
                             </div>
@@ -14515,11 +14523,11 @@ export default function Page() {
                                 syncCoversToR2(mediaType);
                               }}
                               style={{
-                                border: "1px solid rgba(0,113,227,0.4)",
+                                border: `1px solid ${highlightColor}66`,
                                 borderRadius: 8,
                                 padding: "6px 10px",
-                                background: syncInProgress ? "rgba(0,113,227,0.07)" : "rgba(0,113,227,0.09)",
-                                color: "#0071e3",
+                                background: syncInProgress ? `${highlightColor}0d` : `${highlightColor}17`,
+                                color: highlightColor,
                                 cursor: syncInProgress ? "default" : "pointer",
                                 fontSize: 11,
                                 fontWeight: 650,
