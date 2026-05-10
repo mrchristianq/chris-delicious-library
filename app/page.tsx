@@ -437,6 +437,16 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
 };
 const VERSION_HISTORY = [
   {
+    version: "8.7",
+    date: "2026-05-10",
+    notes: [
+      "Polished Statistics top-rated layouts so Year in Review and scoped Top 10 sections show rank and rating beneath covers in a cleaner shared format.",
+      "Fixed ranked-cover alignment issues in Statistics, including bottom-baseline handling for mixed cover shapes like TV posters and audiobooks.",
+      "Updated game add flows to use the newer Mac-style dedicated editor instead of falling back to the legacy add/edit surface.",
+      "Removed the last active app routing path that sent game creation through the older MediaModal editor.",
+    ],
+  },
+  {
     version: "8.6",
     date: "2026-05-07",
     notes: [
@@ -5436,8 +5446,8 @@ export default function Page() {
       setBookDetailItem(prefill);
       setBookDetailsEditOpen(true);
     } else if (mediaType === "game") {
-      setModalItem(prefill as any);
-      setModalOpen(true);
+      setGameDetailEditItem(prefill as any);
+      setGameDetailsEditOpen(true);
     }
   }, []);
 
@@ -5457,8 +5467,8 @@ export default function Page() {
       setBookDetailItem(prefill);
       setBookDetailsEditOpen(true);
     } else if (mediaType === "game") {
-      setModalItem(prefill as any);
-      setModalOpen(true);
+      setGameDetailEditItem(prefill as any);
+      setGameDetailsEditOpen(true);
     }
   }, []);
 
@@ -5591,7 +5601,7 @@ export default function Page() {
     };
     await postSheetWrite(gamesWriteUrl, { action: "addGame", values: row }, "Failed to add game");
     setGameRows((prev) => [...prev, row]);
-    setModalOpen(false);
+    setGameDetailsEditOpen(false);
     openNewlyAddedItemFromRow("game", row);
   }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
 
@@ -16982,12 +16992,7 @@ export default function Page() {
         onSaveBookEdits={handleSaveBookEdits}
         onSaveShowEdits={handleSaveShowEdits}
         onSaveMovieEdits={handleSaveMovieEdits}
-        onSaveGameEdits={handleSaveGameEdits}
         onDeleteItem={handleDeleteLibraryItem}
-        gamePlatformOptions={gamePlatformOptions}
-        gameOwnershipOptions={gameOwnershipOptions}
-        gameFormatOptions={gameFormatOptions}
-        gameStatusOptions={gameStatusOptions}
         popupCoverMode={modalItem ? getPopupCoverModeForItem(modalItem) : undefined}
         onPopupCoverModeChange={handlePopupCoverModeChange}
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
@@ -17040,9 +17045,14 @@ export default function Page() {
       <GameDetailsEditModal
         open={gameDetailsEditOpen && Boolean(gameDetailEditItem)}
         item={gameDetailEditItem}
-        onClose={() => setGameDetailsEditOpen(false)}
-        onSave={handleSaveGameEdits}
+        onClose={() => {
+          setGameDetailsEditOpen(false);
+          setGameDetailEditItem(null);
+          if (isAddingNewItem) { setIsAddingNewItem(false); setAddNewItemType(null); }
+        }}
+        onSave={isAddingNewItem && addNewItemType === "game" ? handleSaveNewGame : handleSaveGameEdits}
         onSaved={triggerSaveToast}
+        isNew={isAddingNewItem && addNewItemType === "game"}
         statusOptions={gameStatusOptions}
         platformOptions={gamePlatformOptions}
         ownershipOptions={gameOwnershipOptions}

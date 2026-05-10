@@ -930,10 +930,13 @@ function TopRatedColumn({
                     ) : (
                       <div className="topRatedFallback">No Cover</div>
                     )}
-                    <div className="statsCoverRatingBadge topRatedScoreBubble">{formatScoreValue(item[scoreKey])}</div>
                   </div>
                 </div>
                 <figcaption>
+                  <span className="topRatedStatsRow">
+                    <span className="topRatedRankText">#{index + 1}</span>
+                    <span className="topRatedScoreText">{formatScoreValue(item[scoreKey])}</span>
+                  </span>
                   <span className="topRatedTitle">{item.title}</span>
                 </figcaption>
               </figure>
@@ -1781,20 +1784,27 @@ export function StatisticsView({
   }, [monthlySeries]);
 
   const releaseYearSeries = useMemo(() => {
-    const yearToTitleSet = new Map<number, Set<string>>();
+    const yearToItems = new Map<number, Map<string, UnifiedStatsItem>>();
 
     filteredItems.forEach((item) => {
       if (!item.releaseDate) return;
       const year = item.releaseDate.getUTCFullYear();
+      if (!Number.isFinite(year)) return;
       const normalizedTitle = normalizeTitleKey(item.title);
       const releaseIdentity = `${item.mediaType}:${normalizedTitle}`;
-      const bucket = yearToTitleSet.get(year) || new Set<string>();
-      bucket.add(releaseIdentity);
-      yearToTitleSet.set(year, bucket);
+      const bucket = yearToItems.get(year) || new Map<string, UnifiedStatsItem>();
+      if (!bucket.has(releaseIdentity)) {
+        bucket.set(releaseIdentity, item);
+      }
+      yearToItems.set(year, bucket);
     });
 
-    return [...yearToTitleSet.entries()]
-      .map(([year, keys]) => ({ year, value: keys.size }))
+    return [...yearToItems.entries()]
+      .map(([year, bucket]) => ({
+        year,
+        value: bucket.size,
+        items: [...bucket.values()],
+      }))
       .sort((a, b) => a.year - b.year)
       .slice(-18);
   }, [filteredItems]);
@@ -3834,7 +3844,7 @@ export function StatisticsView({
               <svg viewBox="0 0 560 120" className="releaseLineSvg" role="img" aria-label="Release count by year">
                 <path d={releaseLinePath} className="releaseLinePath" />
                 {releaseLinePoints.map((point, index) => {
-                  const yearItems = filteredItems.filter((item) => item.releaseDate?.getUTCFullYear() === point.year);
+                  const yearItems = releaseYearSeries.find((entry) => entry.year === point.year)?.items || [];
                   const showValueLabel = index % 4 === 0;
                   const valueLabelX = Math.max(14, Math.min(546, point.x));
                   const valueLabelY = Math.max(12, point.y - (index === 0 ? 16 : 10));
@@ -5051,23 +5061,23 @@ export function StatisticsView({
           display: inline-flex;
           align-items: flex-end;
           justify-content: center;
-          width: auto;
+          width: 100%;
           height: 100%;
-          max-width: 100%;
-          max-height: 100%;
+          max-width: none;
+          max-height: none;
           line-height: 0;
           border-radius: 6px;
           overflow: visible;
         }
 
         .yearTopRatedCoverFrameAudiobook {
-          width: min(100%, clamp(110px, 10.5vw, 160px));
-          height: auto;
-          aspect-ratio: 1 / 1;
+          width: 100%;
+          height: 100%;
+          aspect-ratio: auto;
         }
 
         .yearTopRatedCoverFrameGame {
-          width: fit-content;
+          width: 100%;
           height: 100%;
         }
 
@@ -5104,11 +5114,12 @@ export function StatisticsView({
         }
 
         .yearTopRatedTile img {
-          width: auto;
-          height: auto;
+          width: 100%;
+          height: 100%;
           max-width: 100%;
           max-height: 100%;
           object-fit: contain;
+          object-position: center bottom;
           border-radius: 6px !important;
           border: none;
           background: transparent;
@@ -5118,14 +5129,14 @@ export function StatisticsView({
 
         .yearTopRatedCoverFrame img.yearTopRatedCoverAudiobook {
           width: 100%;
-          height: auto;
+          height: 100%;
           max-width: 100%;
           max-height: 100%;
-          aspect-ratio: 1 / 1;
+          aspect-ratio: auto;
         }
 
         .yearTopRatedCoverFrame img.yearTopRatedCoverGame {
-          width: auto;
+          width: 100%;
           height: 100%;
           max-width: 100%;
           max-height: 100%;
@@ -5160,7 +5171,7 @@ export function StatisticsView({
         .yearTopRatedStatsRow {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           gap: 6px;
           width: 100%;
           min-height: 14px;
@@ -5235,7 +5246,7 @@ export function StatisticsView({
 
         .yearTopRatedCoverTv {
           transform: scale(0.93);
-          transform-origin: top center;
+          transform-origin: bottom center;
         }
 
         .topRatedComparison {
@@ -5488,17 +5499,6 @@ export function StatisticsView({
           transform-origin: top center;
         }
 
-        .topRatedScoreBubble {
-          position: absolute;
-          top: 2px;
-          right: 5px;
-          z-index: 3;
-          font-size: 8px;
-          min-width: 22px;
-          text-align: center;
-          transform: none;
-        }
-
         .topRatedFallback {
           width: 100%;
           height: 100%;
@@ -5528,6 +5528,31 @@ export function StatisticsView({
           gap: 2px;
           justify-self: center;
           width: 100%;
+        }
+
+        .topRatedStatsRow {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 6px;
+          width: 100%;
+          min-height: 14px;
+          color: rgba(218, 234, 255, 0.9);
+          font-size: 10px;
+          line-height: 1.1;
+          font-weight: 900;
+        }
+
+        .topRatedRankText,
+        .topRatedScoreText {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .topRatedScoreText {
+          color: #f0b756;
         }
 
         .topRatedTilePoster figcaption {
@@ -5782,17 +5807,6 @@ export function StatisticsView({
           padding: 0;
         }
 
-        :global(.topRatedScoreBubble) {
-          position: absolute;
-          top: 2px;
-          right: 5px;
-          z-index: 3;
-          font-size: 8px;
-          min-width: 22px;
-          text-align: center;
-          transform: none;
-        }
-
         :global(.topRatedFallback) {
           width: 100%;
           height: 100%;
@@ -5813,6 +5827,31 @@ export function StatisticsView({
           gap: 2px;
           justify-self: center;
           width: 100%;
+        }
+
+        :global(.topRatedStatsRow) {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 6px;
+          width: 100%;
+          min-height: 14px;
+          color: rgba(218, 234, 255, 0.9);
+          font-size: 10px;
+          line-height: 1.1;
+          font-weight: 900;
+        }
+
+        :global(.topRatedRankText),
+        :global(.topRatedScoreText) {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        :global(.topRatedScoreText) {
+          color: #f0b756;
         }
 
         :global(.topRatedTilePoster figcaption) {
