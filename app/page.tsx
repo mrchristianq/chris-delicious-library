@@ -4902,6 +4902,7 @@ export default function Page() {
         const title = safeStr(item?.title || item?.Title);
 
         try {
+          console.log(`[Sync] Processing ${i + 1}/${itemsToSync.length}: ${title} (${mediaType})`);
           const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, imageType, true);
           const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
           details.push({ title, status: "success", message: `${typeLabel} backed up` });
@@ -4939,7 +4940,7 @@ export default function Page() {
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : "Unknown error";
           const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
-          console.error(`Failed to sync ${typeLabel} for ${title}:`, e);
+          console.error(`Failed to sync ${typeLabel} for ${title} (${i + 1}/${itemsToSync.length}):`, e);
           details.push({ title, status: "error", message: errorMsg });
           typeStats[mediaType].failed++;
           totalFailed++;
@@ -4955,19 +4956,23 @@ export default function Page() {
         });
         setSyncDetails(details);
 
-        // Add delay to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Add delay to avoid rate limiting (increased to 200ms for heavy loads)
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       setSyncResults({ succeeded: totalSucceeded, failed: totalFailed });
       setSyncStatus("complete");
       setSyncInProgress(false);
-      console.log(`✅ R2 SYNC COMPLETE: ${totalSucceeded} succeeded${totalFailed > 0 ? `, ${totalFailed} failed` : ""}`);
+      console.log(`✅ R2 SYNC COMPLETE: ${totalSucceeded} succeeded, ${totalFailed} failed out of ${itemsToSync.length} total`);
     } catch (e) {
-      console.error("Sync error:", e);
+      const errorMsg = e instanceof Error ? e.message : "Unknown error";
+      console.error("❌ R2 SYNC FAILED at outer level:", errorMsg, e);
       setSyncStatus("error");
       setSyncInProgress(false);
-      console.error("❌ R2 SYNC FAILED");
+      // Still report partial results if available
+      if (totalSucceeded > 0 || totalFailed > 0) {
+        setSyncResults({ succeeded: totalSucceeded, failed: totalFailed });
+      }
     }
   };
 
