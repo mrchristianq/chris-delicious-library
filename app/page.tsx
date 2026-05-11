@@ -6331,6 +6331,30 @@ export default function Page() {
         if (booksRes && booksRes.status === "fulfilled" && typeof booksRes.value === "string") {
           const parsed = Papa.parse<Row>(booksRes.value, { header: true, skipEmptyLines: true });
           const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+
+          // Debug: Log all column headers from books CSV
+          if (data.length > 0) {
+            const allColumns = Object.keys(data[0]);
+            console.log(`[CSV Load] Books columns (${allColumns.length} total):`, allColumns);
+
+            // Specifically check for R2/Cover related columns
+            const r2Related = allColumns.filter(col =>
+              col.toLowerCase().includes('r2') ||
+              col.toLowerCase().includes('cover') ||
+              col.toLowerCase().includes('backdrop')
+            );
+            console.log(`[CSV Load] R2/Cover/Backdrop columns:`, r2Related);
+
+            // Log sample values for those columns from first row
+            if (r2Related.length > 0) {
+              const sampleValues: Record<string, any> = {};
+              r2Related.forEach(col => {
+                sampleValues[col] = data[0][col];
+              });
+              console.log(`[CSV Load] Sample values from first book:`, sampleValues);
+            }
+          }
+
           setBookRows(data);
         } else if (booksRes && booksRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Books CSV: ${booksRes.reason?.message || String(booksRes.reason)}`);
@@ -6347,6 +6371,31 @@ export default function Page() {
         if (gamesRes && gamesRes.status === "fulfilled" && typeof gamesRes.value === "string") {
           const parsed = Papa.parse<Row>(gamesRes.value, { header: true, skipEmptyLines: true });
           const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+
+          // Debug: Log all column headers from games CSV
+          if (data.length > 0) {
+            const allColumns = Object.keys(data[0]);
+            console.log(`[CSV Load] Games columns (${allColumns.length} total):`, allColumns);
+
+            // Specifically check for R2/Cover related columns
+            const r2Related = allColumns.filter(col =>
+              col.toLowerCase().includes('r2') ||
+              col.toLowerCase().includes('cover') ||
+              col.toLowerCase().includes('backdrop') ||
+              col.toLowerCase().includes('poster')
+            );
+            console.log(`[CSV Load] R2/Cover/Backdrop/Poster columns:`, r2Related);
+
+            // Log sample values for those columns from first row
+            if (r2Related.length > 0) {
+              const sampleValues: Record<string, any> = {};
+              r2Related.forEach(col => {
+                sampleValues[col] = data[0][col];
+              });
+              console.log(`[CSV Load] Sample values from first game:`, sampleValues);
+            }
+          }
+
           setGameRows(data);
         } else if (gamesRes && gamesRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Games CSV: ${gamesRes.reason?.message || String(gamesRes.reason)}`);
