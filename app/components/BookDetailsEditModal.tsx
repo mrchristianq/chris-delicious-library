@@ -15,6 +15,7 @@ type BookDetailsEditModalProps = {
   onReplaceCover: (item: Record<string, unknown>, file: File) => Promise<void> | void;
   onCoverModeChange: (item: Record<string, unknown>, mode: "custom" | "default") => void;
   isNew?: boolean;
+  statusOptions?: Array<{ value: string; label: string }>;
 };
 
 type FieldDef = {
@@ -34,30 +35,34 @@ type DiffRow = {
 };
 
 const TYPE_OPTIONS = ["Book", "eBook", "Audiobook", "Hardcover", "Paperback"] as const;
-const STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
+const DEFAULT_STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
 const OWNERSHIP_OPTIONS = ["Own", "Borrowed", "Library", "Wishlisted"] as const;
 
-const BOOK_FIELDS: FieldDef[] = [
-  { key: "title",              label: "Title" },
-  { key: "subtitle",           label: "Subtitle" },
-  { key: "series",             label: "Series" },
-  { key: "author",             label: "Author" },
-  { key: "ownership",          label: "Ownership",         options: OWNERSHIP_OPTIONS },
-  { key: "type",               label: "Type",              options: TYPE_OPTIONS },
-  { key: "status",             label: "Status",            options: STATUS_OPTIONS },
-  { key: "completedDate",      label: "Completed Date",    isDate: true },
-  { key: "isbn",               label: "ISBN" },
-  { key: "releaseDate",        label: "Release Date",      isDate: true },
-  { key: "imageUrl",           label: "Image URL" },
-  { key: "customImageUrl",     label: "Custom URL" },
-  { key: "userRating",         label: "User Rating" },
-  { key: "myRating",           label: "My Rating" },
-  { key: "pages",              label: "Pages" },
-  { key: "audiobookDuration",  label: "Audiobook Duration" },
-  { key: "genre",              label: "Genre" },
-  { key: "tags",               label: "Tags" },
-  { key: "description",        label: "Description",       multiline: true },
-];
+// Helper function to create BOOK_FIELDS with dynamic status options
+const createBookFields = (statusOptions?: Array<{ value: string; label: string }>): FieldDef[] => {
+  const statusLabels = statusOptions?.map(s => s.label) || DEFAULT_STATUS_OPTIONS;
+  return [
+    { key: "title",              label: "Title" },
+    { key: "subtitle",           label: "Subtitle" },
+    { key: "series",             label: "Series" },
+    { key: "author",             label: "Author" },
+    { key: "ownership",          label: "Ownership",         options: OWNERSHIP_OPTIONS },
+    { key: "type",               label: "Type",              options: TYPE_OPTIONS },
+    { key: "status",             label: "Status",            options: statusLabels },
+    { key: "completedDate",      label: "Completed Date",    isDate: true },
+    { key: "isbn",               label: "ISBN" },
+    { key: "releaseDate",        label: "Release Date",      isDate: true },
+    { key: "imageUrl",           label: "Image URL" },
+    { key: "customImageUrl",     label: "Custom URL" },
+    { key: "userRating",         label: "User Rating" },
+    { key: "myRating",           label: "My Rating" },
+    { key: "pages",              label: "Pages" },
+    { key: "audiobookDuration",  label: "Audiobook Duration" },
+    { key: "genre",              label: "Genre" },
+    { key: "tags",               label: "Tags" },
+    { key: "description",        label: "Description",       multiline: true },
+  ];
+};
 
 const APPLE_BOOKS_SYNC_FIELDS: { key: string; label: string }[] = [
   { key: "title",       label: "Title" },
@@ -196,6 +201,7 @@ export function BookDetailsEditModal({
   onReplaceCover,
   onCoverModeChange,
   isNew,
+  statusOptions,
 }: BookDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -203,6 +209,9 @@ export function BookDetailsEditModal({
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<"custom" | "default">("default");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Create BOOK_FIELDS with dynamic status options
+  const BOOK_FIELDS = useMemo(() => createBookFields(statusOptions), [statusOptions]);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);

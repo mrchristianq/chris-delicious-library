@@ -17741,6 +17741,7 @@ export default function Page() {
         onCoverModeChange={handleBookDetailsCoverModeChange}
         popupCoverMode={bookDetailItem ? getPopupCoverModeForItem(bookDetailItem) : undefined}
         isReplacingCover={Boolean(bookDetailItem && uploadingCoverForKey === getMediaItemKey(bookDetailItem))}
+        statusOptions={smartListStatusOptionsByMedia.book}
         replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "book"}
       />
