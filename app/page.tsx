@@ -4670,9 +4670,17 @@ export default function Page() {
   // Silent automatic R2 sync for a single item (called after add/edit)
   const syncSingleItemCoverToR2 = async (item: any, mediaType: "book" | "movie" | "tv" | "game") => {
     try {
-      const defaultUrl = getDisplayCoverUrl(item, true);
-      if (!defaultUrl || safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
-        return; // No cover URL or already synced
+      const displayUrl = getDisplayCoverUrl(item, true);
+      const existingR2Url = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+
+      // Skip if no cover URL, but DO sync if cover has changed (displayUrl !== existingR2Url)
+      if (!displayUrl) {
+        return;
+      }
+
+      // If already synced and the cover hasn't changed, skip
+      if (existingR2Url && existingR2Url === displayUrl) {
+        return;
       }
 
       const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, "cover", true);

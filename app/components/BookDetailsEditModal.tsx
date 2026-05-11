@@ -36,7 +36,7 @@ type DiffRow = {
 
 const TYPE_OPTIONS = ["Book", "eBook", "Audiobook", "Hardcover", "Paperback"] as const;
 const DEFAULT_STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
-const OWNERSHIP_OPTIONS = ["Own", "Borrowed", "Library", "Wishlisted"] as const;
+const OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Ripped", "Borrowed"] as const;
 
 // Helper function to create BOOK_FIELDS with dynamic status options
 const createBookFields = (statusOptions?: Array<{ value: string; label: string }>): FieldDef[] => {
