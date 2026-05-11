@@ -4968,13 +4968,28 @@ export default function Page() {
       "cdlSyncedGameBackdrops";
     const cacheMap = readCache(cacheKey);
 
+    const makeItemKey = (item: any, mt: "book" | "movie" | "tv" | "game"): string => {
+      const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
+      if (mt === "book") {
+        const bookFormatToken = getBookFormatKeyToken(item);
+        return `book:${normalizedTitle}:${bookFormatToken}`;
+      }
+      if (mt === "game") {
+        const normalizedPlatform = normalizePlatformToken(
+          safeStr(item?.__renderPlatform || item?.platform || item?.Platform)
+        );
+        return `game:${normalizedTitle}:${normalizedPlatform || "default"}`;
+      }
+      return `${mt}:${normalizedTitle}`;
+    };
+
     const buildItem = (
       item: any,
       mediaType: "book" | "movie" | "tv" | "game",
       imageType: "cover" | "backdrop",
       sourceUrl: string
     ): SyncItem => {
-      const itemKey = getMediaItemKey(item);
+      const itemKey = makeItemKey(item, mediaType);
       const title = safeStr(item?.title || item?.Title || item?.name || item?.Name || "Untitled");
       const existingR2 = imageType === "cover"
         ? safeStr(item?.r2CoverUrl || item?.R2CoverUrl)
@@ -4989,19 +5004,20 @@ export default function Page() {
       return { item, itemKey, title, category, mediaType, imageType, sourceUrl, r2Url, status, lastSync };
     };
 
-    const getOverride = (item: any) => safeStr(coverOverrides[getMediaItemKey(item)]);
+    const getOverride = (item: any, mt: "book" | "movie" | "tv" | "game") =>
+      safeStr(coverOverrides[makeItemKey(item, mt)]);
     const getMoviePosterUrl = (item: any) =>
-      getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+      getOverride(item, "movie") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
     const getTvPosterUrl = (item: any) =>
-      getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+      getOverride(item, "tv") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
     const getGameCoverUrl = (item: any) =>
-      getOverride(item) || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
+      getOverride(item, "game") || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
     const getGameBackdropUrl = (item: any) =>
       safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screenshotsurl);
 
     let items: SyncItem[] = [];
     if (category === "book") {
-      items = bookRows.map((item) => buildItem(item, "book", "cover", getOverride(item) || getBookSourceUrlByMode(item)));
+      items = bookRows.map((item) => buildItem(item, "book", "cover", getOverride(item, "book") || getBookSourceUrlByMode(item)));
     } else if (category === "movieCover") {
       items = movieRows.map((item) => buildItem(item, "movie", "cover", getMoviePosterUrl(item)));
     } else if (category === "movieBackdrop") {
@@ -16641,7 +16657,7 @@ export default function Page() {
                           const btnLabel = isDone ? "Resync" : isMissing ? "No source" : isSyncing ? "Syncing…" : isError ? "Retry" : "Sync";
                           const btnDisabled = isMissing || isSyncing;
                           return (
-                            <div key={`${row.category}-${row.itemKey}`} style={{ display: "grid", gridTemplateColumns: "36px 2fr 0.8fr 1.1fr 2fr 2fr 0.9fr", gap: 8, padding: "10px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.1)", alignItems: "center" }}>
+                            <div key={`${row.category}-${row.itemKey}-${idx}`} style={{ display: "grid", gridTemplateColumns: "36px 2fr 0.8fr 1.1fr 2fr 2fr 0.9fr", gap: 8, padding: "10px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.1)", alignItems: "center" }}>
                               <div style={{ fontSize: 11, color: "#9aa3ad", fontWeight: 600, textAlign: "right" }}>{idx + 1}</div>
                               <div style={{ fontSize: 13, fontWeight: 600, color: "#1f2937", wordBreak: "break-word" }}>{row.title}</div>
                               <div style={{ fontSize: 12, fontWeight: 700, color: statusColor, textTransform: "capitalize" }}>{row.status}</div>
