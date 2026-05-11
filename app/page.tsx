@@ -3643,7 +3643,22 @@ export default function Page() {
       ? [overrideUrl, r2CoverUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
       : [overrideUrl, r2CoverUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
-    return uniqueCandidates.find((url) => !failed.has(url)) || "";
+    const result = uniqueCandidates.find((url) => !failed.has(url)) || "";
+
+    // Debug logging for audiobooks or when title contains "beacon"
+    const title = safeStr(item?.title || item?.Title).toLowerCase();
+    if (title.includes("beacon") || title.includes("midnight")) {
+      console.log(`[DisplayCoverUrl] ${title}:`, {
+        itemKey,
+        isBook,
+        overrideUrl: overrideUrl ? `[OVERRIDE] ${overrideUrl.substring(0, 50)}...` : "none",
+        r2CoverUrl: r2CoverUrl ? `[R2] ${r2CoverUrl.substring(0, 50)}...` : "none",
+        metadataUrl: metadataUrl ? `[METADATA] ${metadataUrl.substring(0, 50)}...` : "none",
+        selected: result ? result.substring(0, 50) + "..." : "none"
+      });
+    }
+
+    return result;
   };
 
   const getPopupCoverModeForItem = (item: any): "custom" | "default" | undefined => {
@@ -4180,6 +4195,10 @@ export default function Page() {
         if (isLegacyBookMediaKey(mediaKey)) return;
         if (mediaKey && value) {
           fromSheet[mediaKey] = value;
+          // Debug: log cover overrides from sheet
+          if (mediaKey.toLowerCase().includes("beacon") || mediaKey.toLowerCase().includes("midnight")) {
+            console.log(`[Settings Load] Found cover override for ${mediaKey}:`, value.substring(0, 50));
+          }
         }
       }
       if (key.startsWith("popupCoverMode:")) {
@@ -4203,7 +4222,12 @@ export default function Page() {
       }
     });
     if (Object.keys(fromSheet).length) {
-      setCoverOverrides((prev) => ({ ...fromSheet, ...prev }));
+      console.log(`[Settings Load] Updating coverOverrides with ${Object.keys(fromSheet).length} overrides from sheet:`, Object.keys(fromSheet));
+      setCoverOverrides((prev) => {
+        const next = { ...fromSheet, ...prev };
+        console.log(`[Settings Load] New coverOverrides:`, Object.keys(next));
+        return next;
+      });
     }
     if (Object.keys(popupModesFromSheet).length) {
       setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
@@ -4438,6 +4462,13 @@ export default function Page() {
     const itemKey = getMediaItemKey(item);
     const mediaType = getMediaType(item);
 
+    console.log(`[Cover Upload] Starting upload for "${safeStr(item?.title)}"`, {
+      itemKey,
+      mediaType,
+      type: item?.type || item?.Type,
+      imageUrl: item?.imageUrl || item?.ImageURL,
+    });
+
     setUploadingCoverForKey(itemKey);
     setCoverUploadError(null);
     try {
@@ -4485,8 +4516,11 @@ export default function Page() {
       }
 
       const uploadedUrl = String(payload.url);
+      console.log(`[Cover Upload] Got uploaded URL: ${uploadedUrl}`);
+
       setCoverOverrides((prev) => {
         const next = { ...prev, [itemKey]: uploadedUrl };
+        console.log(`[Cover Upload] Updated coverOverrides:`, { itemKey, uploadedUrl });
         try {
           localStorage.setItem("cdlCoverOverrides", JSON.stringify(next));
         } catch (e) {
@@ -4496,6 +4530,7 @@ export default function Page() {
       });
 
       if (settingsWriteUrl) {
+        console.log(`[Cover Upload] Saving to sheet with key: coverOverride:${itemKey}`);
         saveSettingToSheet(
           `coverOverride:${itemKey}`,
           uploadedUrl,
@@ -4504,10 +4539,21 @@ export default function Page() {
         );
       }
 
-      setModalItem((prev: any) => (prev ? buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl }) : prev));
+      setModalItem((prev: any) => {
+        if (!prev) return prev;
+        const updatedItem = buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl });
+        console.log(`[Cover Upload] Modal item updated, displayUrl:`, updatedItem?.posterUrl);
+        return updatedItem;
+      });
+
       setBookDetailItem((prev: any) => {
-        if (!prev || getMediaItemKey(prev) !== itemKey) return prev;
-        return buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl });
+        if (!prev) return prev;
+        const matchesKey = getMediaItemKey(prev) === itemKey;
+        console.log(`[Cover Upload] BookDetail itemKey match:`, matchesKey, getMediaItemKey(prev), itemKey);
+        if (!matchesKey) return prev;
+        const updatedItem = buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl });
+        console.log(`[Cover Upload] BookDetail item updated, displayUrl:`, updatedItem?.posterUrl);
+        return updatedItem;
       });
     } catch (e: any) {
       const msg = e?.message || "Failed to upload cover";
