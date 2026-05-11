@@ -5770,7 +5770,7 @@ export default function Page() {
     const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
     const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
 
-    if (safeStr(updates.posterUrl) || hasPendingOverride) {
+    if (safeStr(updates.posterUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "tv").catch(() => {
         // Silently ignore sync failures
       });
@@ -5906,7 +5906,7 @@ export default function Page() {
     const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
     const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
 
-    if (safeStr(updates.posterUrl) || hasPendingOverride) {
+    if (safeStr(updates.posterUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "movie").catch(() => {
         // Silently ignore sync failures
       });
@@ -6181,7 +6181,7 @@ export default function Page() {
     const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
     const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
 
-    if (safeStr(updates.coverUrl) || hasPendingOverride) {
+    if (safeStr(updates.coverUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "game").catch(() => {
         // Silently ignore sync failures
       });
