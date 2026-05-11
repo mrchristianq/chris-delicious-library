@@ -4902,11 +4902,25 @@ export default function Page() {
       }
 
       if (!filterByType || filterByType === "game") {
+        // Debug: log sample game data to see R2 column loading
+        if (gameRows.length > 0) {
+          const sampleGame = gameRows[0];
+          console.log(`[Sync] Sample game row keys:`, Object.keys(sampleGame).filter(k => k.toLowerCase().includes('r2') || k.toLowerCase().includes('cover') || k.toLowerCase().includes('backdrop')));
+          console.log(`[Sync] Sample R2 values:`, {
+            r2CoverUrl: sampleGame?.r2CoverUrl,
+            R2CoverUrl: sampleGame?.R2CoverUrl,
+            "R2 Cover Url": sampleGame?.["R2 Cover Url"],
+            r2BackdropUrl: sampleGame?.r2BackdropUrl,
+            R2BackdropUrl: sampleGame?.R2BackdropUrl,
+          });
+        }
+
         gameRows.forEach((item) => {
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
           const itemKey = getMediaItemKey(item);
+          const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
           // Skip if already synced in current session OR already has R2CoverUrl from sheet
-          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl) && !syncedGames.has(itemKey)) {
+          if (defaultUrl && !hasR2 && !syncedGames.has(itemKey)) {
             itemsToSync.push({ item, mediaType: "game", defaultUrl, imageType: "cover" as const });
           }
         });
