@@ -4667,6 +4667,49 @@ export default function Page() {
     return payload.url;
   };
 
+  // Silent automatic R2 sync for a single item (called after add/edit)
+  const syncSingleItemCoverToR2 = async (item: any, mediaType: "book" | "movie" | "tv" | "game") => {
+    try {
+      const defaultUrl = getDisplayCoverUrl(item, true);
+      if (!defaultUrl || safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
+        return; // No cover URL or already synced
+      }
+
+      const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, "cover", true);
+      const itemKey = getMediaItemKey(item);
+
+      // Update the local row data with the synced R2CoverUrl
+      if (mediaType === "book") {
+        setBookRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+          )
+        );
+      } else if (mediaType === "movie") {
+        setMovieRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+          )
+        );
+      } else if (mediaType === "tv") {
+        setTvRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+          )
+        );
+      } else if (mediaType === "game") {
+        setGameRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+          )
+        );
+      }
+    } catch (e) {
+      // Silently fail - don't interrupt the user's workflow
+      console.debug("Auto R2 sync failed (non-critical):", e);
+    }
+  };
+
   const syncCoversToR2 = async (filterByType?: "book" | "movie" | "tv" | "game") => {
     setSyncStatus("syncing");
     setSyncProgress({ current: 0, total: 0 });
@@ -5081,6 +5124,13 @@ export default function Page() {
 
     // Re-sync to pick up the canonical sheet values once published CSV refreshes.
     setRefreshNonce((n) => n + 1);
+
+    // Auto-sync cover to R2 in background (silently) if cover was added/updated
+    if (safeStr(updates.imageUrl) || safeStr(updates.customImageUrl)) {
+      syncSingleItemCoverToR2(item, "book").catch(() => {
+        // Silently ignore sync failures
+      });
+    }
   };
 
   const handleSaveShowEdits = async (item: any, updates: Record<string, string>) => {
@@ -5219,6 +5269,13 @@ export default function Page() {
     );
 
     setRefreshNonce((n) => n + 1);
+
+    // Auto-sync cover to R2 in background (silently) if cover was added/updated
+    if (safeStr(updates.posterUrl)) {
+      syncSingleItemCoverToR2(item, "tv").catch(() => {
+        // Silently ignore sync failures
+      });
+    }
   };
 
   const handleSaveMovieEdits = async (item: any, updates: Record<string, string>) => {
@@ -5339,6 +5396,13 @@ export default function Page() {
     );
 
     setRefreshNonce((n) => n + 1);
+
+    // Auto-sync cover to R2 in background (silently) if cover was added/updated
+    if (safeStr(updates.posterUrl)) {
+      syncSingleItemCoverToR2(item, "movie").catch(() => {
+        // Silently ignore sync failures
+      });
+    }
   };
 
   const handleSaveGameEdits = async (item: any, updates: Record<string, string>) => {
@@ -5598,6 +5662,13 @@ export default function Page() {
     );
 
     setRefreshNonce((n) => n + 1);
+
+    // Auto-sync cover to R2 in background (silently) if cover was added/updated
+    if (safeStr(updates.coverUrl)) {
+      syncSingleItemCoverToR2(item, "game").catch(() => {
+        // Silently ignore sync failures
+      });
+    }
   };
 
   const handleDeleteLibraryItem = async (item: any) => {
@@ -5907,7 +5978,11 @@ export default function Page() {
     setMovieRows((prev) => [...prev, row]);
     setMovieDetailsEditOpen(false);
     openNewlyAddedItemFromRow("movie", row);
-  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
+    // Auto-sync cover to R2 in background (silently)
+    syncSingleItemCoverToR2(row, "movie").catch(() => {
+      // Silently ignore sync failures
+    });
+  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
 
   const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
     if (!showsWriteUrl) throw new Error("Shows write URL is not configured.");
@@ -5930,7 +6005,11 @@ export default function Page() {
     setTvRows((prev) => [...prev, row]);
     setTvDetailsEditOpen(false);
     openNewlyAddedItemFromRow("tv", row);
-  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
+    // Auto-sync cover to R2 in background (silently)
+    syncSingleItemCoverToR2(row, "tv").catch(() => {
+      // Silently ignore sync failures
+    });
+  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
 
   const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
     if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
@@ -5952,7 +6031,11 @@ export default function Page() {
     setBookRows((prev) => [...prev, row]);
     setBookDetailsEditOpen(false);
     openNewlyAddedItemFromRow("book", row);
-  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
+    // Auto-sync cover to R2 in background (silently)
+    syncSingleItemCoverToR2(row, "book").catch(() => {
+      // Silently ignore sync failures
+    });
+  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
 
   const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>) => {
     if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
@@ -5983,7 +6066,11 @@ export default function Page() {
     setGameRows((prev) => [...prev, row]);
     setGameDetailsEditOpen(false);
     openNewlyAddedItemFromRow("game", row);
-  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow]);
+    // Auto-sync cover to R2 in background (silently)
+    syncSingleItemCoverToR2(row, "game").catch(() => {
+      // Silently ignore sync failures
+    });
+  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
