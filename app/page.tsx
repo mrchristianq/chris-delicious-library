@@ -3623,9 +3623,12 @@ export default function Page() {
     const failed = skipFailedFilter ? new Set<string>() : new Set(failedCoverUrls[itemKey] || []);
     const coverMode = getPopupCoverModeForItem(item);
     const isBook = getMediaType(item) === "book";
+    const isGame = getMediaType(item) === "game";
     let metadataUrl =
       isBook
         ? getBookSourceUrlByMode(item, coverMode)
+        : isGame
+        ? safeStr(item?.CoverURL || item?.coverUrl || item?.["Cover URL"] || item?.metadataCoverUrl)
         : safeStr(item?.metadataCoverUrl);
 
     // Fallback for books/audiobooks: if metadataUrl is empty, directly check for ImageURL field
@@ -4838,7 +4841,7 @@ export default function Page() {
         if (moviesCached) {
           Object.keys(JSON.parse(moviesCached)).forEach(key => syncedMovies.add(key));
         }
-        const tvCached = localStorage.getItem("cdlSyncedTVCovers");
+        const tvCached = localStorage.getItem("cdlSyncedTvCovers");
         if (tvCached) {
           Object.keys(JSON.parse(tvCached)).forEach(key => syncedTV.add(key));
         }
