@@ -5040,6 +5040,15 @@ export default function Page() {
       throw new Error("Unable to identify this book row to update.");
     }
 
+    // If there's a pending override, add it to updates so it gets persisted to the sheet
+    const itemKey = getMediaItemKey(item);
+    const activeOverride = safeStr(coverOverrides[itemKey]);
+    const finalUpdates = { ...updates };
+    if (activeOverride && !safeStr(updates.customImageUrl)) {
+      console.log(`[Save] Adding pending override to CustomURL for ${itemKey}:`, activeOverride.substring(0, 50));
+      finalUpdates.customImageUrl = activeOverride;
+    }
+
     const payload = {
       action: "updateBook",
       match: {
@@ -5049,30 +5058,30 @@ export default function Page() {
         title: matchTitle,
       },
       updates: {
-        Title: safeStr(updates.title),
-        Subtitle: safeStr(updates.subtitle),
-        Series: safeStr(updates.series),
-        Author: safeStr(updates.author),
-        Ownership: safeStr(updates.ownership),
-        Type: safeStr(updates.type),
-        Status: safeStr(updates.status),
-        "Completed Date": safeStr(updates.completedDate),
-        CompletedDate: safeStr(updates.completedDate),
-        "Date Completed": safeStr(updates.completedDate),
-        isbn: safeStr(updates.isbn),
-        ReleaseDate: safeStr(updates.releaseDate),
-        description: safeStr(updates.description),
-        ImageURL: safeStr(updates.imageUrl),
-        CustomURL: safeStr(updates.customImageUrl),
-        CustomImageURL: safeStr(updates.customImageUrl),
-        userRating: safeStr(updates.userRating),
-        "My Rating": safeStr(updates.myRating),
-        pages: safeStr(updates.pages),
-        audiobookDuration: safeStr(updates.audiobookDuration),
-        genre: safeStr(updates.genre),
-        tags: safeStr(updates.tags),
-        OpenLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
-        GoogleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+        Title: safeStr(finalUpdates.title),
+        Subtitle: safeStr(finalUpdates.subtitle),
+        Series: safeStr(finalUpdates.series),
+        Author: safeStr(finalUpdates.author),
+        Ownership: safeStr(finalUpdates.ownership),
+        Type: safeStr(finalUpdates.type),
+        Status: safeStr(finalUpdates.status),
+        "Completed Date": safeStr(finalUpdates.completedDate),
+        CompletedDate: safeStr(finalUpdates.completedDate),
+        "Date Completed": safeStr(finalUpdates.completedDate),
+        isbn: safeStr(finalUpdates.isbn),
+        ReleaseDate: safeStr(finalUpdates.releaseDate),
+        description: safeStr(finalUpdates.description),
+        ImageURL: safeStr(finalUpdates.imageUrl),
+        CustomURL: safeStr(finalUpdates.customImageUrl),
+        CustomImageURL: safeStr(finalUpdates.customImageUrl),
+        userRating: safeStr(finalUpdates.userRating),
+        "My Rating": safeStr(finalUpdates.myRating),
+        pages: safeStr(finalUpdates.pages),
+        audiobookDuration: safeStr(finalUpdates.audiobookDuration),
+        genre: safeStr(finalUpdates.genre),
+        tags: safeStr(finalUpdates.tags),
+        OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
+        GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
       },
     };
 
@@ -5086,28 +5095,28 @@ export default function Page() {
       if (!prev) return prev;
       const nextItem = {
         ...prev,
-        title: safeStr(updates.title) || prev.title,
-        subtitle: safeStr(updates.subtitle),
-        series: safeStr(updates.series),
-        author: safeStr(updates.author),
-        ownership: safeStr(updates.ownership),
-        types: safeStr(updates.type),
-        status: safeStr(updates.status),
-        completedDate: safeStr(updates.completedDate),
-        isbn: safeStr(updates.isbn),
-        releaseDate: safeStr(updates.releaseDate),
-        description: safeStr(updates.description),
-        imageUrl: safeStr(updates.imageUrl),
-        customImageUrl: safeStr(updates.customImageUrl),
-        userRating: safeStr(updates.userRating),
-        myRating: safeStr(updates.myRating),
-        pages: safeStr(updates.pages),
-        audiobookDuration: safeStr(updates.audiobookDuration),
-        categories: safeStr(updates.genre),
-        genre: safeStr(updates.genre),
-        tags: safeStr(updates.tags),
-        openLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
-        googleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+        title: safeStr(finalUpdates.title) || prev.title,
+        subtitle: safeStr(finalUpdates.subtitle),
+        series: safeStr(finalUpdates.series),
+        author: safeStr(finalUpdates.author),
+        ownership: safeStr(finalUpdates.ownership),
+        types: safeStr(finalUpdates.type),
+        status: safeStr(finalUpdates.status),
+        completedDate: safeStr(finalUpdates.completedDate),
+        isbn: safeStr(finalUpdates.isbn),
+        releaseDate: safeStr(finalUpdates.releaseDate),
+        description: safeStr(finalUpdates.description),
+        imageUrl: safeStr(finalUpdates.imageUrl),
+        customImageUrl: safeStr(finalUpdates.customImageUrl),
+        userRating: safeStr(finalUpdates.userRating),
+        myRating: safeStr(finalUpdates.myRating),
+        pages: safeStr(finalUpdates.pages),
+        audiobookDuration: safeStr(finalUpdates.audiobookDuration),
+        categories: safeStr(finalUpdates.genre),
+        genre: safeStr(finalUpdates.genre),
+        tags: safeStr(finalUpdates.tags),
+        openLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
+        googleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
       };
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
@@ -5133,28 +5142,28 @@ export default function Page() {
 
       const nextItem = {
         ...prev,
-        title: safeStr(updates.title) || prev.title,
-        subtitle: safeStr(updates.subtitle),
-        series: safeStr(updates.series),
-        author: safeStr(updates.author),
-        ownership: safeStr(updates.ownership),
-        types: safeStr(updates.type),
-        status: safeStr(updates.status),
-        completedDate: safeStr(updates.completedDate),
-        isbn: safeStr(updates.isbn),
-        releaseDate: safeStr(updates.releaseDate),
-        description: safeStr(updates.description),
-        imageUrl: safeStr(updates.imageUrl),
-        customImageUrl: safeStr(updates.customImageUrl),
-        userRating: safeStr(updates.userRating),
-        myRating: safeStr(updates.myRating),
-        pages: safeStr(updates.pages),
-        audiobookDuration: safeStr(updates.audiobookDuration),
-        categories: safeStr(updates.genre),
-        genre: safeStr(updates.genre),
-        tags: safeStr(updates.tags),
-        openLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
-        googleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+        title: safeStr(finalUpdates.title) || prev.title,
+        subtitle: safeStr(finalUpdates.subtitle),
+        series: safeStr(finalUpdates.series),
+        author: safeStr(finalUpdates.author),
+        ownership: safeStr(finalUpdates.ownership),
+        types: safeStr(finalUpdates.type),
+        status: safeStr(finalUpdates.status),
+        completedDate: safeStr(finalUpdates.completedDate),
+        isbn: safeStr(finalUpdates.isbn),
+        releaseDate: safeStr(finalUpdates.releaseDate),
+        description: safeStr(finalUpdates.description),
+        imageUrl: safeStr(finalUpdates.imageUrl),
+        customImageUrl: safeStr(finalUpdates.customImageUrl),
+        userRating: safeStr(finalUpdates.userRating),
+        myRating: safeStr(finalUpdates.myRating),
+        pages: safeStr(finalUpdates.pages),
+        audiobookDuration: safeStr(finalUpdates.audiobookDuration),
+        categories: safeStr(finalUpdates.genre),
+        genre: safeStr(finalUpdates.genre),
+        tags: safeStr(finalUpdates.tags),
+        openLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
+        googleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
       };
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
@@ -5165,7 +5174,7 @@ export default function Page() {
         const rowOpenLibraryWorkKey = safeStr(row["OpenLibraryWorkKey"] || row["openLibraryWorkKey"]);
         const rowIsbn = safeStr(row["ISBN"] || row["isbn"]);
         const rowTitle = safeStr(row["Title"]);
-        const updatedTitle = safeStr(updates.title);
+        const updatedTitle = safeStr(finalUpdates.title);
         const sameItem =
           (matchGoogleBooksVolumeId && rowGoogleBooksVolumeId === matchGoogleBooksVolumeId) ||
           (fallbackGoogleBooksVolumeId && rowGoogleBooksVolumeId === fallbackGoogleBooksVolumeId) ||
@@ -5181,30 +5190,30 @@ export default function Page() {
         return {
           ...row,
           Title: updatedTitle || rowTitle,
-          Subtitle: safeStr(updates.subtitle),
-          Series: safeStr(updates.series),
-          Author: safeStr(updates.author),
-          Ownership: safeStr(updates.ownership),
-          Type: safeStr(updates.type),
-          Status: safeStr(updates.status),
-          "Completed Date": safeStr(updates.completedDate),
-          CompletedDate: safeStr(updates.completedDate),
-          "Date Completed": safeStr(updates.completedDate),
-          isbn: safeStr(updates.isbn),
-          ReleaseDate: safeStr(updates.releaseDate),
-          description: safeStr(updates.description),
-          ImageURL: safeStr(updates.imageUrl),
-          CustomURL: safeStr(updates.customImageUrl),
-          CustomImageURL: safeStr(updates.customImageUrl),
-          userRating: safeStr(updates.userRating),
-          "My Rating": safeStr(updates.myRating),
-          pages: safeStr(updates.pages),
-          audiobookDuration: safeStr(updates.audiobookDuration),
-          genre: safeStr(updates.genre),
-          tags: safeStr(updates.tags),
-          Tag: safeStr(updates.tags),
-          OpenLibraryWorkKey: safeStr(updates.openLibraryWorkKey),
-          GoogleBooksVolumeId: safeStr(updates.googleBooksVolumeId),
+          Subtitle: safeStr(finalUpdates.subtitle),
+          Series: safeStr(finalUpdates.series),
+          Author: safeStr(finalUpdates.author),
+          Ownership: safeStr(finalUpdates.ownership),
+          Type: safeStr(finalUpdates.type),
+          Status: safeStr(finalUpdates.status),
+          "Completed Date": safeStr(finalUpdates.completedDate),
+          CompletedDate: safeStr(finalUpdates.completedDate),
+          "Date Completed": safeStr(finalUpdates.completedDate),
+          isbn: safeStr(finalUpdates.isbn),
+          ReleaseDate: safeStr(finalUpdates.releaseDate),
+          description: safeStr(finalUpdates.description),
+          ImageURL: safeStr(finalUpdates.imageUrl),
+          CustomURL: safeStr(finalUpdates.customImageUrl),
+          CustomImageURL: safeStr(finalUpdates.customImageUrl),
+          userRating: safeStr(finalUpdates.userRating),
+          "My Rating": safeStr(finalUpdates.myRating),
+          pages: safeStr(finalUpdates.pages),
+          audiobookDuration: safeStr(finalUpdates.audiobookDuration),
+          genre: safeStr(finalUpdates.genre),
+          tags: safeStr(finalUpdates.tags),
+          Tag: safeStr(finalUpdates.tags),
+          OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
+          GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
         };
       })
     );
@@ -5215,12 +5224,8 @@ export default function Page() {
     // Auto-sync cover to R2 in background (silently) if:
     // - imageUrl or customImageUrl were updated, OR
     // - there's a cover override that hasn't been synced to R2 yet
-    const itemKey = getMediaItemKey(item);
-    const activeOverride = safeStr(coverOverrides[itemKey]);
-    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
-    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
-
-    if (safeStr(updates.imageUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
+    // Note: finalUpdates includes the override if it was added above
+    if (safeStr(finalUpdates.imageUrl) || safeStr(finalUpdates.customImageUrl)) {
       syncSingleItemCoverToR2(item, "book").catch(() => {
         // Silently ignore sync failures
       });
