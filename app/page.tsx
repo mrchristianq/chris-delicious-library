@@ -4920,15 +4920,21 @@ export default function Page() {
           });
         }
 
-        gameRows.forEach((item) => {
+        let gameCoversFound = 0;
+        gameRows.forEach((item, idx) => {
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
           const itemKey = getMediaItemKey(item);
           const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+          if (idx < 2) {
+            console.log(`[Sync] Game ${idx} cover: defaultUrl=${defaultUrl ? "YES" : "EMPTY"}, CoverURL=${item?.CoverURL || "MISSING"}, hasR2=${hasR2}`);
+          }
           // Skip if already synced in current session OR already has R2CoverUrl from sheet
           if (defaultUrl && !hasR2 && !syncedGames.has(itemKey)) {
+            gameCoversFound++;
             itemsToSync.push({ item, mediaType: "game", defaultUrl, imageType: "cover" as const });
           }
         });
+        console.log(`[Sync] Found ${gameCoversFound} game covers to sync`);
       }
 
       // Games - backdrops (screenshots)
