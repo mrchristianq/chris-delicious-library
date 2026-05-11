@@ -4824,6 +4824,32 @@ export default function Page() {
       // Collect all items that need R2 backups
       const itemsToSync: Array<{ item: any; mediaType: "book" | "movie" | "tv" | "game"; defaultUrl: string; imageType?: "cover" | "backdrop" }> = [];
 
+      // Load synced items from cache to avoid re-syncing after page refresh
+      const syncedBooks = new Set<string>();
+      const syncedMovies = new Set<string>();
+      const syncedTV = new Set<string>();
+      try {
+        const booksCached = localStorage.getItem("cdlSyncedBookCovers");
+        if (booksCached) {
+          JSON.parse(booksCached);
+          Object.keys(JSON.parse(booksCached)).forEach(key => syncedBooks.add(key));
+        }
+        const moviesCached = localStorage.getItem("cdlSyncedMovieCovers");
+        if (moviesCached) {
+          Object.keys(JSON.parse(moviesCached)).forEach(key => syncedMovies.add(key));
+        }
+        const tvCached = localStorage.getItem("cdlSyncedTVCovers");
+        if (tvCached) {
+          Object.keys(JSON.parse(tvCached)).forEach(key => syncedTV.add(key));
+        }
+        const totalCached = syncedBooks.size + syncedMovies.size + syncedTV.size;
+        if (totalCached > 0) {
+          console.log(`[Sync] Loaded ${totalCached} previously synced covers from cache (books: ${syncedBooks.size}, movies: ${syncedMovies.size}, tv: ${syncedTV.size})`);
+        }
+      } catch (e) {
+        console.warn("Failed to load synced covers cache:", e);
+      }
+
       // Books
       if (!filterByType || filterByType === "book") {
         bookRows.forEach((item) => {
@@ -4831,8 +4857,9 @@ export default function Page() {
           const mediaType = getMediaType(item);
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
           const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+          const itemKey = getMediaItemKey(item);
 
-          if (defaultUrl && !hasR2) {
+          if (defaultUrl && !hasR2 && !syncedBooks.has(itemKey)) {
             itemsToSync.push({ item, mediaType: "book", defaultUrl });
           }
         });
@@ -4842,7 +4869,8 @@ export default function Page() {
       if (!filterByType || filterByType === "movie") {
         movieRows.forEach((item) => {
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
+          const itemKey = getMediaItemKey(item);
+          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl) && !syncedMovies.has(itemKey)) {
             itemsToSync.push({ item, mediaType: "movie", defaultUrl });
           }
         });
@@ -4852,17 +4880,33 @@ export default function Page() {
       if (!filterByType || filterByType === "tv") {
         tvRows.forEach((item) => {
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
+          const itemKey = getMediaItemKey(item);
+          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl) && !syncedTV.has(itemKey)) {
             itemsToSync.push({ item, mediaType: "tv", defaultUrl });
           }
         });
       }
 
       // Games - covers
+      // Load locally synced items from cache to avoid re-syncing after page refresh
+      const syncedGames = new Set<string>();
+      try {
+        const cached = localStorage.getItem("cdlSyncedGameCovers");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          Object.keys(parsed).forEach(key => syncedGames.add(key));
+          console.log(`[Sync] Loaded ${syncedGames.size} previously synced game covers from cache`);
+        }
+      } catch (e) {
+        console.warn("Failed to load synced games cache:", e);
+      }
+
       if (!filterByType || filterByType === "game") {
         gameRows.forEach((item) => {
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl)) {
+          const itemKey = getMediaItemKey(item);
+          // Skip if already synced in current session OR already has R2CoverUrl from sheet
+          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl) && !syncedGames.has(itemKey)) {
             itemsToSync.push({ item, mediaType: "game", defaultUrl, imageType: "cover" as const });
           }
         });
@@ -4912,6 +4956,8 @@ export default function Page() {
           // Update the local row data to reflect the synced r2CoverUrl
           const fieldName = imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
           const itemKey = getMediaItemKey(item);
+          const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}Covers`;
+
           if (mediaType === "book") {
             setBookRows((prev) =>
               prev.map((row) =>
@@ -4936,6 +4982,17 @@ export default function Page() {
                 getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
               )
             );
+          }
+
+          // Cache the synced cover to avoid re-syncing after page refresh (for covers, not backdrops)
+          if (imageType === "cover") {
+            try {
+              const cached = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+              cached[itemKey] = r2Url;
+              localStorage.setItem(cacheKey, JSON.stringify(cached));
+            } catch (e) {
+              console.warn(`Failed to cache synced ${mediaType} cover:`, e);
+            }
           }
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : "Unknown error";
