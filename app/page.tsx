@@ -4956,19 +4956,19 @@ export default function Page() {
       return { item, itemKey, title, category, mediaType, imageType, sourceUrl, r2Url, status, lastSync };
     };
 
+    const getOverride = (item: any) => safeStr(coverOverrides[getMediaItemKey(item)]);
     const getMoviePosterUrl = (item: any) =>
-      safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+      getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
     const getTvPosterUrl = (item: any) =>
-      safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
-
+      getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
     const getGameCoverUrl = (item: any) =>
-      safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
+      getOverride(item) || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
     const getGameBackdropUrl = (item: any) =>
       safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screenshotsurl);
 
     let items: SyncItem[] = [];
     if (category === "book") {
-      items = bookRows.map((item) => buildItem(item, "book", "cover", getBookSourceUrlByMode(item)));
+      items = bookRows.map((item) => buildItem(item, "book", "cover", getOverride(item) || getBookSourceUrlByMode(item)));
     } else if (category === "movieCover") {
       items = movieRows.map((item) => buildItem(item, "movie", "cover", getMoviePosterUrl(item)));
     } else if (category === "movieBackdrop") {
@@ -4983,7 +4983,7 @@ export default function Page() {
       items = gameRows.map((item) => buildItem(item, "game", "backdrop", getGameBackdropUrl(item)));
     }
     setSyncItems(items);
-  }, [bookRows, movieRows, tvRows, gameRows, getDisplayCoverUrl, getDisplayBackdropUrl]);
+  }, [bookRows, movieRows, tvRows, gameRows, coverOverrides, getDisplayBackdropUrl]);
 
   const syncCoversToR2 = async (category?: SyncCategory) => {
     setSelectedSyncCategory(category ?? null);
@@ -5071,14 +5071,15 @@ export default function Page() {
 
     const itemsToSync: SyncItem[] = [];
     const addItemsForCategory = (categoryKey: SyncCategory) => {
+      const getOverride = (item: any) => safeStr(coverOverrides[getMediaItemKey(item)]);
       if (categoryKey === "book") {
         bookRows.forEach((item) => {
-          const sourceUrl = getBookSourceUrlByMode(item);
+          const sourceUrl = getOverride(item) || getBookSourceUrlByMode(item);
           itemsToSync.push(makeSyncItem(item, "book", categoryKey, "cover", sourceUrl, cachedBookCovers));
         });
       } else if (categoryKey === "movieCover") {
         movieRows.forEach((item) => {
-          const sourceUrl = safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+          const sourceUrl = getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
           itemsToSync.push(makeSyncItem(item, "movie", categoryKey, "cover", sourceUrl, cachedMovieCovers));
         });
       } else if (categoryKey === "movieBackdrop") {
@@ -5088,7 +5089,7 @@ export default function Page() {
         });
       } else if (categoryKey === "tvCover") {
         tvRows.forEach((item) => {
-          const sourceUrl = safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+          const sourceUrl = getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
           itemsToSync.push(makeSyncItem(item, "tv", categoryKey, "cover", sourceUrl, cachedTvCovers));
         });
       } else if (categoryKey === "tvBackdrop") {
@@ -5098,7 +5099,7 @@ export default function Page() {
         });
       } else if (categoryKey === "gameCover") {
         gameRows.forEach((item) => {
-          const sourceUrl = safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
+          const sourceUrl = getOverride(item) || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
           itemsToSync.push(makeSyncItem(item, "game", categoryKey, "cover", sourceUrl, cachedGameCovers));
         });
       } else if (categoryKey === "gameBackdrop") {
