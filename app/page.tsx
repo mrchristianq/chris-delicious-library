@@ -15027,20 +15027,26 @@ export default function Page() {
                                      mediaType === "tv" ? tvRows.filter(r => safeStr(r?.title || r?.Title)).length :
                                      gameRows.filter(r => safeStr(r?.title || r?.Title)).length;
 
-                        // Count synced items - prefer CSV data (r2CoverUrl field) but fall back to localStorage
+                        // Count synced items from localStorage (persists across sessions)
+                        // Fall back to CSV data if localStorage is empty
                         let csvSynced = mediaType === "book" ? bookRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
                                         mediaType === "movie" ? movieRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
                                         mediaType === "tv" ? tvRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
                                         gameRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length;
 
-                        // If CSV doesn't have R2 data, count from localStorage cache
                         let synced = csvSynced;
-                        if (csvSynced === 0 && typeof localStorage !== "undefined") {
+
+                        // Prefer localStorage count (persists across browser sessions)
+                        if (typeof localStorage !== "undefined") {
                           const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}Covers`;
                           try {
                             const cached = localStorage.getItem(cacheKey);
                             if (cached) {
-                              synced = Object.keys(JSON.parse(cached)).length;
+                              const localSynced = Object.keys(JSON.parse(cached)).length;
+                              // Use local cache if it has more items than CSV (more reliable across sessions)
+                              if (localSynced > csvSynced) {
+                                synced = localSynced;
+                              }
                             }
                           } catch (e) {
                             // Ignore cache read errors
