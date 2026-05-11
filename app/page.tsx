@@ -4812,8 +4812,11 @@ export default function Page() {
             }
           : {};
         const lowerCamelFieldName = fieldName ? fieldName.charAt(0).toLowerCase() + fieldName.slice(1) : fieldName;
+        const syncedAtField = imageType === "backdrop" ? "R2BackdropSyncedAt" : "R2CoverSyncedAt";
+        const syncedAtValue = new Date().toISOString();
         const updates: Record<string, string> = {
           [fieldName]: payload.url,
+          [syncedAtField]: syncedAtValue,
         };
         if (lowerCamelFieldName && lowerCamelFieldName !== fieldName) {
           updates[lowerCamelFieldName] = payload.url;
@@ -4945,7 +4948,10 @@ export default function Page() {
         : safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl);
       const cachedEntry = cacheMap[itemKey];
       const r2Url = existingR2 || (cachedEntry ? safeStr(cachedEntry.url) : "");
-      const lastSync = cachedEntry?.lastSyncedAt || undefined;
+      const sheetSyncedAt = imageType === "cover"
+        ? safeStr(item?.R2CoverSyncedAt || item?.r2CoverSyncedAt)
+        : safeStr(item?.R2BackdropSyncedAt || item?.r2BackdropSyncedAt);
+      const lastSync = sheetSyncedAt || cachedEntry?.lastSyncedAt || undefined;
       const status: SyncStatus = r2Url ? "synced" : sourceUrl ? "pending" : "missing";
       return { item, itemKey, title, category, mediaType, imageType, sourceUrl, r2Url, status, lastSync };
     };
@@ -4955,9 +4961,14 @@ export default function Page() {
     const getTvPosterUrl = (item: any) =>
       safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
 
+    const getGameCoverUrl = (item: any) =>
+      safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
+    const getGameBackdropUrl = (item: any) =>
+      safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screenshotsurl);
+
     let items: SyncItem[] = [];
     if (category === "book") {
-      items = bookRows.map((item) => buildItem(item, "book", "cover", getDisplayCoverUrl(item, true)));
+      items = bookRows.map((item) => buildItem(item, "book", "cover", getBookSourceUrlByMode(item)));
     } else if (category === "movieCover") {
       items = movieRows.map((item) => buildItem(item, "movie", "cover", getMoviePosterUrl(item)));
     } else if (category === "movieBackdrop") {
@@ -4967,9 +4978,9 @@ export default function Page() {
     } else if (category === "tvBackdrop") {
       items = tvRows.map((item) => buildItem(item, "tv", "backdrop", getDisplayBackdropUrl(item)));
     } else if (category === "gameCover") {
-      items = gameRows.map((item) => buildItem(item, "game", "cover", getDisplayCoverUrl(item, true)));
+      items = gameRows.map((item) => buildItem(item, "game", "cover", getGameCoverUrl(item)));
     } else {
-      items = gameRows.map((item) => buildItem(item, "game", "backdrop", safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl)));
+      items = gameRows.map((item) => buildItem(item, "game", "backdrop", getGameBackdropUrl(item)));
     }
     setSyncItems(items);
   }, [bookRows, movieRows, tvRows, gameRows, getDisplayCoverUrl, getDisplayBackdropUrl]);
@@ -5039,7 +5050,8 @@ export default function Page() {
       const existingR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.r2BackdropUrl || item?.R2BackdropUrl);
       const cachedEntry = cacheMap[itemKey];
       const r2Url = existingR2 || (cachedEntry ? safeStr(cachedEntry.url) : "");
-      const lastSync = cachedEntry?.lastSyncedAt || undefined;
+      const sheetSyncedAt = safeStr(item?.R2CoverSyncedAt || item?.r2CoverSyncedAt || item?.R2BackdropSyncedAt || item?.r2BackdropSyncedAt);
+      const lastSync = sheetSyncedAt || cachedEntry?.lastSyncedAt || undefined;
       const hasSource = Boolean(sourceUrl);
       const hasR2 = Boolean(r2Url);
       const status: SyncStatus = hasR2 ? "synced" : hasSource ? "pending" : "missing";
@@ -5061,7 +5073,7 @@ export default function Page() {
     const addItemsForCategory = (categoryKey: SyncCategory) => {
       if (categoryKey === "book") {
         bookRows.forEach((item) => {
-          const sourceUrl = getDisplayCoverUrl(item, true);
+          const sourceUrl = getBookSourceUrlByMode(item);
           itemsToSync.push(makeSyncItem(item, "book", categoryKey, "cover", sourceUrl, cachedBookCovers));
         });
       } else if (categoryKey === "movieCover") {
@@ -5086,7 +5098,7 @@ export default function Page() {
         });
       } else if (categoryKey === "gameCover") {
         gameRows.forEach((item) => {
-          const sourceUrl = getDisplayCoverUrl(item, true);
+          const sourceUrl = safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
           itemsToSync.push(makeSyncItem(item, "game", categoryKey, "cover", sourceUrl, cachedGameCovers));
         });
       } else if (categoryKey === "gameBackdrop") {
@@ -5117,14 +5129,21 @@ export default function Page() {
     };
 
     const pendingQueue = itemsToSync.filter((item) => item.status !== "synced" && item.status !== "missing");
+    const alreadySynced: Record<SyncCategory, number> = {
+      book: 0, movieCover: 0, movieBackdrop: 0,
+      tvCover: 0, tvBackdrop: 0, gameCover: 0, gameBackdrop: 0,
+    };
+    itemsToSync.forEach(({ category: syncCategory, status }) => {
+      if (status === "synced" || status === "success") alreadySynced[syncCategory]++;
+    });
     const categoryStats: Record<SyncCategory, { current: number; total: number; succeeded: number; failed: number }> = {
-      book: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      movieCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      movieBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      tvCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      tvBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      gameCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      gameBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      book: { current: alreadySynced.book, total: 0, succeeded: 0, failed: 0 },
+      movieCover: { current: alreadySynced.movieCover, total: 0, succeeded: 0, failed: 0 },
+      movieBackdrop: { current: alreadySynced.movieBackdrop, total: 0, succeeded: 0, failed: 0 },
+      tvCover: { current: alreadySynced.tvCover, total: 0, succeeded: 0, failed: 0 },
+      tvBackdrop: { current: alreadySynced.tvBackdrop, total: 0, succeeded: 0, failed: 0 },
+      gameCover: { current: alreadySynced.gameCover, total: 0, succeeded: 0, failed: 0 },
+      gameBackdrop: { current: alreadySynced.gameBackdrop, total: 0, succeeded: 0, failed: 0 },
     };
 
     itemsToSync.forEach(({ category: syncCategory }) => {
