@@ -1597,11 +1597,6 @@ function getBookCustomUrl(item: any): string {
 }
 
 function getBookImageUrl(item: any): string {
-  const title = safeStr(item?.title || item?.Title);
-  const titleLower = title.toLowerCase().trim();
-  const isDebugItem = titleLower.includes("malibu burning") || titleLower.includes("lost hills") ||
-                      title.includes("Final Empire") || title.includes("Well of Ascention") || title.includes("Hero of Ages");
-
   // Check all possible field name variations
   const candidates = [
     item?.imageUrl,
@@ -1614,46 +1609,12 @@ function getBookImageUrl(item: any): string {
     item?.image_url
   ];
 
-  if (isDebugItem) {
-    console.log(`[DEBUG getBookImageUrl] "${title}" - checking candidates:`, {
-      imageUrl: item?.imageUrl,
-      ImageURL: item?.ImageURL,
-      ImageUrl: item?.ImageUrl,
-      "Image URL": item?.["Image URL"],
-      Image: item?.Image,
-      image: item?.image,
-      image_url: item?.image_url,
-      candidateValues: candidates,
-      firstValidCandidate: candidates.find(c => c),
-      allKeys: Object.keys(item || {}).filter(k => k.toLowerCase().includes('image'))
-    });
-  }
-
-  const result = safeStr(candidates.find(c => c) || "");
-
-  if (isDebugItem) {
-    console.log(`[DEBUG getBookImageUrl] "${title}" - FINAL RESULT:`, result);
-  }
-
-  return result;
+  return safeStr(candidates.find(c => c) || "");
 }
 
 function getBookSourceUrlByMode(item: any, _mode?: "custom" | "default"): string {
   const imageUrl = getBookImageUrl(item);
   const customUrl = getBookCustomUrl(item);
-  const title = safeStr(item?.title || item?.Title);
-  const titleLower = title.toLowerCase().trim();
-  const isDebugItem = titleLower.includes("malibu burning") || titleLower.includes("lost hills") ||
-                      title.includes("Final Empire") || title.includes("Well of Ascention") || title.includes("Hero of Ages");
-
-  if (isDebugItem) {
-    console.log(`[DEBUG getBookSourceUrlByMode] "${title}":`, {
-      imageUrl,
-      customUrl,
-      finalResult: customUrl || imageUrl,
-      modeParam: _mode
-    });
-  }
 
   // For books, custom URL is always the source of truth when present.
   return customUrl || imageUrl;
@@ -3678,34 +3639,7 @@ export default function Page() {
       ? [overrideUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
       : [metadataUrl, overrideUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
-    const result = uniqueCandidates.find((url) => !failed.has(url)) || "";
-
-    // Debug logging for problem items - check for audiobooks with ImageURL
-    const title = safeStr(item?.title || item?.Title);
-    const titleLower = title.toLowerCase().trim();
-    const isProblemItem = titleLower.includes("malibu burning") || titleLower.includes("lost hills") ||
-                         title.includes("Final Empire") || title.includes("Well of Ascention") || title.includes("Hero of Ages");
-
-    if (isProblemItem) {
-      console.log(`[DEBUG getDisplayCoverUrl] "${title}":`, {
-        isBook,
-        coverMode,
-        metadataUrl,
-        metadataUrlEmpty: !metadataUrl,
-        fallbackImageUrl: safeStr(item?.ImageURL || ""),
-        overrideUrl,
-        posterUrl: safeStr(item?.posterUrl),
-        posterUrlFallback: safeStr(item?.posterUrlFallback),
-        candidates,
-        uniqueCandidates,
-        skipFailedFilter,
-        failed: Array.from(failed),
-        result,
-        failedSetSize: failed.size
-      });
-    }
-
-    return result;
+    return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
   const getPopupCoverModeForItem = (item: any): "custom" | "default" | undefined => {
@@ -4631,7 +4565,8 @@ export default function Page() {
     item: any,
     sourceUrl: string,
     mediaType: "book" | "movie" | "tv" | "game",
-    imageType: "cover" | "backdrop" = "cover"
+    imageType: "cover" | "backdrop" = "cover",
+    requireSheetWrite = false
   ) => {
     if (!item || !sourceUrl) throw new Error("Missing item or source URL");
 
@@ -4681,11 +4616,34 @@ export default function Page() {
           mediaType === "tv" ? "updateShow" :
           "updateGame";
         const title = safeStr(item?.title || item?.Title || item?.name);
+        const bookMatch = mediaType === "book"
+          ? {
+              type: safeStr(item?.types || item?.type || item?.Type),
+              googleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
+              openLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
+              isbn: safeStr(item?.isbn || item?.ISBN),
+              imageUrl: safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image),
+            }
+          : {};
+        const gameMatch = mediaType === "game"
+          ? {
+              igdbId: safeStr(item?.igdbId || item?.IGDB_ID),
+              platform: safeStr(item?.platform || item?.Platform || item?.__renderPlatform),
+            }
+          : {};
+        const lowerCamelFieldName = fieldName ? fieldName.charAt(0).toLowerCase() + fieldName.slice(1) : fieldName;
+        const updates: Record<string, string> = {
+          [fieldName]: payload.url,
+        };
+        if (lowerCamelFieldName && lowerCamelFieldName !== fieldName) {
+          updates[lowerCamelFieldName] = payload.url;
+        }
+
         console.log(`[R2] Writing ${fieldName} to sheet for "${title}" (${mediaType}):`, payload.url);
         await postSheetWrite(writeUrl, {
           action,
-          match: { title },
-          updates: { [fieldName]: payload.url }
+          match: { ...bookMatch, ...gameMatch, title },
+          updates
         }, `Failed to save ${fieldName}`);
         console.log(`✓ Successfully saved ${fieldName} to sheet for "${title}"`);
       } catch (e) {
@@ -4695,10 +4653,15 @@ export default function Page() {
         if (errorMsg.includes("column") || errorMsg.includes("not found") || errorMsg.includes("INVALID_ARGUMENT")) {
           console.warn(`⚠️ Column "${fieldName}" may not exist in your sheet. Please add this column manually.`);
         }
-        // Don't throw - we successfully uploaded to R2, just failed to save the URL to sheet
+        if (requireSheetWrite) {
+          throw new Error(`Uploaded to R2 but failed to save ${fieldName} to sheet: ${errorMsg}`);
+        }
       }
     } else {
       console.warn(`[R2] No write URL available for ${mediaType}`);
+      if (requireSheetWrite) {
+        throw new Error(`No write URL configured for ${mediaType}`);
+      }
     }
 
     return payload.url;
@@ -4722,27 +4685,8 @@ export default function Page() {
           const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
           const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
 
-          // Debug audiobook issues
-          if (title === "Malibu Burning" || title === "Lost Hills") {
-            console.log(`[Sync DEBUG] "${title}":`, {
-              detectedMediaType: mediaType,
-              imageUrl: item?.imageUrl,
-              ImageURL: item?.ImageURL,
-              "Image URL": item?.["Image URL"],
-              Image: item?.Image,
-              customImageUrl: item?.customImageUrl,
-              posterUrl: item?.posterUrl,
-              getDisplayCoverUrlResult: defaultUrl,
-              hasR2,
-            });
-          }
-
           if (defaultUrl && !hasR2) {
             itemsToSync.push({ item, mediaType: "book", defaultUrl });
-          } else if (!defaultUrl) {
-            console.log(`[Sync] Skipping "${title}" - no defaultUrl`);
-          } else if (hasR2) {
-            console.log(`[Sync] Skipping "${title}" - already has r2CoverUrl`);
           }
         });
       }
@@ -4811,7 +4755,7 @@ export default function Page() {
         const title = safeStr(item?.title || item?.Title);
 
         try {
-          const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, imageType);
+          const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, imageType, true);
           const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
           details.push({ title, status: "success", message: `${typeLabel} backed up` });
           typeStats[mediaType].succeeded++;
@@ -4854,9 +4798,14 @@ export default function Page() {
           totalFailed++;
         }
 
-        typeStats[mediaType].current = i + 1;
+        typeStats[mediaType].current += 1;
         setSyncProgress({ current: i + 1, total: itemsToSync.length });
-        setSyncByType(typeStats);
+        setSyncByType({
+          book: { ...typeStats.book },
+          movie: { ...typeStats.movie },
+          tv: { ...typeStats.tv },
+          game: { ...typeStats.game },
+        });
         setSyncDetails(details);
 
         // Add delay to avoid rate limiting
@@ -14735,6 +14684,7 @@ export default function Page() {
                                       gameRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length;
 
                         const syncedPct = total > 0 ? Math.round((synced / total) * 100) : 0;
+                        const typeProgress = syncByType[mediaType] || { current: 0, total: 0, succeeded: 0, failed: 0 };
 
                         // Get highlight color for this media type
                         const highlightColorMap: Record<string, string> = {
@@ -14762,6 +14712,11 @@ export default function Page() {
                             <div style={{ fontSize: 18, fontWeight: 700, color: "#1d2735" }}>
                               {synced} / {total}
                             </div>
+                            {syncInProgress && typeProgress.total > 0 && (
+                              <div style={{ fontSize: 10, fontWeight: 650, color: `${highlightColor}dd` }}>
+                                Syncing {Math.min(typeProgress.current, typeProgress.total)} / {typeProgress.total}
+                              </div>
+                            )}
                             <div style={{
                               width: "100%",
                               height: 6,
@@ -14795,12 +14750,48 @@ export default function Page() {
                                 opacity: syncInProgress ? 0.6 : 1,
                               }}
                             >
-                              {syncInProgress && syncByType[mediaType].total > 0 ? "Syncing..." : "Sync"}
+                              {syncInProgress && typeProgress.total > 0
+                                ? `Syncing ${Math.min(typeProgress.current, typeProgress.total)}/${typeProgress.total}`
+                                : "Sync"}
                             </button>
                           </div>
                         );
                       })}
                     </div>
+
+                    {syncStatus === "syncing" && (
+                      <div style={{
+                        marginBottom: 14,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        background: "rgba(0, 113, 227, 0.09)",
+                        border: "1px solid rgba(0, 113, 227, 0.3)",
+                        color: "#0a4f9e",
+                      }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>
+                          {syncProgress.total > 0
+                            ? `Syncing covers: ${syncProgress.current} / ${syncProgress.total}`
+                            : "Preparing sync queue..."}
+                        </div>
+                        {syncProgress.total > 0 && (
+                          <div style={{
+                            marginTop: 8,
+                            width: "100%",
+                            height: 6,
+                            borderRadius: 3,
+                            background: "rgba(0, 113, 227, 0.2)",
+                            overflow: "hidden",
+                          }}>
+                            <div style={{
+                              height: "100%",
+                              width: `${Math.min(100, Math.round((syncProgress.current / Math.max(syncProgress.total, 1)) * 100))}%`,
+                              background: "#0071e3",
+                              transition: "width 220ms ease",
+                            }} />
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Detailed Sync List */}
                     {syncDetails.length > 0 && (
