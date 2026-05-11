@@ -3635,9 +3635,13 @@ export default function Page() {
     }
 
     const overrideUrl = safeStr(coverOverrides[itemKey]);
+    const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+
+    // Priority: override > R2 backup > metadata > fallbacks
+    // R2 is prioritized because it's synced for persistence
     const candidates = isBook
-      ? [overrideUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
-      : [metadataUrl, overrideUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
+      ? [overrideUrl, r2CoverUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
+      : [overrideUrl, r2CoverUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
