@@ -1562,7 +1562,7 @@ function getMediaType(item: any): MediaType {
 
 function getMediaItemKey(item: any): string {
   const type = getMediaType(item);
-  const normalizedTitle = normalizeTitleKey(item?.title || "");
+  const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
   if (type === "book") {
     const bookFormatToken = getBookFormatKeyToken(item);
     return `${type}:${normalizedTitle}:${bookFormatToken}`;
@@ -1578,7 +1578,7 @@ function getMediaItemKey(item: any): string {
 
 function getLegacyMediaItemKey(item: any): string {
   const type = getMediaType(item);
-  const normalizedTitle = normalizeTitleKey(item?.title || "");
+  const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
   if (type === "game") {
     const normalizedPlatform = normalizePlatformToken(
       safeStr(item?.__renderPlatform || item?.platform)
@@ -2099,8 +2099,8 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap";
-type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap">;
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync";
+type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
 type MovieQuickLinkKey = "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
@@ -3515,17 +3515,69 @@ export default function Page() {
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [uploadingStatusIconKey, setUploadingStatusIconKey] = useState<string | null>(null);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
-  const [r2SyncModalOpen, setR2SyncModalOpen] = useState(false);
+  type SyncCategory =
+    | "book"
+    | "movieCover"
+    | "movieBackdrop"
+    | "tvCover"
+    | "tvBackdrop"
+    | "gameCover"
+    | "gameBackdrop";
+
+  type SyncStatus = "pending" | "synced" | "missing" | "syncing" | "success" | "error";
+  type SyncItem = {
+    item: any;
+    itemKey: string;
+    title: string;
+    category: SyncCategory;
+    mediaType: "book" | "movie" | "tv" | "game";
+    imageType: "cover" | "backdrop";
+    sourceUrl: string;
+    r2Url: string;
+    status: SyncStatus;
+    lastSync?: string;
+    error?: string;
+  };
+
+  const [selectedSyncCategory, setSelectedSyncCategory] = useState<SyncCategory | null>(null);
+  const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
+  const updateSyncItemState = useCallback((itemKey: string, patch: Partial<SyncItem>) => {
+    setSyncItems((prev) => prev.map((item) => (item.itemKey === itemKey ? { ...item, ...patch } : item)));
+  }, []);
+
+  const loadCachedSyncData = useCallback((cacheKey: string) => {
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (!cached) return {} as Record<string, { url: string; lastSyncedAt?: string }>;
+      const parsed = JSON.parse(cached);
+      if (!parsed || typeof parsed !== "object") return {} as Record<string, { url: string; lastSyncedAt?: string }>;
+      const result: Record<string, { url: string; lastSyncedAt?: string }> = {};
+      Object.entries(parsed).forEach(([key, value]) => {
+        if (typeof value === "string") {
+          result[key] = { url: value };
+        } else if (value && typeof value === "object" && typeof (value as any).url === "string") {
+          result[key] = { url: (value as any).url, lastSyncedAt: safeStr((value as any).lastSyncedAt) || undefined };
+        }
+      });
+      return result;
+    } catch (e) {
+      console.warn(`Failed to load cached sync data ${cacheKey}:`, e);
+      return {} as Record<string, { url: string; lastSyncedAt?: string }>;
+    }
+  }, []);
   const [syncInProgress, setSyncInProgress] = useState(false);
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
   const [syncResults, setSyncResults] = useState<{ succeeded: number; failed: number } | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "complete" | "error">("idle");
   const [syncDetails, setSyncDetails] = useState<Array<{ title: string; status: "success" | "error"; message?: string }>>([]);
-  const [syncByType, setSyncByType] = useState<Record<string, { current: number; total: number; succeeded: number; failed: number }>>({
+  const [syncByCategory, setSyncByCategory] = useState<Record<SyncCategory, { current: number; total: number; succeeded: number; failed: number }>>({
     book: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    movie: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    tv: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    game: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    movieCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    movieBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    tvCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    tvBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    gameCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    gameBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
   });
   const [rateItModalOpen, setRateItModalOpen] = useState(false);
   const [rateItItem, setRateItItem] = useState<any>(null);
@@ -3664,6 +3716,17 @@ export default function Page() {
     }
 
     return result;
+  };
+
+  const getDisplayBackdropUrl = (item: any) => {
+    return safeStr(
+      item?.backdropUrl ||
+      item?.BackdropURL ||
+      item?.backdrop ||
+      item?.BackDropURL ||
+      item?.backdrops?.[0] ||
+      ""
+    );
   };
 
   const getPopupCoverModeForItem = (item: any): "custom" | "default" | undefined => {
@@ -4083,7 +4146,7 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (nav !== "statistics" && nav !== "roadmap") {
+    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync") {
       setLastLibraryNav(nav);
     }
   }, [nav]);
@@ -4115,6 +4178,22 @@ export default function Page() {
   }, []);
 
   const handleExitRoadmap = useCallback(() => {
+    setNav(lastLibraryNav || "home");
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, [lastLibraryNav]);
+
+  const openCoverSyncView = useCallback(() => {
+    setNav("cover-sync");
+    setSortPopupOpen(false);
+    setSettingsPopupOpen(false);
+    setFaqPopupOpen(false);
+    setShowVersionNotes(false);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, []);
+
+  const handleExitCoverSync = useCallback(() => {
     setNav(lastLibraryNav || "home");
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
@@ -4784,7 +4863,7 @@ export default function Page() {
         return;
       }
 
-      const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, "cover", true);
+      const r2Url = await uploadCoverToR2(item, displayUrl, mediaType, "cover", true);
       const itemKey = getMediaItemKey(item);
 
       // Update the local row data with the synced R2CoverUrl
@@ -4819,256 +4898,397 @@ export default function Page() {
     }
   };
 
-  const syncCoversToR2 = async (filterByType?: "book" | "movie" | "tv" | "game") => {
+  const loadItemsForCategory = useCallback((category: SyncCategory) => {
+    setSelectedSyncCategory(category);
+    setSyncResults(null);
+
+    const readCache = (cacheKey: string): Record<string, { url: string; lastSyncedAt?: string }> => {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (!cached) return {};
+        const parsed = JSON.parse(cached);
+        if (!parsed || typeof parsed !== "object") return {};
+        const result: Record<string, { url: string; lastSyncedAt?: string }> = {};
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (typeof value === "string") {
+            result[key] = { url: value };
+          } else if (value && typeof value === "object" && typeof (value as any).url === "string") {
+            result[key] = { url: (value as any).url, lastSyncedAt: safeStr((value as any).lastSyncedAt) || undefined };
+          }
+        });
+        return result;
+      } catch {
+        return {};
+      }
+    };
+
+    const cacheKey =
+      category === "book" ? "cdlSyncedBookCovers" :
+      category === "movieCover" ? "cdlSyncedMovieCovers" :
+      category === "movieBackdrop" ? "cdlSyncedMovieBackdrops" :
+      category === "tvCover" ? "cdlSyncedTvCovers" :
+      category === "tvBackdrop" ? "cdlSyncedTvBackdrops" :
+      category === "gameCover" ? "cdlSyncedGameCovers" :
+      "cdlSyncedGameBackdrops";
+    const cacheMap = readCache(cacheKey);
+
+    const buildItem = (
+      item: any,
+      mediaType: "book" | "movie" | "tv" | "game",
+      imageType: "cover" | "backdrop",
+      sourceUrl: string
+    ): SyncItem => {
+      const itemKey = getMediaItemKey(item);
+      const title = safeStr(item?.title || item?.Title || item?.name || item?.Name || "Untitled");
+      const existingR2 = imageType === "cover"
+        ? safeStr(item?.r2CoverUrl || item?.R2CoverUrl)
+        : safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl);
+      const cachedEntry = cacheMap[itemKey];
+      const r2Url = existingR2 || (cachedEntry ? safeStr(cachedEntry.url) : "");
+      const lastSync = cachedEntry?.lastSyncedAt || undefined;
+      const status: SyncStatus = r2Url ? "synced" : sourceUrl ? "pending" : "missing";
+      return { item, itemKey, title, category, mediaType, imageType, sourceUrl, r2Url, status, lastSync };
+    };
+
+    const getMoviePosterUrl = (item: any) =>
+      safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+    const getTvPosterUrl = (item: any) =>
+      safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+
+    let items: SyncItem[] = [];
+    if (category === "book") {
+      items = bookRows.map((item) => buildItem(item, "book", "cover", getDisplayCoverUrl(item, true)));
+    } else if (category === "movieCover") {
+      items = movieRows.map((item) => buildItem(item, "movie", "cover", getMoviePosterUrl(item)));
+    } else if (category === "movieBackdrop") {
+      items = movieRows.map((item) => buildItem(item, "movie", "backdrop", getDisplayBackdropUrl(item)));
+    } else if (category === "tvCover") {
+      items = tvRows.map((item) => buildItem(item, "tv", "cover", getTvPosterUrl(item)));
+    } else if (category === "tvBackdrop") {
+      items = tvRows.map((item) => buildItem(item, "tv", "backdrop", getDisplayBackdropUrl(item)));
+    } else if (category === "gameCover") {
+      items = gameRows.map((item) => buildItem(item, "game", "cover", getDisplayCoverUrl(item, true)));
+    } else {
+      items = gameRows.map((item) => buildItem(item, "game", "backdrop", safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl)));
+    }
+    setSyncItems(items);
+  }, [bookRows, movieRows, tvRows, gameRows, getDisplayCoverUrl, getDisplayBackdropUrl]);
+
+  const syncCoversToR2 = async (category?: SyncCategory) => {
+    setSelectedSyncCategory(category ?? null);
+    setSyncInProgress(true);
     setSyncStatus("syncing");
     setSyncProgress({ current: 0, total: 0 });
     setSyncResults(null);
     setSyncDetails([]);
+    setSyncByCategory({
+      book: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      movieCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      movieBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      tvCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      tvBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      gameCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      gameBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    });
+
+    const normalizeCachedEntries = (value: any) => {
+      if (!value || typeof value !== "object") return null;
+      return value;
+    };
+
+    const loadCachedSyncData = (cacheKey: string) => {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (!cached) return {} as Record<string, { url: string; lastSyncedAt?: string }>;
+        const parsed = JSON.parse(cached);
+        const normalized = normalizeCachedEntries(parsed);
+        if (!normalized) return {} as Record<string, { url: string; lastSyncedAt?: string }>;
+        const result: Record<string, { url: string; lastSyncedAt?: string }> = {};
+        Object.entries(normalized).forEach(([key, value]) => {
+          if (typeof value === "string") {
+            result[key] = { url: value };
+          } else if (value && typeof value === "object" && typeof (value as any).url === "string") {
+            result[key] = { url: (value as any).url, lastSyncedAt: safeStr((value as any).lastSyncedAt) || undefined };
+          }
+        });
+        return result;
+      } catch (e) {
+        console.warn(`Failed to load cached sync data ${cacheKey}:`, e);
+        return {} as Record<string, { url: string; lastSyncedAt?: string }>;
+      }
+    };
+
+    const cachedBookCovers = loadCachedSyncData("cdlSyncedBookCovers");
+    const cachedMovieCovers = loadCachedSyncData("cdlSyncedMovieCovers");
+    const cachedMovieBackdrops = loadCachedSyncData("cdlSyncedMovieBackdrops");
+    const cachedTvCovers = loadCachedSyncData("cdlSyncedTvCovers");
+    const cachedTvBackdrops = loadCachedSyncData("cdlSyncedTvBackdrops");
+    const cachedGameCovers = loadCachedSyncData("cdlSyncedGameCovers");
+    const cachedGameBackdrops = loadCachedSyncData("cdlSyncedGameBackdrops");
+
+    const makeSyncItem = (
+      item: any,
+      mediaType: "book" | "movie" | "tv" | "game",
+      categoryKey: SyncCategory,
+      imageType: "cover" | "backdrop",
+      sourceUrl: string,
+      cacheMap: Record<string, { url: string; lastSyncedAt?: string }>
+    ): SyncItem => {
+      const itemKey = getMediaItemKey(item);
+      const title = safeStr(item?.title || item?.Title || item?.name || item?.Name || "Untitled");
+      const existingR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.r2BackdropUrl || item?.R2BackdropUrl);
+      const cachedEntry = cacheMap[itemKey];
+      const r2Url = existingR2 || (cachedEntry ? safeStr(cachedEntry.url) : "");
+      const lastSync = cachedEntry?.lastSyncedAt || undefined;
+      const hasSource = Boolean(sourceUrl);
+      const hasR2 = Boolean(r2Url);
+      const status: SyncStatus = hasR2 ? "synced" : hasSource ? "pending" : "missing";
+      return {
+        item,
+        itemKey,
+        title,
+        category: categoryKey,
+        mediaType,
+        imageType,
+        sourceUrl,
+        r2Url,
+        status,
+        lastSync,
+      };
+    };
+
+    const itemsToSync: SyncItem[] = [];
+    const addItemsForCategory = (categoryKey: SyncCategory) => {
+      if (categoryKey === "book") {
+        bookRows.forEach((item) => {
+          const sourceUrl = getDisplayCoverUrl(item, true);
+          itemsToSync.push(makeSyncItem(item, "book", categoryKey, "cover", sourceUrl, cachedBookCovers));
+        });
+      } else if (categoryKey === "movieCover") {
+        movieRows.forEach((item) => {
+          const sourceUrl = safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+          itemsToSync.push(makeSyncItem(item, "movie", categoryKey, "cover", sourceUrl, cachedMovieCovers));
+        });
+      } else if (categoryKey === "movieBackdrop") {
+        movieRows.forEach((item) => {
+          const sourceUrl = getDisplayBackdropUrl(item);
+          itemsToSync.push(makeSyncItem(item, "movie", categoryKey, "backdrop", sourceUrl, cachedMovieBackdrops));
+        });
+      } else if (categoryKey === "tvCover") {
+        tvRows.forEach((item) => {
+          const sourceUrl = safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+          itemsToSync.push(makeSyncItem(item, "tv", categoryKey, "cover", sourceUrl, cachedTvCovers));
+        });
+      } else if (categoryKey === "tvBackdrop") {
+        tvRows.forEach((item) => {
+          const sourceUrl = getDisplayBackdropUrl(item);
+          itemsToSync.push(makeSyncItem(item, "tv", categoryKey, "backdrop", sourceUrl, cachedTvBackdrops));
+        });
+      } else if (categoryKey === "gameCover") {
+        gameRows.forEach((item) => {
+          const sourceUrl = getDisplayCoverUrl(item, true);
+          itemsToSync.push(makeSyncItem(item, "game", categoryKey, "cover", sourceUrl, cachedGameCovers));
+        });
+      } else if (categoryKey === "gameBackdrop") {
+        gameRows.forEach((item) => {
+          const sourceUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
+          itemsToSync.push(makeSyncItem(item, "game", categoryKey, "backdrop", sourceUrl, cachedGameBackdrops));
+        });
+      }
+    };
+
+    if (category) {
+      addItemsForCategory(category);
+    } else {
+      addItemsForCategory("book");
+      addItemsForCategory("movieCover");
+      addItemsForCategory("movieBackdrop");
+      addItemsForCategory("tvCover");
+      addItemsForCategory("tvBackdrop");
+      addItemsForCategory("gameCover");
+      addItemsForCategory("gameBackdrop");
+    }
+
+    setSyncItems(itemsToSync);
+    setSyncProgress({ current: 0, total: itemsToSync.length });
+
+    const updateSyncItem = (itemKey: string, patch: Partial<SyncItem>) => {
+      setSyncItems((prev) => prev.map((item) => (item.itemKey === itemKey ? { ...item, ...patch } : item)));
+    };
+
+    const pendingQueue = itemsToSync.filter((item) => item.status !== "synced" && item.status !== "missing");
+    const categoryStats: Record<SyncCategory, { current: number; total: number; succeeded: number; failed: number }> = {
+      book: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      movieCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      movieBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      tvCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      tvBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      gameCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
+      gameBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
+    };
+
+    itemsToSync.forEach(({ category: syncCategory }) => {
+      categoryStats[syncCategory].total++;
+    });
+
+    let totalSucceeded = 0;
+    let totalFailed = 0;
+
+    const cacheKeyForItem = (item: SyncItem) => {
+      const imageSuffix = item.imageType === "backdrop" ? "Backdrops" : "Covers";
+      return `cdlSynced${item.mediaType.charAt(0).toUpperCase() + item.mediaType.slice(1)}${imageSuffix}`;
+    };
+
+    const getRowFieldName = (imageType: "cover" | "backdrop") =>
+      imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
 
     try {
-      // Collect all items that need R2 backups
-      const itemsToSync: Array<{ item: any; mediaType: "book" | "movie" | "tv" | "game"; defaultUrl: string; imageType?: "cover" | "backdrop" }> = [];
+    for (let i = 0; i < pendingQueue.length; i++) {
+      const syncItem = pendingQueue[i];
+      const { item, mediaType, sourceUrl, imageType, category: syncCategory, itemKey, title } = syncItem;
+      updateSyncItem(itemKey, { status: "syncing", error: undefined });
 
-      // Load synced items from cache to avoid re-syncing after page refresh
-      const syncedBooks = new Set<string>();
-      const syncedMovies = new Set<string>();
-      const syncedTV = new Set<string>();
       try {
-        const booksCached = localStorage.getItem("cdlSyncedBookCovers");
-        if (booksCached) {
-          JSON.parse(booksCached);
-          Object.keys(JSON.parse(booksCached)).forEach(key => syncedBooks.add(key));
-        }
-        const moviesCached = localStorage.getItem("cdlSyncedMovieCovers");
-        if (moviesCached) {
-          Object.keys(JSON.parse(moviesCached)).forEach(key => syncedMovies.add(key));
-        }
-        const tvCached = localStorage.getItem("cdlSyncedTvCovers");
-        if (tvCached) {
-          Object.keys(JSON.parse(tvCached)).forEach(key => syncedTV.add(key));
-        }
-        const totalCached = syncedBooks.size + syncedMovies.size + syncedTV.size;
-        if (totalCached > 0) {
-          console.log(`[Sync] Loaded ${totalCached} previously synced covers from cache (books: ${syncedBooks.size}, movies: ${syncedMovies.size}, tv: ${syncedTV.size})`);
-        }
-      } catch (e) {
-        console.warn("Failed to load synced covers cache:", e);
-      }
-
-      // Books
-      if (!filterByType || filterByType === "book") {
-        bookRows.forEach((item) => {
-          const title = safeStr(item?.title || item?.Title);
-          const mediaType = getMediaType(item);
-          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
-          const itemKey = getMediaItemKey(item);
-
-          if (defaultUrl && !hasR2 && !syncedBooks.has(itemKey)) {
-            itemsToSync.push({ item, mediaType: "book", defaultUrl });
-          }
+        const r2Url = await uploadCoverToR2(item, sourceUrl, mediaType, imageType, true);
+        updateSyncItem(itemKey, {
+          status: "success",
+          r2Url,
+          lastSync: new Date().toISOString(),
+          error: undefined,
         });
-      }
+        categoryStats[syncCategory].succeeded++;
+        totalSucceeded++;
 
-      // Movies
-      if (!filterByType || filterByType === "movie") {
-        movieRows.forEach((item) => {
-          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          const itemKey = getMediaItemKey(item);
-          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl) && !syncedMovies.has(itemKey)) {
-            itemsToSync.push({ item, mediaType: "movie", defaultUrl });
-          }
-        });
-      }
-
-      // TV Shows
-      if (!filterByType || filterByType === "tv") {
-        tvRows.forEach((item) => {
-          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          const itemKey = getMediaItemKey(item);
-          if (defaultUrl && !safeStr(item?.r2CoverUrl || item?.R2CoverUrl) && !syncedTV.has(itemKey)) {
-            itemsToSync.push({ item, mediaType: "tv", defaultUrl });
-          }
-        });
-      }
-
-      // Games - covers
-      // Load locally synced items from cache to avoid re-syncing after page refresh
-      const syncedGames = new Set<string>();
-      try {
-        const cached = localStorage.getItem("cdlSyncedGameCovers");
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          Object.keys(parsed).forEach(key => syncedGames.add(key));
-          console.log(`[Sync] Loaded ${syncedGames.size} previously synced game covers from cache`);
+        const fieldName = getRowFieldName(imageType);
+        if (mediaType === "book") {
+          setBookRows((prev) =>
+            prev.map((row) =>
+              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+            )
+          );
+        } else if (mediaType === "movie") {
+          setMovieRows((prev) =>
+            prev.map((row) =>
+              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+            )
+          );
+        } else if (mediaType === "tv") {
+          setTvRows((prev) =>
+            prev.map((row) =>
+              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+            )
+          );
+        } else if (mediaType === "game") {
+          setGameRows((prev) =>
+            prev.map((row) =>
+              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+            )
+          );
         }
-      } catch (e) {
-        console.warn("Failed to load synced games cache:", e);
-      }
-
-      if (!filterByType || filterByType === "game") {
-        // Debug: log sample game data to see R2 column loading
-        if (gameRows.length > 0) {
-          const sampleGame = gameRows[0];
-          console.log(`[Sync] Sample game row keys:`, Object.keys(sampleGame).filter(k => k.toLowerCase().includes('r2') || k.toLowerCase().includes('cover') || k.toLowerCase().includes('backdrop')));
-          console.log(`[Sync] Sample R2 values:`, {
-            r2CoverUrl: sampleGame?.r2CoverUrl,
-            R2CoverUrl: sampleGame?.R2CoverUrl,
-            "R2 Cover Url": sampleGame?.["R2 Cover Url"],
-            r2BackdropUrl: sampleGame?.r2BackdropUrl,
-            R2BackdropUrl: sampleGame?.R2BackdropUrl,
-          });
-        }
-
-        let gameCoversFound = 0;
-        gameRows.forEach((item, idx) => {
-          const defaultUrl = getDisplayCoverUrl(item, true); // skipFailedFilter=true for sync
-          const itemKey = getMediaItemKey(item);
-          const hasR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
-          if (idx < 2) {
-            console.log(`[Sync] Game ${idx} cover: defaultUrl=${defaultUrl ? "YES" : "EMPTY"}, CoverURL=${item?.CoverURL || "MISSING"}, hasR2=${hasR2}`);
-          }
-          // Skip if already synced in current session OR already has R2CoverUrl from sheet
-          if (defaultUrl && !hasR2 && !syncedGames.has(itemKey)) {
-            gameCoversFound++;
-            itemsToSync.push({ item, mediaType: "game", defaultUrl, imageType: "cover" as const });
-          }
-        });
-        console.log(`[Sync] Found ${gameCoversFound} game covers to sync`);
-      }
-
-      // Games - backdrops (screenshots)
-      // Load locally synced backdrop items from cache to avoid re-syncing
-      const syncedGameBackdrops = new Set<string>();
-      try {
-        const cached = localStorage.getItem("cdlSyncedGameBackdrops");
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          Object.keys(parsed).forEach(key => syncedGameBackdrops.add(key));
-          console.log(`[Sync] Loaded ${syncedGameBackdrops.size} previously synced game backdrops from cache`);
-        }
-      } catch (e) {
-        console.warn("Failed to load synced game backdrops cache:", e);
-      }
-
-      if (!filterByType || filterByType === "game") {
-        gameRows.forEach((item) => {
-          const screenshotUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
-          const itemKey = getMediaItemKey(item);
-          if (screenshotUrl && !safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl) && !syncedGameBackdrops.has(itemKey)) {
-            itemsToSync.push({ item, mediaType: "game", defaultUrl: screenshotUrl, imageType: "backdrop" as const });
-          }
-        });
-      }
-
-      setSyncProgress({ current: 0, total: itemsToSync.length });
-
-      const details: Array<{ title: string; status: "success" | "error"; message?: string }> = [];
-      const typeStats = {
-        book: { current: 0, total: 0, succeeded: 0, failed: 0 },
-        movie: { current: 0, total: 0, succeeded: 0, failed: 0 },
-        tv: { current: 0, total: 0, succeeded: 0, failed: 0 },
-        game: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      };
-
-      // Count totals by type
-      itemsToSync.forEach(({ mediaType }) => {
-        typeStats[mediaType].total++;
-      });
-
-      let totalSucceeded = 0;
-      let totalFailed = 0;
-
-      // Upload each item
-      for (let i = 0; i < itemsToSync.length; i++) {
-        const { item, mediaType, defaultUrl, imageType = "cover" } = itemsToSync[i];
-        const title = safeStr(item?.title || item?.Title);
 
         try {
-          console.log(`[Sync] Processing ${i + 1}/${itemsToSync.length}: ${title} (${mediaType})`);
-          const r2Url = await uploadCoverToR2(item, defaultUrl, mediaType, imageType, true);
-          const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
-          details.push({ title, status: "success", message: `${typeLabel} backed up` });
-          typeStats[mediaType].succeeded++;
-          totalSucceeded++;
-
-          // Update the local row data to reflect the synced r2CoverUrl
-          const fieldName = imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
-          const itemKey = getMediaItemKey(item);
-          const imageSuffix = imageType === "backdrop" ? "Backdrops" : "Covers";
-          const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}${imageSuffix}`;
-
-          if (mediaType === "book") {
-            setBookRows((prev) =>
-              prev.map((row) =>
-                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
-              )
-            );
-          } else if (mediaType === "movie") {
-            setMovieRows((prev) =>
-              prev.map((row) =>
-                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
-              )
-            );
-          } else if (mediaType === "tv") {
-            setTvRows((prev) =>
-              prev.map((row) =>
-                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
-              )
-            );
-          } else if (mediaType === "game") {
-            setGameRows((prev) =>
-              prev.map((row) =>
-                getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
-              )
-            );
-          }
-
-          // Cache the synced item (cover or backdrop) to avoid re-syncing after page refresh
-          try {
-            const cached = JSON.parse(localStorage.getItem(cacheKey) || "{}");
-            cached[itemKey] = r2Url;
-            localStorage.setItem(cacheKey, JSON.stringify(cached));
-          } catch (e) {
-            const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
-            console.warn(`Failed to cache synced ${mediaType} ${typeLabel}:`, e);
-          }
+          const cacheKey = cacheKeyForItem(syncItem);
+          const cached = loadCachedSyncData(cacheKey);
+          cached[itemKey] = { url: r2Url, lastSyncedAt: new Date().toISOString() };
+          localStorage.setItem(cacheKey, JSON.stringify(cached));
         } catch (e) {
-          const errorMsg = e instanceof Error ? e.message : "Unknown error";
-          const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
-          console.error(`Failed to sync ${typeLabel} for ${title} (${i + 1}/${itemsToSync.length}):`, e);
-          details.push({ title, status: "error", message: errorMsg });
-          typeStats[mediaType].failed++;
-          totalFailed++;
+          console.warn(`Failed to cache synced ${syncItem.category}:`, e);
         }
-
-        typeStats[mediaType].current += 1;
-        setSyncProgress({ current: i + 1, total: itemsToSync.length });
-        setSyncByType({
-          book: { ...typeStats.book },
-          movie: { ...typeStats.movie },
-          tv: { ...typeStats.tv },
-          game: { ...typeStats.game },
-        });
-        setSyncDetails(details);
-
-        // Add delay to avoid rate limiting (increased to 200ms for heavy loads)
-        await new Promise((resolve) => setTimeout(resolve, 200));
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : "Unknown error";
+        updateSyncItem(itemKey, { status: "error", error: errorMsg });
+        categoryStats[syncCategory].failed++;
+        totalFailed++;
       }
 
+      categoryStats[syncCategory].current += 1;
+      setSyncProgress({ current: i + 1, total: pendingQueue.length });
+      setSyncByCategory({
+        book: { ...categoryStats.book },
+        movieCover: { ...categoryStats.movieCover },
+        movieBackdrop: { ...categoryStats.movieBackdrop },
+        tvCover: { ...categoryStats.tvCover },
+        tvBackdrop: { ...categoryStats.tvBackdrop },
+        gameCover: { ...categoryStats.gameCover },
+        gameBackdrop: { ...categoryStats.gameBackdrop },
+      });
+      const resultStatus = syncItem.status === "error" ? "error" : "success";
+      const resultMessage = syncItem.error || (resultStatus === "success" ? "Backed up" : undefined);
+      setSyncDetails((prev) => [
+        ...prev,
+        {
+          title,
+          status: resultStatus,
+          message: resultMessage,
+        },
+      ]);
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    } finally {
       setSyncResults({ succeeded: totalSucceeded, failed: totalFailed });
-      setSyncStatus("complete");
+      setSyncStatus(totalFailed > 0 && totalSucceeded === 0 ? "error" : "complete");
       setSyncInProgress(false);
-      console.log(`✅ R2 SYNC COMPLETE: ${totalSucceeded} succeeded, ${totalFailed} failed out of ${itemsToSync.length} total`);
+    }
+  };
+
+  const syncSingleItemToR2 = async (itemKey: string) => {
+    const syncItem = syncItems.find((item) => item.itemKey === itemKey);
+    if (!syncItem || syncItem.status === "missing" || syncItem.status === "syncing") {
+      return;
+    }
+
+    updateSyncItemState(itemKey, { status: "syncing", error: undefined });
+
+    try {
+      const r2Url = await uploadCoverToR2(syncItem.item, syncItem.sourceUrl, syncItem.mediaType, syncItem.imageType, true);
+      updateSyncItemState(itemKey, {
+        status: "success",
+        r2Url,
+        lastSync: new Date().toISOString(),
+        error: undefined,
+      });
+
+      const fieldName = syncItem.imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
+      const rowKey = syncItem.itemKey;
+      if (syncItem.mediaType === "book") {
+        setBookRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+          )
+        );
+      } else if (syncItem.mediaType === "movie") {
+        setMovieRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+          )
+        );
+      } else if (syncItem.mediaType === "tv") {
+        setTvRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+          )
+        );
+      } else if (syncItem.mediaType === "game") {
+        setGameRows((prev) =>
+          prev.map((row) =>
+            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+          )
+        );
+      }
+
+      try {
+        const cacheKey = `cdlSynced${syncItem.mediaType.charAt(0).toUpperCase() + syncItem.mediaType.slice(1)}${syncItem.imageType === "backdrop" ? "Backdrops" : "Covers"}`;
+        const cached = loadCachedSyncData(cacheKey);
+        cached[itemKey] = { url: r2Url, lastSyncedAt: new Date().toISOString() };
+        localStorage.setItem(cacheKey, JSON.stringify(cached));
+      } catch (e) {
+        console.warn(`Failed to cache synced ${syncItem.category}:`, e);
+      }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : "Unknown error";
-      console.error("❌ R2 SYNC FAILED at outer level:", errorMsg, e);
-      setSyncStatus("error");
-      setSyncInProgress(false);
-      // Still report partial results if available
-      if (totalSucceeded > 0 || totalFailed > 0) {
-        setSyncResults({ succeeded: totalSucceeded, failed: totalFailed });
-      }
+      updateSyncItemState(itemKey, { status: "error", error: errorMsg });
     }
   };
 
@@ -7924,7 +8144,7 @@ export default function Page() {
     }, "Cover Sizes", `${group === "home" ? "Home" : group === "tv" ? "TV Shows" : group === "books" ? "Books" : group === "movies" ? "Movies" : "Games"} Cover Scale (%)`);
   }, [debouncedUpdate]);
   const updateCurrentCoverScale = useCallback((value: number) => {
-    if (nav === "statistics" || nav === "roadmap") return;
+    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync") return;
     const currentGroup = activeCoverScaleGroup;
     updateCoverScaleForGroup(currentGroup, value);
   }, [activeCoverScaleGroup, nav, updateCoverScaleForGroup]);
@@ -9713,7 +9933,7 @@ export default function Page() {
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
-    if (nav === "statistics" || nav === "roadmap") {
+    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync") {
       return [
         ...indexedBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...indexedShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
@@ -11755,7 +11975,7 @@ export default function Page() {
     { key: "completed", label: "Completed" },
     { key: "abandoned", label: "Abandoned" },
   ];
-  const mobileBottomDockVisible = isMobileLayout && nav !== "statistics";
+  const mobileBottomDockVisible = isMobileLayout && nav !== "statistics" && nav !== "cover-sync";
   const activeBookDetailKey =
     bookDetailItem && getMediaType(bookDetailItem) === "book" ? getMediaItemKey(bookDetailItem) : "";
   const activeBookDetailPalette =
@@ -11860,7 +12080,7 @@ export default function Page() {
           />
         </div>
       ) : null}
-      {nav !== "statistics" ? (
+      {nav !== "statistics" && nav !== "cover-sync" ? (
         <div
           aria-hidden
           style={{
@@ -14072,14 +14292,14 @@ export default function Page() {
 
                 <button
                   type="button"
-                  onClick={() => setR2SyncModalOpen(true)}
-                  className={`sideSubItem ${r2SyncModalOpen ? "active" : ""}`}
+                  onClick={openCoverSyncView}
+                  className={`sideSubItem ${nav === "cover-sync" ? "active" : ""}`}
                   style={{
                     ...discoverRowStyle,
-                    background: r2SyncModalOpen ? "rgba(120, 128, 140, 0.09)" : "transparent",
-                    border: r2SyncModalOpen ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    background: nav === "cover-sync" ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: nav === "cover-sync" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
                     borderRadius: 10,
-                    color: r2SyncModalOpen ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    color: nav === "cover-sync" ? "rgba(62, 70, 80, 0.92)" : undefined,
                     cursor: "pointer",
                   }}
                 >
@@ -14090,7 +14310,7 @@ export default function Page() {
                         width: 18,
                         height: 14,
                         borderRadius: 4,
-                        background: r2SyncModalOpen ? "rgba(0,0,0,0.05)" : "transparent",
+                        background: nav === "cover-sync" ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -14972,326 +15192,11 @@ export default function Page() {
               document.body
             ) : null}
 
-            {/* Cover Sync Modal */}
-            {r2SyncModalOpen && typeof document !== "undefined" ? createPortal(
-              <div
-                style={{
-                  position: "fixed",
-                  zIndex: SETTINGS_WINDOW_Z_INDEX,
-                  display: "flex",
-                  inset: 0,
-                  justifyContent: "center",
-                  alignItems: "center",
-                  padding: `${SETTINGS_WINDOW_MARGIN}px`,
-                  pointerEvents: "none",
-                }}
-                onClick={() => setR2SyncModalOpen(false)}
-              >
-                <div
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    width: `min(800px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
-                    maxHeight: `calc(100dvh - ${SETTINGS_WINDOW_MARGIN * 2}px)`,
-                    background: "rgba(246, 245, 243, 0.76)",
-                    border: "1px solid rgba(255, 255, 255, 0.42)",
-                    borderRadius: 16,
-                    boxShadow: "0 28px 70px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(139, 175, 244, 0.16)",
-                    backdropFilter: "blur(18px) saturate(1.12)",
-                    WebkitBackdropFilter: "blur(18px) saturate(1.12)",
-                    overflow: "hidden",
-                    pointerEvents: "auto",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {/* Title bar */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "13px 16px 12px",
-                      borderBottom: "1px solid rgba(139, 175, 244, 0.18)",
-                      background: "rgba(245, 245, 250, 0.5)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
-                      <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>Cover Sync to R2</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setR2SyncModalOpen(false)}
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        color: "#666",
-                        fontSize: 20,
-                        cursor: "pointer",
-                        padding: "0 6px",
-                        lineHeight: 1,
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  {/* Content */}
-                  <div style={{ flex: 1, overflow: "auto", padding: "16px" }}>
-                    {/* Media Type Sync Cards */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
-                      {(["book", "movie", "tv", "game"] as const).map((mediaType) => {
-                        const label = mediaType === "tv" ? "TV Shows" : mediaType.charAt(0).toUpperCase() + mediaType.slice(1) + "s";
-
-                        // Count total items (with title or Title field)
-                        const total = mediaType === "book" ? bookRows.filter(r => safeStr(r?.title || r?.Title)).length :
-                                     mediaType === "movie" ? movieRows.filter(r => safeStr(r?.title || r?.Title)).length :
-                                     mediaType === "tv" ? tvRows.filter(r => safeStr(r?.title || r?.Title)).length :
-                                     gameRows.filter(r => safeStr(r?.title || r?.Title)).length;
-
-                        // Count synced items from localStorage (persists across sessions)
-                        // Fall back to CSV data if localStorage is empty
-                        let csvSynced = mediaType === "book" ? bookRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
-                                        mediaType === "movie" ? movieRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
-                                        mediaType === "tv" ? tvRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
-                                        gameRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length;
-
-                        let synced = csvSynced;
-
-                        // Prefer localStorage count (persists across browser sessions)
-                        if (typeof localStorage !== "undefined") {
-                          const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}Covers`;
-                          try {
-                            const cached = localStorage.getItem(cacheKey);
-                            if (cached) {
-                              const localSynced = Object.keys(JSON.parse(cached)).length;
-                              // Use local cache if it has more items than CSV (more reliable across sessions)
-                              if (localSynced > csvSynced) {
-                                synced = localSynced;
-                              }
-                            }
-                          } catch (e) {
-                            // Ignore cache read errors
-                          }
-                        }
-
-                        const syncedPct = total > 0 ? Math.round((synced / total) * 100) : 0;
-                        const typeProgress = syncByType[mediaType] || { current: 0, total: 0, succeeded: 0, failed: 0 };
-
-                        // Get highlight color for this media type
-                        const highlightColorMap: Record<string, string> = {
-                          book: sidebarHighlightColorsLight.books,
-                          movie: sidebarHighlightColorsLight.movies,
-                          tv: sidebarHighlightColorsLight.tv,
-                          game: sidebarHighlightColorsLight.games,
-                        };
-                        const highlightColor = highlightColorMap[mediaType] || "#0071e3";
-
-                        return (
-                          <div
-                            key={mediaType}
-                            style={{
-                              border: `1px solid ${highlightColor}4d`,
-                              borderRadius: 12,
-                              background: `${highlightColor}1a`,
-                              padding: 12,
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 8,
-                            }}
-                          >
-                            <div style={{ fontSize: 13, fontWeight: 700, color: highlightColor }}>{label}</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: "#1d2735" }}>
-                              {synced} / {total}
-                            </div>
-                            {syncInProgress && typeProgress.total > 0 && (
-                              <div style={{ fontSize: 10, fontWeight: 650, color: `${highlightColor}dd` }}>
-                                Syncing {Math.min(typeProgress.current, typeProgress.total)} / {typeProgress.total}
-                              </div>
-                            )}
-                            <div style={{
-                              width: "100%",
-                              height: 6,
-                              borderRadius: 3,
-                              background: `${highlightColor}30`,
-                              overflow: "hidden",
-                            }}>
-                              <div style={{
-                                height: "100%",
-                                width: `${syncedPct}%`,
-                                background: highlightColor,
-                                transition: "width 300ms",
-                              }} />
-                            </div>
-                            <button
-                              type="button"
-                              disabled={syncInProgress}
-                              onClick={() => {
-                                setSyncInProgress(true);
-                                syncCoversToR2(mediaType);
-                              }}
-                              style={{
-                                border: `1px solid ${highlightColor}80`,
-                                borderRadius: 8,
-                                padding: "6px 10px",
-                                background: syncInProgress ? `${highlightColor}1a` : `${highlightColor}26`,
-                                color: highlightColor,
-                                cursor: syncInProgress ? "default" : "pointer",
-                                fontSize: 11,
-                                fontWeight: 650,
-                                opacity: syncInProgress ? 0.6 : 1,
-                              }}
-                            >
-                              {syncInProgress && typeProgress.total > 0
-                                ? `Syncing ${Math.min(typeProgress.current, typeProgress.total)}/${typeProgress.total}`
-                                : "Sync"}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {syncStatus === "syncing" && (
-                      <div style={{
-                        marginBottom: 14,
-                        padding: "12px 14px",
-                        borderRadius: 10,
-                        background: "rgba(0, 113, 227, 0.09)",
-                        border: "1px solid rgba(0, 113, 227, 0.3)",
-                        color: "#0a4f9e",
-                      }}>
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>
-                          {syncProgress.total > 0
-                            ? `Syncing covers: ${syncProgress.current} / ${syncProgress.total}`
-                            : "Preparing sync queue..."}
-                        </div>
-                        {syncProgress.total > 0 && (
-                          <div style={{
-                            marginTop: 8,
-                            width: "100%",
-                            height: 6,
-                            borderRadius: 3,
-                            background: "rgba(0, 113, 227, 0.2)",
-                            overflow: "hidden",
-                          }}>
-                            <div style={{
-                              height: "100%",
-                              width: `${Math.min(100, Math.round((syncProgress.current / Math.max(syncProgress.total, 1)) * 100))}%`,
-                              background: "#0071e3",
-                              transition: "width 220ms ease",
-                            }} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Detailed Sync List */}
-                    {syncDetails.length > 0 && (
-                      <div style={{
-                        border: "1px solid rgba(167,177,191,0.42)",
-                        borderRadius: 12,
-                        background: "rgba(255,255,255,0.78)",
-                        overflow: "hidden",
-                      }}>
-                        <div style={{
-                          padding: "10px 14px",
-                          borderBottom: "1px solid rgba(167,177,191,0.2)",
-                          background: "rgba(245, 245, 250, 0.5)",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#516279",
-                        }}>
-                          Sync Details ({syncDetails.filter(d => d.status === "success").length} ✓ / {syncDetails.filter(d => d.status === "error").length} ✕)
-                        </div>
-                        <div style={{ maxHeight: 300, overflow: "auto" }}>
-                          {syncDetails.map((detail, i) => (
-                            <div
-                              key={i}
-                              style={{
-                                padding: "10px 14px",
-                                borderTop: i === 0 ? "none" : "1px solid rgba(167,177,191,0.1)",
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: 8,
-                              }}
-                            >
-                              <span style={{
-                                color: detail.status === "success" ? "#0b7f3f" : "#b4232f",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                minWidth: 16,
-                                marginTop: 2,
-                              }}>
-                                {detail.status === "success" ? "✓" : "✕"}
-                              </span>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  color: "#1d2735",
-                                  wordBreak: "break-word",
-                                }}>
-                                  {detail.title}
-                                </div>
-                                {detail.message && (
-                                  <div style={{
-                                    fontSize: 10,
-                                    color: detail.status === "error" ? "#b4232f" : "#666",
-                                    marginTop: 4,
-                                  }}>
-                                    {detail.message}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Results summary */}
-                    {syncStatus === "complete" && syncResults && (
-                      <div style={{
-                        marginTop: 16,
-                        padding: "12px 14px",
-                        borderRadius: 10,
-                        background: "rgba(11, 127, 63, 0.1)",
-                        border: "1px solid rgba(11, 127, 63, 0.3)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#0b7f3f",
-                      }}>
-                        ✓ {syncResults.succeeded} synced{syncResults.failed > 0 ? `, ${syncResults.failed} failed` : ""}
-                      </div>
-                    )}
-
-                    {syncStatus === "error" && (
-                      <div style={{
-                        marginTop: 16,
-                        padding: "12px 14px",
-                        borderRadius: 10,
-                        background: "rgba(180, 35, 47, 0.1)",
-                        border: "1px solid rgba(180, 35, 47, 0.3)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#b4232f",
-                      }}>
-                        Error during sync. Check details above.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>,
-              document.body
-            ) : null}
 
             </div>
 
             {/* Synced Module at Bottom */}
-            {nav === "statistics" || nav === "roadmap" ? null : (
+            {nav === "statistics" || nav === "roadmap" || nav === "cover-sync" ? null : (
             <div style={{ padding: "0 4px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
@@ -16536,6 +16441,200 @@ export default function Page() {
             />
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
+          ) : nav === "cover-sync" ? (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "rgba(246, 245, 243, 0.6)" }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.2)", background: "rgba(250,250,252,0.8)", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={handleExitCoverSync}
+                    style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: 20, padding: "0 4px", lineHeight: 1 }}
+                  >
+                    ←
+                  </button>
+                  <div style={{ fontSize: 18, fontWeight: 750, color: "#1d2735" }}>Cover Sync to R2</div>
+                </div>
+                {selectedSyncCategory && (
+                  <button
+                    type="button"
+                    disabled={syncInProgress}
+                    onClick={() => syncCoversToR2(selectedSyncCategory)}
+                    style={{
+                      border: "1px solid rgba(0, 113, 227, 0.4)",
+                      background: syncInProgress ? "rgba(0,113,227,0.06)" : "rgba(0, 113, 227, 0.1)",
+                      color: "#0a4f9e",
+                      borderRadius: 10,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: syncInProgress ? "not-allowed" : "pointer",
+                      opacity: syncInProgress ? 0.7 : 1,
+                    }}
+                  >
+                    {syncInProgress ? `Syncing ${syncProgress.current}/${syncProgress.total}…` : "Sync Missing"}
+                  </button>
+                )}
+              </div>
+
+              {/* Category tabs row */}
+              <div style={{ display: "flex", gap: 8, padding: "12px 24px", overflowX: "auto", flexShrink: 0, borderBottom: "1px solid rgba(152, 162, 171, 0.15)" }}>
+                {([
+                  { key: "book" as const, label: "Books", color: sidebarHighlightColorsLight.books, total: bookRows.length },
+                  { key: "movieCover" as const, label: "Movie Covers", color: sidebarHighlightColorsLight.movies, total: movieRows.length },
+                  { key: "movieBackdrop" as const, label: "Movie Backdrops", color: sidebarHighlightColorsLight.movies, total: movieRows.length },
+                  { key: "tvCover" as const, label: "TV Show Covers", color: sidebarHighlightColorsLight.tv, total: tvRows.length },
+                  { key: "tvBackdrop" as const, label: "TV Show Backdrops", color: sidebarHighlightColorsLight.tv, total: tvRows.length },
+                  { key: "gameCover" as const, label: "Game Covers", color: sidebarHighlightColorsLight.games, total: gameRows.length },
+                  { key: "gameBackdrop" as const, label: "Game Backdrops", color: sidebarHighlightColorsLight.games, total: gameRows.length },
+                ] as const).map(({ key, label, color, total }) => {
+                  const csvSynced = key === "book"
+                    ? bookRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
+                    : key === "movieCover"
+                    ? movieRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
+                    : key === "movieBackdrop"
+                    ? movieRows.filter((r) => safeStr(r?.r2BackdropUrl || r?.R2BackdropUrl)).length
+                    : key === "tvCover"
+                    ? tvRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
+                    : key === "tvBackdrop"
+                    ? tvRows.filter((r) => safeStr(r?.r2BackdropUrl || r?.R2BackdropUrl)).length
+                    : key === "gameCover"
+                    ? gameRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
+                    : gameRows.filter((r) => safeStr(r?.r2BackdropUrl || r?.R2BackdropUrl)).length;
+
+                  let synced = csvSynced;
+                  if (typeof localStorage !== "undefined") {
+                    const ck = key === "book" ? "cdlSyncedBookCovers" : key === "movieCover" ? "cdlSyncedMovieCovers" : key === "movieBackdrop" ? "cdlSyncedMovieBackdrops" : key === "tvCover" ? "cdlSyncedTvCovers" : key === "tvBackdrop" ? "cdlSyncedTvBackdrops" : key === "gameCover" ? "cdlSyncedGameCovers" : "cdlSyncedGameBackdrops";
+                    try { const c = localStorage.getItem(ck); if (c) { const n = Object.keys(JSON.parse(c)).length; if (n > synced) synced = n; } } catch { /* ignore */ }
+                  }
+
+                  const isActive = selectedSyncCategory === key;
+                  const typeProgress = syncByCategory[key] || { current: 0, total: 0 };
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => loadItemsForCategory(key)}
+                      style={{
+                        flexShrink: 0,
+                        border: isActive ? `2px solid ${color}` : `1px solid ${color}4d`,
+                        borderRadius: 12,
+                        background: isActive ? `${color}18` : `${color}0d`,
+                        padding: "10px 16px",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                        minWidth: 120,
+                        textAlign: "left",
+                        transition: "border 120ms, background 120ms",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: "nowrap" }}>{label}</div>
+                      <div style={{ fontSize: 15, fontWeight: 750, color: "#1d2735" }}>
+                        {syncInProgress && isActive && typeProgress.total > 0
+                          ? `${Math.min(typeProgress.current, typeProgress.total)}/${typeProgress.total}`
+                          : `${synced}/${total}`}
+                      </div>
+                      <div style={{ width: "100%", height: 4, borderRadius: 2, background: `${color}28`, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: total > 0 ? `${Math.round((synced / total) * 100)}%` : "0%", background: color, transition: "width 300ms" }} />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Items table */}
+              <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", padding: "16px 24px" }}>
+                {!selectedSyncCategory ? (
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#7b8794", fontSize: 14 }}>
+                    Select a category above to view and sync items
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", borderRadius: 14, border: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(255,255,255,0.94)" }}>
+                    {/* Table header */}
+                    <div style={{ display: "grid", gridTemplateColumns: "36px 2fr 0.8fr 1.1fr 2fr 2fr 0.9fr", gap: 8, padding: "11px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(244,245,247,0.97)", fontSize: 11, fontWeight: 700, color: "#4c5a66", flexShrink: 0 }}>
+                      <div style={{ textAlign: "right" }}>#</div>
+                      <div>Title</div>
+                      <div>Status</div>
+                      <div>Last Sync</div>
+                      <div>Source URL</div>
+                      <div>R2 URL</div>
+                      <div style={{ textAlign: "right" }}>Action</div>
+                    </div>
+                    {/* Table body */}
+                    <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
+                      {syncItems.length === 0 ? (
+                        <div style={{ padding: 24, color: "#6b7784", fontSize: 13 }}>No items loaded.</div>
+                      ) : (
+                        syncItems.map((row, idx) => {
+                          const isDone = row.status === "synced" || row.status === "success";
+                          const isSyncing = row.status === "syncing";
+                          const isError = row.status === "error";
+                          const isMissing = row.status === "missing";
+                          const statusColor = isDone ? "#0b7f3f" : isSyncing ? "#7c5c00" : isError ? "#b4232f" : "#6b7280";
+                          const btnBorder = isDone ? "rgba(16,185,129,0.4)" : isSyncing ? "rgba(202,150,0,0.5)" : isError ? "rgba(180,35,47,0.4)" : "rgba(0,113,227,0.4)";
+                          const btnBg = isDone ? "rgba(16,185,129,0.12)" : isSyncing ? "rgba(255,190,0,0.15)" : isError ? "rgba(180,35,47,0.1)" : "rgba(0,113,227,0.08)";
+                          const btnColor = isDone ? "#0b8147" : isSyncing ? "#7c5c00" : isError ? "#b4232f" : "#0a4f9e";
+                          const btnLabel = isDone ? "Resync" : isMissing ? "No source" : isSyncing ? "Syncing…" : isError ? "Retry" : "Sync";
+                          const btnDisabled = isMissing || isSyncing;
+                          return (
+                            <div key={`${row.category}-${row.itemKey}`} style={{ display: "grid", gridTemplateColumns: "36px 2fr 0.8fr 1.1fr 2fr 2fr 0.9fr", gap: 8, padding: "10px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.1)", alignItems: "center" }}>
+                              <div style={{ fontSize: 11, color: "#9aa3ad", fontWeight: 600, textAlign: "right" }}>{idx + 1}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#1f2937", wordBreak: "break-word" }}>{row.title}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: statusColor, textTransform: "capitalize" }}>{row.status}</div>
+                              <div style={{ fontSize: 12, color: "#52606d" }}>{row.lastSync ? new Date(row.lastSync).toLocaleString() : "—"}</div>
+                              <div style={{ fontSize: 12, color: "#52606d", wordBreak: "break-all" }}>
+                                {row.sourceUrl ? <a href={row.sourceUrl} target="_blank" rel="noreferrer" style={{ color: "#52606d" }}>{row.sourceUrl}</a> : "—"}
+                              </div>
+                              <div style={{ fontSize: 12, color: "#0f4d91", wordBreak: "break-all" }}>
+                                {row.r2Url ? <a href={row.r2Url} target="_blank" rel="noreferrer" style={{ color: "#0f4d91" }}>{row.r2Url}</a> : "—"}
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => syncSingleItemToR2(row.itemKey)}
+                                  disabled={btnDisabled}
+                                  style={{
+                                    border: `1px solid ${btnBorder}`,
+                                    background: btnBg,
+                                    color: btnColor,
+                                    borderRadius: 8,
+                                    padding: "5px 10px",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: btnDisabled ? "not-allowed" : "pointer",
+                                    transition: "background 200ms, border 200ms, color 200ms",
+                                  }}
+                                >
+                                  {btnLabel}
+                                </button>
+                              </div>
+                              {isError && row.error && (
+                                <div style={{ gridColumn: "2 / -1", fontSize: 11, color: "#b4232f", marginTop: -4, paddingBottom: 4 }}>
+                                  Error: {row.error}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                    {/* Footer status */}
+                    {syncStatus === "complete" && syncResults && (
+                      <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(11,127,63,0.2)", background: "rgba(11,127,63,0.07)", color: "#0b7f3f", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                        ✓ {syncResults.succeeded} synced{syncResults.failed > 0 ? `, ${syncResults.failed} failed` : ""}
+                      </div>
+                    )}
+                    {syncStatus === "error" && (
+                      <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(180,35,47,0.2)", background: "rgba(180,35,47,0.07)", color: "#b4232f", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                        Error during sync — check rows above for details.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : bookDetailItem && getMediaType(bookDetailItem) === "book" ? (
             <BookDetailsPage
               key={getMediaItemKey(bookDetailItem)}
