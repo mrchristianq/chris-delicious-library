@@ -4930,10 +4930,24 @@ export default function Page() {
       }
 
       // Games - backdrops (screenshots)
+      // Load locally synced backdrop items from cache to avoid re-syncing
+      const syncedGameBackdrops = new Set<string>();
+      try {
+        const cached = localStorage.getItem("cdlSyncedGameBackdrops");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          Object.keys(parsed).forEach(key => syncedGameBackdrops.add(key));
+          console.log(`[Sync] Loaded ${syncedGameBackdrops.size} previously synced game backdrops from cache`);
+        }
+      } catch (e) {
+        console.warn("Failed to load synced game backdrops cache:", e);
+      }
+
       if (!filterByType || filterByType === "game") {
         gameRows.forEach((item) => {
           const screenshotUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
-          if (screenshotUrl && !safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl)) {
+          const itemKey = getMediaItemKey(item);
+          if (screenshotUrl && !safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl) && !syncedGameBackdrops.has(itemKey)) {
             itemsToSync.push({ item, mediaType: "game", defaultUrl: screenshotUrl, imageType: "backdrop" as const });
           }
         });
@@ -4973,7 +4987,8 @@ export default function Page() {
           // Update the local row data to reflect the synced r2CoverUrl
           const fieldName = imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
           const itemKey = getMediaItemKey(item);
-          const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}Covers`;
+          const imageSuffix = imageType === "backdrop" ? "Backdrops" : "Covers";
+          const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}${imageSuffix}`;
 
           if (mediaType === "book") {
             setBookRows((prev) =>
@@ -5001,15 +5016,14 @@ export default function Page() {
             );
           }
 
-          // Cache the synced cover to avoid re-syncing after page refresh (for covers, not backdrops)
-          if (imageType === "cover") {
-            try {
-              const cached = JSON.parse(localStorage.getItem(cacheKey) || "{}");
-              cached[itemKey] = r2Url;
-              localStorage.setItem(cacheKey, JSON.stringify(cached));
-            } catch (e) {
-              console.warn(`Failed to cache synced ${mediaType} cover:`, e);
-            }
+          // Cache the synced item (cover or backdrop) to avoid re-syncing after page refresh
+          try {
+            const cached = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+            cached[itemKey] = r2Url;
+            localStorage.setItem(cacheKey, JSON.stringify(cached));
+          } catch (e) {
+            const typeLabel = imageType === "backdrop" ? "backdrop" : "cover";
+            console.warn(`Failed to cache synced ${mediaType} ${typeLabel}:`, e);
           }
         } catch (e) {
           const errorMsg = e instanceof Error ? e.message : "Unknown error";
