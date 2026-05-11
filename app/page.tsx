@@ -4251,14 +4251,20 @@ export default function Page() {
     if (modalItem) {
       setModalItem((prev: any) => {
         if (!prev) return prev;
-        const updated = buildItemWithCoverSelection(prev, coverOverrides);
-        // If there's a pending override, auto-sync it to the CustomURL field
         const itemKey = getMediaItemKey(prev);
         const activeOverride = safeStr(coverOverrides[itemKey]);
+        console.log(`[CoverOverrides Sync] modalItem check:`, {
+          itemKey,
+          hasOverride: Boolean(activeOverride),
+          hasCustomUrl: Boolean(safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL))
+        });
+        const updated = buildItemWithCoverSelection(prev, coverOverrides);
+        // If there's a pending override, auto-sync it to the CustomURL field
         if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
           console.log(`[Modal Auto-Sync] Setting customImageUrl for ${itemKey} to override:`, activeOverride.substring(0, 50));
           return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
         }
+        console.log(`[CoverOverrides Sync] Updating modalItem with new coverOverrides, posterUrl:`, updated?.posterUrl?.substring(0, 50));
         return updated;
       });
     }
@@ -4570,8 +4576,19 @@ export default function Page() {
 
       setModalItem((prev: any) => {
         if (!prev) return prev;
-        const updatedItem = buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl });
-        console.log(`[Cover Upload] Modal item updated, displayUrl:`, updatedItem?.posterUrl);
+        const newCoverOverrides = { ...coverOverrides, [itemKey]: uploadedUrl };
+        console.log(`[Cover Upload] Setting modal item with override:`, {
+          itemKey,
+          uploadedUrl: uploadedUrl.substring(0, 50),
+          newCoverOverridesCount: Object.keys(newCoverOverrides).length
+        });
+        const updatedItem = buildItemWithCoverSelection(prev, newCoverOverrides);
+        console.log(`[Cover Upload] Modal item updated:`, {
+          itemKey: getMediaItemKey(updatedItem),
+          posterUrl: updatedItem?.posterUrl?.substring(0, 50),
+          coverOverrideUrl: updatedItem?.coverOverrideUrl?.substring(0, 50),
+          hasOverride: Boolean(updatedItem?.coverOverrideUrl)
+        });
         return updatedItem;
       });
 
