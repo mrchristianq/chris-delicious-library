@@ -6316,6 +6316,7 @@ export default function Page() {
       settingsCsvUrl ? fetchCsv(settingsCsvUrl) : Promise.resolve(null),
     ])
       .then((results) => {
+        console.log("[CSV LOAD] Starting CSV parsing...");
         if (cancelled) return;
 
         const [tvRes, booksRes, moviesRes, gamesRes, settingsRes] = results;
@@ -15026,11 +15027,25 @@ export default function Page() {
                                      mediaType === "tv" ? tvRows.filter(r => safeStr(r?.title || r?.Title)).length :
                                      gameRows.filter(r => safeStr(r?.title || r?.Title)).length;
 
-                        // Count synced items (with r2CoverUrl field)
-                        const synced = mediaType === "book" ? bookRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
-                                      mediaType === "movie" ? movieRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
-                                      mediaType === "tv" ? tvRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
-                                      gameRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length;
+                        // Count synced items - prefer CSV data (r2CoverUrl field) but fall back to localStorage
+                        let csvSynced = mediaType === "book" ? bookRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
+                                        mediaType === "movie" ? movieRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
+                                        mediaType === "tv" ? tvRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length :
+                                        gameRows.filter(r => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length;
+
+                        // If CSV doesn't have R2 data, count from localStorage cache
+                        let synced = csvSynced;
+                        if (csvSynced === 0 && typeof localStorage !== "undefined") {
+                          const cacheKey = `cdlSynced${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}Covers`;
+                          try {
+                            const cached = localStorage.getItem(cacheKey);
+                            if (cached) {
+                              synced = Object.keys(JSON.parse(cached)).length;
+                            }
+                          } catch (e) {
+                            // Ignore cache read errors
+                          }
+                        }
 
                         const syncedPct = total > 0 ? Math.round((synced / total) * 100) : 0;
                         const typeProgress = syncByType[mediaType] || { current: 0, total: 0, succeeded: 0, failed: 0 };
