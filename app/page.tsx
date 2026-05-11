@@ -5137,8 +5137,15 @@ export default function Page() {
     // Re-sync to pick up the canonical sheet values once published CSV refreshes.
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if cover was added/updated
-    if (safeStr(updates.imageUrl) || safeStr(updates.customImageUrl)) {
+    // Auto-sync cover to R2 in background (silently) if:
+    // - imageUrl or customImageUrl were updated, OR
+    // - there's a cover override that hasn't been synced to R2 yet
+    const itemKey = getMediaItemKey(item);
+    const activeOverride = safeStr(coverOverrides[itemKey]);
+    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
+    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
+
+    if (safeStr(updates.imageUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "book").catch(() => {
         // Silently ignore sync failures
       });
@@ -5282,8 +5289,15 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if cover was added/updated
-    if (safeStr(updates.posterUrl)) {
+    // Auto-sync cover to R2 in background (silently) if:
+    // - posterUrl was updated, OR
+    // - there's a cover override that hasn't been synced to R2 yet
+    const itemKey = getMediaItemKey(item);
+    const activeOverride = safeStr(coverOverrides[itemKey]);
+    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
+    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
+
+    if (safeStr(updates.posterUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "tv").catch(() => {
         // Silently ignore sync failures
       });
@@ -5409,8 +5423,15 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if cover was added/updated
-    if (safeStr(updates.posterUrl)) {
+    // Auto-sync cover to R2 in background (silently) if:
+    // - posterUrl was updated, OR
+    // - there's a cover override that hasn't been synced to R2 yet
+    const itemKey = getMediaItemKey(item);
+    const activeOverride = safeStr(coverOverrides[itemKey]);
+    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
+    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
+
+    if (safeStr(updates.posterUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "movie").catch(() => {
         // Silently ignore sync failures
       });
@@ -5675,8 +5696,15 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if cover was added/updated
-    if (safeStr(updates.coverUrl)) {
+    // Auto-sync cover to R2 in background (silently) if:
+    // - coverUrl was updated, OR
+    // - there's a cover override that hasn't been synced to R2 yet
+    const itemKey = getMediaItemKey(item);
+    const activeOverride = safeStr(coverOverrides[itemKey]);
+    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
+    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
+
+    if (safeStr(updates.coverUrl) || hasPendingOverride) {
       syncSingleItemCoverToR2(item, "game").catch(() => {
         // Silently ignore sync failures
       });

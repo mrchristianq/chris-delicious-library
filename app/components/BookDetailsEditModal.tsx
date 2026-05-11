@@ -292,6 +292,15 @@ export function BookDetailsEditModal({
     setSelectedMode(nextMode);
   }, [customSourceUrl, open, popupCoverMode]);
 
+  // Auto-sync custom cover URL to form field when a custom cover is uploaded
+  useEffect(() => {
+    if (!open || !customUrl) return;
+    // If there's a custom cover candidate but customImageUrl is empty, auto-populate it
+    if (customUrl && !safeStr(values.customImageUrl)) {
+      setValues((prev) => ({ ...prev, customImageUrl: customUrl }));
+    }
+  }, [open, customUrl, values.customImageUrl]);
+
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
   const buildDiff = (incoming: Record<string, string>, syncFields: typeof APPLE_BOOKS_SYNC_FIELDS): DiffRow[] => {
