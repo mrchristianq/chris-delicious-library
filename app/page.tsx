@@ -3650,10 +3650,12 @@ export default function Page() {
 
     // Debug logging for audiobooks or when title contains "beacon"
     const title = safeStr(item?.title || item?.Title).toLowerCase();
-    if (title.includes("beacon") || title.includes("midnight")) {
+    if (title.includes("beacon") || title.includes("midnight") || isGame) {
       console.log(`[DisplayCoverUrl] ${title}:`, {
         itemKey,
         isBook,
+        isGame,
+        coverUrl: isGame ? (item?.CoverURL ? `[CSV] ${item.CoverURL.substring(0, 50)}...` : "none") : "n/a",
         overrideUrl: overrideUrl ? `[OVERRIDE] ${overrideUrl.substring(0, 50)}...` : "none",
         r2CoverUrl: r2CoverUrl ? `[R2] ${r2CoverUrl.substring(0, 50)}...` : "none",
         metadataUrl: metadataUrl ? `[METADATA] ${metadataUrl.substring(0, 50)}...` : "none",
