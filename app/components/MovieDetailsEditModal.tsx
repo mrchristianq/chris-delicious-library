@@ -45,9 +45,10 @@ const MOVIE_FIELDS: FieldDef[] = [
   { key: "status",      label: "Release Status",  options: RELEASE_STATUS_OPTIONS },
   { key: "genres",      label: "Genres" },
   { key: "tags",        label: "Tags" },
-  { key: "posterUrl",   label: "Poster URL" },
-  { key: "backdropUrl", label: "Backdrop URL" },
-  { key: "overview",    label: "Overview",        multiline: true },
+  { key: "posterUrl",     label: "Poster URL" },
+  { key: "backdropUrl",   label: "Backdrop URL" },
+  { key: "customImageUrl", label: "Custom Cover URL" },
+  { key: "overview",      label: "Overview",        multiline: true },
 ];
 
 // Fields TMDB can fill in
@@ -111,8 +112,9 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     status:      firstNonEmpty(item, ["status", "Status", "movieStatus"]),
     genres:      firstNonEmpty(item, ["genres", "Genres"]),
     overview:    firstNonEmpty(item, ["overview", "Overview"]),
-    posterUrl:   firstNonEmpty(item, ["posterUrl", "PosterURL"]),
-    backdropUrl: firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
+    posterUrl:      firstNonEmpty(item, ["posterUrl", "PosterURL"]),
+    backdropUrl:    firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
+    customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
   };
   for (const key of Object.keys(raw)) {
     if (key.toLowerCase().includes("date")) {

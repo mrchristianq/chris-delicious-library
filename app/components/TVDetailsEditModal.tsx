@@ -53,6 +53,7 @@ const TV_FIELDS: FieldDef[] = [
   { key: "tags",             label: "Tags" },
   { key: "posterUrl",        label: "Poster URL" },
   { key: "backdropUrl",      label: "Backdrop URL" },
+  { key: "customImageUrl",   label: "Custom Cover URL" },
   { key: "overview",         label: "Overview",          multiline: true },
 ];
 
@@ -124,6 +125,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     tags:             firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     posterUrl:        firstNonEmpty(item, ["posterUrl", "PosterURL"]),
     backdropUrl:      firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
+    customImageUrl:   firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
     overview:         firstNonEmpty(item, ["overview", "Overview"]),
   };
   // Normalize date fields to YYYY-MM-DD for <input type="date">

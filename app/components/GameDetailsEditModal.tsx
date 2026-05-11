@@ -45,7 +45,8 @@ const IGDB_SYNC_FIELDS: { key: string; label: string }[] = [
   { key: "genres",      label: "Genres" },
   { key: "developer",   label: "Developer" },
   { key: "description", label: "Description" },
-  { key: "coverUrl",    label: "Cover URL" },
+  { key: "coverUrl",       label: "Cover URL" },
+  { key: "customImageUrl", label: "Custom Cover URL" },
 ];
 
 function safeStr(v: unknown): string {
@@ -104,6 +105,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     // URLs
     coverUrl:       firstNonEmpty(item, ["coverUrl", "CoverURL", "metadataCoverUrl"]),
     localCoverUrl:  firstNonEmpty(item, ["localCoverUrl", "LocalCoverURL"]),
+    customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
     // Less common sheet columns
     platforms:      firstNonEmpty(item, ["platforms", "Platforms"]),
     backlog:        firstNonEmpty(item, ["backlog", "Backlog"]),

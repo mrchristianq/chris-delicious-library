@@ -79,6 +79,7 @@ type WishlistDragTarget = {
 type Show = {
   title: string;
   posterUrl: string;
+  customImageUrl?: string;
   metadataCoverUrl?: string;
   posterUrlFallback?: string;
   coverSource?: string;
@@ -153,6 +154,7 @@ type Book = {
 type Movie = {
   title: string;
   posterUrl: string;
+  customImageUrl?: string;
   metadataCoverUrl?: string;
   coverSource?: string;
   coverCandidates?: CoverCandidate[];
@@ -186,6 +188,7 @@ type Movie = {
 type Game = {
   title: string;
   posterUrl: string;
+  customImageUrl?: string;
   metadataCoverUrl?: string;
   posterUrlFallback?: string;
   coverSource?: string;
@@ -1834,10 +1837,12 @@ function rowToShow(r: Row): Show | null {
   if (!title) return null;
 
   const githubUrl = getGitHubCoverUrl(title, 'tv');
+  const csvCustomUrl = safeStr(r["CustomURL"]) || safeStr(r["CustomImageURL"]);
   const csvPosterUrl = safeStr(r["PosterURL"]);
   const csvPoster = safeStr(r["Poster"]);
-  const metadataCoverUrl = csvPosterUrl || csvPoster;
+  const metadataCoverUrl = csvCustomUrl || csvPosterUrl || csvPoster;
   const { posterUrl, coverSource, coverCandidates } = chooseCover([
+    { label: "CustomURL", url: csvCustomUrl },
     { label: "PosterURL", url: csvPosterUrl },
     { label: "Poster", url: csvPoster },
     { label: "Generated GitHub Cover", url: githubUrl },
@@ -1846,6 +1851,7 @@ function rowToShow(r: Row): Show | null {
   return {
     title,
     posterUrl,
+    customImageUrl: csvCustomUrl || undefined,
     metadataCoverUrl: metadataCoverUrl || undefined,
     posterUrlFallback: githubUrl,
     coverSource,
@@ -1970,11 +1976,13 @@ function rowToMovie(r: Row): Movie | null {
   if (!title) return null;
 
   const githubUrl = getGitHubCoverUrl(title, 'movies');
+  const csvCustomUrl = safeStr(r["CustomURL"]) || safeStr(r["CustomImageURL"]);
   const csvPosterUrl = safeStr(r["PosterURL"]);
   const csvPoster = safeStr(r["Poster"]);
-  const metadataCoverUrl = csvPosterUrl || csvPoster;
+  const metadataCoverUrl = csvCustomUrl || csvPosterUrl || csvPoster;
   const csvUrl = metadataCoverUrl;
   const { posterUrl, coverSource, coverCandidates } = chooseCover([
+    { label: "CustomURL", url: csvCustomUrl },
     { label: "PosterURL", url: csvPosterUrl },
     { label: "Poster", url: csvPoster },
     { label: "Generated GitHub Cover", url: githubUrl },
@@ -1982,6 +1990,7 @@ function rowToMovie(r: Row): Movie | null {
   return {
     title,
     posterUrl,
+    customImageUrl: csvCustomUrl || undefined,
     metadataCoverUrl: metadataCoverUrl || undefined,
     coverSource,
     coverCandidates,
@@ -2018,11 +2027,13 @@ function rowToGame(r: Row): Game | null {
   if (!title) return null;
 
   const githubUrl = getGitHubCoverUrl(title, 'games');
+  const csvCustomUrl = safeStr(r["CustomURL"]) || safeStr(r["CustomImageURL"]);
   const csvPosterUrl = safeStr(r["PosterURL"]);
   const csvPoster = safeStr(r["Poster"]);
   const csvCoverUrl = safeStr(r["CoverURL"]);
-  const metadataCoverUrl = csvCoverUrl || csvPosterUrl || csvPoster;
+  const metadataCoverUrl = csvCustomUrl || csvCoverUrl || csvPosterUrl || csvPoster;
   const { posterUrl, coverSource, coverCandidates } = chooseCover([
+    { label: "CustomURL", url: csvCustomUrl },
     { label: "CoverURL", url: csvCoverUrl },
     { label: "PosterURL", url: csvPosterUrl },
     { label: "Poster", url: csvPoster },
@@ -2031,6 +2042,7 @@ function rowToGame(r: Row): Game | null {
   return {
     title,
     posterUrl,
+    customImageUrl: csvCustomUrl || undefined,
     metadataCoverUrl: metadataCoverUrl || undefined,
     posterUrlFallback: githubUrl,
     coverSource,
@@ -4649,13 +4661,34 @@ export default function Page() {
       });
 
       if (settingsWriteUrl) {
-        console.log(`[Cover Upload] Saving to sheet with key: coverOverride:${itemKey}`);
         saveSettingToSheet(
           `coverOverride:${itemKey}`,
           uploadedUrl,
           "Cover Overrides",
           `${mediaType} cover override for ${safeStr(item?.title)}`
         );
+      }
+
+      // Write CustomURL to the item's own sheet row for movies, TV shows, and games
+      const title = safeStr(item?.title || item?.Title);
+      if (mediaType === "movie" && moviesWriteUrl) {
+        postSheetWrite(moviesWriteUrl, {
+          action: "updateMovie",
+          match: { tmdbId: safeStr(item?.tmdbId), title },
+          updates: { CustomURL: uploadedUrl, CustomImageURL: uploadedUrl },
+        }, "Failed to save movie custom cover").catch(() => {});
+      } else if (mediaType === "tv" && showsWriteUrl) {
+        postSheetWrite(showsWriteUrl, {
+          action: "updateShow",
+          match: { tmdbId: safeStr(item?.tmdbId), title },
+          updates: { CustomURL: uploadedUrl, CustomImageURL: uploadedUrl },
+        }, "Failed to save TV show custom cover").catch(() => {});
+      } else if (mediaType === "game" && gamesWriteUrl) {
+        postSheetWrite(gamesWriteUrl, {
+          action: "updateGame",
+          match: { igdbId: safeStr(item?.igdbId || item?.IGDB_ID), title },
+          updates: { CustomURL: uploadedUrl, CustomImageURL: uploadedUrl },
+        }, "Failed to save game custom cover").catch(() => {});
       }
 
       setModalItem((prev: any) => {
@@ -5637,6 +5670,8 @@ export default function Page() {
         Tags: safeStr(updates.tags),
         Tag: safeStr(updates.tags),
         PosterURL: safeStr(updates.posterUrl),
+        CustomURL: safeStr(updates.customImageUrl),
+        CustomImageURL: safeStr(updates.customImageUrl),
       },
     };
 
@@ -5780,6 +5815,8 @@ export default function Page() {
         PosterURL: safeStr(updates.posterUrl),
         BackdropURL: safeStr(updates.backdropUrl),
         Ownership: safeStr(updates.ownership),
+        CustomURL: safeStr(updates.customImageUrl),
+        CustomImageURL: safeStr(updates.customImageUrl),
       },
     };
 
@@ -5993,6 +6030,8 @@ export default function Page() {
       IGDB_ID: safeStr(updates.igdbId),
       IGDB_ID_Override: safeStr(updates.igdbIdOverride),
       LocalCoverURL: safeStr(updates.localCoverUrl),
+      CustomURL: safeStr(updates.customImageUrl),
+      CustomImageURL: safeStr(updates.customImageUrl),
     };
 
     const changedUpdates: Record<string, string> = {};
