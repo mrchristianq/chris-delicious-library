@@ -16626,7 +16626,10 @@ export default function Page() {
                       {syncItems.length === 0 ? (
                         <div style={{ padding: 24, color: "#6b7784", fontSize: 13 }}>No items loaded.</div>
                       ) : (
-                        syncItems.map((row, idx) => {
+                        [...syncItems].sort((a, b) => {
+                          const order = { error: 0, pending: 1, missing: 2, syncing: 3, success: 4, synced: 5 };
+                          return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
+                        }).map((row, idx) => {
                           const isDone = row.status === "synced" || row.status === "success";
                           const isSyncing = row.status === "syncing";
                           const isError = row.status === "error";
