@@ -4246,8 +4246,37 @@ export default function Page() {
   }, [isReadOnlySettingsMode, settingsRows]);
 
   useEffect(() => {
-    if (!modalItem) return;
-    setModalItem((prev: any) => (prev ? buildItemWithCoverSelection(prev, coverOverrides) : prev));
+    if (!modalItem && !bookDetailItem) return;
+
+    if (modalItem) {
+      setModalItem((prev: any) => {
+        if (!prev) return prev;
+        const updated = buildItemWithCoverSelection(prev, coverOverrides);
+        // If there's a pending override, auto-sync it to the CustomURL field
+        const itemKey = getMediaItemKey(prev);
+        const activeOverride = safeStr(coverOverrides[itemKey]);
+        if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
+          console.log(`[Modal Auto-Sync] Setting customImageUrl for ${itemKey} to override:`, activeOverride.substring(0, 50));
+          return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
+        }
+        return updated;
+      });
+    }
+
+    if (bookDetailItem) {
+      setBookDetailItem((prev: any) => {
+        if (!prev) return prev;
+        const updated = buildItemWithCoverSelection(prev, coverOverrides);
+        // If there's a pending override, auto-sync it to the CustomURL field
+        const itemKey = getMediaItemKey(prev);
+        const activeOverride = safeStr(coverOverrides[itemKey]);
+        if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
+          console.log(`[Detail Auto-Sync] Setting customImageUrl for ${itemKey} to override:`, activeOverride.substring(0, 50));
+          return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
+        }
+        return updated;
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverOverrides]);
 
