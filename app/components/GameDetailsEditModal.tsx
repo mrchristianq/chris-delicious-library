@@ -110,7 +110,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     platforms:      firstNonEmpty(item, ["platforms", "Platforms"]),
     backlog:        firstNonEmpty(item, ["backlog", "Backlog"]),
     completed:      firstNonEmpty(item, ["completed", "Completed"]),
-    screensotsUrl:  firstNonEmpty(item, ["screensotsUrl", "ScreensotsURL"]),
+    screenshotsUrl: firstNonEmpty(item, ["screenshotsUrl", "ScreenshotsURL"]),
     // Description
     description:    firstNonEmpty(item, ["description", "Description"]),
   };
@@ -250,7 +250,7 @@ export function GameDetailsEditModal({
     { key: "platforms",      label: "Platforms (Multi)" },
     { key: "backlog",        label: "Backlog",            isFlag: true },
     { key: "completed",      label: "Completed",          isFlag: true },
-    { key: "screensotsUrl",  label: "Screenshots URL",    wide: true },
+    { key: "screenshotsUrl", label: "Screenshots URL",    wide: true },
     // Description
     { key: "description",    label: "Description",        multiline: true, wide: true },
   ];

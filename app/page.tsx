@@ -218,7 +218,7 @@ type Game = {
   hoursPlayed?: string;
   coverCachedAt?: string;
   developer?: string;
-  screensotsUrl?: string;
+  screenshotsUrl?: string;
   wishlistOrder?: string;
   queuedOrder?: string;
   igdbId?: string;
@@ -2072,7 +2072,7 @@ function rowToGame(r: Row): Game | null {
     hoursPlayed: safeStr(r["Hours Played"]) || undefined,
     coverCachedAt: safeStr(r["CoverCachedAt"]) || undefined,
     developer: safeStr(r["Developer"]) || undefined,
-    screensotsUrl: safeStr(r["ScreensotsURL"]) || undefined,
+    screenshotsUrl: safeStr(r["ScreenshotsURL"]) || undefined,
     wishlistOrder: safeStr(r["WishlistOrder"]) || undefined,
     queuedOrder: safeStr(r["QueuedOrder"]) || undefined,
     igdbId: safeStr(r["IGDB_ID"]) || undefined,
@@ -3737,6 +3737,8 @@ export default function Page() {
       item?.backdrop ||
       item?.BackDropURL ||
       item?.backdrops?.[0] ||
+      item?.screenshotsUrl ||
+      item?.ScreenshotsURL ||
       ""
     );
   };
@@ -5153,7 +5155,7 @@ export default function Page() {
         });
       } else if (categoryKey === "gameBackdrop") {
         gameRows.forEach((item) => {
-          const sourceUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
+          const sourceUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl);
           itemsToSync.push(makeSyncItem(item, "game", categoryKey, "backdrop", sourceUrl, cachedGameBackdrops));
         });
       }
@@ -6006,7 +6008,7 @@ export default function Page() {
       "Hours Played": ["hoursPlayed", "Hours Played"],
       CoverCachedAt: ["coverCachedAt", "CoverCachedAt"],
       Developer: ["developer", "Developer"],
-      ScreenshotsURL: ["ScreenshotsURL", "screenshotsUrl", "screensotsUrl"],
+      ScreenshotsURL: ["ScreenshotsURL", "screenshotsUrl"],
       WishlistOrder: ["wishlistOrder", "WishlistOrder"],
       QueuedOrder: ["queuedOrder", "QueuedOrder"],
       IGDB_ID: ["igdbId", "IGDB_ID"],
@@ -6040,7 +6042,7 @@ export default function Page() {
       "Hours Played": safeStr(updates.hoursPlayed),
       CoverCachedAt: safeStr(updates.coverCachedAt),
       Developer: safeStr(updates.developer),
-      ScreenshotsURL: safeStr(updates.screensotsUrl),
+      ScreenshotsURL: safeStr(updates.screenshotsUrl),
       WishlistOrder: safeStr(updates.wishlistOrder),
       QueuedOrder: safeStr(updates.queuedOrder),
       IGDB_ID: safeStr(updates.igdbId),
@@ -6085,7 +6087,7 @@ export default function Page() {
     }
 
     // Backup game screenshot (backdrop) to R2 if it exists
-    const screenshotUrl = safeStr(updates.screensotsUrl || item?.ScreenshotsURL || item?.screenshotsUrl || item?.screensotsUrl);
+    const screenshotUrl = safeStr(updates.screenshotsUrl || item?.ScreenshotsURL || item?.screenshotsUrl);
     if (screenshotUrl && !safeStr(item?.r2BackdropUrl)) {
       void (async () => {
         try {
@@ -6124,7 +6126,7 @@ export default function Page() {
         hoursPlayed: safeStr(updates.hoursPlayed),
         coverCachedAt: safeStr(updates.coverCachedAt),
         developer: safeStr(updates.developer),
-        screensotsUrl: safeStr(updates.screensotsUrl),
+        screenshotsUrl: safeStr(updates.screenshotsUrl),
         wishlistOrder: safeStr(updates.wishlistOrder),
         queuedOrder: safeStr(updates.queuedOrder),
         igdbId: safeStr(updates.igdbId),
@@ -6176,7 +6178,7 @@ export default function Page() {
           "Hours Played": safeStr(updates.hoursPlayed),
           CoverCachedAt: safeStr(updates.coverCachedAt),
           Developer: safeStr(updates.developer),
-          ScreensotsURL: safeStr(updates.screensotsUrl),
+          ScreenshotsURL: safeStr(updates.screenshotsUrl),
           WishlistOrder: safeStr(updates.wishlistOrder),
           QueuedOrder: safeStr(updates.queuedOrder),
           IGDB_ID: safeStr(updates.igdbId) || matchIgdbId || rowIgdbId,
@@ -6590,7 +6592,7 @@ export default function Page() {
       "Date Added": dateAdded, Description: safeStr(values.description),
       Genres: safeStr(values.genres), "Hours Played": safeStr(values.hoursPlayed),
       CoverCachedAt: safeStr(values.coverCachedAt), Developer: safeStr(values.developer),
-      ScreensotsURL: safeStr(values.screensotsUrl), WishlistOrder: safeStr(values.wishlistOrder),
+      ScreenshotsURL: safeStr(values.screenshotsUrl), WishlistOrder: safeStr(values.wishlistOrder),
       QueuedOrder: safeStr(values.queuedOrder), IGDB_ID: safeStr(values.igdbId),
       IGDB_ID_Override: safeStr(values.igdbIdOverride), LocalCoverURL: safeStr(values.localCoverUrl),
       Tag: safeStr(values.tags),
