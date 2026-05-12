@@ -2305,7 +2305,8 @@ export default function Page() {
     nav === "year-this" ||
     nav === "smart-custom" ||
     nav === "statistics" ||
-    nav === "roadmap";
+    nav === "roadmap" ||
+    nav === "cover-sync";
   const isHomeSidebar = nav === "home" || isBacklogSidebarView || isSmartListOrDiscoverNav;
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
