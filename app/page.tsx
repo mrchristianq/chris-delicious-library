@@ -5192,6 +5192,42 @@ export default function Page() {
       addItemsForCategory("gameBackdrop");
     }
 
+    // Repair: items synced in cache but whose R2 URL never made it to the sheet.
+    // Write their cached URLs to the sheet now, fire-and-forget.
+    itemsToSync.forEach((si) => {
+      if (si.status !== "synced" || !si.r2Url) return;
+      const existingInCsv = si.imageType === "cover"
+        ? safeStr(si.item?.r2CoverUrl || si.item?.R2CoverUrl)
+        : safeStr(si.item?.r2BackdropUrl || si.item?.R2BackdropUrl);
+      if (existingInCsv) return; // already in sheet, no repair needed
+      const writeUrl =
+        si.mediaType === "book" ? booksWriteUrl :
+        si.mediaType === "movie" ? moviesWriteUrl :
+        si.mediaType === "tv" ? showsWriteUrl :
+        gamesWriteUrl;
+      if (!writeUrl) return;
+      const action =
+        si.mediaType === "book" ? "updateBook" :
+        si.mediaType === "movie" ? "updateMovie" :
+        si.mediaType === "tv" ? "updateShow" : "updateGame";
+      const title = safeStr(si.item?.title || si.item?.Title || si.item?.name);
+      const fieldName = si.imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
+      const syncedAtField = si.imageType === "backdrop" ? "R2BackdropSyncedAt" : "R2CoverSyncedAt";
+      const igdbId = safeStr(si.item?.igdbId || si.item?.IGDB_ID);
+      const platform = safeStr(si.item?.platform || si.item?.Platform);
+      postSheetWrite(writeUrl, {
+        action,
+        match: { title, ...(si.mediaType === "game" ? { igdbId, platform } : {}) },
+        updates: { [fieldName]: si.r2Url, [syncedAtField]: new Date().toISOString() },
+      }, "repair sheet R2 URL").catch(() => {});
+      // Update in-memory row so sidebar count reflects immediately
+      const typedKey = si.itemKey;
+      if (si.mediaType === "book") setBookRows((prev) => prev.map((r) => buildTypedItemKey(r, "book") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
+      else if (si.mediaType === "movie") setMovieRows((prev) => prev.map((r) => buildTypedItemKey(r, "movie") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
+      else if (si.mediaType === "tv") setTvRows((prev) => prev.map((r) => buildTypedItemKey(r, "tv") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
+      else if (si.mediaType === "game") setGameRows((prev) => prev.map((r) => buildTypedItemKey(r, "game") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
+    });
+
     setSyncItems(itemsToSync);
     setSyncProgress({ current: 0, total: itemsToSync.length });
 
