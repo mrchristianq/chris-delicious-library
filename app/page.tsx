@@ -1579,6 +1579,24 @@ function getMediaItemKey(item: any): string {
   return `${type}:${normalizedTitle}`;
 }
 
+// Like getMediaItemKey but uses an explicitly-known mediaType instead of
+// detecting it — required for raw CSV rows where getMediaType() misidentifies
+// the type due to capitalized field names (e.g. Platform vs platform).
+function buildTypedItemKey(item: any, mediaType: "book" | "movie" | "tv" | "game"): string {
+  const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
+  if (mediaType === "book") {
+    const bookFormatToken = getBookFormatKeyToken(item);
+    return `book:${normalizedTitle}:${bookFormatToken}`;
+  }
+  if (mediaType === "game") {
+    const normalizedPlatform = normalizePlatformToken(
+      safeStr(item?.__renderPlatform || item?.platform || item?.Platform)
+    );
+    return `game:${normalizedTitle}:${normalizedPlatform || "default"}`;
+  }
+  return `${mediaType}:${normalizedTitle}`;
+}
+
 function getLegacyMediaItemKey(item: any): string {
   const type = getMediaType(item);
   const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
@@ -4902,31 +4920,31 @@ export default function Page() {
       }
 
       const r2Url = await uploadCoverToR2(item, displayUrl, mediaType, "cover", true);
-      const itemKey = getMediaItemKey(item);
+      const itemKey = buildTypedItemKey(item, mediaType);
 
       // Update the local row data with the synced R2CoverUrl
       if (mediaType === "book") {
         setBookRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "book") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
           )
         );
       } else if (mediaType === "movie") {
         setMovieRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "movie") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
           )
         );
       } else if (mediaType === "tv") {
         setTvRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "tv") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
           )
         );
       } else if (mediaType === "game") {
         setGameRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "game") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
           )
         );
       }
@@ -5096,7 +5114,7 @@ export default function Page() {
       sourceUrl: string,
       cacheMap: Record<string, { url: string; lastSyncedAt?: string }>
     ): SyncItem => {
-      const itemKey = getMediaItemKey(item);
+      const itemKey = buildTypedItemKey(item, mediaType);
       const title = safeStr(item?.title || item?.Title || item?.name || item?.Name || "Untitled");
       const existingR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.r2BackdropUrl || item?.R2BackdropUrl);
       const cachedEntry = cacheMap[itemKey];
@@ -5122,15 +5140,16 @@ export default function Page() {
 
     const itemsToSync: SyncItem[] = [];
     const addItemsForCategory = (categoryKey: SyncCategory) => {
-      const getOverride = (item: any) => safeStr(coverOverrides[getMediaItemKey(item)]);
+      const getOverride = (item: any, mt: "book" | "movie" | "tv" | "game") =>
+        safeStr(coverOverrides[buildTypedItemKey(item, mt)]);
       if (categoryKey === "book") {
         bookRows.forEach((item) => {
-          const sourceUrl = getOverride(item) || getBookSourceUrlByMode(item);
+          const sourceUrl = getOverride(item, "book") || getBookSourceUrlByMode(item);
           itemsToSync.push(makeSyncItem(item, "book", categoryKey, "cover", sourceUrl, cachedBookCovers));
         });
       } else if (categoryKey === "movieCover") {
         movieRows.forEach((item) => {
-          const sourceUrl = getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+          const sourceUrl = getOverride(item, "movie") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
           itemsToSync.push(makeSyncItem(item, "movie", categoryKey, "cover", sourceUrl, cachedMovieCovers));
         });
       } else if (categoryKey === "movieBackdrop") {
@@ -5140,7 +5159,7 @@ export default function Page() {
         });
       } else if (categoryKey === "tvCover") {
         tvRows.forEach((item) => {
-          const sourceUrl = getOverride(item) || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
+          const sourceUrl = getOverride(item, "tv") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
           itemsToSync.push(makeSyncItem(item, "tv", categoryKey, "cover", sourceUrl, cachedTvCovers));
         });
       } else if (categoryKey === "tvBackdrop") {
@@ -5150,7 +5169,7 @@ export default function Page() {
         });
       } else if (categoryKey === "gameCover") {
         gameRows.forEach((item) => {
-          const sourceUrl = getOverride(item) || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
+          const sourceUrl = getOverride(item, "game") || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
           itemsToSync.push(makeSyncItem(item, "game", categoryKey, "cover", sourceUrl, cachedGameCovers));
         });
       } else if (categoryKey === "gameBackdrop") {
@@ -5234,25 +5253,25 @@ export default function Page() {
         if (mediaType === "book") {
           setBookRows((prev) =>
             prev.map((row) =>
-              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              buildTypedItemKey(row, "book") === itemKey ? { ...row, [fieldName]: r2Url } : row
             )
           );
         } else if (mediaType === "movie") {
           setMovieRows((prev) =>
             prev.map((row) =>
-              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              buildTypedItemKey(row, "movie") === itemKey ? { ...row, [fieldName]: r2Url } : row
             )
           );
         } else if (mediaType === "tv") {
           setTvRows((prev) =>
             prev.map((row) =>
-              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              buildTypedItemKey(row, "tv") === itemKey ? { ...row, [fieldName]: r2Url } : row
             )
           );
         } else if (mediaType === "game") {
           setGameRows((prev) =>
             prev.map((row) =>
-              getMediaItemKey(row) === itemKey ? { ...row, [fieldName]: r2Url } : row
+              buildTypedItemKey(row, "game") === itemKey ? { ...row, [fieldName]: r2Url } : row
             )
           );
         }
@@ -5326,25 +5345,25 @@ export default function Page() {
       if (syncItem.mediaType === "book") {
         setBookRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+            buildTypedItemKey(row, "book") === rowKey ? { ...row, [fieldName]: r2Url } : row
           )
         );
       } else if (syncItem.mediaType === "movie") {
         setMovieRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+            buildTypedItemKey(row, "movie") === rowKey ? { ...row, [fieldName]: r2Url } : row
           )
         );
       } else if (syncItem.mediaType === "tv") {
         setTvRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+            buildTypedItemKey(row, "tv") === rowKey ? { ...row, [fieldName]: r2Url } : row
           )
         );
       } else if (syncItem.mediaType === "game") {
         setGameRows((prev) =>
           prev.map((row) =>
-            getMediaItemKey(row) === rowKey ? { ...row, [fieldName]: r2Url } : row
+            buildTypedItemKey(row, "game") === rowKey ? { ...row, [fieldName]: r2Url } : row
           )
         );
       }
