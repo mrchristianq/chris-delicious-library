@@ -16664,12 +16664,12 @@ export default function Page() {
                     >
                       <div style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: "nowrap" }}>{label}</div>
                       <div style={{ fontSize: 15, fontWeight: 750, color: "#1d2735" }}>
-                        {syncInProgress && isActive && typeProgress.total > 0
+                        {typeProgress.total > 0
                           ? `${Math.min(typeProgress.current, typeProgress.total)}/${typeProgress.total}`
                           : `${synced}/${total}`}
                       </div>
                       <div style={{ width: "100%", height: 4, borderRadius: 2, background: `${color}28`, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: total > 0 ? `${Math.round((synced / total) * 100)}%` : "0%", background: color, transition: "width 300ms" }} />
+                        <div style={{ height: "100%", width: total > 0 ? `${Math.round(((typeProgress.total > 0 ? Math.min(typeProgress.current, typeProgress.total) : synced) / total) * 100)}%` : "0%", background: color, transition: "width 300ms" }} />
                       </div>
                     </button>
                   );
