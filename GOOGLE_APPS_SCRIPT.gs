@@ -194,9 +194,11 @@ function updateBookRow_(payload) {
   const matchGoogleBooksVolumeId = String(match.googleBooksVolumeId || "").trim();
   const matchOpenLibraryWorkKey = String(match.openLibraryWorkKey || "").trim();
   const matchIsbn = String(match.isbn || "").trim();
+  const matchType = String(match.type || "").trim();
+  const matchImageUrl = String(match.imageUrl || "").trim();
   const matchTitle = String(match.title || "").trim();
 
-  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
+  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchImageUrl && !matchTitle) {
     return createCORSResponse("Error: missing book match keys");
   }
 
@@ -235,6 +237,34 @@ function updateBookRow_(payload) {
     const values = sheet.getRange(2, isbnCol, lastRow - 1, 1).getValues();
     for (var r = 0; r < values.length; r++) {
       if (String(values[r][0] || "").trim() === matchIsbn) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  if (rowNum === -1 && matchImageUrl) {
+    const imageUrlCol = headerIndex["ImageURL"] || headerIndex["Image Url"] || headerIndex["Image URL"] || headerIndex["Image"];
+    if (imageUrlCol) {
+      const values = sheet.getRange(2, imageUrlCol, lastRow - 1, 1).getValues();
+      for (var r = 0; r < values.length; r++) {
+        if (String(values[r][0] || "").trim() === matchImageUrl) {
+          rowNum = r + 2;
+          break;
+        }
+      }
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle && matchType) {
+    const titleValues = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    const typeCol = headerIndex["Type"] || headerIndex["Types"];
+    const typeValues = typeCol ? sheet.getRange(2, typeCol, lastRow - 1, 1).getValues() : null;
+    for (var r = 0; r < titleValues.length; r++) {
+      var rowTitle = String(titleValues[r][0] || "").trim().toLowerCase();
+      if (rowTitle !== matchTitle.toLowerCase()) continue;
+      var rowType = String(typeValues && typeValues[r] ? typeValues[r][0] || "" : "").trim().toLowerCase();
+      if (rowType === matchType.toLowerCase()) {
         rowNum = r + 2;
         break;
       }
@@ -386,6 +416,7 @@ function updateGameRow_(payload) {
   const updates = payload.updates || {};
 
   const matchIgdbId = String(match.igdbId || "").trim();
+  const matchPlatform = String(match.platform || "").trim();
   const matchTitle = String(match.title || "").trim();
 
   if (!matchIgdbId && !matchTitle) {
@@ -400,12 +431,29 @@ function updateGameRow_(payload) {
   const headerLookup = buildHeaderLookup_(headers);
   const headerIndex = headerLookup.headerIndex;
   const normalizedHeaderIndex = headerLookup.normalizedHeaderIndex;
+  const platformCol = headerIndex["Platform"] || headerIndex["Platforms"];
 
   var rowNum = -1;
   if (headerIndex["IGDB_ID"] && matchIgdbId) {
     const values = sheet.getRange(2, headerIndex["IGDB_ID"], lastRow - 1, 1).getValues();
+    const platformValues = platformCol ? sheet.getRange(2, platformCol, lastRow - 1, 1).getValues() : null;
     for (var r = 0; r < values.length; r++) {
-      if (String(values[r][0] || "").trim() === matchIgdbId) {
+      if (String(values[r][0] || "").trim() !== matchIgdbId) continue;
+      if (matchPlatform && platformValues) {
+        const rowPlatform = String(platformValues[r][0] || "").trim().toLowerCase();
+        if (rowPlatform !== matchPlatform.toLowerCase()) continue;
+      }
+      rowNum = r + 2;
+      break;
+    }
+  }
+
+  if (rowNum === -1 && headerIndex["Title"] && matchTitle && matchPlatform && platformCol) {
+    const titleValues = sheet.getRange(2, headerIndex["Title"], lastRow - 1, 1).getValues();
+    const platformValues = sheet.getRange(2, platformCol, lastRow - 1, 1).getValues();
+    for (var r = 0; r < titleValues.length; r++) {
+      if (String(titleValues[r][0] || "").trim().toLowerCase() !== matchTitle.toLowerCase()) continue;
+      if (String(platformValues[r][0] || "").trim().toLowerCase() !== matchPlatform.toLowerCase()) continue;
         rowNum = r + 2;
         break;
       }

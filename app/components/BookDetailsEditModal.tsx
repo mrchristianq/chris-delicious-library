@@ -427,6 +427,41 @@ export function BookDetailsEditModal({
   const selectedCount = syncDiff ? syncDiff.filter((r) => r.selected).length : 0;
   const syncLabel = syncSource === "apple" ? "Apple Books" : "Hardcover";
   const syncAccent = syncSource === "apple" ? "#0071e3" : "#7c3aed";
+  const handleSave = async () => {
+    if (!item) return;
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(null);
+    try {
+      const nextValues = { ...values };
+      if (activeMode === "default") {
+        nextValues.customImageUrl = "";
+      } else if (!safeStr(nextValues.customImageUrl)) {
+        throw new Error("Custom mode requires a Custom URL (or upload a custom cover first).");
+      }
+      await Promise.resolve(onSave(item, nextValues));
+      if (!isNew) {
+        onCoverModeChange(
+          {
+            ...item,
+            imageUrl: nextValues.imageUrl,
+            customImageUrl: nextValues.customImageUrl,
+            ImageURL: nextValues.imageUrl,
+            CustomURL: nextValues.customImageUrl,
+            CustomImageURL: nextValues.customImageUrl,
+          },
+          activeMode
+        );
+      }
+      onSaved?.();
+      onClose();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to save book changes";
+      setSaveError(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (!open || !item) return null;
 
@@ -474,6 +509,7 @@ export function BookDetailsEditModal({
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {syncNotice && !syncDiff ? <span style={{ fontSize: 11, color: "#335480" }}>{syncNotice}</span> : null}
             {syncError ? <span style={{ fontSize: 11, color: "#b4232f" }}>{syncError}</span> : null}
+            {saveError || saveSuccess ? <span style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480" }}>{saveError || saveSuccess}</span> : null}
             <button
               type="button"
               disabled={isSyncing || isSaving}
@@ -505,6 +541,14 @@ export function BookDetailsEditModal({
               }}
             >
               {isSyncing && syncSource === "hardcover" ? "Syncing…" : "Sync from Hardcover"}
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={handleSave}
+              style={{ border: "1px solid rgba(27,83,217,0.5)", borderRadius: 8, padding: "6px 12px", background: "linear-gradient(180deg, rgba(86,150,255,0.95) 0%, rgba(45,109,237,0.98) 100%)", color: "#f6f9ff", cursor: isSaving ? "default" : "pointer", fontSize: 12, fontWeight: 750 }}
+            >
+              {isSaving ? "Adding…" : isNew ? "Add to Library" : "Save Changes"}
             </button>
             <button
               type="button"
@@ -697,47 +741,6 @@ export function BookDetailsEditModal({
             </div>
             <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480" }}>{saveError || saveSuccess || " "}</div>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={async () => {
-                  setIsSaving(true);
-                  setSaveError(null);
-                  setSaveSuccess(null);
-                  try {
-                    const nextValues = { ...values };
-                    if (activeMode === "default") {
-                      nextValues.customImageUrl = "";
-                    } else if (!safeStr(nextValues.customImageUrl)) {
-                      throw new Error("Custom mode requires a Custom URL (or upload a custom cover first).");
-                    }
-                    await Promise.resolve(onSave(item, nextValues));
-                    if (!isNew) {
-                      onCoverModeChange(
-                        {
-                          ...item,
-                          imageUrl: nextValues.imageUrl,
-                          customImageUrl: nextValues.customImageUrl,
-                          ImageURL: nextValues.imageUrl,
-                          CustomURL: nextValues.customImageUrl,
-                          CustomImageURL: nextValues.customImageUrl,
-                        },
-                        activeMode
-                      );
-                    }
-                    onSaved?.();
-                    onClose();
-                  } catch (error: unknown) {
-                    const message = error instanceof Error ? error.message : "Failed to save book changes";
-                    setSaveError(message);
-                  } finally {
-                    setIsSaving(false);
-                  }
-                }}
-                style={{ border: "1px solid rgba(27,83,217,0.5)", borderRadius: 9, padding: "8px 12px", background: "linear-gradient(180deg, rgba(86,150,255,0.95) 0%, rgba(45,109,237,0.98) 100%)", color: "#f6f9ff", fontSize: 12, fontWeight: 750, cursor: "pointer" }}
-              >
-                {isSaving ? "Adding…" : isNew ? "Add to Library" : "Save Changes"}
-              </button>
             </div>
           </div>
         </div>

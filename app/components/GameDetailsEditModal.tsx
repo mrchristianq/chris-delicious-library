@@ -392,6 +392,9 @@ export function GameDetailsEditModal({
             {syncError ? (
               <span style={{ fontSize: 11, color: "#b4232f" }}>{syncError}</span>
             ) : null}
+            {saveError || saveSuccess ? (
+              <span style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480" }}>{saveError || saveSuccess}</span>
+            ) : null}
             <button
               type="button"
               disabled={isSyncing || isSaving}
@@ -407,6 +410,15 @@ export function GameDetailsEditModal({
               }}
             >
               {isSyncing ? "Syncing…" : "Sync from IGDB"}
+            </button>
+            <button type="button" disabled={isSaving} onClick={handleSave} style={{
+              border: "1px solid rgba(27,83,217,0.5)", borderRadius: 8,
+              padding: "6px 12px",
+              background: "linear-gradient(180deg,rgba(86,150,255,0.95) 0%,rgba(45,109,237,0.98) 100%)",
+              color: "#f6f9ff", fontSize: 12, fontWeight: 750,
+              cursor: isSaving ? "default" : "pointer",
+            }}>
+              {isSaving ? "Saving…" : isNew ? "Add to Library" : "Save Changes"}
             </button>
             <button
               type="button"
@@ -578,15 +590,6 @@ export function GameDetailsEditModal({
               <div style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480", minHeight: 16 }}>
                 {saveError || saveSuccess || ""}
               </div>
-              <button type="button" disabled={isSaving} onClick={handleSave} style={{
-                border: "1px solid rgba(27,83,217,0.5)", borderRadius: 9,
-                padding: "8px 18px",
-                background: "linear-gradient(180deg,rgba(86,150,255,0.95) 0%,rgba(45,109,237,0.98) 100%)",
-                color: "#f6f9ff", fontSize: 12, fontWeight: 750,
-                cursor: isSaving ? "default" : "pointer",
-              }}>
-                {isSaving ? "Saving…" : isNew ? "Add to Library" : "Save Changes"}
-              </button>
             </div>
           </div>
         </div>
