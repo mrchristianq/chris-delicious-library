@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type GameDetailsEditModalProps = {
   open: boolean;
@@ -44,7 +45,8 @@ const IGDB_SYNC_FIELDS: { key: string; label: string }[] = [
   { key: "genres",      label: "Genres" },
   { key: "developer",   label: "Developer" },
   { key: "description", label: "Description" },
-  { key: "coverUrl",    label: "Cover URL" },
+  { key: "coverUrl",       label: "Cover URL" },
+  { key: "customImageUrl", label: "Custom Cover URL" },
 ];
 
 function safeStr(v: unknown): string {
@@ -103,11 +105,12 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     // URLs
     coverUrl:       firstNonEmpty(item, ["coverUrl", "CoverURL", "metadataCoverUrl"]),
     localCoverUrl:  firstNonEmpty(item, ["localCoverUrl", "LocalCoverURL"]),
+    customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
     // Less common sheet columns
     platforms:      firstNonEmpty(item, ["platforms", "Platforms"]),
     backlog:        firstNonEmpty(item, ["backlog", "Backlog"]),
     completed:      firstNonEmpty(item, ["completed", "Completed"]),
-    screensotsUrl:  firstNonEmpty(item, ["screensotsUrl", "ScreensotsURL"]),
+    screenshotsUrl: firstNonEmpty(item, ["screenshotsUrl", "ScreenshotsURL"]),
     // Description
     description:    firstNonEmpty(item, ["description", "Description"]),
   };
@@ -247,7 +250,7 @@ export function GameDetailsEditModal({
     { key: "platforms",      label: "Platforms (Multi)" },
     { key: "backlog",        label: "Backlog",            isFlag: true },
     { key: "completed",      label: "Completed",          isFlag: true },
-    { key: "screensotsUrl",  label: "Screenshots URL",    wide: true },
+    { key: "screenshotsUrl", label: "Screenshots URL",    wide: true },
     // Description
     { key: "description",    label: "Description",        multiline: true, wide: true },
   ];
@@ -470,13 +473,13 @@ export function GameDetailsEditModal({
                       {row.label.toUpperCase()}
                     </span>
                     {isImg && row.before !== "—" ? (
-                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
                     )}
                     <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
                     {isImg && row.after !== "—" ? (
-                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms" }} />
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: row.selected ? "#0055b3" : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
                     )}
@@ -525,7 +528,7 @@ export function GameDetailsEditModal({
               <img
                 src={coverDisplayUrl}
                 alt={safeStr(item.title) || "Game cover"}
-                style={{ width: "100%", borderRadius: 8, display: "block", objectFit: "cover", maxHeight: 280 }}
+                style={{ width: "100%", objectFit: "cover", maxHeight: 280, ...COVER_IMAGE_RADIUS_STYLE }}
               />
             ) : (
               <div style={{
@@ -539,6 +542,13 @@ export function GameDetailsEditModal({
             )}
             <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}>
               <strong>CoverURL:</strong> {values.coverUrl || "—"}
+            </div>
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP</div>
+              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
+                <span><strong>Cover:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
+              </div>
             </div>
           </div>
 

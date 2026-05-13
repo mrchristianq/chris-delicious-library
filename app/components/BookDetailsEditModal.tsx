@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type BookDetailsEditModalProps = {
   open: boolean;
@@ -14,6 +15,7 @@ type BookDetailsEditModalProps = {
   onReplaceCover: (item: Record<string, unknown>, file: File) => Promise<void> | void;
   onCoverModeChange: (item: Record<string, unknown>, mode: "custom" | "default") => void;
   isNew?: boolean;
+  statusOptions?: Array<{ value: string; label: string }>;
 };
 
 type FieldDef = {
@@ -33,30 +35,34 @@ type DiffRow = {
 };
 
 const TYPE_OPTIONS = ["Book", "eBook", "Audiobook", "Hardcover", "Paperback"] as const;
-const STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
-const OWNERSHIP_OPTIONS = ["Own", "Borrowed", "Library", "Wishlisted"] as const;
+const DEFAULT_STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
+const OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Ripped", "Borrowed"] as const;
 
-const BOOK_FIELDS: FieldDef[] = [
-  { key: "title",              label: "Title" },
-  { key: "subtitle",           label: "Subtitle" },
-  { key: "series",             label: "Series" },
-  { key: "author",             label: "Author" },
-  { key: "ownership",          label: "Ownership",         options: OWNERSHIP_OPTIONS },
-  { key: "type",               label: "Type",              options: TYPE_OPTIONS },
-  { key: "status",             label: "Status",            options: STATUS_OPTIONS },
-  { key: "completedDate",      label: "Completed Date",    isDate: true },
-  { key: "isbn",               label: "ISBN" },
-  { key: "releaseDate",        label: "Release Date",      isDate: true },
-  { key: "imageUrl",           label: "Image URL" },
-  { key: "customImageUrl",     label: "Custom URL" },
-  { key: "userRating",         label: "User Rating" },
-  { key: "myRating",           label: "My Rating" },
-  { key: "pages",              label: "Pages" },
-  { key: "audiobookDuration",  label: "Audiobook Duration" },
-  { key: "genre",              label: "Genre" },
-  { key: "tags",               label: "Tags" },
-  { key: "description",        label: "Description",       multiline: true },
-];
+// Helper function to create BOOK_FIELDS with dynamic status options
+const createBookFields = (statusOptions?: Array<{ value: string; label: string }>): FieldDef[] => {
+  const statusLabels = statusOptions?.map(s => s.label) || DEFAULT_STATUS_OPTIONS;
+  return [
+    { key: "title",              label: "Title" },
+    { key: "subtitle",           label: "Subtitle" },
+    { key: "series",             label: "Series" },
+    { key: "author",             label: "Author" },
+    { key: "ownership",          label: "Ownership",         options: OWNERSHIP_OPTIONS },
+    { key: "type",               label: "Type",              options: TYPE_OPTIONS },
+    { key: "status",             label: "Status",            options: statusLabels },
+    { key: "completedDate",      label: "Completed Date",    isDate: true },
+    { key: "isbn",               label: "ISBN" },
+    { key: "releaseDate",        label: "Release Date",      isDate: true },
+    { key: "imageUrl",           label: "Image URL" },
+    { key: "customImageUrl",     label: "Custom URL" },
+    { key: "userRating",         label: "User Rating" },
+    { key: "myRating",           label: "My Rating" },
+    { key: "pages",              label: "Pages" },
+    { key: "audiobookDuration",  label: "Audiobook Duration" },
+    { key: "genre",              label: "Genre" },
+    { key: "tags",               label: "Tags" },
+    { key: "description",        label: "Description",       multiline: true },
+  ];
+};
 
 const APPLE_BOOKS_SYNC_FIELDS: { key: string; label: string }[] = [
   { key: "title",       label: "Title" },
@@ -130,6 +136,33 @@ function firstNonEmpty(item: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+function formatDateForInput(dateStr: string): string {
+  if (!dateStr) return "";
+
+  // Try to parse various date formats and convert to YYYY-MM-DD
+  // Handle formats like: 4/25/26, 04/25/2026, 4/25/2026, 2025-12-01, 12/1/2025, etc.
+  const trimmed = dateStr.trim();
+
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Try M/DD/YY or MM/DD/YY or M/D/YY or M/D/YYYY format
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slashMatch) {
+    let [, month, day, year] = slashMatch;
+    // Convert 2-digit year to 4-digit
+    if (year.length === 2) {
+      const yNum = parseInt(year, 10);
+      year = (yNum > 50 ? "19" : "20") + year;
+    }
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return "";
+}
+
 function buildBookEditValues(item: Record<string, unknown>): Record<string, string> {
   return {
     title: firstNonEmpty(item, ["title", "Title"]),
@@ -139,9 +172,9 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
     type: firstNonEmpty(item, ["types", "type", "Type"]),
     status: firstNonEmpty(item, ["status", "Status"]),
-    completedDate: firstNonEmpty(item, ["completedDate", "CompletedDate", "Completed Date", "Date Completed"]),
+    completedDate: formatDateForInput(firstNonEmpty(item, ["completedDate", "CompletedDate", "Completed Date", "Date Completed"])),
     isbn: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]),
-    releaseDate: firstNonEmpty(item, ["releaseDate", "ReleaseDate"]),
+    releaseDate: formatDateForInput(firstNonEmpty(item, ["releaseDate", "ReleaseDate"])),
     imageUrl: firstNonEmpty(item, ["imageUrl", "ImageURL", "Image URL"]),
     customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "Custom URL", "CustomImageURL"]),
     userRating: firstNonEmpty(item, ["userRating", "UserRating", "externalAverageRating"]),
@@ -168,6 +201,7 @@ export function BookDetailsEditModal({
   onReplaceCover,
   onCoverModeChange,
   isNew,
+  statusOptions,
 }: BookDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -175,6 +209,9 @@ export function BookDetailsEditModal({
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<"custom" | "default">("default");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Create BOOK_FIELDS with dynamic status options
+  const BOOK_FIELDS = useMemo(() => createBookFields(statusOptions), [statusOptions]);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -254,6 +291,15 @@ export function BookDetailsEditModal({
     const nextMode = popupCoverMode || (customSourceUrl ? "custom" : "default");
     setSelectedMode(nextMode);
   }, [customSourceUrl, open, popupCoverMode]);
+
+  // Auto-sync custom cover URL to form field when a custom cover is uploaded
+  useEffect(() => {
+    if (!open || !customUrl) return;
+    // If there's a custom cover candidate but customImageUrl is empty, auto-populate it
+    if (customUrl && !safeStr(values.customImageUrl)) {
+      setValues((prev) => ({ ...prev, customImageUrl: customUrl }));
+    }
+  }, [open, customUrl, values.customImageUrl]);
 
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
@@ -486,7 +532,7 @@ export function BookDetailsEditModal({
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
                   {book.imageUrl ? (
-                    <img src={book.imageUrl} alt={book.title} style={{ width: 36, height: 52, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
+                    <img src={book.imageUrl} alt={book.title} style={{ width: 36, height: 52, objectFit: "cover", flexShrink: 0, ...COVER_IMAGE_RADIUS_STYLE }} />
                   ) : (
                     <div style={{ width: 36, height: 52, borderRadius: 4, background: "#e8eaf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>?</div>
                   )}
@@ -519,7 +565,7 @@ export function BookDetailsEditModal({
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#7c3aed22"; e.currentTarget.style.background = "rgba(255,255,255,0.7)"; }}
                 >
                   {ed.imageUrl ? (
-                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6 }} />
+                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", height: 100, objectFit: "cover", ...COVER_IMAGE_RADIUS_STYLE }} />
                   ) : (
                     <div style={{ width: "100%", height: 100, borderRadius: 6, background: "#e8eaf0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>No cover</div>
                   )}
@@ -556,13 +602,13 @@ export function BookDetailsEditModal({
                     <input type="checkbox" checked={row.selected} onChange={() => toggleDiffRow(row.key)} style={{ marginTop: 2, accentColor: syncAccent, cursor: "pointer" }} />
                     <span style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.2, paddingTop: 1 }}>{row.label.toUpperCase()}</span>
                     {isImg && row.before !== "—" ? (
-                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
                     )}
                     <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
                     {isImg && row.after !== "—" ? (
-                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? `2px solid ${syncAccent}` : "none", transition: "outline 100ms" }} />
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", objectFit: "cover", outline: row.selected ? `2px solid ${syncAccent}` : "none", transition: "outline 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: row.selected ? syncAccent : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
                     )}
@@ -587,7 +633,7 @@ export function BookDetailsEditModal({
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
             <div style={{ marginTop: 8 }}>
               {previewUrl ? (
-                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ width: "100%", borderRadius: 8, display: "block", objectFit: activeMode === "custom" ? "contain" : "cover", maxHeight: 250 }} />
+                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ width: "100%", objectFit: activeMode === "custom" ? "contain" : "cover", maxHeight: 250, ...COVER_IMAGE_RADIUS_STYLE }} />
               ) : (
                 <div style={{ height: 180, borderRadius: 8, border: "1px dashed rgba(149,161,178,0.58)", display: "flex", alignItems: "center", justifyContent: "center", color: "#5f6e82", fontSize: 11 }}>
                   No cover
@@ -605,6 +651,16 @@ export function BookDetailsEditModal({
               <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>ImageURL:</strong> {defaultUrl || "—"}</div>
               <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>CustomURL:</strong> {customSourceUrl || "—"}</div>
               <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2 Backup:</strong> {backupUrl || "—"}</div>
+            </div>
+            <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP STATUS</div>
+              <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
+                <span><strong>R2 Cover URL:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>{safeStr(item?.r2CoverUrl)}</span> : <span style={{ color: "#8a929d" }}>Not backed up yet</span>}</span>
+              </div>
+              {!safeStr(item?.r2CoverUrl) && (defaultUrl || customSourceUrl) && (
+                <div style={{ fontSize: 10, color: "#8a929d" }}>Will be backed up when you save this item.</div>
+              )}
             </div>
             <input
               ref={fileInputRef}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type TVDetailsEditModalProps = {
   open: boolean;
@@ -52,6 +53,7 @@ const TV_FIELDS: FieldDef[] = [
   { key: "tags",             label: "Tags" },
   { key: "posterUrl",        label: "Poster URL" },
   { key: "backdropUrl",      label: "Backdrop URL" },
+  { key: "customImageUrl",   label: "Custom Cover URL" },
   { key: "overview",         label: "Overview",          multiline: true },
 ];
 
@@ -123,6 +125,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     tags:             firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     posterUrl:        firstNonEmpty(item, ["posterUrl", "PosterURL"]),
     backdropUrl:      firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
+    customImageUrl:   firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
     overview:         firstNonEmpty(item, ["overview", "Overview"]),
   };
   // Normalize date fields to YYYY-MM-DD for <input type="date">
@@ -178,6 +181,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -207,6 +211,14 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [isSaving, isSyncing, onClose, open, syncDiff]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const update = () => setIsMobileLayout(window.innerWidth <= 980);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   if (!open || !item) return null;
 
@@ -307,16 +319,16 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
         background: "rgba(7,10,16,0.42)",
         backdropFilter: "blur(14px) saturate(1.08)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 10,
+        padding: isMobileLayout ? 0 : 10,
       }}
       onClick={() => { if (!isSaving && !isSyncing) { if (syncDiff) { setSyncDiff(null); } else { onClose(); } } }}
     >
       <div
         style={{
-          width: "min(1100px,100%)",
-          maxHeight: "calc(100vh - 20px)",
+          width: isMobileLayout ? "100%" : "min(1100px,100%)",
+          maxHeight: isMobileLayout ? "100vh" : "calc(100vh - 20px)",
           overflow: "auto",
-          borderRadius: 18,
+          borderRadius: isMobileLayout ? 0 : 18,
           border: "1px solid rgba(255,255,255,0.55)",
           background: "linear-gradient(180deg,rgba(251,252,254,0.96) 0%,rgba(241,244,249,0.98) 100%)",
           boxShadow: "0 24px 48px rgba(15,23,40,0.26), inset 0 1px 0 rgba(255,255,255,0.86)",
@@ -326,11 +338,11 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
       >
         {/* Title bar */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "10px 14px", borderBottom: "1px solid rgba(167,177,191,0.42)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: isMobileLayout ? "wrap" : "nowrap",
+          padding: isMobileLayout ? "10px 10px" : "10px 14px", borderBottom: "1px solid rgba(167,177,191,0.42)",
           gap: 12,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: isMobileLayout ? "wrap" : "nowrap" }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
@@ -349,7 +361,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
               onClick={handleSyncFromTMDB}
               style={{
                 border: "1px solid rgba(0,113,227,0.4)", borderRadius: 8,
-                padding: "6px 12px",
+                padding: isMobileLayout ? "8px 10px" : "6px 12px",
                 background: "rgba(0,113,227,0.09)",
                 color: "#0071e3", cursor: isSyncing || isSaving ? "default" : "pointer",
                 fontSize: 12, fontWeight: 650,
@@ -365,7 +377,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
               disabled={isSaving}
               style={{
                 border: "1px solid rgba(149,161,178,0.5)", borderRadius: 8,
-                padding: "6px 12px", background: "rgba(255,255,255,0.86)",
+                padding: isMobileLayout ? "8px 10px" : "6px 12px", background: "rgba(255,255,255,0.86)",
                 color: "#243244", cursor: "pointer", fontSize: 12, fontWeight: 650,
               }}
             >
@@ -424,13 +436,13 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
                       {row.label.toUpperCase()}
                     </span>
                     {isImg && row.before !== "—" ? (
-                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
                     )}
                     <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
                     {isImg && row.after !== "—" ? (
-                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms" }} />
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
                     ) : (
                       <span style={{ fontSize: 11, color: row.selected ? "#0055b3" : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
                     )}
@@ -466,7 +478,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
         ) : null}
 
         {/* Body */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,210px) minmax(0,1fr)", gap: 12, padding: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(180px,210px) minmax(0,1fr)", gap: 12, padding: isMobileLayout ? 10 : 12 }}>
 
           {/* Poster panel */}
           <div style={{
@@ -477,7 +489,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>POSTER</div>
             {posterUrl ? (
               <img src={posterUrl} alt={safeStr(item.title) || "TV show poster"}
-                style={{ width: "100%", borderRadius: 8, display: "block", objectFit: "cover", maxHeight: 280 }} />
+                style={{ width: "100%", objectFit: "cover", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }} />
             ) : (
               <div style={{
                 height: 180, borderRadius: 8,
@@ -491,6 +503,17 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}>
               <strong>PosterURL:</strong> {posterUrl || "—"}
             </div>
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP</div>
+              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
+                <span><strong>Cover:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
+              </div>
+              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2BackdropUrl) ? "✓" : "○"}</span>
+                <span><strong>Backdrop:</strong> {safeStr(item?.r2BackdropUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
+              </div>
+            </div>
           </div>
 
           {/* Fields panel */}
@@ -499,7 +522,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             background: "rgba(255,255,255,0.78)", padding: 12,
             display: "flex", flexDirection: "column",
           }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
               {TV_FIELDS.map((field) => (
                 <label key={field.key} style={{
                   display: "flex", flexDirection: "column",
@@ -512,7 +535,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             </div>
 
             <div style={{
-              marginTop: 12, display: "flex", alignItems: "center",
+              marginTop: 12, display: "flex", alignItems: isMobileLayout ? "stretch" : "center", flexDirection: isMobileLayout ? "column" : "row",
               justifyContent: "space-between", gap: 10,
             }}>
               <div style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480", minHeight: 16 }}>
@@ -524,6 +547,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
                 background: "linear-gradient(180deg,rgba(86,150,255,0.95) 0%,rgba(45,109,237,0.98) 100%)",
                 color: "#f6f9ff", fontSize: 12, fontWeight: 750,
                 cursor: isSaving ? "default" : "pointer",
+                width: isMobileLayout ? "100%" : "auto",
               }}>
                 {isSaving ? "Adding…" : isNew ? "Add to Library" : "Save Changes"}
               </button>
