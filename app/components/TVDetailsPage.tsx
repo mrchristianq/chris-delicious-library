@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type TVDetailsPageProps = {
   item: Record<string, unknown>;
@@ -10,14 +9,11 @@ type TVDetailsPageProps = {
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
   onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
-  onRate?: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
-  getDisplayBackdropUrl: (item: Record<string, unknown>) => string;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedShows?: Record<string, unknown>[];
   relatedShowsLabel?: string;
   onSelectRelated?: (item: Record<string, unknown>) => void;
-  highlightColor?: string;
 };
 
 type PaletteState = {
@@ -44,22 +40,6 @@ function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
 function splitList(v: unknown): string[] { return safeStr(v).split(/[,|/]/g).map(p => p.trim()).filter(Boolean); }
 function formatYear(v: unknown): string { const r = safeStr(v); const m = r.match(/\b((?:19|20)\d{2})\b/); return m ? m[1] : r; }
-function formatMmDdYyyy(v: unknown): string {
-  const raw = safeStr(v);
-  if (!raw) return "";
-  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (iso) {
-    const mm = iso[2].padStart(2, "0");
-    const dd = iso[3].padStart(2, "0");
-    return `${mm}-${dd}-${iso[1]}`;
-  }
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-  const dd = String(parsed.getDate()).padStart(2, "0");
-  const yyyy = String(parsed.getFullYear());
-  return `${mm}-${dd}-${yyyy}`;
-}
 
 function toScorePct(raw: string): number {
   const n = parseFloat(raw);
@@ -207,12 +187,12 @@ const PANEL_STYLE: React.CSSProperties = {
 
 export function TVDetailsPage({
   item, isMobileLayout, usePageBackground = false,
-  onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
-  relatedShows, relatedShowsLabel, onSelectRelated, highlightColor,
+  onBack, onEdit, onDelete, getDisplayCoverUrl, onPaletteChange,
+  relatedShows, relatedShowsLabel, onSelectRelated,
 }: TVDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
-  const backdropUrl = getDisplayBackdropUrl(item);
+  const backdropUrl = safeStr(item.backdropUrl);
 
   const cacheKey = useMemo(() => [safeStr(item.title), backdropUrl, coverUrl].join("|"), [item, backdropUrl, coverUrl]);
   const [ready, setReady] = useState(false);
@@ -245,8 +225,8 @@ export function TVDetailsPage({
   const tmdbRating = safeStr(item.tmdbRating);
   const watchStatus = safeStr(item.watchStatus || item.watched);
   const tvShowStatus = safeStr(item.showStatus);
-  const firstAirDate = formatMmDdYyyy(item.firstAirDate);
-  const lastAirDate = formatMmDdYyyy(item.lastAirDate);
+  const firstAirDate = safeStr(item.firstAirDate);
+  const lastAirDate = safeStr(item.lastAirDate);
   const dateCompleted = safeStr(item.dateCompleted);
   const caughtUp = safeStr(item.caughtUp);
   const networks = safeStr(item.networks);
@@ -376,17 +356,20 @@ export function TVDetailsPage({
             background: `linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.04) 35%, ${rgba(palette.start, 0.55)} 78%, ${rgba(palette.start, 0.98)} 100%)`,
           }} />
 
-          {/* Top bar: buttons (left) + back (right) */}
+          {/* Top bar: back + edit/status */}
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10, display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "14px 16px" }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              {onRate ? (
-                <button type="button" onClick={() => onRate(item)} style={{
-                  borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
-                  border: `1px solid rgba(255,255,255,0.4)`, background: `${highlightColor || "#007AFF"}`,
-                  color: "#fff", cursor: "pointer", whiteSpace: "nowrap",
-                  backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-                }}>Rate It</button>
-              ) : null}
+            <button type="button" onClick={onBack} style={{
+              width: 38, height: 38, borderRadius: "50%",
+              border: "1px solid rgba(255,255,255,0.28)", background: "rgba(0,0,0,0.45)",
+              color: "#fff", cursor: "pointer",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              backdropFilter: "blur(8px)",
+            }} aria-label="Back">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <div style={{ display: "flex", gap: 8 }}>
               {onEdit ? (
                 <button type="button" onClick={() => onEdit(item)} style={{
                   borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
@@ -423,19 +406,6 @@ export function TVDetailsPage({
                   {isDeleting ? "Deleting..." : "Delete"}
                 </button>
               ) : null}
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <button type="button" onClick={onBack} style={{
-                width: 38, height: 38, borderRadius: "50%",
-                border: "1px solid rgba(255,255,255,0.28)", background: "rgba(0,0,0,0.45)",
-                color: "#fff", cursor: "pointer",
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                backdropFilter: "blur(8px)",
-              }} aria-label="Back">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-              </button>
               {chipStatus ? (
                 <span style={{ borderRadius: 999, padding: "9px 13px", fontSize: 13, lineHeight: 1, fontWeight: 850, ...statusColor }}>
                   {chipStatus.charAt(0).toUpperCase() + chipStatus.slice(1)}
@@ -497,11 +467,12 @@ export function TVDetailsPage({
             }}>
               {coverUrl ? (
                 <img src={coverUrl} alt={title} style={{
+                  display: "block",
                   width: POSTER_W,
                   flexShrink: 0,
+                  borderRadius: 8,
                   border: "2px solid rgba(255,255,255,0.16)",
                   filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.75))",
-                  ...COVER_IMAGE_RADIUS_STYLE,
                 }} />
               ) : null}
             </div>
@@ -652,9 +623,8 @@ export function TVDetailsPage({
                     >
                       {sCover ? (
                         <img src={sCover} alt={sTitle} style={{
-                          width: RELATED_ITEM_W,
+                          display: "block", width: RELATED_ITEM_W, borderRadius: 6,
                           border: `1px solid ${palette.surfaceBorder}`,
-                          ...COVER_IMAGE_RADIUS_STYLE,
                         }} />
                       ) : (
                         <div style={{

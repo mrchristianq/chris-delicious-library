@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type TVDetailsEditModalProps = {
   open: boolean;
@@ -53,7 +52,6 @@ const TV_FIELDS: FieldDef[] = [
   { key: "tags",             label: "Tags" },
   { key: "posterUrl",        label: "Poster URL" },
   { key: "backdropUrl",      label: "Backdrop URL" },
-  { key: "customImageUrl",   label: "Custom Cover URL" },
   { key: "overview",         label: "Overview",          multiline: true },
 ];
 
@@ -125,7 +123,6 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     tags:             firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     posterUrl:        firstNonEmpty(item, ["posterUrl", "PosterURL"]),
     backdropUrl:      firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
-    customImageUrl:   firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
     overview:         firstNonEmpty(item, ["overview", "Overview"]),
   };
   // Normalize date fields to YYYY-MM-DD for <input type="date">
@@ -427,13 +424,13 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
                       {row.label.toUpperCase()}
                     </span>
                     {isImg && row.before !== "—" ? (
-                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
+                      <img src={row.before} alt="current" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", opacity: row.selected ? 0.4 : 1, transition: "opacity 100ms" }} />
                     ) : (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: row.selected ? "line-through" : "none", wordBreak: "break-word", lineHeight: 1.4 }}>{row.before}</span>
                     )}
                     <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)", alignSelf: "center" }}>→</span>
                     {isImg && row.after !== "—" ? (
-                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms", ...COVER_IMAGE_RADIUS_STYLE }} />
+                      <img src={row.after} alt="new" style={{ height: 60, width: "auto", borderRadius: 4, objectFit: "cover", outline: row.selected ? "2px solid #0071e3" : "none", transition: "outline 100ms" }} />
                     ) : (
                       <span style={{ fontSize: 11, color: row.selected ? "#0055b3" : "rgba(0,0,0,0.55)", fontWeight: row.selected ? 600 : 400, wordBreak: "break-word", lineHeight: 1.4 }}>{row.after}</span>
                     )}
@@ -480,7 +477,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>POSTER</div>
             {posterUrl ? (
               <img src={posterUrl} alt={safeStr(item.title) || "TV show poster"}
-                style={{ width: "100%", objectFit: "cover", maxHeight: 280, ...COVER_IMAGE_RADIUS_STYLE }} />
+                style={{ width: "100%", borderRadius: 8, display: "block", objectFit: "cover", maxHeight: 280 }} />
             ) : (
               <div style={{
                 height: 180, borderRadius: 8,
@@ -493,17 +490,6 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             )}
             <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}>
               <strong>PosterURL:</strong> {posterUrl || "—"}
-            </div>
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP</div>
-              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
-                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
-                <span><strong>Cover:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
-              </div>
-              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
-                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2BackdropUrl) ? "✓" : "○"}</span>
-                <span><strong>Backdrop:</strong> {safeStr(item?.r2BackdropUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
-              </div>
             </div>
           </div>
 

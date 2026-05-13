@@ -371,8 +371,8 @@ const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
-const TRANSPARENT_ICON_DATA_URI =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+const SIDEBAR_ICON_R2_MIGRATION_LOCAL_KEY = "cdlSidebarIconR2MigratedV1";
+const MOBILE_ONLY_COVER_SCALE_LOCAL_KEY = "cdlMobileCoverScalePct";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
@@ -2583,6 +2583,7 @@ export default function Page() {
   const [stageTopAbs, setStageTopAbs] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -3317,31 +3318,57 @@ export default function Page() {
     bottom: mobileBottomDockBottom,
     height: MOBILE_BOTTOM_DOCK_HEIGHT,
     zIndex: 2510,
-    border: mobilePanelBorder,
-    borderRadius: 18,
-    background: `linear-gradient(180deg, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.05 : 0.1, simpleSidebarOverlayBase)} 0%, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.14 : 0.2, simpleSidebarOverlayBase)} 100%), ${mobilePanelBackground}`,
-    boxShadow: simpleSidebarIsLight
-      ? "0 16px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.28)"
-      : "0 18px 34px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.08)",
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "8px 10px",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "0 4px",
+  };
+  const mobileBottomDockMainRailStyle: CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    height: MOBILE_BOTTOM_DOCK_HEIGHT,
+    border: "1px solid rgba(255,255,255,0.7)",
+    borderRadius: 999,
+    background: "rgba(248, 248, 252, 0.74)",
+    boxShadow: simpleSidebarIsLight
+      ? "0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.72)"
+      : "0 14px 30px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.14)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 8px",
   };
   const mobileBottomDockIconButtonStyle: CSSProperties = {
-    width: 40,
-    height: 40,
+    height: "100%",
     flexShrink: 0,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    border: mobilePanelButtonBorder,
-    background: mobilePanelButtonBackground,
-    color: mobilePanelButtonTextColor,
-    borderRadius: 12,
+    border: "none",
+    background: "transparent",
+    color: "#141725",
+    borderRadius: 999,
+    cursor: "pointer",
+  };
+  const mobileBottomDockSearchButtonStyle: CSSProperties = {
+    width: MOBILE_BOTTOM_DOCK_HEIGHT,
+    height: MOBILE_BOTTOM_DOCK_HEIGHT,
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid rgba(255,255,255,0.72)",
+    borderRadius: "50%",
+    background: "rgba(248, 248, 252, 0.74)",
+    color: "#141725",
     boxShadow: simpleSidebarIsLight
-      ? "0 6px 14px rgba(0,0,0,0.14)"
-      : "0 8px 18px rgba(0,0,0,0.24)",
+      ? "0 12px 28px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.72)"
+      : "0 14px 30px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.14)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
     cursor: "pointer",
   };
   const mobileBottomDockSearchStyle: CSSProperties = {
@@ -3618,6 +3645,7 @@ export default function Page() {
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [uploadingStatusIconKey, setUploadingStatusIconKey] = useState<string | null>(null);
+  const [sidebarIconRefreshVersion, setSidebarIconRefreshVersion] = useState<number>(0);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   type SyncCategory =
     | "book"
@@ -3903,6 +3931,10 @@ export default function Page() {
       setMobileSettingsOpen(false);
     }
   }, [isMobileLayout, nav]);
+
+  useEffect(() => {
+    if (!isMobileLayout) setMobileSearchOpen(false);
+  }, [isMobileLayout]);
 
   useEffect(() => {
     setMovieDetailItem(null);
@@ -4205,6 +4237,7 @@ export default function Page() {
     setNav(nextNav);
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
+    setMobileSearchOpen(false);
   }, []);
 
   useEffect(() => {
@@ -4391,7 +4424,41 @@ export default function Page() {
     }
   }, [isReadOnlySettingsMode, settingsRows]);
 
-  const sidebarIconsHydrated = settingsRows.length > 0 || Object.keys(sidebarIconOverrides).length > 0;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const alreadyMigrated = localStorage.getItem(SIDEBAR_ICON_R2_MIGRATION_LOCAL_KEY) === "1";
+    if (alreadyMigrated) return;
+    const entries = Object.entries(sidebarIconOverrides).filter(([, value]) => Boolean(safeStr(value)));
+    if (!entries.length) return;
+
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled(
+        entries.map(async ([iconKey, sourceUrl]) => {
+          const formData = new FormData();
+          formData.append("sourceUrl", sourceUrl);
+          formData.append("mediaType", "sidebar-icon");
+          formData.append("itemKey", `sidebar-icon-${iconKey}`);
+          formData.append("title", iconKey);
+          formData.append("objectKey", `icons/sidebar/${iconKey}`);
+          const response = await fetch("/api/upload-cover", { method: "POST", body: formData });
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload?.error || `Failed to migrate sidebar icon ${iconKey}`);
+          }
+        })
+      );
+      if (cancelled) return;
+      if (results.every((result) => result.status === "fulfilled")) {
+        localStorage.setItem(SIDEBAR_ICON_R2_MIGRATION_LOCAL_KEY, "1");
+        setSidebarIconRefreshVersion((v) => v + 1);
+      }
+    })().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sidebarIconOverrides]);
 
   useEffect(() => {
     if (!modalItem && !bookDetailItem) return;
@@ -4435,10 +4502,12 @@ export default function Page() {
   }, [coverOverrides]);
 
   const getSidebarIconSrc = (iconKey: string, fallbackSrc: string): string => {
-    const override = safeStr(sidebarIconOverrides[iconKey]);
-    if (override) return override;
-    if (!sidebarIconsHydrated) return TRANSPARENT_ICON_DATA_URI;
-    return fallbackSrc;
+    const safeIconKey = safeStr(iconKey)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!safeIconKey) return fallbackSrc;
+    return `/api/sidebar-icon?iconKey=${encodeURIComponent(safeIconKey)}&fallback=${encodeURIComponent(fallbackSrc)}&v=${sidebarIconRefreshVersion}`;
   };
 
   const openSidebarIconFilePicker = (event: ReactMouseEvent<HTMLElement>, iconKey: string) => {
@@ -4465,52 +4534,26 @@ export default function Page() {
     setUploadingSidebarIconKey(iconKey);
 
     try {
-      let iconUrl = "";
-      let uploadedToCloud = false;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("itemKey", `sidebar-icon-${iconKey}`);
+      formData.append("mediaType", "sidebar-icon");
+      formData.append("title", iconKey);
+      formData.append("objectKey", `icons/sidebar/${iconKey}`);
 
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("itemKey", `sidebar-icon-${iconKey}`);
-        formData.append("mediaType", "sidebar-icon");
-        formData.append("title", iconKey);
-
-        const res = await fetch("/api/upload-cover", {
-          method: "POST",
-          body: formData,
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.url) {
-          throw new Error(payload?.error || `Upload failed (${res.status})`);
-        }
-        iconUrl = String(payload.url);
-        uploadedToCloud = true;
-      } catch (uploadError) {
-        console.warn("Sidebar icon upload failed, using local fallback:", uploadError);
-        iconUrl = await fileToDataUrl(file);
-      }
-
-      setSidebarIconOverrides((prev) => {
-        const next = { ...prev, [iconKey]: iconUrl };
-        try {
-          localStorage.setItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next));
-        } catch (persistError) {
-          console.warn("Failed to persist sidebar icon overrides locally:", persistError);
-        }
-        return next;
+      const res = await fetch("/api/upload-cover", {
+        method: "POST",
+        body: formData,
       });
-
-      if (uploadedToCloud) {
-        saveSetting(
-          `${SIDEBAR_ICON_SETTING_PREFIX}${iconKey}`,
-          iconUrl,
-          "Sidebar Icons",
-          `Custom sidebar icon for ${iconKey}`
-        );
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.url) {
+        throw new Error(payload?.error || `Upload failed (${res.status})`);
       }
+
+      setSidebarIconRefreshVersion((v) => v + 1);
 
       setSyncState("ok");
-      setSyncMsg(uploadedToCloud ? "Sidebar icon saved" : "Sidebar icon saved locally");
+      setSyncMsg("Sidebar icon saved");
       setLastSyncAt(Date.now());
       setTimeout(() => {
         setSyncMsg("Synced");
@@ -7278,9 +7321,25 @@ export default function Page() {
     setPosterSizeTv(getSetting("posterSizeTv", 100));
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
+    let localMobileCoverScalePct: number | null = null;
+    try {
+      const rawMobileScale = localStorage.getItem(MOBILE_ONLY_COVER_SCALE_LOCAL_KEY);
+      if (rawMobileScale !== null) {
+        const parsed = Number(rawMobileScale);
+        if (Number.isFinite(parsed)) {
+          localMobileCoverScalePct = parsed;
+        }
+      }
+    } catch {}
     const cachedMobileCoverScalePct = getCachedNumericSetting("mobileCoverScalePct");
     setMobileCoverScalePct(
-      Math.max(70, Math.min(125, cachedMobileCoverScalePct ?? Number(getSetting("mobileCoverScalePct", 100))))
+      Math.max(
+        70,
+        Math.min(
+          125,
+          localMobileCoverScalePct ?? cachedMobileCoverScalePct ?? Number(getSetting("mobileCoverScalePct", 100))
+        )
+      )
     );
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
     setCoverGapSize(getSetting("coverGapSize", 24));
@@ -7963,7 +8022,6 @@ export default function Page() {
       { key: COVER_SCALE_SETTING_KEYS.tv, value: coverScaleByGroup.tv, category: "Cover Sizes", description: "TV Shows Cover Scale (%)" },
       { key: COVER_SCALE_SETTING_KEYS.games, value: coverScaleByGroup.games, category: "Cover Sizes", description: "Games Cover Scale (%)" },
       { key: "rowHeightScalePct", value: coverScaleByGroup.home, category: "Cover Sizes", description: "Legacy Home Cover Scale (%)" },
-      { key: "mobileCoverScalePct", value: mobileCoverScalePct, category: "Cover Sizes", description: "Mobile Cover Scale (%)" },
       { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
       { key: "coverGapSize", value: coverGapSize, category: "Cover Sizes", description: "Cover Gap Size (px)" },
       { key: "tight", value: tight, category: "Cover Sizes", description: "Tight spacing between items" },
@@ -8379,8 +8437,10 @@ export default function Page() {
   const updateMobileCoverScalePct = useCallback((value: number) => {
     const nextValue = Math.max(70, Math.min(125, Math.round(value)));
     setMobileCoverScalePct(nextValue);
-    saveSetting("mobileCoverScalePct", nextValue, "Cover Sizes", "Mobile Cover Scale (%)");
-  }, [saveSetting]);
+    try {
+      localStorage.setItem(MOBILE_ONLY_COVER_SCALE_LOCAL_KEY, String(nextValue));
+    } catch {}
+  }, []);
   const updateCoverScaleForGroup = useCallback((group: CoverScaleGroupKey, value: number) => {
     const scalePct = Math.max(0, Math.min(200, Math.round(value)));
     const settingKey = COVER_SCALE_SETTING_KEYS[group];
@@ -12222,6 +12282,92 @@ export default function Page() {
     { key: "abandoned", label: "Abandoned" },
   ];
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics" && nav !== "cover-sync";
+  const mobileSidebarShowsMediaFiltersOnly = nav === "books" || nav === "movies" || nav === "tv" || nav === "games";
+  const closeAllDetails = useCallback(() => {
+    setBookDetailItem(null);
+    setMovieDetailItem(null);
+    setTvDetailItem(null);
+    setGameDetailItem(null);
+  }, []);
+  const handleMobileBack = useCallback(() => {
+    if (bookDetailItem || movieDetailItem || tvDetailItem || gameDetailItem) {
+      closeAllDetails();
+      return;
+    }
+    if (mobileSidebarOpen) {
+      setMobileSidebarOpen(false);
+      return;
+    }
+    if (mobileSettingsOpen) {
+      setMobileSettingsOpen(false);
+      return;
+    }
+    if (mobileSearchOpen) {
+      setMobileSearchOpen(false);
+      return;
+    }
+    if (nav !== "home") setNav("home");
+  }, [bookDetailItem, closeAllDetails, gameDetailItem, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
+  const handleMobileHome = useCallback(() => {
+    closeAllDetails();
+    setNav("home");
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+    setMobileSearchOpen(false);
+  }, [closeAllDetails]);
+  const mobileLandingVisible =
+    isMobileLayout &&
+    nav === "home" &&
+    !query &&
+    !bookDetailItem &&
+    !movieDetailItem &&
+    !tvDetailItem &&
+    !gameDetailItem;
+  const [mobileLandingCoverSeed] = useState<number>(() => Math.floor(Math.random() * 2147483647));
+  const buildMobileCardCovers = useCallback((items: any[], count = 3): string[] => {
+    const hash = (value: string) => {
+      let h = 2166136261;
+      for (let i = 0; i < value.length; i += 1) {
+        h ^= value.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    };
+    const ranked = items
+      .map((entry, index) => {
+        const url = safeStr(getDisplayCoverUrl(entry));
+        if (!url) return null;
+        const score = hash(`${mobileLandingCoverSeed}:${index}:${url}`);
+        return { url, score };
+      })
+      .filter((entry): entry is { url: string; score: number } => Boolean(entry))
+      .sort((a, b) => a.score - b.score);
+    return ranked.slice(0, count).map((entry) => entry.url);
+  }, [getDisplayCoverUrl, mobileLandingCoverSeed]);
+  const mobileLandingCards = useMemo(() => {
+    const allLibraryItems = [
+      ...allBooks.map((item) => ({ ...item, __type: "book" })),
+      ...allMovies.map((item) => ({ ...item, __type: "movie" })),
+      ...allShows.map((item) => ({ ...item, __type: "tv" })),
+      ...allGames.map((item) => ({ ...item, __type: "game" })),
+    ];
+    const cards = [
+      { key: "library", label: "Library", iconKey: "home", iconFallback: "/icon-home.png", navKey: "home" as NavKey, items: allLibraryItems, action: "library" as const },
+      { key: "books", label: "Books", iconKey: "books", iconFallback: "/icon-books.png", navKey: "books" as NavKey, items: allBooks },
+      { key: "movies", label: "Movies", iconKey: "movies", iconFallback: "/icon-movies.png", navKey: "movies" as NavKey, items: allMovies },
+      { key: "tv", label: "TV Shows", iconKey: "tv", iconFallback: "/icon-tv.png", navKey: "tv" as NavKey, items: allShows },
+      { key: "games", label: "Games", iconKey: "games", iconFallback: "/icon-games.png", navKey: "games" as NavKey, items: allGames },
+      { key: "year-this", label: "This Year", iconKey: "year-this", iconFallback: "/icon-current.png", navKey: "year-this" as NavKey, items: allLibraryItems },
+      { key: "current", label: "Current", iconKey: "current", iconFallback: "/icon-current.png", navKey: "current" as NavKey, items: nowPlayingItems },
+      { key: "completed", label: "Completed", iconKey: "completed", iconFallback: "/icon-completed.png", navKey: "completed" as NavKey, items: allBooks },
+      { key: "abandoned", label: "Abandoned", iconKey: "abandoned", iconFallback: "/icon-abandoned.png", navKey: "abandoned" as NavKey, items: allLibraryItems },
+    ];
+    return cards.map((card) => ({
+      ...card,
+      icon: getSidebarIconSrc(card.iconKey, card.iconFallback),
+      covers: buildMobileCardCovers(card.items || [], 3),
+    }));
+  }, [allBooks, allGames, allMovies, allShows, buildMobileCardCovers, nowPlayingItems, getSidebarIconSrc]);
   const activeBookDetailKey =
     bookDetailItem && getMediaType(bookDetailItem) === "book" ? getMediaItemKey(bookDetailItem) : "";
   const activeBookDetailPalette =
@@ -12391,7 +12537,7 @@ export default function Page() {
             }}
           >
             <span style={{ fontSize: 14, fontWeight: 800, color: mobilePanelTextColor, letterSpacing: "0.03em" }}>
-              MENU
+              {mobileSidebarShowsMediaFiltersOnly ? "FILTERS" : "MENU"}
             </span>
             <button
               type="button"
@@ -12409,6 +12555,181 @@ export default function Page() {
             </button>
           </div>
           <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            {mobileSidebarShowsMediaFiltersOnly && nav === "movies" ? (
+              <>
+                <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {["Started", "Watched", "Backlog", "Abandoned"].map((status) => {
+                    const active = movieWatchFilter === status;
+                    return (
+                      <button
+                        key={`mobile-movie-status-${status}`}
+                        type="button"
+                        onClick={() => setMovieWatchFilter(active ? null : status)}
+                        style={{
+                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                          borderRadius: 999,
+                          padding: "5px 9px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>TAGS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                  {movieTags.map((tag) => {
+                    const active = movieTagFilter === tag;
+                    return (
+                      <button
+                        key={`mobile-movie-tag-${tag}`}
+                        type="button"
+                        onClick={() => setMovieTagFilter(active ? null : tag)}
+                        style={{
+                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                          borderRadius: 999,
+                          padding: "5px 9px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {tag} ({movieTagCounts[tag] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>GENRE</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                  {movieGenres.map((genre) => {
+                    const active = movieGenreFilter === genre;
+                    return (
+                      <button
+                        key={`mobile-movie-genre-${genre}`}
+                        type="button"
+                        onClick={() => setMovieGenreFilter(active ? null : genre)}
+                        style={{
+                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                          borderRadius: 999,
+                          padding: "5px 9px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {genre} ({movieGenreCounts[genre] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {mobileSidebarShowsMediaFiltersOnly && nav === "games" ? (
+              <>
+                <div style={mobilePanelSectionHeadingStyle}>PLATFORM</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                  {gamePlatformOptions.map((option) => {
+                    const active = gamePlatformFilter === option;
+                    return (
+                      <button key={`mobile-game-platform-${option}`} type="button" onClick={() => setGamePlatformFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {option} ({gamePlatformCounts[option] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>OWNERSHIP</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {gameOwnershipOptions.map((option) => {
+                    const active = gameOwnershipFilter === option;
+                    return (
+                      <button key={`mobile-game-ownership-${option}`} type="button" onClick={() => setGameOwnershipFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {option} ({gameOwnershipCounts[option] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>FORMAT</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {gameFormatOptions.map((option) => {
+                    const active = gameFormatFilter === option;
+                    return (
+                      <button key={`mobile-game-format-${option}`} type="button" onClick={() => setGameFormatFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {option} ({gameFormatCounts[option] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>YEAR PLAYED</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", paddingRight: 2 }}>
+                  {gameYearPlayedOptions.map((option) => {
+                    const active = gameYearPlayedFilter === option;
+                    return (
+                      <button key={`mobile-game-year-${option}`} type="button" onClick={() => setGameYearPlayedFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {option} ({gameYearPlayedCounts[option] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>GENRES</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                  {gameGenres.map((option) => {
+                    const active = gameGenreFilter === option;
+                    return (
+                      <button key={`mobile-game-genre-${option}`} type="button" onClick={() => setGameGenreFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {option} ({gameGenreCounts[option] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+            {mobileSidebarShowsMediaFiltersOnly && nav === "tv" ? (
+              <>
+                <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {watchStatuses.map((status) => {
+                    const active = watchFilter === status;
+                    return (
+                      <button key={`mobile-tv-watch-status-${status}`} type="button" onClick={() => setWatchFilter(active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>SHOW STATUS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {showStatuses.map((status) => {
+                    const active = showFilter === status;
+                    return (
+                      <button key={`mobile-tv-show-status-${status}`} type="button" onClick={() => setShowFilter(active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={mobilePanelSectionHeadingStyle}>TAGS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                  {tvTags.map((tag) => {
+                    const active = tagFilter === tag;
+                    return (
+                      <button key={`mobile-tv-tag-${tag}`} type="button" onClick={() => setTagFilter(active ? null : tag)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {tag} ({tvTagCounts[tag] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
             <div style={mobilePanelCardStyle}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <span style={mobilePanelSectionHeadingStyle}>
@@ -12429,8 +12750,8 @@ export default function Page() {
                 style={{ width: "100%" }}
               />
             </div>
-            <div style={mobilePanelSectionHeadingStyle}>LIBRARY</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>LIBRARY</div> : null}
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileLibraryMenuItems.map((item) => {
                 const active = nav === item.key;
                 return (
@@ -12454,10 +12775,92 @@ export default function Page() {
                   </button>
                 );
               })}
-            </div>
+            </div> : null}
+            {nav === "books" ? (
+              <>
+                <div style={mobilePanelSectionHeadingStyle}>BOOK FILTERS</div>
+                <div style={mobilePanelCardStyle}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Reading Status</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {readingStatuses.map((status) => {
+                      const active = readingStatusFilter === status;
+                      return (
+                        <button
+                          key={`mobile-reading-status-${status}`}
+                          type="button"
+                          onClick={() => setReadingStatusFilter(active ? null : status)}
+                          style={{
+                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                            borderRadius: 999,
+                            padding: "5px 9px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {status} ({readingStatusCounts[status] ?? 0})
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Formats</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {bookFormats.map((format) => {
+                      const active = formatFilter === format;
+                      return (
+                        <button
+                          key={`mobile-book-format-${format}`}
+                          type="button"
+                          onClick={() => setFormatFilter(active ? null : format)}
+                          style={{
+                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                            borderRadius: 999,
+                            padding: "5px 9px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {format} ({formatCounts[format] ?? 0})
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Series</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", paddingRight: 2 }}>
+                    {bookSeries.map((series) => {
+                      const active = seriesFilter === series;
+                      return (
+                        <button
+                          key={`mobile-book-series-${series}`}
+                          type="button"
+                          onClick={() => setSeriesFilter(active ? null : series)}
+                          style={{
+                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                            borderRadius: 999,
+                            padding: "5px 9px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {series} ({seriesCounts[series] ?? 0})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : null}
 
-            <div style={mobilePanelSectionHeadingStyle}>BACKLOG</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>BACKLOG</div> : null}
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileBacklogMenuItems.map((item) => {
                 const active = nav === item.key;
                 return (
@@ -12481,10 +12884,10 @@ export default function Page() {
                   </button>
                 );
               })}
-            </div>
+            </div> : null}
 
-            <div style={mobilePanelSectionHeadingStyle}>SMART LISTS</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>SMART LISTS</div> : null}
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {mobileSmartListMenuItems.map((item) => {
                 const active = nav === item.key;
                 return (
@@ -12528,10 +12931,10 @@ export default function Page() {
               >
                 + Add Smart List
               </button>
-            </div>
+            </div> : null}
 
-            <div style={mobilePanelSectionHeadingStyle}>DISCOVER</div>
-            <button
+            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>DISCOVER</div> : null}
+            {!mobileSidebarShowsMediaFiltersOnly ? <button
               type="button"
               onClick={openStatisticsView}
               style={{
@@ -12540,8 +12943,8 @@ export default function Page() {
               }}
             >
               Statistics
-            </button>
-            <button
+            </button> : null}
+            {!mobileSidebarShowsMediaFiltersOnly ? <button
               type="button"
               onClick={openRoadmapView}
               style={{
@@ -12550,7 +12953,7 @@ export default function Page() {
               }}
             >
               Roadmap
-            </button>
+            </button> : null}
           </div>
         </div>
       ) : null}
@@ -12722,87 +13125,151 @@ export default function Page() {
       ) : null}
       {mobileBottomDockVisible ? (
         <div style={mobileBottomDockStyle}>
-          <button
-            type="button"
-            onClick={() => {
-              setMobileSettingsOpen(false);
-              setMobileSidebarOpen((prev) => !prev);
-            }}
-            title={mobileSidebarOpen ? "Close menu" : "Open menu"}
-            aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileSidebarOpen}
-            style={{
-              ...mobileBottomDockIconButtonStyle,
-              border: mobileSidebarOpen ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-              background: mobileSidebarOpen ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-              color: mobileSidebarOpen ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="4" y1="7" x2="20" y2="7" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="17" x2="20" y2="17" />
-            </svg>
-          </button>
-          <div style={mobileBottomDockSearchStyle}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              style={{ display: "block", flexShrink: 0, color: mobilePanelButtonTextColor, opacity: 0.72 }}
-            >
-              <circle cx="11" cy="11" r="7"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onFocus={() => {
-                setMobileSidebarOpen(false);
-                setMobileSettingsOpen(false);
-              }}
-              placeholder="Search..."
-              aria-label="Search library"
+          <div style={mobileBottomDockMainRailStyle}>
+            <button
+              type="button"
+              onClick={handleMobileBack}
+              title="Back"
+              aria-label="Back"
               style={{
+                ...mobileBottomDockIconButtonStyle,
                 flex: 1,
-                minWidth: 0,
-                height: "100%",
-                border: "none",
-                background: "transparent",
-                color: mobilePanelTextColor,
-                fontSize: 13,
-                fontWeight: 700,
-                outline: "none",
               }}
-            />
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={handleMobileHome}
+              title="Home"
+              aria-label="Home"
+              style={{
+                ...mobileBottomDockIconButtonStyle,
+                flex: 1,
+                background: nav === "home" && !mobileSidebarOpen && !mobileSettingsOpen ? "rgba(190, 194, 210, 0.46)" : "transparent",
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 10.5L12 3l9 7.5" />
+                <path d="M5 9.5V21h14V9.5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileSearchOpen(false);
+                setMobileSettingsOpen(false);
+                setMobileSidebarOpen((prev) => !prev);
+              }}
+              title={mobileSidebarOpen ? "Close Filters" : "Open Filters"}
+              aria-label={mobileSidebarOpen ? "Close Filters" : "Open Filters"}
+              style={{
+                ...mobileBottomDockIconButtonStyle,
+                flex: 1,
+                background: mobileSidebarOpen ? "rgba(190, 194, 210, 0.46)" : "transparent",
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSortPopupOpen(false);
+                setSettingsPopupOpen(false);
+                setShowVersionNotes(false);
+                setMobileSettingsOpen(false);
+                setMobileSidebarOpen(false);
+                setAddModalOpen(true);
+              }}
+              title="Add New Item"
+              aria-label="Add New Item"
+              style={{
+                ...mobileBottomDockIconButtonStyle,
+                flex: 1,
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
           </div>
           <button
             type="button"
             onClick={() => {
               setMobileSidebarOpen(false);
-              setMobileSettingsOpen((prev) => !prev);
+              setMobileSettingsOpen(false);
+              setMobileSearchOpen((prev) => !prev);
             }}
-            title={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
-            aria-label={mobileSettingsOpen ? "Close settings menu" : "Open settings menu"}
-            aria-expanded={mobileSettingsOpen}
+            title="Search"
+            aria-label="Search"
             style={{
-              ...mobileBottomDockIconButtonStyle,
-              border: mobileSettingsOpen ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-              background: mobileSettingsOpen ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-              color: mobileSettingsOpen ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+              ...mobileBottomDockSearchButtonStyle,
+              background: mobileSearchOpen ? "rgba(226, 233, 253, 0.92)" : mobileBottomDockSearchButtonStyle.background,
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c0 .68.4 1.3 1.03 1.56.17.07.35.11.53.11H21a2 2 0 1 1 0 4h-.09c-.18 0-.36.04-.53.11-.63.26-1.03.88-1.03 1.56z"></path>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
           </button>
+        </div>
+      ) : null}
+      {mobileBottomDockVisible && mobileSearchOpen ? (
+        <div style={{
+          position: "fixed",
+          left: MOBILE_BOTTOM_DOCK_SIDE_MARGIN,
+          right: MOBILE_BOTTOM_DOCK_SIDE_MARGIN,
+          bottom: `calc(${mobileBottomDockBottom} + ${MOBILE_BOTTOM_DOCK_HEIGHT + 8}px)`,
+          zIndex: 2510,
+          ...mobileBottomDockSearchStyle,
+          background: `linear-gradient(180deg, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.04 : 0.12, simpleSidebarOverlayBase)} 0%, ${hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.1 : 0.2, simpleSidebarOverlayBase)} 100%), ${mobilePanelBackground}`,
+        }}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ display: "block", flexShrink: 0, color: mobilePanelButtonTextColor, opacity: 0.72 }}
+          >
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search library..."
+            aria-label="Search library"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: "100%",
+              border: "none",
+              background: "transparent",
+              color: mobilePanelTextColor,
+              fontSize: 13,
+              fontWeight: 700,
+              outline: "none",
+            }}
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              style={{ border: "none", background: "transparent", color: mobilePanelButtonTextColor, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              Clear
+            </button>
+          ) : null}
         </div>
       ) : null}
       {/* Main layout: Sidebar + Content */}
@@ -16974,6 +17441,162 @@ export default function Page() {
               onSelectRelatedGame={(g) => setGameDetailItem(g)}
               highlightColor={sidebarHighlightColorsLight.games}
             />
+          ) : mobileLandingVisible ? (
+            <div style={{ padding: "58px 14px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+              {mobileLandingCards.map((card) => (
+                <button
+                  key={`mobile-landing-card-${card.key}`}
+                  type="button"
+                  onClick={() => {
+                    if (card.action === "library") {
+                      activateHomeLibrary();
+                      setMobileSidebarOpen(false);
+                      setMobileSettingsOpen(false);
+                      setMobileSearchOpen(false);
+                      return;
+                    }
+                    handleMobileNavSelect(card.navKey);
+                  }}
+                  style={{
+                    border: "1px solid rgba(172, 178, 188, 0.34)",
+                    borderRadius: 18,
+                    background: "rgba(248, 250, 253, 0.86)",
+                    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
+                    minHeight: 132,
+                    padding: 14,
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 8,
+                    alignItems: "center",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 3, minWidth: 96, width: 96 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={card.icon} alt="" width={84} height={84} style={{ display: "block", objectFit: "contain" }} />
+                    </div>
+                    <div style={{ marginTop: -1, width: "100%", textAlign: "center", fontSize: 17, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.01em", lineHeight: 1.05 }}>
+                      {card.label}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", minHeight: 104, minWidth: 120, paddingRight: 4 }}>
+                    {card.covers.map((coverUrl, index) => (
+                      <div
+                        key={`${card.key}-cover-${index}`}
+                        style={{
+                          width: 76,
+                          height: 104,
+                          borderRadius: 14,
+                          overflow: "hidden",
+                          border: "1px solid rgba(255,255,255,0.65)",
+                          boxShadow: "0 8px 18px rgba(15, 23, 42, 0.28)",
+                          marginLeft: index === 0 ? 0 : -30,
+                          background: "rgba(226, 232, 240, 0.65)",
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              ))}
+              <div
+                style={{
+                  border: "1px solid rgba(172, 178, 188, 0.34)",
+                  borderRadius: 18,
+                  background: "rgba(248, 250, 253, 0.86)",
+                  boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
+                  padding: 14,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>
+                  DISCOVER
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileSidebarOpen(false);
+                      setMobileSettingsOpen(false);
+                      setMobileSearchOpen(false);
+                      setNav("statistics");
+                    }}
+                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
+                  >
+                    Statistics
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileSidebarOpen(false);
+                      setMobileSettingsOpen(false);
+                      setMobileSearchOpen(false);
+                      setNav("roadmap");
+                    }}
+                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
+                  >
+                    Roadmap
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileSidebarOpen(false);
+                      setMobileSearchOpen(false);
+                      setThemesOpen(true);
+                      setMobileSettingsOpen(true);
+                    }}
+                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
+                  >
+                    Themes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileSidebarOpen(false);
+                      setMobileSettingsOpen(false);
+                      setMobileSearchOpen(false);
+                      setNav("cover-sync");
+                    }}
+                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
+                  >
+                    Cover Sync
+                  </button>
+                </div>
+              </div>
+              <div
+                style={{
+                  border: "1px solid rgba(172, 178, 188, 0.34)",
+                  borderRadius: 18,
+                  background: "rgba(248, 250, 253, 0.86)",
+                  boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
+                  padding: 14,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>COVER SIZE</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#1f2c3f" }}>{mobileCoverScalePct}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={70}
+                  max={125}
+                  step={1}
+                  value={mobileCoverScalePct}
+                  onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
+                  aria-label="Scale all covers for mobile home view"
+                  style={{ width: "100%" }}
+                />
+              </div>
+            </div>
           ) : (
           <>
           {/* Stage measures width so shelves always align */}
@@ -16984,7 +17607,7 @@ export default function Page() {
 			                  style={{
 			                    position: "sticky",
 			                    top: topSafeInset,
-		                    height: 45,
+		                    height: isMobileLayout && (nav === "books" || nav === "movies" || nav === "tv" || nav === "games") ? 56 : 45,
 		                    overflow: "hidden",
 		                    background: isSimpleHeaderTheme
 		                      ? stickyHeaderSimpleBackground
@@ -16996,6 +17619,140 @@ export default function Page() {
 			                    zIndex: 2000,
 			                  }}
 			                >
+                      {isMobileLayout && nav === "books" ? (
+                        <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+                          {([
+                            ["library", "Library"],
+                            ["upcoming", "Upcoming"],
+                            ["completed", "Completed"],
+                            ["wishlist", "Wishlist"],
+                          ] as Array<[BookQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeBookQuickLink === key;
+                            return (
+                              <button
+                                key={`mobile-book-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateBookQuickLink(key)}
+                                style={{
+                                  height: 28,
+                                  padding: "0 10px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.books.border}` : "1px solid rgba(120,130,145,0.35)",
+                                  background: active ? sidebarAccentPalette.books.background : "rgba(255,255,255,0.55)",
+                                  color: active ? sidebarAccentPalette.books.text : "#4d5b6a",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {isMobileLayout && nav === "movies" ? (
+                        <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+                          {([
+                            ["library", "Library"],
+                            ["upcoming", "Upcoming"],
+                            ["backlog", "Backlog"],
+                            ["started", "Started"],
+                            ["watched", "Watched"],
+                            ["abandoned", "Abandoned"],
+                          ] as Array<[MovieQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeMovieQuickLink === key;
+                            return (
+                              <button
+                                key={`mobile-movie-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateMovieQuickLink(key)}
+                                style={{
+                                  height: 28,
+                                  padding: "0 10px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.movies.border}` : "1px solid rgba(120,130,145,0.35)",
+                                  background: active ? sidebarAccentPalette.movies.background : "rgba(255,255,255,0.55)",
+                                  color: active ? sidebarAccentPalette.movies.text : "#4d5b6a",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {isMobileLayout && nav === "tv" ? (
+                        <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+                          {([
+                            ["library", "Library"],
+                            ["upcoming", "Upcoming"],
+                            ["backlog", "Backlog"],
+                            ["watching", "Watching"],
+                            ["watched", "Watched"],
+                            ["abandoned", "Abandoned"],
+                          ] as Array<[TvQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeTvQuickLink === key;
+                            return (
+                              <button
+                                key={`mobile-tv-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateTvQuickLink(key)}
+                                style={{
+                                  height: 28,
+                                  padding: "0 10px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.tv.border}` : "1px solid rgba(120,130,145,0.35)",
+                                  background: active ? sidebarAccentPalette.tv.background : "rgba(255,255,255,0.55)",
+                                  color: active ? sidebarAccentPalette.tv.text : "#4d5b6a",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {isMobileLayout && nav === "games" ? (
+                        <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+                          {([
+                            ["library", "Library"],
+                            ["upcoming", "Upcoming"],
+                            ["backlog", "Backlog"],
+                            ["started", "Started"],
+                            ["completed", "Completed"],
+                            ["abandoned", "Abandoned"],
+                          ] as Array<[GameQuickLinkKey, string]>).map(([key, label]) => {
+                            const active = activeGameQuickLink === key;
+                            return (
+                              <button
+                                key={`mobile-game-quick-link-${key}`}
+                                type="button"
+                                onClick={() => activateGameQuickLink(key)}
+                                style={{
+                                  height: 28,
+                                  padding: "0 10px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.games.border}` : "1px solid rgba(120,130,145,0.35)",
+                                  background: active ? sidebarAccentPalette.games.background : "rgba(255,255,255,0.55)",
+                                  color: active ? sidebarAccentPalette.games.text : "#4d5b6a",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                       {showBacklogHeaderQuickLinks && !isMobileLayout ? (
                         <div
                           style={{

@@ -27,6 +27,14 @@ function sanitizePart(value: string) {
     .slice(0, 80);
 }
 
+function sanitizeObjectKey(value: string) {
+  return value
+    .split("/")
+    .map((segment) => sanitizePart(segment))
+    .filter(Boolean)
+    .join("/");
+}
+
 function extFromFile(file: File) {
   const filename = file.name || "";
   const fromName = filename.includes(".") ? filename.split(".").pop() || "" : "";
@@ -56,6 +64,7 @@ export async function POST(req: NextRequest) {
     const mediaType = String(formData.get("mediaType") || "media");
     const itemKey = String(formData.get("itemKey") || "item");
     const title = String(formData.get("title") || "cover");
+    const requestedObjectKey = String(formData.get("objectKey") || "");
     let buffer: Buffer | null = null;
     let contentType = "image/jpeg";
     let ext = "jpg";
@@ -96,7 +105,9 @@ export async function POST(req: NextRequest) {
     const safeType = sanitizePart(mediaType) || "media";
     const safeKey = sanitizePart(itemKey) || sanitizePart(title) || "cover";
     const timestamp = Date.now();
-    const objectKey = `overrides/${safeType}/${safeKey}-${timestamp}.${ext}`;
+    const sanitizedRequestedObjectKey = sanitizeObjectKey(requestedObjectKey);
+    const objectKey = sanitizedRequestedObjectKey || `overrides/${safeType}/${safeKey}-${timestamp}.${ext}`;
+    const usesFixedObjectKey = Boolean(sanitizedRequestedObjectKey);
 
     await s3.send(
       new PutObjectCommand({
@@ -104,7 +115,9 @@ export async function POST(req: NextRequest) {
         Key: objectKey,
         Body: buffer,
         ContentType: contentType,
-        CacheControl: "public, max-age=31536000, immutable",
+        CacheControl: usesFixedObjectKey
+          ? "public, max-age=60, must-revalidate"
+          : "public, max-age=31536000, immutable",
       })
     );
 

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 export type AddExtendedType = "movie" | "tv" | "game" | "book-apple" | "book-hardcover";
 
@@ -415,7 +414,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
                         <img
                           src={result.imageUrl}
                           alt=""
-                          style={{ width: "100%", height: "100%", objectFit: "cover", ...COVER_IMAGE_RADIUS_STYLE }}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
                       ) : (
                         <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, opacity: 0.4 }}>

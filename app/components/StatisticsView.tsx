@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
-import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 type StatsMediaType = "book" | "movie" | "tv" | "game";
 type StatsFilter = "all" | StatsMediaType;
@@ -12,8 +10,6 @@ type StatusBucket = "completed" | "inProgress" | "backlog" | "wishlist" | "aband
 
 type BookStatsItem = {
   title?: string;
-  author?: string;
-  authors?: string;
   releaseDate?: string;
   completedDate?: string;
   status?: string;
@@ -52,7 +48,6 @@ type MovieStatsItem = {
   metadataCoverUrl?: string;
   poster?: string;
   runtime?: string;
-  director?: string;
 };
 
 type ShowStatsItem = {
@@ -60,10 +55,6 @@ type ShowStatsItem = {
   firstAirDate?: string;
   lastAirDate?: string;
   dateCompleted?: string;
-  numberOfEpisodes?: string;
-  runtime?: string;
-  episodeRuntime?: string;
-  averageEpisodeRuntime?: string;
   watchStatus?: string;
   watched?: string;
   showStatus?: string;
@@ -124,8 +115,6 @@ type UnifiedStatsItem = {
   platforms: string[];
   formats: string[];
   tags: string[];
-  authors: string[];
-  directors: string[];
   coverUrl: string | null;
   audiobookMinutes: number;
   runtimeMinutes: number;
@@ -139,8 +128,6 @@ type StatisticsViewProps = {
   games: GameStatsItem[];
   coverOverrides?: Record<string, string>;
   onExit?: () => void;
-  themeMode?: "light" | "dark" | "classic";
-  mediaTabColors?: Partial<Record<StatsTab, string>>;
 };
 
 type SummaryMetric = {
@@ -161,19 +148,6 @@ type StatisticDetail = {
   summary: string;
   calculation: string;
   items: UnifiedStatsItem[];
-};
-
-type WrappedSlide = {
-  id: string;
-  kicker: string;
-  title: string;
-  value: string;
-  note: string;
-  mediaType?: StatsMediaType;
-  coverShape?: "poster" | "square";
-  preferTextOverlay?: boolean;
-  coverUrl: string | null;
-  backdropUrl: string | null;
 };
 
 type MonthlyPoint = {
@@ -241,20 +215,6 @@ const UNRATED_TOKENS = new Set([
   "unknown",
   "undefined",
 ]);
-const WRAPPED_AUDIO_TRACKS = [
-  {
-    title: "Helix One",
-    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-  },
-  {
-    title: "Helix Two",
-    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-  },
-  {
-    title: "Helix Three",
-    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-  },
-] as const;
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 
@@ -294,13 +254,6 @@ function isTruthyToken(value: unknown): boolean {
 function splitList(value: unknown): string[] {
   return safeText(value)
     .split(/[,;|]/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function splitAuthorList(value: unknown): string[] {
-  return safeText(value)
-    .split(/[,;&/]+/)
     .map((entry) => entry.trim())
     .filter(Boolean);
 }
@@ -370,27 +323,6 @@ function parseRuntimeToMinutes(value: unknown): number {
   return numeric;
 }
 
-function parsePositiveNumber(value: unknown): number {
-  const raw = safeText(value).replace(/,/g, "");
-  if (!raw) return 0;
-  const numeric = Number.parseFloat(raw.match(/\d+(?:\.\d+)?/)?.[0] || "");
-  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
-}
-
-function parseTvRuntimeToMinutes(show: ShowStatsItem): number {
-  const explicitRuntime = parseRuntimeToMinutes(show.runtime);
-  if (explicitRuntime > 0) return explicitRuntime;
-
-  const episodeRuntime =
-    parseRuntimeToMinutes(show.episodeRuntime) || parseRuntimeToMinutes(show.averageEpisodeRuntime);
-  const episodeCount = parsePositiveNumber(show.numberOfEpisodes);
-  if (episodeRuntime > 0 && episodeCount > 0) return episodeRuntime * episodeCount;
-
-  // Fallback for TV rows that only have an episode count in the sheet.
-  if (episodeCount > 0) return episodeCount * 45;
-  return 0;
-}
-
 function parseHoursValue(value: unknown): number {
   const raw = safeText(value).toLowerCase();
   const compactRaw = raw.replace(/,/g, "");
@@ -428,46 +360,20 @@ function parseHoursValue(value: unknown): number {
 }
 
 function formatHours(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 hours";
-  if (value >= 100) return `${Math.round(value)} hours`;
-  if (value >= 10) return `${value.toFixed(1)} hours`;
-  return `${value.toFixed(2)} hours`;
+  if (!Number.isFinite(value) || value <= 0) return "0h";
+  if (value >= 100) return `${Math.round(value)}h`;
+  if (value >= 10) return `${value.toFixed(1)}h`;
+  return `${value.toFixed(2)}h`;
 }
 
 function formatMinutesAsHours(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 hours";
+  if (!Number.isFinite(value) || value <= 0) return "0h";
   return formatHours(value / 60);
-}
-
-function getTop20CoverClass(item: UnifiedStatsItem): string {
-  if (item.mediaType === "game") return "yearTopRatedCover yearTopRatedCoverGame";
-  if (item.mediaType === "tv") return "yearTopRatedCover yearTopRatedCoverTv";
-  if (
-    item.mediaType === "book" &&
-    (item.audiobookMinutes > 0 ||
-      item.formats.some((format) => normalizeToken(format).includes("audiobook")))
-  ) {
-    return "yearTopRatedCover yearTopRatedCoverAudiobook";
-  }
-  return "yearTopRatedCover";
-}
-
-function getTop20CoverFrameClass(item: UnifiedStatsItem): string {
-  if (item.mediaType === "game") return "yearTopRatedCoverFrameGame";
-  if (
-    item.mediaType === "book" &&
-    (item.audiobookMinutes > 0 ||
-      item.formats.some((format) => normalizeToken(format).includes("audiobook")))
-  ) {
-    return "yearTopRatedCoverFrameAudiobook";
-  }
-  return "";
 }
 
 function formatScoreValue(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-";
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return (Math.round(value * 10) / 10).toFixed(1);
 }
 
 function formatStarRowFive(valueOutOfFive: number): string {
@@ -809,6 +715,40 @@ function buildDonutGradient(items: NamedValue[]): string {
   return `conic-gradient(${stops.join(", ")})`;
 }
 
+function buildReleaseChartPaths(values: number[], width: number, height: number): { linePath: string; areaPath: string } {
+  if (!values.length) {
+    return { linePath: "", areaPath: "" };
+  }
+
+  if (values.length === 1) {
+    const x = width / 2;
+    const y = height / 2;
+    return {
+      linePath: `M${x},${y} L${x},${y}`,
+      areaPath: `M${x},${y} L${x},${height} L${x},${height} Z`,
+    };
+  }
+
+  const maxValue = Math.max(1, ...values);
+  const step = width / (values.length - 1);
+
+  const points = values.map((value, index) => {
+    const x = index * step;
+    const y = height - (value / maxValue) * (height - 16) - 8;
+    return { x, y };
+  });
+
+  const linePath = points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+    .join(" ");
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const areaPath = `${linePath} L${last.x.toFixed(2)},${height} L${first.x.toFixed(2)},${height} Z`;
+
+  return { linePath, areaPath };
+}
+
 function compareRankedItems(
   a: UnifiedStatsItem,
   b: UnifiedStatsItem,
@@ -826,490 +766,12 @@ function compareRankedItems(
   return a.title.localeCompare(b.title);
 }
 
-type TopRatedColumnProps = {
-  title: string;
-  items: UnifiedStatsItem[];
-  scoreKey: "rating" | "externalRating";
-  filter: StatsFilter;
-  selectedStatsYear: StatsYearFilter;
-  detailIdPrefix: string;
-  detailTitlePrefix: string;
-  detailSummary: string;
-  detailCalculation: string;
-  emptyMessage: string;
-  onOpenDetail: (detail: StatisticDetail) => void;
-};
-
-type StatDetailModalProps = {
-  detail: StatisticDetail;
-  onClose: () => void;
-};
-
-function getTopRatedShapeClasses(item: UnifiedStatsItem) {
-  const coverClass = getTop20CoverClass(item);
-  const isAudiobookSquare = coverClass.includes("yearTopRatedCoverAudiobook");
-  const isBookCover = item.mediaType === "book" && !isAudiobookSquare;
-  const isGameCover = item.mediaType === "game";
-  const isPosterCover = !isAudiobookSquare && !isBookCover && !isGameCover;
-
-  return {
-    coverClass,
-    tileShapeClass: isAudiobookSquare
-      ? "topRatedTileAudiobook"
-      : isGameCover
-        ? "topRatedTileGame"
-        : isPosterCover
-          ? "topRatedTilePoster"
-          : "",
-    mediaClassName: `topRatedMedia ${isAudiobookSquare ? "topRatedMediaAudiobook" : ""} ${isBookCover ? "topRatedMediaBook" : ""} ${isGameCover ? "topRatedMediaGame" : ""} ${isPosterCover ? "topRatedMediaPoster" : ""}`,
-    wrapClassName: `topRatedCoverWrap ${isAudiobookSquare ? "topRatedCoverWrapAudiobook" : ""} ${isBookCover ? "topRatedCoverWrapBook" : ""} ${isGameCover ? "topRatedCoverWrapGame" : ""} ${isPosterCover ? "topRatedCoverWrapPoster" : ""}`,
-    clipClassName: `topRatedImageClip ${isAudiobookSquare ? "topRatedImageClipAudiobook" : ""} ${isBookCover ? "topRatedImageClipBook" : ""} ${isGameCover ? "topRatedImageClipGame" : ""} ${isPosterCover ? "topRatedImageClipPoster" : ""}`,
-  };
-}
-
-function TopRatedColumn({
-  title,
-  items,
-  scoreKey,
-  filter,
-  selectedStatsYear,
-  detailIdPrefix,
-  detailTitlePrefix,
-  detailSummary,
-  detailCalculation,
-  emptyMessage,
-  onOpenDetail,
-}: TopRatedColumnProps) {
-  const openDetail = (item: UnifiedStatsItem, index: number) => {
-    onOpenDetail({
-      id: `${detailIdPrefix}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
-      title: `${detailTitlePrefix} #${index + 1}`,
-      value: formatScoreValue(item[scoreKey]),
-      summary: detailSummary,
-      calculation: detailCalculation,
-      items: [item],
-    });
-  };
-
-  return (
-    <section className="topRatedColumn">
-      <div className="topRatedColumnHeader">
-        <h3>{title}</h3>
-        <span>{items.length} ranked</span>
-      </div>
-      {items.length > 0 ? (
-        <div className="topRatedGrid">
-          {items.map((item, index) => {
-            const shape = getTopRatedShapeClasses(item);
-            return (
-              <figure
-                key={`${detailIdPrefix}-${item.mediaType}-${item.title}-${index + 1}`}
-                className={`topRatedTile topRatedTileInteractive ${shape.tileShapeClass}`}
-                title={`${index + 1}. ${item.title}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => openDetail(item, index)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  openDetail(item, index);
-                }}
-              >
-                <div className={shape.mediaClassName}>
-                  <div className={shape.wrapClassName}>
-                    {item.coverUrl ? (
-                      <div className={shape.clipClassName} style={COVER_IMAGE_RADIUS_STYLE}>
-                        <img
-                          className={shape.coverClass}
-                          src={item.coverUrl}
-                          alt={`${item.title} cover`}
-                          loading="lazy"
-                          style={COVER_IMAGE_RADIUS_STYLE}
-                        />
-                      </div>
-                    ) : (
-                      <div className="topRatedFallback">No Cover</div>
-                    )}
-                  </div>
-                </div>
-                <figcaption>
-                  <span className="topRatedStatsRow">
-                    <span className="topRatedRankText">#{index + 1}</span>
-                    <span className="topRatedScoreText">{formatScoreValue(item[scoreKey])}</span>
-                  </span>
-                  <span className="topRatedTitle">{item.title}</span>
-                </figcaption>
-              </figure>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="cardEmpty compactEmpty">{emptyMessage}</div>
-      )}
-    </section>
-  );
-}
-
-function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
-  return (
-    <div
-      className="statDetailOverlay"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        className="statDetailDialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Statistic details for ${detail.title}`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="statDetailHeader">
-          <div className="statDetailHeaderMain">
-            <div className="statDetailId">ID: {detail.id}</div>
-            <h3>{detail.title}</h3>
-            <div className="statDetailValue">{detail.value}</div>
-          </div>
-          <button
-            type="button"
-            className="statDetailClose"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="statDetailSummaryGrid">
-          <div className="statDetailSummaryCard">
-            <div className="statDetailSummaryLabel">What This Tracks</div>
-            <p>{detail.summary}</p>
-          </div>
-          <div className="statDetailSummaryCard">
-            <div className="statDetailSummaryLabel">How It Is Calculated</div>
-            <p>{detail.calculation}</p>
-          </div>
-        </div>
-
-        <div className="statDetailItemsHeader">
-          Matching Items <span>{detail.items.length}</span>
-        </div>
-
-        <div className="statDetailItemsList">
-          {detail.items.length > 0 ? (
-            detail.items.map((item, index) => {
-              const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
-              const anchorLabel = item.activityDate
-                ? "Activity"
-                : item.completionDate
-                  ? "Completed"
-                  : "Release";
-              return (
-                <div
-                  key={`${detail.id}-${item.mediaType}-${item.title}-${index}`}
-                  className="statDetailItemRow"
-                >
-                  <div className="statDetailItemRank">{index + 1}</div>
-                  <div className="statDetailItemCover">
-                    {item.coverUrl ? (
-                      <img
-                        src={item.coverUrl}
-                        alt={`Cover for ${item.title}`}
-                        className="statDetailItemCoverImage"
-                        loading="lazy"
-                        style={COVER_IMAGE_RADIUS_STYLE}
-                      />
-                    ) : (
-                      <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
-                        {item.mediaType.toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                  <div className="statDetailItemMain">
-                    <div className="statDetailItemTitle">{item.title}</div>
-                    <div className="statDetailItemMeta">
-                      <span>{STATUS_LABELS[item.statusBucket]}</span>
-                      <span>
-                        {anchorLabel}: {formatDetailDate(anchorDate)}
-                      </span>
-                      <span>Rating: {formatPersonalRatingDisplay(item)}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="cardEmpty">No matching items for this statistic.</div>
-          )}
-        </div>
-      </div>
-      <style jsx>{`
-        .statDetailOverlay {
-          position: fixed;
-          inset: 0;
-          z-index: 2500;
-          background: rgba(27, 31, 38, 0.32);
-          backdrop-filter: blur(18px) saturate(1.12);
-          -webkit-backdrop-filter: blur(18px) saturate(1.12);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 14px;
-        }
-
-        .statDetailDialog {
-          width: min(980px, 100%);
-          max-height: min(88vh, 860px);
-          overflow: auto;
-          border-radius: 18px;
-          border: 1px solid rgba(255, 255, 255, 0.72);
-          background:
-            linear-gradient(180deg, rgba(249, 250, 252, 0.97), rgba(232, 236, 242, 0.96));
-          box-shadow:
-            0 28px 76px rgba(27, 31, 38, 0.36),
-            inset 0 1px 0 rgba(255, 255, 255, 0.9);
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          color: #242a32;
-        }
-
-        .statDetailHeader {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 14px;
-          border-bottom: 1px solid rgba(160, 169, 183, 0.34);
-          padding: 2px 2px 12px 2px;
-        }
-
-        .statDetailHeaderMain {
-          min-width: 0;
-        }
-
-        .statDetailId {
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          color: rgba(84, 109, 143, 0.86);
-        }
-
-        .statDetailHeaderMain h3 {
-          margin: 6px 0 0 0;
-          font-size: 20px;
-          font-weight: 900;
-          color: #20242b;
-        }
-
-        .statDetailValue {
-          margin-top: 4px;
-          font-size: 28px;
-          line-height: 1;
-          font-weight: 900;
-          color: #2f7bd7;
-        }
-
-        .statDetailClose {
-          border: 1px solid rgba(110, 116, 126, 0.28);
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 229, 234, 0.94));
-          color: #555d68;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.03em;
-          padding: 7px 14px;
-          cursor: pointer;
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.9),
-            0 1px 2px rgba(23, 28, 36, 0.08);
-        }
-
-        .statDetailSummaryGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .statDetailSummaryCard {
-          border: 1px solid rgba(174, 184, 198, 0.46);
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.62);
-          padding: 12px;
-          min-height: 78px;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-        }
-
-        .statDetailSummaryLabel {
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: rgba(60, 121, 204, 0.88);
-        }
-
-        .statDetailSummaryCard p {
-          margin: 7px 0 0 0;
-          font-size: 12px;
-          color: rgba(45, 54, 66, 0.88);
-          line-height: 1.42;
-        }
-
-        .statDetailItemsHeader {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-          color: rgba(82, 96, 116, 0.9);
-        }
-
-        .statDetailItemsHeader span {
-          color: #2f7bd7;
-        }
-
-        .statDetailItemsList {
-          display: flex;
-          flex-direction: column;
-          gap: 0;
-          min-height: 120px;
-          border-top: 1px solid rgba(164, 174, 188, 0.28);
-          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
-        }
-
-        .statDetailItemRow {
-          display: grid;
-          grid-template-columns: 52px 92px minmax(0, 1fr);
-          gap: 16px;
-          align-items: center;
-          border: 0;
-          border-radius: 0;
-          background: transparent;
-          padding: 14px 4px;
-          box-shadow: none;
-          border-bottom: 1px solid rgba(164, 174, 188, 0.28);
-        }
-
-        .statDetailItemRow:last-child {
-          border-bottom: 0;
-        }
-
-        .statDetailItemRank {
-          width: 52px;
-          min-height: 138px;
-          border-radius: 0;
-          display: grid;
-          place-items: center;
-          font-size: 28px;
-          line-height: 1;
-          font-weight: 900;
-          color: #2f7bd7;
-          border: 0;
-          background: transparent;
-        }
-
-        .statDetailItemMain {
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          gap: 6px;
-        }
-
-        .statDetailItemCover {
-          position: relative;
-          width: 92px;
-          align-self: center;
-        }
-
-        .statDetailItemCoverImage {
-          /* Freestanding: render at the image's natural shape (no fixed
-             aspect-ratio, no object-fit letterboxing), capped at 92px wide.
-             Border-radius then rounds the actual visible image edges. */
-          display: block;
-          width: 92px;
-          height: auto;
-          border-radius: 6px;
-          border: 0;
-          background: transparent;
-        }
-
-        .statDetailItemCoverPlaceholder {
-          display: grid;
-          place-items: center;
-          width: 92px;
-          aspect-ratio: 2 / 3;
-          padding: 4px;
-          border-radius: 6px;
-          font-size: 10px;
-          font-weight: 900;
-          letter-spacing: 0.08em;
-          color: rgba(82, 96, 116, 0.72);
-          /* Empty-state tile keeps a soft framed look so it's still visible
-             without an actual image inside it. */
-          border: 1px solid rgba(156, 168, 184, 0.45);
-          background: rgba(238, 241, 245, 0.8);
-        }
-
-        .statDetailItemTitle {
-          font-size: 16px;
-          font-weight: 800;
-          color: #232832;
-          line-height: 1.3;
-        }
-
-        .statDetailItemMeta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 7px;
-        }
-
-        .statDetailItemMeta span {
-          display: inline-flex;
-          align-items: center;
-          border: 1px solid rgba(120, 166, 236, 0.34);
-          border-radius: 999px;
-          padding: 3px 9px;
-          font-size: 12px;
-          font-weight: 700;
-          color: rgba(54, 75, 105, 0.9);
-          background: rgba(239, 244, 250, 0.86);
-        }
-
-        @media (max-width: 720px) {
-          .statDetailSummaryGrid {
-            grid-template-columns: minmax(0, 1fr);
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-export function StatisticsView({
-  books,
-  movies,
-  shows,
-  games,
-  coverOverrides = {},
-  onExit,
-  themeMode = "dark",
-  mediaTabColors = {},
-}: StatisticsViewProps) {
+export function StatisticsView({ books, movies, shows, games, coverOverrides = {}, onExit }: StatisticsViewProps) {
   const currentYear = new Date().getUTCFullYear();
   const [activeTab, setActiveTab] = useState<StatsTab>("all");
   const [statsYear, setStatsYear] = useState<StatsYearFilter>(ALL_STATS_YEARS);
   const [reviewYear, setReviewYear] = useState<number>(currentYear);
   const [activeStatDetail, setActiveStatDetail] = useState<StatisticDetail | null>(null);
-  const [isWrappedOpen, setIsWrappedOpen] = useState(false);
-  const [wrappedSlideIndex, setWrappedSlideIndex] = useState(0);
-  const [wrappedTrackIndex, setWrappedTrackIndex] = useState(0);
-  const [wrappedMuted, setWrappedMuted] = useState(false);
-  const [wrappedPlaybackBlocked, setWrappedPlaybackBlocked] = useState(false);
-  const [wrappedIsPlaying, setWrappedIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const filter: StatsFilter = activeTab === "yearReview" ? "all" : activeTab;
 
   const sortDetailItems = (items: UnifiedStatsItem[]): UnifiedStatsItem[] => {
@@ -1357,12 +819,11 @@ export function StatisticsView({
       const completionDate = parseDateValue(book.completedDate);
       const releaseDate = parseDateValue(book.releaseDate);
       const activityDate = completionDate || releaseDate;
-      const rating = parseRatingValue(book.myRating, "five");
+      const rating = parseRatingValue(book.myRating, "ten");
       const externalRating = parseRatingValue(firstNonEmpty([book.externalAverageRating, book.userRating]), "five");
       const genres = splitList(book.categories || book.genre);
       const formats = splitList(book.types);
       const tags = [...splitList(book.tag), ...splitList(book.tags)];
-      const authors = [...splitAuthorList(book.author), ...splitAuthorList(book.authors)];
       const statusBucket = inferStatusBucket(book.status || "", Boolean(completionDate));
       const primaryStatusToken = normalizeToken(book.status || "");
       const coverUrl = resolveCoverUrl(
@@ -1398,8 +859,6 @@ export function StatisticsView({
         platforms: [],
         formats,
         tags,
-        authors,
-        directors: [],
         statusBucket,
         primaryStatusToken,
         coverUrl,
@@ -1418,7 +877,6 @@ export function StatisticsView({
       const externalRating = parseRatingValue(movie.tmdbRating);
       const genres = splitList(movie.genres);
       const tags = [...splitList(movie.tag), ...splitList(movie.tags)];
-      const directors = splitList(movie.director);
       const movieStatusRaw = firstNonEmpty([movie.watchStatus, movie.watched, movie.status, movie.movieStatus]);
       const completionHint = isTruthyToken(movie.watched) || normalizeToken(movie.watchStatus) === "watched";
       const statusBucket = inferStatusBucket(movieStatusRaw, completionHint);
@@ -1444,8 +902,6 @@ export function StatisticsView({
         platforms: [],
         formats: [],
         tags,
-        authors: [],
-        directors,
         statusBucket,
         primaryStatusToken,
         coverUrl,
@@ -1468,7 +924,6 @@ export function StatisticsView({
       const completionHint = Boolean(completionDate) || isTruthyToken(show.watched);
       const statusBucket = inferStatusBucket(showStatusRaw, completionHint);
       const primaryStatusToken = normalizeToken(showStatusRaw);
-      const runtimeMinutes = parseTvRuntimeToMinutes(show);
       const coverUrl = resolveCoverUrl(
         "tv",
         title,
@@ -1489,13 +944,11 @@ export function StatisticsView({
         platforms: [],
         formats: [],
         tags,
-        authors: [],
-        directors: [],
         statusBucket,
         primaryStatusToken,
         coverUrl,
         audiobookMinutes: 0,
-        runtimeMinutes,
+        runtimeMinutes: 0,
         gameplayHours: 0,
       };
     });
@@ -1566,8 +1019,6 @@ export function StatisticsView({
         platforms,
         formats,
         tags,
-        authors: [],
-        directors: [],
         statusBucket,
         primaryStatusToken,
         coverUrl,
@@ -1600,9 +1051,6 @@ export function StatisticsView({
         : ALL_STATS_YEARS;
   const statsYearLabel = selectedStatsYear === ALL_STATS_YEARS ? "All Years" : `${selectedStatsYear}`;
   const statsYearScopePhrase = selectedStatsYear === ALL_STATS_YEARS ? "all-years scope" : `${selectedStatsYear} scope`;
-  const mediaYearScopeLabel = filter === "all" ? "media entries" : MEDIA_LABELS[filter].toLowerCase();
-  const mediaYearLabel =
-    filter === "all" ? "Most Popular Media Year" : `Most Popular ${MEDIA_LABELS[filter].replace("TV Shows", "TV Show")} Year`;
   const selectedReviewYear = reviewYearOptions.includes(reviewYear)
     ? reviewYear
     : (reviewYearOptions[0] || currentYear);
@@ -1784,50 +1232,74 @@ export function StatisticsView({
   }, [monthlySeries]);
 
   const releaseYearSeries = useMemo(() => {
-    const yearToItems = new Map<number, Map<string, UnifiedStatsItem>>();
+    const map = new Map<number, number>();
 
     filteredItems.forEach((item) => {
       if (!item.releaseDate) return;
       const year = item.releaseDate.getUTCFullYear();
-      if (!Number.isFinite(year)) return;
-      const normalizedTitle = normalizeTitleKey(item.title);
-      const releaseIdentity = `${item.mediaType}:${normalizedTitle}`;
-      const bucket = yearToItems.get(year) || new Map<string, UnifiedStatsItem>();
-      if (!bucket.has(releaseIdentity)) {
-        bucket.set(releaseIdentity, item);
-      }
-      yearToItems.set(year, bucket);
+      map.set(year, (map.get(year) || 0) + 1);
     });
 
-    return [...yearToItems.entries()]
-      .map(([year, bucket]) => ({
-        year,
-        value: bucket.size,
-        items: [...bucket.values()],
-      }))
+    return [...map.entries()]
+      .map(([year, value]) => ({ year, value }))
       .sort((a, b) => a.year - b.year)
       .slice(-18);
   }, [filteredItems]);
 
-  const releaseLinePoints = useMemo(() => {
-    if (!releaseYearSeries.length) return [];
-    const width = 560;
-    const height = 120;
-    const maxValue = Math.max(1, ...releaseYearSeries.map((entry) => entry.value));
-    const step = releaseYearSeries.length > 1 ? width / (releaseYearSeries.length - 1) : 0;
-    return releaseYearSeries.map((entry, index) => {
-      const x = releaseYearSeries.length === 1 ? width / 2 : index * step;
-      const y = height - (entry.value / maxValue) * (height - 14) - 7;
-      return { year: entry.year, value: entry.value, x, y };
-    });
+  const releaseYearLabelStep = useMemo(() => {
+    const count = releaseYearSeries.length;
+    if (count <= 6) return 1;
+    // Keep roughly 6 readable year labels across the timeline.
+    return Math.ceil((count - 1) / 5);
+  }, [releaseYearSeries.length]);
+
+  const releasePaths = useMemo(() => {
+    const values = releaseYearSeries.map((entry) => entry.value);
+    return buildReleaseChartPaths(values, 520, 168);
   }, [releaseYearSeries]);
 
-  const releaseLinePath = useMemo(() => {
-    if (!releaseLinePoints.length) return "";
-    return releaseLinePoints
-      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
-      .join(" ");
-  }, [releaseLinePoints]);
+  const releasePeakRows = useMemo(() => {
+    return [...releaseYearSeries]
+      .filter((entry) => entry.value > 0)
+      .sort((a, b) => b.value - a.value || b.year - a.year)
+      .slice(0, 5);
+  }, [releaseYearSeries]);
+
+  const releasePeakYearSet = useMemo(() => {
+    return new Set(releasePeakRows.map((entry) => entry.year));
+  }, [releasePeakRows]);
+
+  const releaseLowRows = useMemo(() => {
+    return [...releaseYearSeries]
+      .filter((entry) => entry.value > 0 && !releasePeakYearSet.has(entry.year))
+      .sort((a, b) => a.value - b.value || a.year - b.year)
+      .slice(0, 5);
+  }, [releasePeakYearSet, releaseYearSeries]);
+
+  const releaseLowYearSet = useMemo(() => {
+    return new Set(releaseLowRows.map((entry) => entry.year));
+  }, [releaseLowRows]);
+
+  const releasePointCoords = useMemo(() => {
+    const values = releaseYearSeries.map((entry) => entry.value);
+    if (!values.length) return [];
+
+    const width = 520;
+    const height = 168;
+    const maxValue = Math.max(1, ...values);
+    const step = values.length > 1 ? width / (values.length - 1) : 0;
+
+    return values.map((value, index) => {
+      const x = values.length === 1 ? width / 2 : index * step;
+      const y = height - (value / maxValue) * (height - 16) - 8;
+      return {
+        year: releaseYearSeries[index].year,
+        value,
+        x,
+        y,
+      };
+    });
+  }, [releaseYearSeries]);
 
   const topDimension = useMemo(() => {
     if (filter === "game") {
@@ -1912,21 +1384,12 @@ export function StatisticsView({
     const bestMonth = [...monthPool].sort((a, b) => b.total - a.total).find((month) => month.total > 0) || null;
 
     const topGenre = topGenres[0] || null;
-    const releaseYearCounts = new Map<string, number>();
-    filteredItems.forEach((item) => {
-      const releaseYear = item.releaseDate?.getUTCFullYear();
-      if (!releaseYear) return;
-      const key = String(releaseYear);
-      releaseYearCounts.set(key, (releaseYearCounts.get(key) || 0) + 1);
-    });
-    const mostPopularMediaYear = getTopN(releaseYearCounts, 1)[0] || null;
 
     return {
       yearLogged,
       yearCompleted,
       bestMonth,
       topGenre,
-      mostPopularMediaYear,
     };
   }, [filteredItems, monthlySeries, selectedStatsYear, topGenres]);
 
@@ -2327,234 +1790,12 @@ export function StatisticsView({
     ];
   }, [previousReviewYear, selectedReviewYear, yearReview]);
 
-  const wrappedSlides = useMemo<WrappedSlide[]>(() => {
-    const featuredCovers = [
-      yearReview.topRated?.coverUrl || null,
-      yearReview.mostPlayedGame?.coverUrl || null,
-      yearReview.longestAudiobook?.coverUrl || null,
-      yearReview.lowestRated?.coverUrl || null,
-      yearReview.topRatedItems.find((item) => item.coverUrl)?.coverUrl || null,
-    ].filter((value): value is string => Boolean(value));
-    const fallbackBackdrop = featuredCovers[0] || null;
-    const getBackdrop = (coverUrl: string | null, offset = 0) =>
-      coverUrl || featuredCovers[offset % Math.max(1, featuredCovers.length)] || fallbackBackdrop;
-
-    return [
-      {
-        id: "intro",
-        kicker: "CDL Wrapped",
-        title: `${selectedReviewYear} in one story`,
-        value: `${yearReview.yearItems.length} titles logged`,
-        note: `${yearReview.completedTotal} completed • ${yearReview.abandonedCount} abandoned`,
-        coverUrl: yearReview.topRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRated?.coverUrl || null, 0),
-      },
-      {
-        id: "favorite",
-        kicker: "Top Rated",
-        title: yearReview.topRated?.title || "No top-rated title yet",
-        value: getPersonalRatingBadgeLabel(yearReview.topRated) || "-",
-        note: yearReview.topRated ? MEDIA_LABELS[yearReview.topRated.mediaType] : "Add ratings to unlock this card",
-        mediaType: yearReview.topRated?.mediaType,
-        coverShape:
-          yearReview.topRated?.mediaType === "book" &&
-          Boolean(yearReview.topRated?.formats.some((format) => normalizeToken(format).includes("audiobook")))
-            ? "square"
-            : "poster",
-        coverUrl: yearReview.topRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRated?.coverUrl || null, 1),
-      },
-      {
-        id: "watch-time",
-        kicker: "Screen Time",
-        title: "Movies Watched",
-        value: `${yearReview.moviesWatched}`,
-        note: `${formatMinutesAsHours(yearReview.movieMinutes)} total watch time`,
-        mediaType: "movie",
-        preferTextOverlay: true,
-        coverUrl: yearReview.topRatedItems.find((item) => item.mediaType === "movie" && item.coverUrl)?.coverUrl || null,
-        backdropUrl: getBackdrop(null, 2),
-      },
-      {
-        id: "audio",
-        kicker: "Listening",
-        title: yearReview.longestAudiobook?.title || "Longest Audiobook",
-        value: yearReview.longestAudiobook ? formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes) : "0 hours",
-        note: `${yearReview.audiobookCount} audiobook entries completed`,
-        mediaType: "book",
-        coverShape: "square",
-        coverUrl: yearReview.longestAudiobook?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.longestAudiobook?.coverUrl || null, 3),
-      },
-      {
-        id: "games",
-        kicker: "Play Session",
-        title: yearReview.mostPlayedGame?.title || "Most Played Game",
-        value: formatHours(yearReview.gameHours),
-        note: `${yearReview.completedGames} games completed`,
-        mediaType: "game",
-        preferTextOverlay: true,
-        coverUrl: yearReview.mostPlayedGame?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.mostPlayedGame?.coverUrl || null, 4),
-      },
-      {
-        id: "completion-rate",
-        kicker: "Consistency",
-        title: "Completion Rate",
-        value: yearReview.yearItems.length
-          ? `${Math.round((yearReview.completedTotal / yearReview.yearItems.length) * 100)}%`
-          : "0%",
-        note: `${yearReview.completedTotal} of ${yearReview.yearItems.length} logged titles completed`,
-        coverUrl: yearReview.topRatedItems[1]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[1]?.coverUrl || null, 5),
-      },
-      {
-        id: "genre",
-        kicker: "Your Vibe",
-        title: yearReview.topGenre?.name || "Top Genre",
-        value: yearReview.topGenre ? `${yearReview.topGenre.value} logs` : "-",
-        note: "Most frequent genre in your Year in Review",
-        coverUrl: yearReview.topRatedItems[2]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[2]?.coverUrl || null, 6),
-      },
-      {
-        id: "busiest-month",
-        kicker: "Peak Month",
-        title: yearReview.busiestMonth?.label || "No month data",
-        value: `${yearReview.busiestMonth?.count || 0} logged`,
-        note: "Your most active month for logging titles",
-        coverUrl: yearReview.topRatedItems[3]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[3]?.coverUrl || null, 7),
-      },
-      {
-        id: "lowest-rated",
-        kicker: "Tough Watch",
-        title: yearReview.lowestRated?.title || "Lowest Rated",
-        value: getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-",
-        note: yearReview.lowestRated ? MEDIA_LABELS[yearReview.lowestRated.mediaType] : "No low-rated entries yet",
-        mediaType: yearReview.lowestRated?.mediaType,
-        coverShape:
-          yearReview.lowestRated?.mediaType === "book" &&
-          Boolean(yearReview.lowestRated?.formats.some((format) => normalizeToken(format).includes("audiobook")))
-            ? "square"
-            : "poster",
-        preferTextOverlay:
-          yearReview.lowestRated?.mediaType === "movie" || yearReview.lowestRated?.mediaType === "game",
-        coverUrl: yearReview.lowestRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.lowestRated?.coverUrl || null, 8),
-      },
-      {
-        id: "ratings-depth",
-        kicker: "Critic Mode",
-        title: "Rated Titles",
-        value: `${yearReview.topRatedItems.length}`,
-        note: `${yearReview.bottomRatedItems.length} titles in bottom picks list`,
-        coverUrl: yearReview.topRatedItems[4]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[4]?.coverUrl || null, 9),
-      },
-      {
-        id: "outro",
-        kicker: "See You Next Year",
-        title: `${selectedReviewYear} highlights complete`,
-        value: `${yearReview.topRatedItems.length} rated picks`,
-        note: `Busiest month: ${yearReview.busiestMonth?.label || "N/A"}`,
-        coverUrl: yearReview.lowestRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.lowestRated?.coverUrl || null, 5),
-      },
-    ];
-  }, [selectedReviewYear, yearReview]);
-
-  const activeWrappedSlide = wrappedSlides[wrappedSlideIndex] || null;
-  const wrappedBackdropFirst =
-    Boolean(activeWrappedSlide?.backdropUrl) &&
-    (activeWrappedSlide?.preferTextOverlay ||
-      activeWrappedSlide?.mediaType === "movie" ||
-      activeWrappedSlide?.mediaType === "game");
-  const wrappedCoverShape = activeWrappedSlide?.coverShape || "poster";
-
-  useEffect(() => {
-    if (!isWrappedOpen) return;
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsWrappedOpen(false);
-        return;
-      }
-      if (event.key === "ArrowRight") {
-        setWrappedSlideIndex((current) => (current + 1) % Math.max(1, wrappedSlides.length));
-        return;
-      }
-      if (event.key === "ArrowLeft") {
-        setWrappedSlideIndex((current) => (current - 1 + Math.max(1, wrappedSlides.length)) % Math.max(1, wrappedSlides.length));
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isWrappedOpen, wrappedSlides.length]);
-
-  useEffect(() => {
-    if (!isWrappedOpen || wrappedSlides.length <= 1) return;
-    const timer = window.setInterval(() => {
-      setWrappedSlideIndex((current) => (current + 1) % wrappedSlides.length);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [isWrappedOpen, wrappedSlides.length]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.muted = wrappedMuted;
-    if (!isWrappedOpen) {
-      audio.pause();
-      audio.currentTime = 0;
-      setWrappedIsPlaying(false);
-      setWrappedPlaybackBlocked(false);
-      return;
-    }
-    audio
-      .play()
-      .then(() => {
-        setWrappedIsPlaying(true);
-        setWrappedPlaybackBlocked(false);
-      })
-      .catch(() => {
-        setWrappedIsPlaying(false);
-        setWrappedPlaybackBlocked(true);
-      });
-  }, [isWrappedOpen, wrappedMuted, wrappedTrackIndex]);
-
   const metrics = useMemo<SummaryMetric[]>(() => {
     const total = filteredItems.length;
     const completed = statusCounts.completed;
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
     const ratedItems = filteredItems.filter((item) => typeof item.rating === "number" && Number.isFinite(item.rating));
-    const audiobookItems = filteredItems.filter((item) => item.mediaType === "book" && item.audiobookMinutes > 0);
-    const completedAudiobookItems = audiobookItems.filter((item) => item.statusBucket === "completed");
-    const watchedMovieItems = filteredItems.filter(
-      (item) =>
-        item.mediaType === "movie" &&
-        item.runtimeMinutes > 0 &&
-        (item.statusBucket === "completed" || item.primaryStatusToken === "watched")
-    );
-    const watchedTvItems = filteredItems.filter(
-      (item) =>
-        item.mediaType === "tv" &&
-        item.runtimeMinutes > 0 &&
-        (item.statusBucket === "completed" || item.primaryStatusToken === "watched")
-    );
-    const completedGameItems = filteredItems.filter(
-      (item) => item.mediaType === "game" && item.gameplayHours > 0 && item.statusBucket === "completed"
-    );
-    const consumedDurationItems = [
-      ...completedAudiobookItems,
-      ...watchedMovieItems,
-      ...watchedTvItems,
-      ...completedGameItems,
-    ];
-    const totalConsumedMinutes =
-      completedAudiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0) +
-      watchedMovieItems.reduce((sum, item) => sum + item.runtimeMinutes, 0) +
-      watchedTvItems.reduce((sum, item) => sum + item.runtimeMinutes, 0) +
-      completedGameItems.reduce((sum, item) => sum + item.gameplayHours * 60, 0);
+    const genreItems = filteredItems.filter((item) => item.genres.length > 0);
     const isBookScope = filter === "book";
     const averageRatingDisplay =
       typeof averageRating === "number" && Number.isFinite(averageRating)
@@ -2580,61 +1821,6 @@ export function StatisticsView({
         : selectedStatsYear === ALL_STATS_YEARS
           ? `${filter.toUpperCase()}_ALL_YEARS`
           : `${filter.toUpperCase()}_${selectedStatsYear}`;
-    const durationMetricByFilter = {
-      all: {
-        label: "Total Hours Consumed",
-        items: consumedDurationItems,
-        minutes: totalConsumedMinutes,
-        subLabel: `${consumedDurationItems.length} completed entries with duration`,
-        summary: `Total consumed hours from completed or watched media in ${scopeLabel}.`,
-        calculation: "Sum completed audiobook minutes, watched movie runtime, watched TV runtime where available, and completed game hours played.",
-      },
-      book: {
-        label: "Audiobook Hours Listened",
-        items: completedAudiobookItems,
-        minutes: completedAudiobookItems.reduce((sum, item) => sum + item.audiobookMinutes, 0),
-        subLabel: `${completedAudiobookItems.length} completed audiobook entries`,
-        summary: `Total audiobook hours listened from completed audiobooks in ${scopeLabel}.`,
-        calculation: "Sum audiobookMinutes for completed audiobook items in the current scope.",
-      },
-      movie: {
-        label: "Movie Hours Watched",
-        items: watchedMovieItems,
-        minutes: watchedMovieItems.reduce((sum, item) => sum + item.runtimeMinutes, 0),
-        subLabel: `${watchedMovieItems.length} watched movies with runtime`,
-        summary: `Total movie hours watched in ${scopeLabel}.`,
-        calculation: "Sum movie runtimeMinutes for watched or completed movies in the current scope.",
-      },
-      tv: {
-        label: "TV Show Hours Consumed",
-        items: watchedTvItems,
-        minutes: watchedTvItems.reduce((sum, item) => sum + item.runtimeMinutes, 0),
-        subLabel: `${watchedTvItems.length} completed TV shows with runtime`,
-        summary: `Total TV show hours consumed in ${scopeLabel}.`,
-        calculation: "Sum TV runtimeMinutes for completed or watched TV shows. If total runtime is missing, estimate from episode count and episode runtime; if episode runtime is missing, estimate 45 minutes per episode.",
-      },
-      game: {
-        label: "Game Hours Played",
-        items: completedGameItems,
-        minutes: completedGameItems.reduce((sum, item) => sum + item.gameplayHours * 60, 0),
-        subLabel: `${completedGameItems.length} completed games with hours`,
-        summary: `Total game hours played for completed games in ${scopeLabel}.`,
-        calculation: "Sum gameplayHours for completed games in the current scope.",
-      },
-    }[filter];
-    const mediaYearScopeLabel = filter === "all" ? "media entries" : MEDIA_LABELS[filter].toLowerCase();
-    const mediaYearLabel =
-      filter === "all" ? "Most Popular Media Year" : `Most Popular ${MEDIA_LABELS[filter].replace("TV Shows", "TV Show")} Year`;
-    const consumedHoursMetric = {
-      id: `BASE_${scopeId}_TOTAL_HOURS_CONSUMED`,
-      label: durationMetricByFilter.label,
-      value: formatMinutesAsHours(durationMetricByFilter.minutes),
-      subLabel: durationMetricByFilter.subLabel,
-      accent: "var(--stats-accent-4)",
-      summary: durationMetricByFilter.summary,
-      calculation: durationMetricByFilter.calculation,
-      items: durationMetricByFilter.items,
-    };
 
     return [
       {
@@ -2678,9 +1864,18 @@ export function StatisticsView({
           : "Mean(filteredItems.rating where rating is numeric).",
         items: ratedItems,
       },
-      consumedHoursMetric,
+      {
+        id: `BASE_${scopeId}_GENRE_SPREAD`,
+        label: "Genre Spread",
+        value: `${genreCounts.size}`,
+        subLabel: "distinct genres",
+        accent: "var(--stats-accent-4)",
+        summary: `Distinct genre count across ${scopeLabel}.`,
+        calculation: "Count distinct genre strings across filteredItems.genres.",
+        items: genreItems,
+      },
     ];
-  }, [averageRating, filter, filteredItems, ratingValues.length, selectedStatsYear, statusCounts.completed]);
+  }, [averageRating, filter, filteredItems, genreCounts.size, ratingValues.length, selectedStatsYear, statusCounts.completed]);
 
   const filterOptions: Array<{ key: StatsTab; label: string }> = [
     { key: "all", label: "Everything" },
@@ -2691,55 +1886,8 @@ export function StatisticsView({
     { key: "yearReview", label: "Year in Review" },
   ];
 
-  const statsThemeVars = useMemo(() => {
-    const themeMap: Record<"light" | "dark" | "classic", Record<string, string>> = {
-      light: {
-        "--stats-bg": "#ecececf0",
-        "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.84), rgba(16, 34, 70, 0.92))",
-        "--stats-border": "rgba(122, 156, 201, 0.38)",
-        "--stats-text": "rgba(233, 243, 255, 0.96)",
-        "--stats-muted": "rgba(191, 211, 240, 0.84)",
-        "--stats-heading-primary": "rgba(48, 78, 122, 0.96)",
-        "--stats-heading-secondary": "rgba(72, 101, 142, 0.95)",
-        "--stats-glow-1": "rgba(140, 158, 186, 0.18)",
-        "--stats-glow-2": "rgba(176, 188, 206, 0.14)",
-      },
-      dark: {
-        "--stats-bg": "#1b1f26f0",
-        "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.82), rgba(16, 34, 70, 0.9))",
-        "--stats-border": "rgba(125, 171, 242, 0.3)",
-        "--stats-text": "rgba(233, 243, 255, 0.96)",
-        "--stats-muted": "rgba(191, 211, 240, 0.8)",
-        "--stats-heading-primary": "rgba(222, 235, 252, 0.98)",
-        "--stats-heading-secondary": "rgba(192, 212, 242, 0.95)",
-        "--stats-glow-1": "rgba(78, 144, 250, 0.25)",
-        "--stats-glow-2": "rgba(43, 218, 170, 0.19)",
-      },
-      classic: {
-        "--stats-bg": "#d8cdb8f0",
-        "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.84), rgba(16, 34, 70, 0.92))",
-        "--stats-border": "rgba(140, 175, 228, 0.34)",
-        "--stats-text": "rgba(236, 243, 252, 0.96)",
-        "--stats-muted": "rgba(196, 212, 236, 0.82)",
-        "--stats-heading-primary": "rgba(236, 228, 210, 0.98)",
-        "--stats-heading-secondary": "rgba(222, 212, 193, 0.95)",
-        "--stats-glow-1": "rgba(240, 183, 86, 0.14)",
-        "--stats-glow-2": "rgba(139, 146, 13, 0.1)",
-      },
-    };
-
-    return {
-      ...themeMap[themeMode],
-      // App/logo-inspired accents for consistent branding across stats modules.
-      "--stats-accent-1": "#8baff4",
-      "--stats-accent-2": "#8b920d",
-      "--stats-accent-3": "#f0b756",
-      "--stats-accent-4": "#8baff4",
-    } as CSSProperties;
-  }, [themeMode]);
-
   return (
-    <section className="statsRoot" style={statsThemeVars}>
+    <section className="statsRoot">
       <div className="statsBackgroundGlow" aria-hidden />
 
       <header className="statsHeader">
@@ -2763,31 +1911,6 @@ export function StatisticsView({
           </p>
         </div>
         <div className="statsHeaderControls">
-          <div className="statsTabs" role="tablist" aria-label="Media filter">
-            {filterOptions.map((option) => {
-              const active = option.key === activeTab;
-              const tabColor = mediaTabColors[option.key];
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={`statsTab ${active ? "active" : ""}`}
-                  onClick={() => setActiveTab(option.key)}
-                  style={
-                    tabColor
-                      ? ({
-                          ["--stats-tab-active-bg" as string]: tabColor,
-                        } as CSSProperties)
-                      : undefined
-                  }
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
           {activeTab === "yearReview" ? null : (
             <label className="yearReviewPicker statsYearPicker">
               <span>Year</span>
@@ -2807,44 +1930,45 @@ export function StatisticsView({
               </select>
             </label>
           )}
+          <div className="statsTabs" role="tablist" aria-label="Media filter">
+            {filterOptions.map((option) => {
+              const active = option.key === activeTab;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`statsTab ${active ? "active" : ""}`}
+                  onClick={() => setActiveTab(option.key)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </header>
 
       {activeTab === "yearReview" ? (
         <>
-          <div className="yearReviewHero">
-            <div className="yearReviewHeroMain">
-              <span className="yearReviewEyebrow">Year in Review</span>
+          <div className="yearReviewControls">
+            <div>
               <h2 className="yearReviewTitle">{selectedReviewYear} Year in Review</h2>
               <p className="yearReviewSubtitle">
-                Your media story for the year: what you watched, read, played, finished, and dropped.
+                A yearly snapshot of what you watched, read, played, completed, and dropped.
               </p>
             </div>
-            <div className="yearReviewHeroControls">
-              <div className="yearReviewHeroActions">
-                <button
-                  type="button"
-                  className="wrappedLaunchButton"
-                  onClick={() => {
-                    setWrappedSlideIndex(0);
-                    setIsWrappedOpen(true);
-                  }}
-                >
-                  CDL Wrapped v1
-                </button>
-                <label className="yearReviewPicker">
-                  <span>Year</span>
-                  <select value={selectedReviewYear} onChange={(event) => setReviewYear(Number(event.target.value))}>
-                    {reviewYearOptions.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <span className="yearReviewPickerHint">Switch years to compare your trends and highlights.</span>
-            </div>
+            <label className="yearReviewPicker">
+              <span>Year</span>
+              <select value={selectedReviewYear} onChange={(event) => setReviewYear(Number(event.target.value))}>
+                {reviewYearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="statsSummaryGrid">
@@ -2883,13 +2007,7 @@ export function StatisticsView({
                 }}
               >
                 <div className="metricLabel">{metric.label}</div>
-                <div
-                  className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""} ${
-                    String(metric.value).includes("hours") ? "metricValueHours" : ""
-                  }`}
-                >
-                  {metric.value}
-                </div>
+                <div className="metricValue">{metric.value}</div>
                 <div className="metricSubLabel">{metric.subLabel}</div>
               </article>
             ))}
@@ -2897,7 +2015,7 @@ export function StatisticsView({
 
           <div className="statsGrid">
             <article
-              className="statsCard spanTwo statsCardInteractive yearStoryCard"
+              className="statsCard spanTwo statsCardInteractive"
               role="button"
               tabIndex={0}
               aria-label="Open details for Year in Review storyline"
@@ -2930,9 +2048,14 @@ export function StatisticsView({
               </div>
               <div className="yearStoryBody">
                 <p>
-                  You logged <strong>{yearReview.yearItems.length}</strong> titles in {selectedReviewYear}, with{" "}
-                  <strong>{yearReview.completedTotal}</strong> completed and <strong>{yearReview.abandonedCount}</strong>{" "}
-                  abandoned.
+                  {selectedReviewYear} included <strong>{yearReview.yearItems.length}</strong> logged titles, with{" "}
+                  <strong>{yearReview.completedTotal}</strong> marked completed and{" "}
+                  <strong>{yearReview.abandonedCount}</strong> marked abandoned.
+                </p>
+                <p>
+                  {yearReview.busiestMonth && !isExcludedBusiestMonthKey(yearReview.busiestMonth.key)
+                    ? `${yearReview.busiestMonth.label} was your busiest month with ${yearReview.busiestMonth.count} logs.`
+                    : "No monthly activity trend is available for this year yet."}
                 </p>
                 <div className="yearStoryChips">
                   <div
@@ -2969,71 +2092,43 @@ export function StatisticsView({
                       );
                     }}
                   >
-                    <span>Genre of the Year</span>
+                    <span>Leading Genre</span>
                     <strong>{yearReview.topGenre ? yearReview.topGenre.name : "-"}</strong>
                   </div>
                   <div
                     className="yearStoryChip yearStoryChipInteractive"
                     role="button"
                     tabIndex={0}
-                    aria-label="Open details for favorite medium"
+                    aria-label="Open details for media mix"
                     onClick={(event) => {
                       event.stopPropagation();
-                      const mediumRows = [
-                        { key: "book" as const, label: "Books", value: yearReview.mediaCounts.book },
-                        { key: "movie" as const, label: "Movies", value: yearReview.mediaCounts.movie },
-                        { key: "tv" as const, label: "TV Shows", value: yearReview.mediaCounts.tv },
-                        { key: "game" as const, label: "Games", value: yearReview.mediaCounts.game },
-                      ];
-                      const favorite = [...mediumRows].sort((a, b) => b.value - a.value)[0];
-                      const total = Math.max(1, yearReview.yearItems.length);
-                      const share = Math.round((favorite.value / total) * 100);
                       openStatisticDetail({
-                        id: `YR_${selectedReviewYear}_STORY_FAVORITE_MEDIUM`,
-                        title: "Storyline: Favorite Medium",
-                        value: `${favorite.label} (${share}%)`,
-                        summary: "Media type with the highest share of your yearly logs.",
-                        calculation: "Count yearReview.yearItems by mediaType, then select the highest-share bucket.",
-                        items: yearReview.yearItems.filter((item) => item.mediaType === favorite.key),
+                        id: `YR_${selectedReviewYear}_STORY_MEDIA_MIX`,
+                        title: "Storyline: Media Mix",
+                        value: `${yearReview.mediaCounts.book}B / ${yearReview.mediaCounts.movie}M / ${yearReview.mediaCounts.tv}TV / ${yearReview.mediaCounts.game}G`,
+                        summary: "All items in the selected review year, segmented by media type.",
+                        calculation: "Count yearReview.yearItems by mediaType (book/movie/tv/game).",
+                        items: yearReview.yearItems,
                       });
                     }}
                     onKeyDown={(event) => {
                       event.stopPropagation();
-                      const mediumRows = [
-                        { key: "book" as const, label: "Books", value: yearReview.mediaCounts.book },
-                        { key: "movie" as const, label: "Movies", value: yearReview.mediaCounts.movie },
-                        { key: "tv" as const, label: "TV Shows", value: yearReview.mediaCounts.tv },
-                        { key: "game" as const, label: "Games", value: yearReview.mediaCounts.game },
-                      ];
-                      const favorite = [...mediumRows].sort((a, b) => b.value - a.value)[0];
-                      const total = Math.max(1, yearReview.yearItems.length);
-                      const share = Math.round((favorite.value / total) * 100);
                       handleInteractiveKeyDown(event, () =>
                         openStatisticDetail({
-                          id: `YR_${selectedReviewYear}_STORY_FAVORITE_MEDIUM`,
-                          title: "Storyline: Favorite Medium",
-                          value: `${favorite.label} (${share}%)`,
-                          summary: "Media type with the highest share of your yearly logs.",
-                          calculation: "Count yearReview.yearItems by mediaType, then select the highest-share bucket.",
-                          items: yearReview.yearItems.filter((item) => item.mediaType === favorite.key),
+                          id: `YR_${selectedReviewYear}_STORY_MEDIA_MIX`,
+                          title: "Storyline: Media Mix",
+                          value: `${yearReview.mediaCounts.book}B / ${yearReview.mediaCounts.movie}M / ${yearReview.mediaCounts.tv}TV / ${yearReview.mediaCounts.game}G`,
+                          summary: "All items in the selected review year, segmented by media type.",
+                          calculation: "Count yearReview.yearItems by mediaType (book/movie/tv/game).",
+                          items: yearReview.yearItems,
                         })
                       );
                     }}
                   >
-                    <span>Favorite Medium</span>
+                    <span>Media Mix</span>
                     <strong>
-                      {(() => {
-                        const mediumRows = [
-                          { label: "Books", value: yearReview.mediaCounts.book },
-                          { label: "Movies", value: yearReview.mediaCounts.movie },
-                          { label: "TV Shows", value: yearReview.mediaCounts.tv },
-                          { label: "Games", value: yearReview.mediaCounts.game },
-                        ];
-                        const favorite = [...mediumRows].sort((a, b) => b.value - a.value)[0];
-                        const total = Math.max(1, yearReview.yearItems.length);
-                        const share = Math.round((favorite.value / total) * 100);
-                        return `${favorite.label} (${share}%)`;
-                      })()}
+                      {yearReview.mediaCounts.book}B / {yearReview.mediaCounts.movie}M / {yearReview.mediaCounts.tv}TV /{" "}
+                      {yearReview.mediaCounts.game}G
                     </strong>
                   </div>
                   <div
@@ -3070,13 +2165,13 @@ export function StatisticsView({
                       );
                     }}
                   >
-                    <span>Games vs {previousReviewYear}</span>
+                    <span>vs {previousReviewYear}</span>
                     <strong>
                       {yearReview.completedGames === yearReview.completedGamesPrev
-                        ? "No change"
+                        ? "Games completed flat"
                         : yearReview.completedGames > yearReview.completedGamesPrev
-                          ? `Up ${yearReview.completedGames - yearReview.completedGamesPrev}`
-                          : `Down ${yearReview.completedGamesPrev - yearReview.completedGames}`}
+                          ? `Games +${yearReview.completedGames - yearReview.completedGamesPrev}`
+                          : `Games -${yearReview.completedGamesPrev - yearReview.completedGames}`}
                     </strong>
                   </div>
                 </div>
@@ -3086,10 +2181,11 @@ export function StatisticsView({
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Top Rated Pick</h2>
+                <span>{getPersonalRatingBadgeLabel(yearReview.topRated) || "-"}</span>
               </div>
               {yearReview.topRated ? (
                 <div
-                  className="yearSpotlightBody yearSpotlightBodyInteractive yearSpotlightBodyScored"
+                  className="yearSpotlightBody yearSpotlightBodyInteractive"
                   role="button"
                   tabIndex={0}
                   aria-label={`Open details for top rated pick ${yearReview.topRated.title}`}
@@ -3117,21 +2213,20 @@ export function StatisticsView({
                   }
                 >
                   <div className="yearSpotlightCover">
+                    {getPersonalRatingBadgeLabel(yearReview.topRated) ? (
+                      <div className="statsCoverRatingBadge">
+                        {getPersonalRatingBadgeLabel(yearReview.topRated)}
+                      </div>
+                    ) : null}
                     {yearReview.topRated.coverUrl ? (
-                      <img
-                        src={yearReview.topRated.coverUrl}
-                        alt={`${yearReview.topRated.title} cover`}
-                        loading="lazy"
-                        style={COVER_IMAGE_RADIUS_STYLE}
-                      />
+                      <img src={yearReview.topRated.coverUrl} alt={`${yearReview.topRated.title} cover`} loading="lazy" />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
                   </div>
-                  <div className="yearSpotlightMeta yearSpotlightMetaScored">
+                  <div className="yearSpotlightMeta">
                     <div className="yearSpotlightTitle">{yearReview.topRated.title}</div>
                     <div className="yearSpotlightNote">{MEDIA_LABELS[yearReview.topRated.mediaType]}</div>
-                    <div className="yearSpotlightScoreLarge">{getPersonalRatingBadgeLabel(yearReview.topRated) || "-"}</div>
                   </div>
                 </div>
               ) : (
@@ -3177,19 +2272,14 @@ export function StatisticsView({
                 >
                   <div className="yearSpotlightCover">
                     {yearReview.longestAudiobook.coverUrl ? (
-                      <img
-                        src={yearReview.longestAudiobook.coverUrl}
-                        alt={`${yearReview.longestAudiobook.title} cover`}
-                        loading="lazy"
-                        style={COVER_IMAGE_RADIUS_STYLE}
-                      />
+                      <img src={yearReview.longestAudiobook.coverUrl} alt={`${yearReview.longestAudiobook.title} cover`} loading="lazy" />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
                   </div>
                   <div className="yearSpotlightMeta">
                     <div className="yearSpotlightTitle">{yearReview.longestAudiobook.title}</div>
-                    <div className="yearSpotlightNote yearSpotlightNoteLarge">{formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes)} listened</div>
+                    <div className="yearSpotlightNote">{formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes)} listened</div>
                   </div>
                 </div>
               ) : (
@@ -3233,19 +2323,14 @@ export function StatisticsView({
                 >
                   <div className="yearSpotlightCover">
                     {yearReview.mostPlayedGame.coverUrl ? (
-                      <img
-                        src={yearReview.mostPlayedGame.coverUrl}
-                        alt={`${yearReview.mostPlayedGame.title} cover`}
-                        loading="lazy"
-                        style={COVER_IMAGE_RADIUS_STYLE}
-                      />
+                      <img src={yearReview.mostPlayedGame.coverUrl} alt={`${yearReview.mostPlayedGame.title} cover`} loading="lazy" />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
                   </div>
                   <div className="yearSpotlightMeta">
                     <div className="yearSpotlightTitle">{yearReview.mostPlayedGame.title}</div>
-                    <div className="yearSpotlightNote yearSpotlightNoteLarge">{formatHours(yearReview.mostPlayedGame.gameplayHours)} played</div>
+                    <div className="yearSpotlightNote">{formatHours(yearReview.mostPlayedGame.gameplayHours)} played</div>
                   </div>
                 </div>
               ) : (
@@ -3256,10 +2341,11 @@ export function StatisticsView({
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Lowest Rated Item</h2>
+                <span>{getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-"}</span>
               </div>
               {yearReview.lowestRated ? (
                 <div
-                  className="yearSpotlightBody yearSpotlightBodyInteractive yearSpotlightBodyScored"
+                  className="yearSpotlightBody yearSpotlightBodyInteractive"
                   role="button"
                   tabIndex={0}
                   aria-label={`Open details for lowest rated item ${yearReview.lowestRated.title}`}
@@ -3287,21 +2373,20 @@ export function StatisticsView({
                   }
                 >
                   <div className="yearSpotlightCover">
+                    {getPersonalRatingBadgeLabel(yearReview.lowestRated) ? (
+                      <div className="statsCoverRatingBadge">
+                        {getPersonalRatingBadgeLabel(yearReview.lowestRated)}
+                      </div>
+                    ) : null}
                     {yearReview.lowestRated.coverUrl ? (
-                      <img
-                        src={yearReview.lowestRated.coverUrl}
-                        alt={`${yearReview.lowestRated.title} cover`}
-                        loading="lazy"
-                        style={COVER_IMAGE_RADIUS_STYLE}
-                      />
+                      <img src={yearReview.lowestRated.coverUrl} alt={`${yearReview.lowestRated.title} cover`} loading="lazy" />
                     ) : (
                       <div className="yearSpotlightFallback">No Cover</div>
                     )}
                   </div>
-                  <div className="yearSpotlightMeta yearSpotlightMetaScored">
+                  <div className="yearSpotlightMeta">
                     <div className="yearSpotlightTitle">{yearReview.lowestRated.title}</div>
                     <div className="yearSpotlightNote">{MEDIA_LABELS[yearReview.lowestRated.mediaType]}</div>
-                    <div className="yearSpotlightScoreLarge">{getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-"}</div>
                   </div>
                 </div>
               ) : (
@@ -3343,18 +2428,27 @@ export function StatisticsView({
               </div>
               {yearReview.topRatedItems.length > 0 ? (
                 <div className="yearTopRatedGrid">
-                  {yearReview.topRatedItems.map((item, index) => {
-                    const coverClass = getTop20CoverClass(item);
-                    const coverFrameClass = getTop20CoverFrameClass(item);
-                    return (
-                      <figure
-                        key={`${index + 1}-${item.mediaType}-${item.title}`}
-                        className="yearTopRatedTile yearTopRatedTileInteractive"
-                        title={`${index + 1}. ${item.title}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation();
+                  {yearReview.topRatedItems.map((item, index) => (
+                    <figure
+                      key={`${index + 1}-${item.mediaType}-${item.title}`}
+                      className="yearTopRatedTile yearTopRatedTileInteractive"
+                      title={`${index + 1}. ${item.title} (${MEDIA_LABELS[item.mediaType]})`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
+                          title: `Top 20 Item #${index + 1}`,
+                          value: formatPersonalRatingDisplay(item),
+                          summary: "Single item from the Year in Review top-20 rated list.",
+                          calculation: "Selected index from sorted year top-rated list.",
+                          items: [item],
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                        handleInteractiveKeyDown(event, () =>
                           openStatisticDetail({
                             id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
                             title: `Top 20 Item #${index + 1}`,
@@ -3362,48 +2456,29 @@ export function StatisticsView({
                             summary: "Single item from the Year in Review top-20 rated list.",
                             calculation: "Selected index from sorted year top-rated list.",
                             items: [item],
-                          });
-                        }}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                          handleInteractiveKeyDown(event, () =>
-                            openStatisticDetail({
-                              id: `YR_${selectedReviewYear}_TOP20_ITEM_${index + 1}`,
-                              title: `Top 20 Item #${index + 1}`,
-                              value: formatPersonalRatingDisplay(item),
-                              summary: "Single item from the Year in Review top-20 rated list.",
-                              calculation: "Selected index from sorted year top-rated list.",
-                              items: [item],
-                            })
-                          );
-                        }}
-                      >
-                        <div className="yearTopRatedMedia">
-                          <div className={`yearTopRatedCoverFrame ${coverFrameClass}`}>
-                            {item.coverUrl ? (
-                              <img
-                                className={coverClass}
-                                src={item.coverUrl}
-                                alt={`${item.title} cover`}
-                                loading="lazy"
-                                style={COVER_IMAGE_RADIUS_STYLE}
-                              />
-                            ) : (
-                              <div className="yearSpotlightFallback">No Cover</div>
-                            )}
-                          </div>
+                          })
+                        );
+                      }}
+                    >
+                      <div className="yearTopRatedRank">#{index + 1}</div>
+                      {getPersonalRatingBadgeLabel(item) ? (
+                        <div className="statsCoverRatingBadge">
+                          {getPersonalRatingBadgeLabel(item)}
                         </div>
-                        <figcaption>
-                          <span className="yearTopRatedStatsRow">
-                            <span className="yearTopRatedRankText">#{index + 1}</span>
-                            <span className="yearTopRatedScoreText">{getPersonalRatingBadgeLabel(item) || "-"}</span>
-                          </span>
-                          <span className="yearTopRatedTitle">{item.title}</span>
-                          <span className="yearTopRatedMeta"></span>
-                        </figcaption>
-                      </figure>
-                    );
-                  })}
+                      ) : null}
+                      {item.coverUrl ? (
+                        <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                      ) : (
+                        <div className="yearSpotlightFallback">No Cover</div>
+                      )}
+                      <figcaption>
+                        <span className="yearTopRatedTitle">{item.title}</span>
+                        <span className="yearTopRatedMeta">
+                          {getPersonalRatingBadgeLabel(item) || "-"} · {MEDIA_LABELS[item.mediaType]}
+                        </span>
+                      </figcaption>
+                    </figure>
+                  ))}
                 </div>
               ) : (
                 <div className="cardEmpty">No rated items available for {selectedReviewYear}.</div>
@@ -3444,18 +2519,27 @@ export function StatisticsView({
               </div>
               {yearReview.bottomRatedItems.length > 0 ? (
                 <div className="yearTopRatedGrid">
-                  {yearReview.bottomRatedItems.map((item, index) => {
-                    const coverClass = getTop20CoverClass(item);
-                    const coverFrameClass = getTop20CoverFrameClass(item);
-                    return (
-                      <figure
-                        key={`${index + 1}-${item.mediaType}-${item.title}-bottom`}
-                        className="yearTopRatedTile yearTopRatedTileInteractive"
-                        title={`${index + 1}. ${item.title}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation();
+                  {yearReview.bottomRatedItems.map((item, index) => (
+                    <figure
+                      key={`${index + 1}-${item.mediaType}-${item.title}-bottom`}
+                      className="yearTopRatedTile yearTopRatedTileInteractive"
+                      title={`${index + 1}. ${item.title} (${MEDIA_LABELS[item.mediaType]})`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openStatisticDetail({
+                          id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
+                          title: `Bottom 20 Item #${index + 1}`,
+                          value: formatPersonalRatingDisplay(item),
+                          summary: "Single item from the Year in Review bottom-20 rated list.",
+                          calculation: "Selected index from sorted year bottom-rated list.",
+                          items: [item],
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                        handleInteractiveKeyDown(event, () =>
                           openStatisticDetail({
                             id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
                             title: `Bottom 20 Item #${index + 1}`,
@@ -3463,48 +2547,29 @@ export function StatisticsView({
                             summary: "Single item from the Year in Review bottom-20 rated list.",
                             calculation: "Selected index from sorted year bottom-rated list.",
                             items: [item],
-                          });
-                        }}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                          handleInteractiveKeyDown(event, () =>
-                            openStatisticDetail({
-                              id: `YR_${selectedReviewYear}_BOTTOM20_ITEM_${index + 1}`,
-                              title: `Bottom 20 Item #${index + 1}`,
-                              value: formatPersonalRatingDisplay(item),
-                              summary: "Single item from the Year in Review bottom-20 rated list.",
-                              calculation: "Selected index from sorted year bottom-rated list.",
-                              items: [item],
-                            })
-                          );
-                        }}
-                      >
-                        <div className="yearTopRatedMedia">
-                          <div className={`yearTopRatedCoverFrame ${coverFrameClass}`}>
-                            {item.coverUrl ? (
-                              <img
-                                className={coverClass}
-                                src={item.coverUrl}
-                                alt={`${item.title} cover`}
-                                loading="lazy"
-                                style={COVER_IMAGE_RADIUS_STYLE}
-                              />
-                            ) : (
-                              <div className="yearSpotlightFallback">No Cover</div>
-                            )}
-                          </div>
+                          })
+                        );
+                      }}
+                    >
+                      <div className="yearTopRatedRank">#{index + 1}</div>
+                      {getPersonalRatingBadgeLabel(item) ? (
+                        <div className="statsCoverRatingBadge">
+                          {getPersonalRatingBadgeLabel(item)}
                         </div>
-                        <figcaption>
-                          <span className="yearTopRatedStatsRow">
-                            <span className="yearTopRatedRankText">#{index + 1}</span>
-                            <span className="yearTopRatedScoreText">{getPersonalRatingBadgeLabel(item) || "-"}</span>
-                          </span>
-                          <span className="yearTopRatedTitle">{item.title}</span>
-                          <span className="yearTopRatedMeta"></span>
-                        </figcaption>
-                      </figure>
-                    );
-                  })}
+                      ) : null}
+                      {item.coverUrl ? (
+                        <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                      ) : (
+                        <div className="yearSpotlightFallback">No Cover</div>
+                      )}
+                      <figcaption>
+                        <span className="yearTopRatedTitle">{item.title}</span>
+                        <span className="yearTopRatedMeta">
+                          {getPersonalRatingBadgeLabel(item) || "-"} · {MEDIA_LABELS[item.mediaType]}
+                        </span>
+                      </figcaption>
+                    </figure>
+                  ))}
                 </div>
               ) : (
                 <div className="cardEmpty">No rated items available for {selectedReviewYear}.</div>
@@ -3550,13 +2615,7 @@ export function StatisticsView({
             }}
           >
             <div className="metricLabel">{metric.label}</div>
-            <div
-              className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""} ${
-                String(metric.value).includes("hours") ? "metricValueHours" : ""
-              }`}
-            >
-              {metric.value}
-            </div>
+            <div className="metricValue">{metric.value}</div>
             <div className="metricSubLabel">{metric.subLabel}</div>
           </article>
         ))}
@@ -3651,7 +2710,7 @@ export function StatisticsView({
           ) : null}
         </article>
 
-        <article className="statsCard statsCardCompactMini">
+        <article className="statsCard">
           <div className="cardHeader">
             <h2>Genre Orbit</h2>
             <span>{topGenres.reduce((sum, genre) => sum + genre.value, 0)} entries</span>
@@ -3710,24 +2769,21 @@ export function StatisticsView({
           )}
         </article>
 
-        <article className="statsCard statsCardCompactMini">
+        <article className="statsCard">
           <div className="cardHeader">
             <h2>Status Pulse</h2>
             <span>{statusRows.length} active buckets</span>
           </div>
 
           {statusRows.length > 0 ? (
-            <div
-              className="statusVerticalChart"
-              style={{ gridTemplateColumns: `repeat(${Math.max(1, statusRows.length)}, minmax(0, 1fr))` }}
-            >
+            <div className="barList">
               {statusRows.map((entry) => {
                 const total = Math.max(1, filteredItems.length);
                 const pct = (entry.value / total) * 100;
                 return (
                   <div
                     key={entry.bucket}
-                    className="statusVerticalCol statusVerticalColInteractive"
+                    className="barRow barRowInteractive"
                     role="button"
                     tabIndex={0}
                     aria-label={`Open details for ${STATUS_LABELS[entry.bucket]} status`}
@@ -3754,12 +2810,11 @@ export function StatisticsView({
                       )
                     }
                   >
-                    <div className="statusVerticalTrack">
-                      <div className="statusVerticalFill" style={{ height: `${pct}%`, background: STATUS_COLORS[entry.bucket] }} />
+                    <div className="barRowLabel">{STATUS_LABELS[entry.bucket]}</div>
+                    <div className="barTrack">
+                      <div className="barFill" style={{ width: `${pct}%`, background: STATUS_COLORS[entry.bucket] }} />
                     </div>
-                    <div className="statusVerticalValue">{entry.value}</div>
-                    <div className="statusVerticalLabel">{STATUS_LABELS[entry.bucket]}</div>
-                    <div className="statusVerticalPct">{pct.toFixed(0)}%</div>
+                    <div className="barRowValue">{entry.value}</div>
                   </div>
                 );
               })}
@@ -3769,7 +2824,7 @@ export function StatisticsView({
           )}
         </article>
 
-        <article className="statsCard statsCardCompactMini">
+        <article className="statsCard">
           <div className="cardHeader">
             <h2>Rating Profile</h2>
             <span>{ratingValues.length} ratings</span>
@@ -3780,14 +2835,11 @@ export function StatisticsView({
               {ratingBuckets.map((bucket) => {
                 const pct = ratingValues.length ? (bucket.value / ratingValues.length) * 100 : 0;
                 const bucketValue = Number.parseInt(bucket.name, 10);
-                const maxBucketValue = Math.max(1, ...ratingBuckets.map((entry) => entry.value));
                 const bucketItems = filteredItems.filter((item) => {
                   if (typeof item.rating !== "number" || !Number.isFinite(item.rating)) return false;
                   const rounded = Math.max(1, Math.min(10, Math.round(item.rating)));
                   return rounded === bucketValue;
                 });
-                const scaledHeight = `${(bucket.value / maxBucketValue) * 100}%`;
-                const hasData = bucket.value > 0;
                 return (
                   <div
                     key={bucket.name}
@@ -3819,10 +2871,9 @@ export function StatisticsView({
                       )
                     }
                   >
-                    <div className="ratingBarTrack scaledTrack">
-                      <div className={`ratingBar ${hasData ? "hasData" : "noData"}`} style={{ height: scaledHeight }} />
+                    <div className="ratingBarTrack">
+                      <div className="ratingBar" style={{ height: `${pct}%` }} />
                     </div>
-                    <div className="ratingCount">{bucket.value}</div>
                     <div className="ratingLabel">{bucket.name}</div>
                   </div>
                 );
@@ -3835,52 +2886,82 @@ export function StatisticsView({
 
         <article className="statsCard">
           <div className="cardHeader">
-            <h2>Release by Year</h2>
+            <h2>Release Timeline</h2>
             <span>{releaseYearSeries.length ? `${releaseYearSeries[0].year} - ${releaseYearSeries[releaseYearSeries.length - 1].year}` : "No dates"}</span>
           </div>
 
           {releaseYearSeries.length > 0 ? (
-            <div className="releaseLineChartWrap">
-              <svg viewBox="0 0 560 120" className="releaseLineSvg" role="img" aria-label="Release count by year">
-                <path d={releaseLinePath} className="releaseLinePath" />
-                {releaseLinePoints.map((point, index) => {
-                  const yearItems = releaseYearSeries.find((entry) => entry.year === point.year)?.items || [];
-                  const showValueLabel = index % 4 === 0;
-                  const valueLabelX = Math.max(14, Math.min(546, point.x));
-                  const valueLabelY = Math.max(12, point.y - (index === 0 ? 16 : 10));
+            <div className="timelineWrap">
+              <svg viewBox="0 0 520 168" className="releaseSvg" role="img" aria-label="Release year trend">
+                <defs>
+                  <linearGradient id="releaseAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgba(255, 115, 87, 0.72)" />
+                    <stop offset="100%" stopColor="rgba(255, 115, 87, 0.08)" />
+                  </linearGradient>
+                </defs>
+                <path d={releasePaths.areaPath} fill="url(#releaseAreaGradient)" />
+                <path d={releasePaths.linePath} fill="none" stroke="#ff7357" strokeWidth="3" />
+                {releasePointCoords.map((point) => {
+                  const isPeak = releasePeakYearSet.has(point.year);
+                  const isLow = !isPeak && releaseLowYearSet.has(point.year);
+                  const releaseYearItems = filteredItems.filter(
+                    (item) => item.releaseDate?.getUTCFullYear() === point.year
+                  );
                   return (
                     <g
-                      key={point.year}
-                      className="releaseLinePointGroup"
+                      key={`release-point-${point.year}`}
+                      className="releasePointGroup"
                       role="button"
                       tabIndex={0}
-                      aria-label={`Open details for release year ${point.year}`}
+                      aria-label={`Open release timeline details for ${point.year}`}
                       onClick={() =>
                         openStatisticDetail({
                           id: `RELEASE_YEAR_${point.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
-                          title: `Release by Year: ${point.year}`,
+                          title: `Release Timeline: ${point.year}`,
                           value: `${point.value}`,
-                          summary: `Items released in ${point.year}.`,
-                          calculation: "Count items where releaseDate year equals selected year.",
-                          items: yearItems,
+                          summary: `Items with release date in ${point.year} for current scope.`,
+                          calculation: "Filter items where releaseDate year equals selected timeline year.",
+                          items: releaseYearItems,
                         })
                       }
                       onKeyDown={(event) =>
                         handleInteractiveKeyDown(event, () =>
                           openStatisticDetail({
                             id: `RELEASE_YEAR_${point.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
-                            title: `Release by Year: ${point.year}`,
+                            title: `Release Timeline: ${point.year}`,
                             value: `${point.value}`,
-                            summary: `Items released in ${point.year}.`,
-                            calculation: "Count items where releaseDate year equals selected year.",
-                            items: yearItems,
+                            summary: `Items with release date in ${point.year} for current scope.`,
+                            calculation: "Filter items where releaseDate year equals selected timeline year.",
+                            items: releaseYearItems,
                           })
                         )
                       }
                     >
-                      <circle cx={point.x} cy={point.y} r="3.6" className="releaseLinePoint" />
-                      {showValueLabel ? (
-                        <text x={valueLabelX} y={valueLabelY} textAnchor="middle" className="releaseLineValueLabel">
+                      <circle
+                        className={`releasePoint ${isPeak ? "peak" : isLow ? "low" : ""}`}
+                        cx={point.x}
+                        cy={point.y}
+                        r={isPeak ? 4.2 : isLow ? 3.8 : 2.6}
+                      >
+                        <title>{`${point.year}: ${point.value}`}</title>
+                      </circle>
+                      {isPeak ? (
+                        <text
+                          className="releasePeakValue"
+                          x={point.x}
+                          y={Math.max(12, point.y - 7)}
+                          textAnchor="middle"
+                        >
+                          {point.value}
+                        </text>
+                      ) : null}
+                      {isLow ? (
+                        <text
+                          className="releaseLowValue"
+                          x={point.x}
+                          y={Math.min(164, point.y + 13)}
+                          textAnchor="middle"
+                        >
                           {point.value}
                         </text>
                       ) : null}
@@ -3888,16 +2969,74 @@ export function StatisticsView({
                   );
                 })}
               </svg>
-              <div className="releaseLineYears">
-                {releaseYearSeries.map((entry) => {
-                  const isFiveYearMark = entry.year % 5 === 0;
+              <div className="timelineYears">
+                {releaseYearSeries.map((entry, index) => {
+                  const releaseYearCount = releaseYearSeries.length;
+                  const isFirst = index === 0;
+                  const isLast = index === releaseYearCount - 1;
+                  const isPenultimateInDenseSeries =
+                    releaseYearCount > 6 && index === releaseYearCount - 2;
+                  const showLabel =
+                    isFirst ||
+                    isLast ||
+                    (!isPenultimateInDenseSeries && index % releaseYearLabelStep === 0);
                   return (
-                    <span key={entry.year} className={`releaseLineYear ${isFiveYearMark ? "major" : "minor"}`}>
-                      {isFiveYearMark ? entry.year : ""}
+                    <span
+                      key={entry.year}
+                      className={`timelineYear ${showLabel ? "visible" : "hidden"}`}
+                      title={`${entry.year}`}
+                    >
+                      {entry.year}
                     </span>
                   );
                 })}
               </div>
+              {releasePeakRows.length > 0 ? (
+                <div className="timelinePeaks" aria-label="Top release year peaks">
+                  {releasePeakRows.map((entry) => (
+                    <button
+                      key={`release-peak-${entry.year}`}
+                      type="button"
+                      className="timelinePeakTag timelineTagButton"
+                      onClick={() =>
+                        openStatisticDetail({
+                          id: `RELEASE_PEAK_${entry.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Release Peak Year: ${entry.year}`,
+                          value: `${entry.value}`,
+                          summary: `Release-year peak entry for ${entry.year} in current scope.`,
+                          calculation: "Top years by count of items where releaseDate year equals each year.",
+                          items: filteredItems.filter((item) => item.releaseDate?.getUTCFullYear() === entry.year),
+                        })
+                      }
+                    >
+                      {entry.year}: {entry.value}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {releaseLowRows.length > 0 ? (
+                <div className="timelineLows" aria-label="Lowest release year counts">
+                  {releaseLowRows.map((entry) => (
+                    <button
+                      key={`release-low-${entry.year}`}
+                      type="button"
+                      className="timelineLowTag timelineTagButton"
+                      onClick={() =>
+                        openStatisticDetail({
+                          id: `RELEASE_LOW_${entry.year}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                          title: `Release Low Year: ${entry.year}`,
+                          value: `${entry.value}`,
+                          summary: `Release-year low entry for ${entry.year} in current scope.`,
+                          calculation: "Lowest non-zero years by count of items where releaseDate year equals each year.",
+                          items: filteredItems.filter((item) => item.releaseDate?.getUTCFullYear() === entry.year),
+                        })
+                      }
+                    >
+                      {entry.year}: {entry.value}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="cardEmpty">No release dates in this selection.</div>
@@ -4096,39 +3235,6 @@ export function StatisticsView({
                 {highlightStats.topGenre ? highlightStats.topGenre.name : "-"}
               </button>
             </div>
-            <div className="highlightItem">
-              <div className="highlightLabel">{mediaYearLabel}</div>
-              <button
-                type="button"
-                className="highlightValueButton"
-                onClick={() =>
-                  openStatisticDetail({
-                    id: `HIGHLIGHT_MEDIA_YEAR_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
-                    title: mediaYearLabel,
-                    value: highlightStats.mostPopularMediaYear ? highlightStats.mostPopularMediaYear.name : "-",
-                    summary: `Release year with the most ${mediaYearScopeLabel} in the current stats scope.`,
-                    calculation: `Count releaseDate year across filtered ${mediaYearScopeLabel} and select the highest.`,
-                    items: highlightStats.mostPopularMediaYear
-                      ? filteredItems.filter(
-                          (item) => String(item.releaseDate?.getUTCFullYear() || "") === highlightStats.mostPopularMediaYear?.name
-                        )
-                      : [],
-                  })
-                }
-              >
-                {highlightStats.mostPopularMediaYear
-                  ? `${highlightStats.mostPopularMediaYear.name}`
-                  : "-"}
-              </button>
-            </div>
-            <div className="highlightItem">
-              <div className="highlightLabel">Average Score</div>
-              <div className="highlightValue">
-                {typeof averageRating === "number" && Number.isFinite(averageRating)
-                  ? `${averageRating.toFixed(1)}/10`
-                  : "-"}
-              </div>
-            </div>
           </div>
         </article>
 
@@ -4139,33 +3245,115 @@ export function StatisticsView({
               <span>{MEDIA_LABELS[filter]} · {statsYearLabel}</span>
             </div>
             <div className="topRatedComparison">
-              <TopRatedColumn
-                title="Top 10 Rated by Me"
-                items={topMyRatedItems}
-                scoreKey="rating"
-                filter={filter}
-                selectedStatsYear={selectedStatsYear}
-                detailIdPrefix="TOP10_MY"
-                detailTitlePrefix="Top Rated by Me"
-                detailSummary="Individual entry from the Top 10 Rated by Me list."
-                detailCalculation="Rank by personal rating desc with date/title tie-breakers."
-                emptyMessage={`No personal ratings in the ${statsYearScopePhrase}.`}
-                onOpenDetail={openStatisticDetail}
-              />
+              <section className="topRatedColumn">
+                <div className="topRatedColumnHeader">
+                  <h3>Top 10 Rated by Me</h3>
+                  <span>{topMyRatedItems.length} ranked</span>
+                </div>
+                {topMyRatedItems.length > 0 ? (
+                  <div className="topRatedGrid">
+                    {topMyRatedItems.map((item, index) => (
+                      <figure
+                        key={`my-${item.mediaType}-${item.title}-${index + 1}`}
+                        className="topRatedTile topRatedTileInteractive"
+                        title={`${index + 1}. ${item.title}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() =>
+                          openStatisticDetail({
+                            id: `TOP10_MY_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                            title: `Top Rated by Me #${index + 1}`,
+                            value: formatScoreValue(item.rating),
+                            summary: "Individual entry from the Top 10 Rated by Me list.",
+                            calculation: "Rank by personal rating desc with date/title tie-breakers.",
+                            items: [item],
+                          })
+                        }
+                        onKeyDown={(event) =>
+                          handleInteractiveKeyDown(event, () =>
+                            openStatisticDetail({
+                              id: `TOP10_MY_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                              title: `Top Rated by Me #${index + 1}`,
+                              value: formatScoreValue(item.rating),
+                              summary: "Individual entry from the Top 10 Rated by Me list.",
+                              calculation: "Rank by personal rating desc with date/title tie-breakers.",
+                              items: [item],
+                            })
+                          )
+                        }
+                      >
+                        <div className="topRatedScore">{formatScoreValue(item.rating)}</div>
+                        {item.coverUrl ? (
+                          <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                        ) : (
+                          <div className="topRatedFallback">No Cover</div>
+                        )}
+                        <figcaption>
+                          <span className="topRatedTitle">{item.title}</span>
+                          <span className="topRatedMeta">{formatScoreValue(item.rating)}</span>
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="cardEmpty compactEmpty">No personal ratings in the {statsYearScopePhrase}.</div>
+                )}
+              </section>
 
-              <TopRatedColumn
-                title={EXTERNAL_RATING_LABELS[filter]}
-                items={topExternalRatedItems}
-                scoreKey="externalRating"
-                filter={filter}
-                selectedStatsYear={selectedStatsYear}
-                detailIdPrefix="TOP10_EXTERNAL"
-                detailTitlePrefix="Top External Rated"
-                detailSummary="Individual entry from the Top 10 external rating list."
-                detailCalculation="Rank by external rating desc with date/title tie-breakers."
-                emptyMessage={`No external ratings in the ${statsYearScopePhrase}.`}
-                onOpenDetail={openStatisticDetail}
-              />
+              <section className="topRatedColumn">
+                <div className="topRatedColumnHeader">
+                  <h3>{EXTERNAL_RATING_LABELS[filter]}</h3>
+                  <span>{topExternalRatedItems.length} ranked</span>
+                </div>
+                {topExternalRatedItems.length > 0 ? (
+                  <div className="topRatedGrid">
+                    {topExternalRatedItems.map((item, index) => (
+                      <figure
+                        key={`ext-${item.mediaType}-${item.title}-${index + 1}`}
+                        className="topRatedTile topRatedTileInteractive"
+                        title={`${index + 1}. ${item.title}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() =>
+                          openStatisticDetail({
+                            id: `TOP10_EXTERNAL_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                            title: `Top External Rated #${index + 1}`,
+                            value: formatScoreValue(item.externalRating),
+                            summary: "Individual entry from the Top 10 external rating list.",
+                            calculation: "Rank by external rating desc with date/title tie-breakers.",
+                            items: [item],
+                          })
+                        }
+                        onKeyDown={(event) =>
+                          handleInteractiveKeyDown(event, () =>
+                            openStatisticDetail({
+                              id: `TOP10_EXTERNAL_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
+                              title: `Top External Rated #${index + 1}`,
+                              value: formatScoreValue(item.externalRating),
+                              summary: "Individual entry from the Top 10 external rating list.",
+                              calculation: "Rank by external rating desc with date/title tie-breakers.",
+                              items: [item],
+                            })
+                          )
+                        }
+                      >
+                        <div className="topRatedScore">{formatScoreValue(item.externalRating)}</div>
+                        {item.coverUrl ? (
+                          <img src={item.coverUrl} alt={`${item.title} cover`} loading="lazy" />
+                        ) : (
+                          <div className="topRatedFallback">No Cover</div>
+                        )}
+                        <figcaption>
+                          <span className="topRatedTitle">{item.title}</span>
+                          <span className="topRatedMeta">{formatScoreValue(item.externalRating)}</span>
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="cardEmpty compactEmpty">No external ratings in the {statsYearScopePhrase}.</div>
+                )}
+              </section>
             </div>
           </article>
         ) : null}
@@ -4173,151 +3361,105 @@ export function StatisticsView({
         </div>
       )}
 
-      {isWrappedOpen && activeWrappedSlide
-        ? typeof document !== "undefined"
-          ? createPortal(
+      {activeStatDetail ? (
         <div
-          className="wrappedOverlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`CDL Wrapped for ${selectedReviewYear}`}
-          onClick={() => setIsWrappedOpen(false)}
+          className="statDetailOverlay"
+          role="presentation"
+          onClick={() => setActiveStatDetail(null)}
         >
           <div
-            className="wrappedDialog"
+            className="statDetailDialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Statistic details for ${activeStatDetail.title}`}
             onClick={(event) => event.stopPropagation()}
-            style={
-              activeWrappedSlide.backdropUrl
-                ? ({
-                    ["--wrapped-backdrop" as string]: `url("${activeWrappedSlide.backdropUrl}")`,
-                  } as CSSProperties)
-                : undefined
-            }
           >
-            <audio ref={audioRef} src={WRAPPED_AUDIO_TRACKS[wrappedTrackIndex].src} loop preload="none" />
-            <div className="wrappedHeader">
-              <span>{selectedReviewYear} Wrapped</span>
-              <button type="button" className="wrappedClose" onClick={() => setIsWrappedOpen(false)}>
+            <div className="statDetailHeader">
+              <div className="statDetailHeaderMain">
+                <div className="statDetailId">ID: {activeStatDetail.id}</div>
+                <h3>{activeStatDetail.title}</h3>
+                <div className="statDetailValue">{activeStatDetail.value}</div>
+              </div>
+              <button
+                type="button"
+                className="statDetailClose"
+                onClick={() => setActiveStatDetail(null)}
+              >
                 Close
               </button>
             </div>
 
-            <div className={`wrappedStory ${wrappedBackdropFirst ? "wrappedStoryBackdropFirst" : ""}`}>
-              <button
-                type="button"
-                className="wrappedNavEdge wrappedNavEdgeLeft"
-                aria-label="Previous slide"
-                onClick={() =>
-                  setWrappedSlideIndex((current) => (current - 1 + wrappedSlides.length) % wrappedSlides.length)
-                }
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                className="wrappedNavEdge wrappedNavEdgeRight"
-                aria-label="Next slide"
-                onClick={() => setWrappedSlideIndex((current) => (current + 1) % wrappedSlides.length)}
-              >
-                →
-              </button>
-              <div
-                className="wrappedProgress"
-                style={{ gridTemplateColumns: `repeat(${Math.max(1, wrappedSlides.length)}, minmax(0, 1fr))` }}
-              >
-                {wrappedSlides.map((slide, index) => (
-                  <span key={slide.id} className={index === wrappedSlideIndex ? "active" : ""} />
-                ))}
+            <div className="statDetailSummaryGrid">
+              <div className="statDetailSummaryCard">
+                <div className="statDetailSummaryLabel">What This Tracks</div>
+                <p>{activeStatDetail.summary}</p>
               </div>
-              <div className="wrappedSlideCount">
-                {wrappedSlideIndex + 1} / {wrappedSlides.length}
+              <div className="statDetailSummaryCard">
+                <div className="statDetailSummaryLabel">How It Is Calculated</div>
+                <p>{activeStatDetail.calculation}</p>
               </div>
-              <div className="wrappedKicker">{activeWrappedSlide.kicker}</div>
-              <h3 className="wrappedTitle">{activeWrappedSlide.title}</h3>
-              <div className={`wrappedValue ${wrappedIsPlaying ? "isBeat" : ""}`}>{activeWrappedSlide.value}</div>
-              <p className="wrappedNote">{activeWrappedSlide.note}</p>
-              {activeWrappedSlide.coverUrl && !wrappedBackdropFirst ? (
-                <div
-                  key={activeWrappedSlide.id}
-                  className={`wrappedCoverFrame wrappedCoverSlideIn ${wrappedCoverShape === "square" ? "isSquare" : ""}`}
-                >
-                  <img
-                    src={activeWrappedSlide.coverUrl}
-                    alt={`${activeWrappedSlide.title} cover`}
-                    loading="lazy"
-                    style={COVER_IMAGE_RADIUS_STYLE}
-                  />
-                </div>
-              ) : null}
-              <p className="wrappedHint">Use ← / → keys, side arrows, or Prev/Next buttons.</p>
             </div>
 
-            <div className="wrappedControls">
-              <div className="wrappedNavButtons">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setWrappedSlideIndex((current) => (current - 1 + wrappedSlides.length) % wrappedSlides.length)
-                  }
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWrappedSlideIndex((current) => (current + 1) % wrappedSlides.length)}
-                >
-                  Next
-                </button>
-              </div>
-              <div className="wrappedAudioButtons">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const audio = audioRef.current;
-                    if (!audio) return;
-                    if (audio.paused) {
-                      audio
-                        .play()
-                        .then(() => {
-                          setWrappedIsPlaying(true);
-                          setWrappedPlaybackBlocked(false);
-                        })
-                        .catch(() => {
-                          setWrappedIsPlaying(false);
-                          setWrappedPlaybackBlocked(true);
-                        });
-                      return;
-                    }
-                    audio.pause();
-                    setWrappedIsPlaying(false);
-                  }}
-                >
-                  {wrappedIsPlaying ? "Pause Music" : "Play Music"}
-                </button>
-                <button type="button" onClick={() => setWrappedMuted((current) => !current)}>
-                  {wrappedMuted ? "Unmute" : "Mute"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWrappedTrackIndex((current) => (current + 1) % WRAPPED_AUDIO_TRACKS.length)}
-                >
-                  Next Track
-                </button>
-                <span className="wrappedTrackLabel">{WRAPPED_AUDIO_TRACKS[wrappedTrackIndex].title}</span>
-                {wrappedPlaybackBlocked ? (
-                  <span className="wrappedTrackLabel">Tap Play Music to start audio</span>
-                ) : null}
-              </div>
+            <div className="statDetailItemsHeader">
+              Matching Items <span>{activeStatDetail.items.length}</span>
+            </div>
+
+            <div className="statDetailItemsList">
+              {activeStatDetail.items.length > 0 ? (
+                activeStatDetail.items.map((item, index) => {
+                  const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
+                  const anchorLabel = item.activityDate
+                    ? "Activity"
+                    : item.completionDate
+                      ? "Completed"
+                      : "Release";
+                  return (
+                    <div
+                      key={`${activeStatDetail.id}-${item.mediaType}-${item.title}-${index}`}
+                      className="statDetailItemRow"
+                    >
+                      <div className="statDetailItemRank">{index + 1}</div>
+                      <div className="statDetailItemCover">
+                        {item.coverUrl ? (
+                          <>
+                            <img
+                              src={item.coverUrl}
+                              alt={`Cover for ${item.title}`}
+                              className="statDetailItemCoverImage"
+                              loading="lazy"
+                            />
+                            {getPersonalRatingBadgeLabel(item) ? (
+                              <div className="statsCoverRatingBadge statDetailItemCoverBadge">
+                                {getPersonalRatingBadgeLabel(item)}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="statDetailItemCoverPlaceholder" aria-hidden="true">
+                            {item.mediaType.toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="statDetailItemMain">
+                        <div className="statDetailItemTitle">{item.title}</div>
+                        <div className="statDetailItemMeta">
+                          <span>{MEDIA_LABELS[item.mediaType]}</span>
+                          <span>{STATUS_LABELS[item.statusBucket]}</span>
+                          <span>
+                            {anchorLabel}: {formatDetailDate(anchorDate)}
+                          </span>
+                          <span>Rating: {formatPersonalRatingDisplay(item)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="cardEmpty">No matching items for this statistic.</div>
+              )}
             </div>
           </div>
-        </div>,
-            document.body
-          )
-          : null
-        : null}
-
-      {activeStatDetail ? (
-        <StatDetailModal detail={activeStatDetail} onClose={() => setActiveStatDetail(null)} />
+        </div>
       ) : null}
 
       <style jsx>{`
@@ -4327,27 +3469,38 @@ export function StatisticsView({
           --stats-border: rgba(125, 171, 242, 0.3);
           --stats-text: rgba(233, 243, 255, 0.96);
           --stats-muted: rgba(191, 211, 240, 0.8);
-          --stats-accent-1: #8baff4;
-          --stats-accent-2: #8b920d;
-          --stats-accent-3: #f0b756;
-          --stats-accent-4: #8baff4;
-          --stats-glow-1: rgba(78, 144, 250, 0.25);
-          --stats-glow-2: rgba(43, 218, 170, 0.19);
+          --stats-accent-1: #5ee0ff;
+          --stats-accent-2: #62f39b;
+          --stats-accent-3: #ffca66;
+          --stats-accent-4: #ff87d7;
           position: relative;
-          min-height: 100vh;
-          margin: 0;
-          border-radius: 0;
+          min-height: calc(100vh - 12px);
+          margin: 8px 10px 0 10px;
+          border-radius: 20px;
           padding: clamp(14px, 2vw, 24px);
           overflow: hidden;
           color: var(--stats-text);
-          background: transparent;
-          border: none;
-          box-shadow: none;
+          background:
+            radial-gradient(circle at 12% -8%, rgba(78, 144, 250, 0.25), transparent 42%),
+            radial-gradient(circle at 96% 12%, rgba(43, 218, 170, 0.19), transparent 34%),
+            var(--stats-bg);
+          border: 1px solid rgba(117, 160, 228, 0.36);
+          box-shadow:
+            inset 0 1px 0 rgba(214, 234, 255, 0.22),
+            0 26px 70px rgba(4, 12, 29, 0.54),
+            0 6px 18px rgba(0, 0, 0, 0.35);
           animation: statsFadeRise 480ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .statsBackgroundGlow {
-          display: none;
+          position: absolute;
+          width: 460px;
+          height: 460px;
+          right: -130px;
+          bottom: -210px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(117, 148, 255, 0.3), rgba(117, 148, 255, 0));
+          pointer-events: none;
         }
 
         .statsHeader {
@@ -4397,17 +3550,16 @@ export function StatisticsView({
           line-height: 1;
           letter-spacing: 0.02em;
           font-weight: 900;
-          color: #f0b756;
-          text-shadow: 0 4px 24px rgba(240, 183, 86, 0.32);
+          color: #f4f8ff;
+          text-shadow: 0 4px 24px rgba(53, 116, 244, 0.4);
         }
 
         .statsSubtitle {
           margin: 6px 0 0 0;
           font-size: 12px;
-          font-weight: 700;
-          color: var(--stats-heading-secondary);
+          font-weight: 600;
+          color: var(--stats-muted);
           letter-spacing: 0.02em;
-          text-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
         }
 
         .statsTabs {
@@ -4420,15 +3572,14 @@ export function StatisticsView({
 
         .statsHeaderControls {
           display: flex;
-          flex-direction: column;
           align-items: flex-end;
-          gap: 8px;
-          margin-left: auto;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .statsYearPicker {
           min-width: 96px;
-          align-self: flex-end;
         }
 
         .statsTab {
@@ -4450,355 +3601,35 @@ export function StatisticsView({
         }
 
         .statsTab.active {
-          background: linear-gradient(
-            140deg,
-            color-mix(in srgb, var(--stats-tab-active-bg, #3b77dc) 92%, #ffffff 8%),
-            color-mix(in srgb, var(--stats-tab-active-bg, #355f9d) 84%, #0d1d38 16%)
-          );
+          background: linear-gradient(140deg, rgba(56, 111, 211, 0.9), rgba(46, 90, 168, 0.94));
           border-color: rgba(169, 212, 255, 0.9);
           box-shadow: 0 10px 22px rgba(12, 39, 92, 0.45), inset 0 1px 0 rgba(220, 242, 255, 0.35);
           color: #f6fbff;
         }
 
-        .yearReviewHero {
+        .yearReviewControls {
           display: flex;
-          align-items: stretch;
-          justify-content: space-between;
-          gap: 14px;
-          margin-bottom: 14px;
-          flex-wrap: wrap;
-          padding: 12px;
-          border-radius: 14px;
-          border: 1px solid rgba(131, 172, 235, 0.42);
-          background: linear-gradient(140deg, rgba(23, 48, 87, 0.68), rgba(13, 28, 56, 0.74));
-          box-shadow: inset 0 1px 0 rgba(214, 232, 255, 0.17), 0 10px 24px rgba(4, 12, 29, 0.28);
-        }
-
-        .yearReviewHeroMain {
-          min-width: min(100%, 320px);
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .yearReviewEyebrow {
-          display: inline-flex;
-          align-items: center;
-          width: fit-content;
-          padding: 3px 9px;
-          border-radius: 999px;
-          border: 1px solid rgba(160, 198, 251, 0.52);
-          background: rgba(38, 77, 135, 0.58);
-          color: rgba(229, 242, 255, 0.96);
-          font-size: 10px;
-          font-weight: 900;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-        }
-
-        .yearReviewHeroControls {
-          display: flex;
-          flex-direction: column;
           align-items: flex-end;
-          justify-content: center;
-          gap: 6px;
-          margin-left: auto;
-        }
-
-        .yearReviewHeroActions {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .wrappedLaunchButton {
-          border: 1px solid rgba(202, 222, 255, 0.74);
-          background: linear-gradient(135deg, rgba(139, 175, 244, 0.9), rgba(65, 110, 189, 0.92));
-          color: #f5faff;
-          border-radius: 999px;
-          padding: 9px 14px;
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          cursor: pointer;
-          box-shadow: 0 10px 20px rgba(8, 22, 45, 0.34);
-        }
-
-        .wrappedLaunchButton:hover {
-          transform: translateY(-1px);
-          filter: brightness(1.06);
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+          flex-wrap: wrap;
         }
 
         .yearReviewTitle {
           margin: 0;
-          font-size: clamp(24px, 4.1vw, 34px);
+          font-size: clamp(20px, 3.5vw, 28px);
           line-height: 1.1;
           font-weight: 900;
-          color: #c9fbdd;
+          color: #f7fbff;
           letter-spacing: 0.01em;
-          text-shadow: 0 1px 0 rgba(0, 0, 0, 0.16);
-        }
-
-        .wrappedOverlay {
-          position: fixed;
-          inset: 0;
-          z-index: 99999;
-          background: linear-gradient(145deg, rgba(16, 42, 92, 0.86), rgba(7, 19, 45, 0.92));
-          backdrop-filter: blur(10px) saturate(1.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-        }
-
-        .wrappedDialog {
-          position: relative;
-          width: min(980px, 100%);
-          min-height: min(760px, 92vh);
-          border-radius: 24px;
-          overflow: hidden;
-          border: 1px solid rgba(191, 223, 255, 0.38);
-          background:
-            linear-gradient(150deg, rgba(11, 26, 54, 0.82), rgba(7, 18, 40, 0.9)),
-            var(--wrapped-backdrop);
-          background-size: cover;
-          background-position: center;
-          box-shadow: 0 34px 80px rgba(0, 0, 0, 0.56);
-          display: flex;
-          flex-direction: column;
-        }
-
-        .wrappedDialog::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(170deg, rgba(6, 15, 35, 0.24), rgba(4, 11, 28, 0.82));
-          pointer-events: none;
-        }
-
-        .wrappedHeader,
-        .wrappedStory,
-        .wrappedControls {
-          position: relative;
-          z-index: 2;
-        }
-
-        .wrappedHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 18px 22px;
-          color: rgba(218, 236, 255, 0.92);
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-        }
-
-        .wrappedClose {
-          border: 1px solid rgba(179, 211, 255, 0.56);
-          background: rgba(11, 26, 54, 0.74);
-          color: #d9ebff;
-          border-radius: 999px;
-          padding: 7px 12px;
-          font-size: 11px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .wrappedStory {
-          flex: 1;
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          gap: 10px;
-          padding: 16px 30px 10px;
-        }
-
-        .wrappedStoryBackdropFirst {
-          gap: 14px;
-        }
-
-        .wrappedStoryBackdropFirst .wrappedTitle {
-          font-size: clamp(34px, 6vw, 64px);
-          text-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-        }
-
-        .wrappedStoryBackdropFirst .wrappedValue {
-          text-shadow: 0 8px 24px rgba(12, 26, 56, 0.7);
-        }
-
-        .wrappedStoryBackdropFirst .wrappedNote {
-          font-size: 16px;
-          max-width: 760px;
-          text-shadow: 0 8px 22px rgba(0, 0, 0, 0.62);
-        }
-
-        .wrappedNavEdge {
-          position: absolute;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 44px;
-          height: 44px;
-          border-radius: 999px;
-          border: 1px solid rgba(193, 220, 255, 0.5);
-          background: rgba(9, 24, 54, 0.76);
-          color: #f2f8ff;
-          font-size: 22px;
-          font-weight: 900;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-
-        .wrappedNavEdgeLeft {
-          left: 16px;
-        }
-
-        .wrappedNavEdgeRight {
-          right: 16px;
-        }
-
-        .wrappedProgress {
-          width: min(560px, 100%);
-          display: grid;
-          gap: 6px;
-          margin-bottom: 16px;
-        }
-
-        .wrappedProgress span {
-          height: 4px;
-          border-radius: 999px;
-          background: rgba(197, 220, 252, 0.26);
-        }
-
-        .wrappedProgress span.active {
-          background: rgba(228, 244, 255, 0.95);
-        }
-
-        .wrappedKicker {
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: #c9fbdd;
-        }
-
-        .wrappedSlideCount {
-          font-size: 11px;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          color: rgba(206, 226, 252, 0.84);
-          margin-top: -2px;
-        }
-
-        .wrappedTitle {
-          margin: 0;
-          font-size: clamp(28px, 5vw, 52px);
-          line-height: 1.06;
-          color: #ffffff;
-          max-width: 760px;
-        }
-
-        .wrappedValue {
-          font-size: clamp(20px, 3.5vw, 34px);
-          font-weight: 900;
-          color: #8baff4;
-        }
-
-        .wrappedValue.isBeat {
-          animation: wrappedBeatPulse 1s ease-in-out infinite;
-        }
-
-        .wrappedNote {
-          margin: 0;
-          font-size: 14px;
-          color: rgba(228, 239, 255, 0.9);
-          max-width: 680px;
-        }
-
-        .wrappedHint {
-          margin: 4px 0 0;
-          font-size: 11px;
-          color: rgba(198, 220, 250, 0.9);
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-        }
-
-        .wrappedCoverFrame {
-          width: min(220px, 50vw);
-          aspect-ratio: 2 / 3;
-          margin-top: 8px;
-          border-radius: 16px;
-          overflow: hidden;
-          border: 1px solid rgba(203, 228, 255, 0.42);
-          box-shadow: 0 18px 38px rgba(0, 0, 0, 0.42);
-          background: rgba(12, 25, 48, 0.75);
-        }
-
-        .wrappedCoverFrame.isSquare {
-          width: min(260px, 56vw);
-          aspect-ratio: 1 / 1;
-        }
-
-        .wrappedCoverFrame img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .wrappedCoverSlideIn {
-          animation: wrappedCoverSlideIn 1100ms cubic-bezier(0.2, 0.85, 0.2, 1);
-        }
-
-        .wrappedControls {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 16px 18px 18px;
-          border-top: 1px solid rgba(161, 199, 250, 0.22);
-          background: rgba(7, 17, 36, 0.66);
-          flex-wrap: wrap;
-        }
-
-        .wrappedNavButtons,
-        .wrappedAudioButtons {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .wrappedNavButtons button,
-        .wrappedAudioButtons button {
-          border: 1px solid rgba(171, 205, 255, 0.5);
-          background: rgba(19, 38, 73, 0.74);
-          color: #ebf5ff;
-          border-radius: 999px;
-          padding: 7px 12px;
-          font-size: 11px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .wrappedTrackLabel {
-          color: rgba(220, 238, 255, 0.86);
-          font-size: 11px;
-          font-weight: 700;
         }
 
         .yearReviewSubtitle {
-          margin: 2px 0 0 0;
-          color: #8baff4;
-          font-size: 13px;
-          font-weight: 700;
-          max-width: 68ch;
+          margin: 6px 0 0 0;
+          color: rgba(194, 214, 242, 0.86);
+          font-size: 12px;
+          font-weight: 600;
         }
 
         .yearReviewPicker {
@@ -4808,25 +3639,8 @@ export function StatisticsView({
           font-size: 10px;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          color: #8baff4;
-          font-weight: 900;
-          background: rgba(13, 27, 52, 0.64);
-          border: 1px solid rgba(146, 184, 236, 0.45);
-          border-radius: 10px;
-          padding: 8px 9px 9px;
-          box-shadow: inset 0 1px 0 rgba(220, 236, 255, 0.15);
-        }
-
-        .yearReviewPicker > span {
-          color: #8baff4;
-        }
-
-        .yearReviewPickerHint {
-          font-size: 11px;
-          font-weight: 700;
-          color: rgba(198, 218, 246, 0.92);
-          text-align: right;
-          max-width: 280px;
+          color: rgba(189, 211, 243, 0.86);
+          font-weight: 800;
         }
 
         .yearReviewPicker select {
@@ -4843,28 +3657,14 @@ export function StatisticsView({
         .yearStoryBody {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 10px;
         }
 
         .yearStoryBody p {
           margin: 0;
-          font-size: 14px;
+          font-size: 13px;
           color: rgba(206, 224, 248, 0.92);
           line-height: 1.45;
-        }
-
-        .yearStoryCard {
-          background:
-            radial-gradient(circle at 14% 10%, rgba(240, 183, 86, 0.24), transparent 34%),
-            radial-gradient(circle at 86% 18%, rgba(139, 175, 244, 0.22), transparent 32%),
-            linear-gradient(156deg, rgba(34, 68, 112, 0.9), rgba(15, 35, 73, 0.96));
-          border-color: rgba(240, 183, 86, 0.5);
-        }
-
-        .yearStoryCard .cardHeader h2,
-        .yearStoryCard .cardHeader span {
-          color: var(--stats-accent-3);
-          text-shadow: 0 0 18px rgba(240, 183, 86, 0.22);
         }
 
         .yearStoryChips {
@@ -4874,17 +3674,13 @@ export function StatisticsView({
         }
 
         .yearStoryChip {
-          border: 1px solid rgba(240, 183, 86, 0.34);
+          border: 1px solid rgba(126, 169, 238, 0.34);
           border-radius: 10px;
-          background:
-            linear-gradient(180deg, rgba(17, 38, 75, 0.72), rgba(8, 22, 48, 0.72));
-          padding: 10px 10px;
+          background: rgba(10, 24, 50, 0.58);
+          padding: 9px 10px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          align-items: center;
-          text-align: center;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          gap: 4px;
         }
 
         .yearStoryChipInteractive {
@@ -4893,9 +3689,8 @@ export function StatisticsView({
         }
 
         .yearStoryChipInteractive:hover {
-          background:
-            linear-gradient(180deg, rgba(27, 54, 96, 0.78), rgba(10, 27, 56, 0.78));
-          border-color: rgba(240, 183, 86, 0.68);
+          background: rgba(19, 40, 74, 0.72);
+          border-color: rgba(155, 198, 255, 0.52);
         }
 
         .yearStoryChipInteractive:focus-visible {
@@ -4904,21 +3699,17 @@ export function StatisticsView({
         }
 
         .yearStoryChip span {
-          color: rgba(244, 188, 92, 0.94);
+          color: rgba(182, 206, 237, 0.8);
           font-size: 10px;
-          font-weight: 900;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.09em;
-          font-family: "Avenir Next", "Segoe UI", sans-serif;
+          letter-spacing: 0.05em;
         }
 
         .yearStoryChip strong {
-          color: #f8fbff;
-          font-size: 16px;
-          font-weight: 900;
+          color: #f5faff;
+          font-size: 13px;
           line-height: 1.25;
-          font-family: "Avenir Next", "Segoe UI", sans-serif;
-          text-wrap: balance;
         }
 
         .yearSpotlightBody {
@@ -4928,11 +3719,6 @@ export function StatisticsView({
           align-items: center;
           flex: 1;
           min-height: 0;
-        }
-
-        .yearSpotlightBodyScored {
-          grid-template-columns: minmax(70px, 92px) minmax(0, 1fr);
-          gap: 14px;
         }
 
         .yearSpotlightBodyInteractive {
@@ -4955,23 +3741,17 @@ export function StatisticsView({
           position: relative;
           width: 100%;
           aspect-ratio: 3 / 4;
-          border-radius: 6px;
-          overflow: visible;
-          border: none;
-          background: transparent;
-          box-shadow: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          border-radius: 10px;
+          overflow: hidden;
+          border: 1px solid rgba(137, 175, 236, 0.44);
+          background: rgba(9, 20, 42, 0.85);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
         }
 
         .yearSpotlightCover img {
-          width: auto;
-          height: auto;
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          border-radius: 6px;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
           display: block;
         }
 
@@ -4992,11 +3772,6 @@ export function StatisticsView({
           min-width: 0;
         }
 
-        .yearSpotlightMetaScored {
-          align-self: center;
-          justify-content: center;
-        }
-
         .yearSpotlightTitle {
           font-size: 14px;
           font-weight: 800;
@@ -5011,74 +3786,20 @@ export function StatisticsView({
           font-weight: 700;
         }
 
-        .yearSpotlightNoteLarge {
-          font-size: 17px;
-          line-height: 1.2;
-          color: rgba(211, 230, 255, 0.92);
-          font-weight: 900;
-        }
-
-        .yearSpotlightScoreLarge {
-          margin-top: 2px;
-          color: var(--stats-accent-3);
-          font-size: clamp(32px, 4vw, 52px);
-          font-weight: 950;
-          line-height: 0.9;
-          letter-spacing: 0;
-          text-shadow: 0 8px 22px rgba(0, 0, 0, 0.22), 0 0 24px rgba(240, 183, 86, 0.25);
-          white-space: nowrap;
-        }
-
         .yearTopRatedGrid {
           display: grid;
           grid-template-columns: repeat(10, minmax(0, 1fr));
-          gap: 4px;
+          gap: 8px;
           width: 100%;
         }
 
         .yearTopRatedTile {
           margin: 0;
-          display: grid;
-          grid-template-rows: clamp(110px, 10.5vw, 160px) minmax(5em, auto);
+          display: flex;
+          flex-direction: column;
           gap: 5px;
           min-width: 0;
           position: relative;
-        }
-
-        .yearTopRatedMedia {
-          position: relative;
-          width: 100%;
-          height: clamp(110px, 10.5vw, 160px);
-          display: flex;
-          align-items: flex-end;
-          justify-content: center;
-          overflow: visible;
-          border-radius: 6px;
-        }
-
-        .yearTopRatedCoverFrame {
-          position: relative;
-          display: inline-flex;
-          align-items: flex-end;
-          justify-content: center;
-          width: 100%;
-          height: 100%;
-          max-width: none;
-          max-height: none;
-          line-height: 0;
-          border-radius: 6px;
-          overflow: visible;
-        }
-
-        .yearTopRatedCoverFrameAudiobook {
-          width: 100%;
-          height: 100%;
-          aspect-ratio: auto;
-        }
-
-        .yearTopRatedCoverFrameGame {
-          width: 100%;
-          height: 100%;
         }
 
         .yearTopRatedTileInteractive {
@@ -5099,8 +3820,8 @@ export function StatisticsView({
 
         .yearTopRatedRank {
           position: absolute;
-          top: 4px;
-          left: 4px;
+          top: 5px;
+          left: 5px;
           z-index: 2;
           font-size: 10px;
           font-weight: 900;
@@ -5115,31 +3836,13 @@ export function StatisticsView({
 
         .yearTopRatedTile img {
           width: 100%;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          object-position: center bottom;
-          border-radius: 6px !important;
-          border: none;
-          background: transparent;
-          box-shadow: none;
+          aspect-ratio: 3 / 4;
+          object-fit: cover;
+          border-radius: 9px;
+          border: 1px solid rgba(136, 174, 237, 0.42);
+          background: rgba(9, 19, 41, 0.76);
+          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
           display: block;
-        }
-
-        .yearTopRatedCoverFrame img.yearTopRatedCoverAudiobook {
-          width: 100%;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          aspect-ratio: auto;
-        }
-
-        .yearTopRatedCoverFrame img.yearTopRatedCoverGame {
-          width: 100%;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
         }
 
         .statsCoverRatingBadge {
@@ -5147,50 +3850,21 @@ export function StatisticsView({
           top: 4px;
           right: 4px;
           z-index: 2;
-          font-size: 9px;
+          font-size: 10px;
           font-weight: 900;
-          color: #173a66;
-          background: rgba(255, 255, 255, 0.96);
-          border: 1px solid rgba(214, 231, 255, 0.95);
+          color: #f9fcff;
+          background: rgba(8, 18, 40, 0.8);
+          border: 1px solid rgba(151, 188, 245, 0.6);
           border-radius: 999px;
-          padding: 1px 4px;
+          padding: 2px 6px;
           line-height: 1.1;
-          letter-spacing: 0.02em;
-          transform: translateY(1px);
-          box-shadow: 0 4px 10px rgba(3, 13, 31, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-          backdrop-filter: blur(3px);
+          backdrop-filter: blur(2px);
         }
 
         .yearTopRatedTile figcaption {
           display: flex;
           flex-direction: column;
-          gap: 3px;
-          min-height: 5em;
-        }
-
-        .yearTopRatedStatsRow {
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 6px;
-          width: 100%;
-          min-height: 14px;
-          color: rgba(218, 234, 255, 0.9);
-          font-size: 10px;
-          line-height: 1.1;
-          font-weight: 900;
-        }
-
-        .yearTopRatedRankText,
-        .yearTopRatedScoreText {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .yearTopRatedScoreText {
-          color: #f0b756;
+          gap: 2px;
         }
 
         .yearTopRatedTitle {
@@ -5199,54 +3873,18 @@ export function StatisticsView({
           font-weight: 700;
           line-height: 1.2;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          white-space: normal;
-          min-height: 3.6em;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .yearTopRatedMeta {
-          display: none;
-        }
-
-        .yearTopRatedCover {
-          width: auto;
-          height: auto;
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          border-radius: 6px;
-          border: none;
-          background: transparent;
-          box-shadow: none;
-          display: block;
-        }
-
-        .yearTopRatedCoverAudiobook {
-          aspect-ratio: 1 / 1;
-          width: 100%;
-          height: auto;
-          align-self: flex-end;
-        }
-
-        .yearTopRatedCoverGame {
-          /* Fill the slot height like portrait covers do, instead of being
-             forced into a 1.4:1 landscape rectangle that letterboxed the
-             actual game artwork to a fraction of its intended size. */
-          aspect-ratio: auto;
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          background: transparent;
-          padding: 0;
-        }
-
-        .yearTopRatedCoverTv {
-          transform: scale(0.93);
-          transform-origin: bottom center;
+          font-size: 9px;
+          color: rgba(166, 196, 233, 0.76);
+          font-weight: 700;
+          line-height: 1.2;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .topRatedComparison {
@@ -5297,113 +3935,11 @@ export function StatisticsView({
 
         .topRatedTile {
           margin: 0;
-          display: grid;
-          grid-template-rows: clamp(92px, 8vw, 132px) minmax(3.6em, auto);
+          display: flex;
+          flex-direction: column;
           gap: 4px;
           min-width: 0;
           position: relative;
-        }
-
-        .topRatedMedia {
-          position: relative;
-          width: 100%;
-          height: clamp(92px, 8vw, 132px);
-          display: flex;
-          align-items: flex-end;
-          justify-content: center;
-          overflow: visible;
-          border-radius: 6px;
-        }
-
-        .topRatedMediaPoster {
-          border-radius: 6px;
-        }
-
-        .topRatedMediaBook {
-          height: clamp(92px, 8vw, 132px);
-        }
-
-        .topRatedTileGame {
-          grid-template-rows: clamp(126px, 10.5vw, 178px) minmax(3.6em, auto);
-        }
-
-        .topRatedMediaGame {
-          height: clamp(126px, 10.5vw, 178px);
-        }
-
-        .topRatedCoverWrap {
-          position: relative;
-          display: inline-flex;
-          align-items: flex-end;
-          justify-content: center;
-          max-width: 100%;
-          height: 100%;
-          width: fit-content;
-          line-height: 0;
-          border-radius: 6px;
-        }
-
-        .topRatedImageClip {
-          display: inline-flex;
-          align-items: flex-end;
-          justify-content: center;
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          line-height: 0;
-          border-radius: 6px !important;
-          overflow: hidden;
-          clip-path: inset(0 round 6px) !important;
-          -webkit-clip-path: inset(0 round 6px) !important;
-          transform: translateZ(0);
-        }
-
-        .topRatedImageClipPoster {
-          width: 100%;
-          height: 100%;
-          aspect-ratio: 2 / 3;
-        }
-
-        .topRatedImageClipAudiobook {
-          width: 100%;
-          height: auto;
-          aspect-ratio: 1 / 1;
-        }
-
-        .topRatedImageClipGame {
-          width: auto;
-          height: 100%;
-        }
-
-        .topRatedImageClipBook {
-          width: auto;
-          height: auto;
-        }
-
-        .topRatedCoverWrapAudiobook {
-          width: min(100%, clamp(92px, 8vw, 132px));
-          height: auto;
-        }
-
-        .topRatedCoverWrapBook {
-          align-items: flex-start;
-        }
-
-        .topRatedCoverWrapPoster {
-          width: auto;
-          height: 100%;
-          aspect-ratio: 2 / 3;
-          overflow: visible;
-          isolation: isolate;
-          border-radius: 6px;
-        }
-
-        .topRatedCoverWrapGame {
-          width: fit-content;
-          height: 100%;
-          align-items: flex-end;
-          max-width: 100%;
         }
 
         .topRatedTileInteractive {
@@ -5423,89 +3959,38 @@ export function StatisticsView({
         }
 
         .topRatedTile img {
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          aspect-ratio: 2 / 3;
-          object-fit: contain;
-          border-radius: 6px !important;
-          border: none;
-          background: transparent;
-          box-shadow: none;
-          display: block;
-          clip-path: inset(0 round 6px);
-          overflow: hidden;
-          transform: translateZ(0);
-          -webkit-mask-image: -webkit-radial-gradient(white, black);
-          mask-image: radial-gradient(white, black);
-        }
-
-        .topRatedCoverWrapPoster img.yearTopRatedCover {
           width: 100%;
-          height: 100%;
-          max-width: none;
-          max-height: none;
-          object-fit: contain;
-          border-radius: 6px !important;
-          clip-path: inset(0 round 6px) !important;
-          -webkit-clip-path: inset(0 round 6px) !important;
-          overflow: hidden;
-          transform: translateZ(0);
-          -webkit-mask-image: -webkit-radial-gradient(white, black);
-          mask-image: radial-gradient(white, black);
-        }
-
-        .topRatedMediaBook img.yearTopRatedCover {
-          height: auto;
-          width: auto;
-          max-width: 100%;
-          max-height: 100%;
-          aspect-ratio: auto;
-          object-fit: contain;
-          overflow: hidden;
-        }
-
-        .topRatedTile img.yearTopRatedCoverAudiobook {
-          aspect-ratio: 1 / 1;
-          width: 100%;
+          aspect-ratio: 3 / 4;
+          object-fit: cover;
+          border-radius: 9px;
+          border: 1px solid rgba(136, 174, 237, 0.42);
+          background: rgba(9, 19, 41, 0.76);
+          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
           display: block;
-          height: auto;
-          align-self: flex-end;
         }
 
-        .topRatedTile img.yearTopRatedCoverGame {
-          aspect-ratio: auto;
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          border-radius: 6px !important;
-          clip-path: inset(0 round 6px);
-          background: transparent;
-          padding: 0;
-        }
-
-        .topRatedCoverWrapGame img.yearTopRatedCoverGame {
-          flex: 0 1 auto;
-          border-radius: 6px !important;
-          clip-path: inset(0 round 6px);
-          overflow: hidden;
-        }
-
-        .topRatedTile img.yearTopRatedCoverTv {
-          transform: scale(0.93);
-          transform-origin: top center;
+        .topRatedScore {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          z-index: 2;
+          font-size: 10px;
+          font-weight: 900;
+          color: #f9fcff;
+          background: rgba(8, 18, 40, 0.8);
+          border: 1px solid rgba(151, 188, 245, 0.6);
+          border-radius: 999px;
+          padding: 2px 6px;
+          line-height: 1.1;
+          backdrop-filter: blur(2px);
         }
 
         .topRatedFallback {
           width: 100%;
-          height: 100%;
-          aspect-ratio: 2 / 3;
-          border-radius: 6px;
-          border: 1px solid rgba(136, 174, 237, 0.22);
-          background: rgba(9, 19, 41, 0.35);
+          aspect-ratio: 3 / 4;
+          border-radius: 9px;
+          border: 1px solid rgba(136, 174, 237, 0.42);
+          background: rgba(9, 19, 41, 0.76);
           display: grid;
           place-items: center;
           font-size: 9px;
@@ -5513,58 +3998,10 @@ export function StatisticsView({
           font-weight: 700;
         }
 
-        .topRatedMediaAudiobook .topRatedScoreBubble {
-          top: 2px;
-        }
-
-        .topRatedCoverWrapBook .topRatedScoreBubble {
-          top: 3px;
-          right: 5px;
-        }
-
         .topRatedTile figcaption {
           display: flex;
           flex-direction: column;
           gap: 2px;
-          justify-self: center;
-          width: 100%;
-        }
-
-        .topRatedStatsRow {
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 6px;
-          width: 100%;
-          min-height: 14px;
-          color: rgba(218, 234, 255, 0.9);
-          font-size: 10px;
-          line-height: 1.1;
-          font-weight: 900;
-        }
-
-        .topRatedRankText,
-        .topRatedScoreText {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .topRatedScoreText {
-          color: #f0b756;
-        }
-
-        .topRatedTilePoster figcaption {
-          width: min(100%, calc(clamp(116px, 9.8vw, 164px) * 0.6667));
-        }
-
-        .topRatedTileAudiobook figcaption {
-          width: min(100%, clamp(92px, 8vw, 132px));
-        }
-
-        .topRatedTileGame figcaption {
-          width: 100%;
         }
 
         .topRatedTitle {
@@ -5573,306 +4010,15 @@ export function StatisticsView({
           font-weight: 700;
           line-height: 1.2;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          white-space: normal;
-          min-height: 3.6em;
-        }
-
-        .topRatedMeta {
-          display: none;
-        }
-
-        :global(.statsRoot img) {
-          border-radius: 6px;
-        }
-
-        :global(.topRatedColumn) {
-          border: 1px solid rgba(121, 163, 233, 0.34);
-          border-radius: 12px;
-          background: rgba(8, 21, 46, 0.44);
-          padding: 10px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          min-height: 0;
-        }
-
-        :global(.topRatedColumnHeader) {
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          gap: 8px;
-        }
-
-        :global(.topRatedColumnHeader h3) {
-          margin: 0;
-          font-size: 12px;
-          font-weight: 900;
-          color: #f5f9ff;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-        }
-
-        :global(.topRatedColumnHeader span) {
-          color: rgba(186, 208, 238, 0.82);
-          font-size: 10px;
-          font-weight: 700;
-        }
-
-        :global(.topRatedGrid) {
-          display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        :global(.topRatedTile) {
-          margin: 0;
-          display: grid;
-          grid-template-rows: clamp(82px, 7vw, 118px) minmax(3.45em, auto);
-          gap: 4px;
-          min-width: 0;
-          position: relative;
-        }
-
-        :global(.topRatedMedia) {
-          position: relative;
-          width: 100%;
-          height: clamp(82px, 7vw, 118px);
-          display: flex;
-          align-items: flex-end;
-          justify-content: center;
-          overflow: visible;
-          border-radius: 6px;
-        }
-
-        :global(.topRatedTilePoster) {
-          grid-template-rows: clamp(116px, 9.8vw, 164px) minmax(3.45em, auto);
-        }
-
-        :global(.topRatedMediaPoster) {
-          height: clamp(116px, 9.8vw, 164px);
-        }
-
-        :global(.topRatedImageClip) {
-          display: inline-flex;
-          align-items: flex-end;
-          justify-content: center;
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          line-height: 0;
-          border-radius: 6px !important;
-          overflow: hidden;
-          clip-path: inset(0 round 6px) !important;
-          -webkit-clip-path: inset(0 round 6px) !important;
-          transform: translateZ(0);
-        }
-
-        :global(.topRatedImageClipPoster) {
-          width: 100%;
-          height: 100%;
-          aspect-ratio: 2 / 3;
-        }
-
-        :global(.topRatedImageClipAudiobook) {
-          width: 100%;
-          height: auto;
-          aspect-ratio: 1 / 1;
-        }
-
-        :global(.topRatedImageClipGame) {
-          width: auto;
-          height: 100%;
-        }
-
-        :global(.topRatedImageClipBook) {
-          width: auto;
-          height: auto;
-        }
-
-        :global(.topRatedTileGame) {
-          grid-template-rows: clamp(104px, 8.7vw, 148px) minmax(3.45em, auto);
-        }
-
-        :global(.topRatedMediaGame) {
-          height: clamp(104px, 8.7vw, 148px);
-        }
-
-        :global(.topRatedCoverWrap) {
-          position: relative;
-          display: inline-flex;
-          align-items: flex-end;
-          justify-content: center;
-          max-width: 100%;
-          height: 100%;
-          width: fit-content;
-          line-height: 0;
-          border-radius: 6px;
-        }
-
-        :global(.topRatedCoverWrapAudiobook) {
-          width: min(100%, clamp(82px, 7vw, 118px));
-          height: auto;
-        }
-
-        :global(.topRatedCoverWrapPoster) {
-          width: auto;
-          height: 100%;
-          aspect-ratio: 2 / 3;
-          overflow: visible;
-          isolation: isolate;
-          border-radius: 6px;
-        }
-
-        :global(.topRatedCoverWrapGame) {
-          width: fit-content;
-          height: 100%;
-          align-items: flex-end;
-          max-width: 100%;
-        }
-
-        :global(.topRatedTileInteractive) {
-          cursor: pointer;
-          border-radius: 10px;
-          padding: 2px;
-          transition: background 120ms ease;
-        }
-
-        :global(.topRatedTileInteractive:hover) {
-          background: rgba(115, 169, 245, 0.14);
-        }
-
-        :global(.topRatedTileInteractive:focus-visible) {
-          outline: 2px solid rgba(157, 208, 255, 0.95);
-          outline-offset: 2px;
-        }
-
-        :global(.topRatedTile img) {
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          aspect-ratio: 2 / 3;
-          object-fit: contain;
-          border-radius: 6px !important;
-          border: none;
-          background: transparent;
-          box-shadow: none;
-          display: block;
-          clip-path: inset(0 round 6px);
-          overflow: hidden;
-          transform: translateZ(0);
-          -webkit-mask-image: -webkit-radial-gradient(white, black);
-          mask-image: radial-gradient(white, black);
-        }
-
-        :global(.topRatedCoverWrapPoster img.yearTopRatedCover) {
-          width: 100%;
-          height: 100%;
-          max-width: none;
-          max-height: none;
-          object-fit: contain;
-          border-radius: 6px !important;
-          clip-path: inset(0 round 6px) !important;
-          -webkit-clip-path: inset(0 round 6px) !important;
-        }
-
-        :global(.topRatedMediaBook img.yearTopRatedCover) {
-          height: auto;
-          width: auto;
-          max-width: 100%;
-          max-height: 100%;
-          aspect-ratio: auto;
-        }
-
-        :global(.topRatedTile img.yearTopRatedCoverAudiobook) {
-          aspect-ratio: 1 / 1;
-          width: 100%;
-          display: block;
-          height: auto;
-          align-self: flex-end;
-        }
-
-        :global(.topRatedTile img.yearTopRatedCoverGame) {
-          aspect-ratio: auto;
-          width: auto;
-          height: 100%;
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          background: transparent;
-          padding: 0;
-        }
-
-        :global(.topRatedFallback) {
-          width: 100%;
-          height: 100%;
-          aspect-ratio: 2 / 3;
-          border-radius: 6px;
-          border: 1px solid rgba(136, 174, 237, 0.22);
-          background: rgba(9, 19, 41, 0.35);
-          display: grid;
-          place-items: center;
-          font-size: 9px;
-          color: rgba(184, 207, 240, 0.8);
-          font-weight: 700;
-        }
-
-        :global(.topRatedTile figcaption) {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          justify-self: center;
-          width: 100%;
-        }
-
-        :global(.topRatedStatsRow) {
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 6px;
-          width: 100%;
-          min-height: 14px;
-          color: rgba(218, 234, 255, 0.9);
-          font-size: 10px;
-          line-height: 1.1;
-          font-weight: 900;
-        }
-
-        :global(.topRatedRankText),
-        :global(.topRatedScoreText) {
-          min-width: 0;
-          overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
 
-        :global(.topRatedScoreText) {
-          color: #f0b756;
-        }
-
-        :global(.topRatedTilePoster figcaption) {
-          width: min(100%, calc(clamp(116px, 9.8vw, 164px) * 0.6667));
-        }
-
-        :global(.topRatedTileAudiobook figcaption) {
-          width: min(100%, clamp(82px, 7vw, 118px));
-        }
-
-        :global(.topRatedTitle) {
-          font-size: 10px;
-          color: rgba(186, 210, 240, 0.82);
+        .topRatedMeta {
+          font-size: 9px;
+          color: rgba(166, 196, 233, 0.76);
           font-weight: 700;
-          line-height: 1.15;
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          white-space: normal;
-          min-height: 3.45em;
+          line-height: 1.2;
         }
 
         .cardEmpty.compactEmpty {
@@ -5934,29 +4080,10 @@ export function StatisticsView({
 
         .metricValue {
           margin-top: 8px;
-          max-width: 100%;
-          overflow: hidden;
-          font-size: clamp(20px, 2.8vw, 31px);
-          line-height: 1.02;
+          font-size: clamp(26px, 4vw, 34px);
+          line-height: 1;
           font-weight: 900;
           color: #ffffff;
-          white-space: nowrap;
-        }
-
-        .metricValueHours {
-          font-size: clamp(19px, 2.15vw, 25px);
-        }
-
-        .metricValueCompact {
-          font-size: clamp(18px, 1.65vw, 25px);
-          line-height: 1.02;
-          max-width: 100%;
-          overflow: hidden;
-        }
-
-        .metricValueCompact * {
-          font-size: inherit !important;
-          line-height: inherit !important;
         }
 
         .metricSubLabel {
@@ -6007,11 +4134,6 @@ export function StatisticsView({
 
         .statsCard.spanFull {
           grid-column: 1 / -1;
-        }
-
-        .statsCardCompactMini {
-          min-height: 128px;
-          padding: 10px;
         }
 
         .cardHeader {
@@ -6328,101 +4450,19 @@ export function StatisticsView({
           font-weight: 900;
         }
 
-        .statusVerticalChart {
-          display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
-          gap: 6px;
-          align-items: stretch;
-          min-height: 0;
-          flex: 1;
-          width: min(100%, 560px);
-          margin-left: auto;
-          margin-right: auto;
-          margin-top: 0;
-        }
-
-        .statusVerticalCol {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: flex-end;
-          height: 100%;
-          gap: 3px;
-        }
-
-        .statusVerticalColInteractive {
-          cursor: pointer;
-          border-radius: 8px;
-          padding: 4px;
-          transition: background 120ms ease;
-        }
-
-        .statusVerticalColInteractive:hover {
-          background: rgba(117, 171, 247, 0.14);
-        }
-
-        .statusVerticalColInteractive:focus-visible {
-          outline: 2px solid rgba(157, 208, 255, 0.9);
-          outline-offset: 1px;
-        }
-
-        .statusVerticalTrack {
-          width: 100%;
-          max-width: 34px;
-          height: auto;
-          flex: 1;
-          display: flex;
-          align-items: flex-end;
-          justify-content: center;
-          border-radius: 8px;
-          background: rgba(13, 31, 62, 0.72);
-          border: 1px solid rgba(108, 153, 228, 0.35);
-          padding: 3px;
-        }
-
-        .statusVerticalFill {
-          width: 100%;
-          border-radius: 5px;
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.25);
-          min-height: 3px;
-        }
-
-        .statusVerticalValue {
-          font-size: 11px;
-          font-weight: 900;
-          color: #f7fbff;
-          line-height: 1;
-        }
-
-        .statusVerticalLabel {
-          font-size: 9px;
-          font-weight: 700;
-          color: rgba(194, 214, 242, 0.88);
-          text-align: center;
-          line-height: 1.1;
-        }
-
-        .statusVerticalPct {
-          font-size: 8px;
-          font-weight: 700;
-          color: rgba(168, 198, 236, 0.82);
-        }
-
         .ratingsChart {
           display: grid;
           grid-template-columns: repeat(10, minmax(0, 1fr));
           gap: 6px;
-          align-items: stretch;
+          align-items: end;
           flex: 1;
-          min-height: 0;
+          min-height: 148px;
         }
 
         .ratingCol {
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: flex-end;
-          height: 100%;
           gap: 4px;
         }
 
@@ -6449,15 +4489,6 @@ export function StatisticsView({
           align-items: flex-end;
         }
 
-        .ratingBarTrack.scaledTrack {
-          height: auto;
-          flex: 1;
-          border-radius: 8px;
-          background: linear-gradient(180deg, rgba(17, 40, 78, 0.22), rgba(11, 25, 50, 0.62));
-          border: 1px solid rgba(119, 163, 233, 0.28);
-          padding: 2px;
-        }
-
         .ratingBar {
           width: 100%;
           height: 0;
@@ -6467,171 +4498,10 @@ export function StatisticsView({
           box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
         }
 
-        .ratingBar.noData {
-          opacity: 0.22;
-          background: linear-gradient(180deg, rgba(131, 159, 204, 0.55), rgba(92, 117, 158, 0.48));
-        }
-
-        .ratingBar.hasData {
-          opacity: 1;
-        }
-
-        .ratingCount {
-          font-size: 9px;
-          font-weight: 800;
-          color: rgba(224, 240, 255, 0.92);
-          line-height: 1;
-        }
-
         .ratingLabel {
-          font-size: 9px;
+          font-size: 10px;
           color: rgba(194, 214, 242, 0.82);
           font-weight: 800;
-        }
-
-        .releaseMomentumChart {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
-          gap: 5px;
-          min-height: 122px;
-          align-items: end;
-        }
-
-        .releaseLineChartWrap {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          min-height: 0;
-          flex: 1;
-        }
-
-        .releaseLineSvg {
-          width: 100%;
-          height: auto;
-          min-height: 170px;
-          flex: 1;
-          border-radius: 8px;
-          border: 1px solid rgba(128, 170, 234, 0.35);
-          background: rgba(12, 30, 60, 0.5);
-        }
-
-        .releaseLinePath {
-          fill: none;
-          stroke: #ffb36b;
-          stroke-width: 2.4;
-          stroke-linecap: round;
-          stroke-linejoin: round;
-        }
-
-        .releaseLinePoint {
-          fill: #ffd66a;
-          stroke: rgba(22, 49, 92, 0.85);
-          stroke-width: 1.5;
-        }
-
-        .releaseLinePointGroup {
-          cursor: pointer;
-        }
-
-        .releaseLinePointGroup:focus-visible .releaseLinePoint {
-          stroke: rgba(183, 224, 255, 0.98);
-          stroke-width: 2.3;
-        }
-
-        .releaseLineValueLabel {
-          fill: rgba(239, 248, 255, 0.98);
-          font-size: 36px;
-          font-weight: 900;
-          paint-order: stroke;
-          stroke: rgba(8, 23, 49, 0.9);
-          stroke-width: 8px;
-          stroke-linejoin: round;
-          letter-spacing: 0.01em;
-        }
-
-        .releaseLineYears {
-          display: grid;
-          grid-template-columns: repeat(${Math.max(1, releaseYearSeries.length)}, minmax(0, 1fr));
-          gap: 4px;
-        }
-
-        .releaseLineYear {
-          font-size: 8px;
-          font-weight: 700;
-          color: rgba(188, 208, 237, 0.86);
-          text-align: center;
-          line-height: 1.1;
-          min-height: 12px;
-        }
-
-        .releaseLineYear.major {
-          font-size: 11px;
-          font-weight: 900;
-          color: rgba(227, 240, 255, 0.98);
-          text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-        }
-
-        .releaseLineYear.minor {
-          color: transparent;
-        }
-
-        .releaseMomentumCol {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
-          min-width: 0;
-        }
-
-        .releaseMomentumColInteractive {
-          cursor: pointer;
-          border-radius: 8px;
-          padding: 4px;
-          transition: background 120ms ease;
-        }
-
-        .releaseMomentumColInteractive:hover {
-          background: rgba(117, 171, 247, 0.14);
-        }
-
-        .releaseMomentumColInteractive:focus-visible {
-          outline: 2px solid rgba(157, 208, 255, 0.9);
-          outline-offset: 1px;
-        }
-
-        .releaseMomentumTrack {
-          width: 100%;
-          max-width: 30px;
-          height: 74px;
-          display: flex;
-          align-items: flex-end;
-          padding: 3px;
-          border-radius: 8px;
-          border: 1px solid rgba(128, 170, 234, 0.35);
-          background: rgba(12, 30, 60, 0.64);
-        }
-
-        .releaseMomentumFill {
-          width: 100%;
-          border-radius: 5px;
-          min-height: 4px;
-          background: linear-gradient(180deg, #ffd06c, #ff8f61);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
-        }
-
-        .releaseMomentumValue {
-          font-size: 9px;
-          font-weight: 900;
-          color: #f7fbff;
-          line-height: 1;
-        }
-
-        .releaseMomentumLabel {
-          font-size: 8px;
-          font-weight: 700;
-          color: rgba(188, 208, 237, 0.86);
-          text-align: center;
-          line-height: 1.1;
         }
 
         .timelineWrap {
@@ -6772,7 +4642,7 @@ export function StatisticsView({
 
         .highlightsGrid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
           gap: 9px;
         }
 
@@ -6791,13 +4661,10 @@ export function StatisticsView({
 
         .highlightValue {
           margin-top: 5px;
-          font-size: 16px;
+          font-size: 20px;
           font-weight: 900;
           color: #ffffff;
           line-height: 1.15;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
         .highlightValueButton {
@@ -6823,15 +4690,223 @@ export function StatisticsView({
           border-radius: 6px;
         }
 
-        @media (max-width: 980px) {
-          .highlightsGrid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
+        .statDetailOverlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2500;
+          background: rgba(3, 9, 20, 0.6);
+          backdrop-filter: blur(3px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 14px;
         }
 
-        /* .statDetail* rules live inside StatDetailModal's own
-           <style jsx> block — styled-jsx is component-scoped, so the
-           rules need to sit with the JSX they style. */
+        .statDetailDialog {
+          width: min(980px, 100%);
+          max-height: min(88vh, 860px);
+          overflow: auto;
+          border-radius: 16px;
+          border: 1px solid rgba(123, 177, 245, 0.46);
+          background: linear-gradient(165deg, rgba(15, 33, 65, 0.97), rgba(7, 18, 38, 0.98));
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .statDetailHeader {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          border-bottom: 1px solid rgba(111, 158, 230, 0.36);
+          padding-bottom: 10px;
+        }
+
+        .statDetailHeaderMain {
+          min-width: 0;
+        }
+
+        .statDetailId {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          color: rgba(157, 201, 255, 0.9);
+        }
+
+        .statDetailHeaderMain h3 {
+          margin: 6px 0 0 0;
+          font-size: 18px;
+          font-weight: 900;
+          color: #f3f9ff;
+        }
+
+        .statDetailValue {
+          margin-top: 4px;
+          font-size: 28px;
+          line-height: 1;
+          font-weight: 900;
+          color: #fff;
+        }
+
+        .statDetailClose {
+          border: 1px solid rgba(152, 196, 250, 0.7);
+          background: linear-gradient(160deg, rgba(42, 90, 164, 0.92), rgba(25, 58, 109, 0.92));
+          color: #e9f4ff;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          padding: 6px 10px;
+          cursor: pointer;
+        }
+
+        .statDetailSummaryGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .statDetailSummaryCard {
+          border: 1px solid rgba(118, 162, 233, 0.35);
+          border-radius: 10px;
+          background: rgba(9, 21, 44, 0.78);
+          padding: 10px;
+          min-height: 78px;
+        }
+
+        .statDetailSummaryLabel {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: rgba(161, 203, 255, 0.9);
+        }
+
+        .statDetailSummaryCard p {
+          margin: 7px 0 0 0;
+          font-size: 12px;
+          color: rgba(215, 231, 251, 0.94);
+          line-height: 1.42;
+        }
+
+        .statDetailItemsHeader {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          color: rgba(177, 214, 255, 0.9);
+        }
+
+        .statDetailItemsHeader span {
+          color: #f8fcff;
+        }
+
+        .statDetailItemsList {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-height: 120px;
+        }
+
+        .statDetailItemRow {
+          display: grid;
+          grid-template-columns: 28px 42px minmax(0, 1fr);
+          gap: 8px;
+          border: 1px solid rgba(121, 169, 238, 0.33);
+          border-radius: 10px;
+          background: rgba(9, 21, 44, 0.7);
+          padding: 8px 9px;
+        }
+
+        .statDetailItemRank {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 10px;
+          font-weight: 900;
+          color: rgba(239, 249, 255, 0.98);
+          border: 1px solid rgba(142, 191, 255, 0.52);
+          background: rgba(28, 63, 118, 0.8);
+        }
+
+        .statDetailItemMain {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .statDetailItemCover {
+          position: relative;
+          width: 42px;
+          align-self: start;
+        }
+
+        .statDetailItemCoverBadge {
+          top: 2px;
+          right: 2px;
+          font-size: 7px;
+          padding: 1px 4px;
+        }
+
+        .statDetailItemCoverImage,
+        .statDetailItemCoverPlaceholder {
+          display: block;
+          width: 42px;
+          aspect-ratio: 2 / 3;
+          border-radius: 8px;
+          border: 1px solid rgba(130, 176, 244, 0.3);
+          background: rgba(15, 33, 63, 0.9);
+          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+        }
+
+        .statDetailItemCoverImage {
+          object-fit: cover;
+        }
+
+        .statDetailItemCoverPlaceholder {
+          display: grid;
+          place-items: center;
+          padding: 4px;
+          font-size: 8px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          color: rgba(196, 220, 251, 0.72);
+        }
+
+        .statDetailItemTitle {
+          font-size: 13px;
+          font-weight: 800;
+          color: #f7fbff;
+          line-height: 1.25;
+        }
+
+        .statDetailItemMeta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .statDetailItemMeta span {
+          display: inline-flex;
+          align-items: center;
+          border: 1px solid rgba(120, 166, 236, 0.34);
+          border-radius: 999px;
+          padding: 2px 7px;
+          font-size: 10px;
+          font-weight: 700;
+          color: rgba(201, 223, 249, 0.94);
+          background: rgba(12, 30, 60, 0.65);
+        }
 
         @keyframes statsFadeRise {
           0% {
@@ -6841,32 +4916,6 @@ export function StatisticsView({
           100% {
             opacity: 1;
             transform: translateY(0);
-          }
-        }
-
-        @keyframes wrappedCoverSlideIn {
-          0% {
-            opacity: 0;
-            transform: translateX(46px) scale(0.96);
-          }
-          100% {
-            opacity: 1;
-            transform: translateX(0) scale(1);
-          }
-        }
-
-        @keyframes wrappedBeatPulse {
-          0% {
-            transform: translateY(0) scale(1);
-            text-shadow: 0 0 0 rgba(139, 175, 244, 0);
-          }
-          35% {
-            transform: translateY(-2px) scale(1.035);
-            text-shadow: 0 0 22px rgba(139, 175, 244, 0.45);
-          }
-          100% {
-            transform: translateY(0) scale(1);
-            text-shadow: 0 0 0 rgba(139, 175, 244, 0);
           }
         }
 
@@ -6909,38 +4958,12 @@ export function StatisticsView({
             font-size: 11px;
           }
 
-          .yearReviewHero {
+          .yearReviewControls {
             align-items: flex-start;
-          }
-
-          .yearReviewHero {
-            padding: 10px;
-          }
-
-          .yearReviewHeroControls {
-            align-items: stretch;
-            width: 100%;
-            margin-left: 0;
-          }
-
-          .yearReviewHeroActions {
-            width: 100%;
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .wrappedLaunchButton {
-            width: 100%;
-            text-align: center;
           }
 
           .yearReviewPicker {
             width: 100%;
-          }
-
-          .yearReviewPickerHint {
-            text-align: left;
-            max-width: none;
           }
 
           .yearReviewPicker select {
@@ -6959,33 +4982,16 @@ export function StatisticsView({
             grid-template-columns: repeat(4, minmax(0, 1fr));
           }
 
-          .highlightsGrid {
-            grid-template-columns: minmax(0, 1fr);
-          }
-
           .barRow {
             grid-template-columns: minmax(60px, 78px) 1fr auto;
           }
 
+          .statDetailSummaryGrid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
           .releaseSvg {
             height: 158px;
-          }
-
-          .wrappedOverlay {
-            padding: 8px;
-          }
-
-          .wrappedDialog {
-            min-height: min(700px, 94vh);
-            border-radius: 16px;
-          }
-
-          .wrappedStory {
-            padding: 10px 14px;
-          }
-
-          .wrappedControls {
-            justify-content: center;
           }
         }
       `}</style>
