@@ -72,6 +72,58 @@ function formatRating(value: string): string {
   return parsed.toFixed(1);
 }
 
+function formatBookRatingAsTenScale(value: string): string {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return value;
+  const tenScale = parsed <= 5 ? parsed * 2 : parsed;
+  return tenScale.toFixed(1);
+}
+
+function parseBookRatingOutOfFive(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.max(0, Math.min(5, parsed > 5 ? parsed / 2 : parsed));
+}
+
+function BookScoreCircle({ value, label, color }: { value: number; label: string; color: string }) {
+  const pct = Math.max(0, Math.min(1, value / 5));
+  const r = 27;
+  const size = 72;
+  const stroke = 5;
+  const circ = 2 * Math.PI * r;
+  const dash = pct * circ;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <div style={{ position: "relative", width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={stroke} />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeDasharray={`${dash} ${circ}`}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </svg>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 850, color: "#fff" }}>
+          {value.toFixed(1)}
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: "rgba(255,255,255,0.62)" }}>{label}</div>
+    </div>
+  );
+}
+
+function getBookScoreColor(value: number): string {
+  if (value >= 4) return "#7ed321";
+  if (value >= 3) return "#f5a623";
+  return "#ff6b6b";
+}
+
 function getStarRatingValue(value: string): number {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -479,10 +531,8 @@ export function BookDetailsPage({
 
   const chips = [typeLabel, statusLabel, ownershipLabel].filter(Boolean);
   const metaLine = [author, releaseDate, ...genres].filter(Boolean).join(" • ");
-  const ratingFacts = [
-    { label: "My Rating", value: myRatingLabel ? formatRating(myRatingLabel) : "" },
-    { label: "User Rating", value: userRatingLabel ? formatRating(userRatingLabel) : "" },
-  ].filter((fact) => fact.value);
+  const myRatingValue = parseBookRatingOutOfFive(myRatingLabel);
+  const userRatingValue = parseBookRatingOutOfFive(userRatingLabel);
   const isAudiobook = typeLabel === "Audiobook";
   const factDetails = [
     !isAudiobook ? { label: "Pages", value: pagesLabel } : null,
@@ -913,7 +963,7 @@ export function BookDetailsPage({
                 paddingTop: isMobileLayout ? 0 : 10,
               }}
             >
-              {[...ratingFacts, ...factDetails].map((fact) => (
+              {factDetails.map((fact) => (
                 <div
                   key={`${fact.label}-${fact.value}`}
                   style={{
@@ -940,12 +990,30 @@ export function BookDetailsPage({
                       color: palette.text,
                       overflowWrap: "anywhere",
                     }}
-                  >
+                    >
                     <span>{fact.value}</span>
-                    {fact.label.includes("Rating") ? <StarRating value={fact.value} color={palette.text} /> : null}
                   </div>
                 </div>
               ))}
+              {(myRatingValue !== null || userRatingValue !== null) ? (
+                <div
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "center",
+                    gap: 14,
+                    marginTop: 8,
+                  }}
+                >
+                  {userRatingValue !== null ? (
+                    <BookScoreCircle value={userRatingValue} label="User Rating" color={getBookScoreColor(userRatingValue)} />
+                  ) : null}
+                  {myRatingValue !== null ? (
+                    <BookScoreCircle value={myRatingValue} label="My Rating" color={getBookScoreColor(myRatingValue)} />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 

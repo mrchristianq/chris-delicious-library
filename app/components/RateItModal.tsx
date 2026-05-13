@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 type RateItModalProps = {
   open: boolean;
   onClose: () => void;
-  onSave: (data: RatingData) => void;
+  onSave: (data: RatingData) => Promise<void> | void;
   item: Record<string, unknown> | null;
   mediaType: "movie" | "tv" | "book" | "game";
   highlightColor?: string;
@@ -93,7 +93,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
     setCompleted(firstNonEmpty(item, ["completed", "Completed"]).toLowerCase() === "yes");
   }, [open, item]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const data: RatingData = {};
 
     if (myRating) data.myRating = myRating;
@@ -118,8 +118,12 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
       data.completed = completed ? "Yes" : "";
     }
 
-    onSave(data);
-    onClose();
+    try {
+      await Promise.resolve(onSave(data));
+      onClose();
+    } catch {
+      // parent handler already surfaces user-facing error
+    }
   };
 
   if (!open) return null;
@@ -527,7 +531,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
               color: "#fff",
             }}
           >
-            Save Rating
+            {isBook ? "Mark As Completed" : "Save Rating"}
           </button>
         </div>
       </div>

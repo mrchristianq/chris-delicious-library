@@ -6579,11 +6579,45 @@ export default function Page() {
       } else if (rateItMediaType === "book") {
         if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
         const updates: Record<string, string> = {};
-        if (data.myRating) updates["MyRating"] = safeStr(data.myRating);
-        if (data.dateCompleted) updates["CompletedDate"] = safeStr(data.dateCompleted);
+        // Mark As Completed flow for books:
+        // persist rating/date/tag and force Status -> Completed.
+        updates["Status"] = "Completed";
+        if (data.myRating) {
+          updates["My Rating"] = safeStr(data.myRating);
+          updates["MyRating"] = safeStr(data.myRating);
+        }
+        if (data.dateCompleted) {
+          updates["Completed Date"] = safeStr(data.dateCompleted);
+          updates["Date Completed"] = safeStr(data.dateCompleted);
+          updates["CompletedDate"] = safeStr(data.dateCompleted);
+        }
         if (data.tags) updates["Tag"] = safeStr(data.tags);
         await postSheetWrite(booksWriteUrl, { action: "updateBook", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save book rating");
-        setBookDetailItem((prev: any) => ({ ...prev, ...updates }));
+        setBookDetailItem((prev: any) => ({
+          ...prev,
+          ...updates,
+          status: "Completed",
+          myRating: safeStr(data.myRating || prev?.myRating || prev?.["My Rating"] || prev?.MyRating),
+          completedDate: safeStr(data.dateCompleted || prev?.completedDate || prev?.["Completed Date"] || prev?.CompletedDate),
+          tags: safeStr(data.tags || prev?.tags || prev?.Tag),
+          Tag: safeStr(data.tags || prev?.Tag),
+          "My Rating": safeStr(data.myRating || prev?.["My Rating"] || prev?.MyRating),
+          MyRating: safeStr(data.myRating || prev?.MyRating || prev?.["My Rating"]),
+          "Completed Date": safeStr(data.dateCompleted || prev?.["Completed Date"] || prev?.CompletedDate),
+          CompletedDate: safeStr(data.dateCompleted || prev?.CompletedDate || prev?.["Completed Date"]),
+        }));
+        setBookRows((prev) =>
+          prev.map((row) => {
+            if (safeStr(row?.Title) !== safeStr(rateItItem.title)) return row;
+            return {
+              ...row,
+              Status: "Completed",
+              ...(data.myRating ? { "My Rating": safeStr(data.myRating), MyRating: safeStr(data.myRating) } : {}),
+              ...(data.dateCompleted ? { "Completed Date": safeStr(data.dateCompleted), "Date Completed": safeStr(data.dateCompleted), CompletedDate: safeStr(data.dateCompleted) } : {}),
+              ...(data.tags ? { Tag: safeStr(data.tags) } : {}),
+            };
+          })
+        );
       } else if (rateItMediaType === "game") {
         if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
         const updates: Record<string, string> = {};
