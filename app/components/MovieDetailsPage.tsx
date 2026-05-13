@@ -12,6 +12,7 @@ type MovieDetailsPageProps = {
   onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
   onRate?: (item: Record<string, unknown>) => void;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
+  getDisplayBackdropUrl: (item: Record<string, unknown>) => string;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedMovies?: Record<string, unknown>[];
   relatedMoviesLabel?: string;
@@ -209,12 +210,12 @@ const PANEL_STYLE: React.CSSProperties = {
 
 export function MovieDetailsPage({
   item, isMobileLayout, usePageBackground = false,
-  onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, onPaletteChange,
+  onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
   relatedMovies, relatedMoviesLabel, onSelectRelated, highlightColor,
 }: MovieDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
-  const backdropUrl = safeStr(item.backdropUrl);
+  const backdropUrl = getDisplayBackdropUrl(item);
 
   const cacheKey = useMemo(() => [safeStr(item.title), backdropUrl, coverUrl].join("|"), [item, backdropUrl, coverUrl]);
   const [ready, setReady] = useState(false);

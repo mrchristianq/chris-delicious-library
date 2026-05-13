@@ -110,6 +110,10 @@ type Show = {
   creator?: string;
   topcast?: string;
   topcastPhotos?: string;
+  r2CoverUrl?: string;
+  r2CoverUrlDate?: string;
+  r2BackdropUrl?: string;
+  r2BackdropUrlDate?: string;
 };
 
 type Book = {
@@ -149,6 +153,8 @@ type Book = {
   coverSyncStatus?: string;
   wishlistOrder?: string;
   queuedOrder?: string;
+  r2CoverUrl?: string;
+  r2CoverUrlDate?: string;
 };
 
 type Movie = {
@@ -183,6 +189,10 @@ type Movie = {
   revenue?: string;
   topcast?: string;
   topcastPhotos?: string;
+  r2CoverUrl?: string;
+  r2CoverUrlDate?: string;
+  r2BackdropUrl?: string;
+  r2BackdropUrlDate?: string;
 };
 
 type Game = {
@@ -225,6 +235,10 @@ type Game = {
   igdbIdOverride?: string;
   localCoverUrl?: string;
   tag?: string;
+  r2CoverUrl?: string;
+  r2CoverUrlDate?: string;
+  r2BackdropUrl?: string;
+  r2BackdropUrlDate?: string;
 };
 
 type SmartListMediaType = "book" | "movie" | "tv" | "game";
@@ -1641,6 +1655,32 @@ function getBookSourceUrlByMode(item: any, _mode?: "custom" | "default"): string
   return customUrl || imageUrl;
 }
 
+function getDisplayCover(item: any, mediaType: "book" | "movie" | "tv" | "game"): string {
+  if (mediaType === "book") {
+    return safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.imageUrl || item?.ImageURL || item?.["Image URL"] || "");
+  }
+  if (mediaType === "movie" || mediaType === "tv") {
+    return safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.posterUrl || item?.PosterURL || item?.metadataCoverUrl || "");
+  }
+  return safeStr(
+    item?.r2CoverUrl ||
+      item?.R2CoverUrl ||
+      item?.localCoverUrl ||
+      item?.LocalCoverURL ||
+      item?.coverUrl ||
+      item?.CoverURL ||
+      item?.metadataCoverUrl ||
+      ""
+  );
+}
+
+function getDisplayBackdrop(item: any, mediaType: "movie" | "tv" | "game"): string {
+  if (mediaType === "movie" || mediaType === "tv") {
+    return safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl || item?.backdropUrl || item?.BackdropURL || "");
+  }
+  return safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl || item?.screenshotsUrl || item?.ScreenshotsURL || "");
+}
+
 type StatusIndicator = {
   key: string;
   color: string;
@@ -1916,6 +1956,10 @@ function rowToShow(r: Row): Show | null {
     creator: safeStr(r["Creator"]) || undefined,
     topcast: safeStr(r["Cast"]) || safeStr(r["Topcast"]) || undefined,
     topcastPhotos: safeStr(r["Cast Photos"]) || safeStr(r["Topcast Photos"]) || undefined,
+    r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
+    r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
+    r2BackdropUrl: safeStr(r["R2BackdropUrl"]) || undefined,
+    r2BackdropUrlDate: safeStr(r["R2BackdropUrl_Date"]) || undefined,
   };
 }
 
@@ -1986,6 +2030,8 @@ function rowToBook(r: Row): Book | null {
     coverSyncStatus: coverSyncStatus || undefined,
     wishlistOrder: safeStr(r["WishlistOrder"]) || undefined,
     queuedOrder: safeStr(r["QueuedOrder"]) || undefined,
+    r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
+    r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
   };
 }
 
@@ -2037,6 +2083,10 @@ function rowToMovie(r: Row): Movie | null {
     revenue: safeStr(r["Revenue"]) || undefined,
     topcast: safeStr(r["Topcast"]) || undefined,
     topcastPhotos: safeStr(r["Topcast Photos"]) || undefined,
+    r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
+    r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
+    r2BackdropUrl: safeStr(r["R2BackdropUrl"]) || undefined,
+    r2BackdropUrlDate: safeStr(r["R2BackdropUrl_Date"]) || undefined,
   };
 }
 
@@ -2097,6 +2147,10 @@ function rowToGame(r: Row): Game | null {
     igdbIdOverride: safeStr(r["IGDB_ID_Override"]) || undefined,
     localCoverUrl: safeStr(r["LocalCoverURL"]) || undefined,
     tag: safeStr(r["Tag"]) || safeStr(r["Tags"]) || undefined,
+    r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
+    r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
+    r2BackdropUrl: safeStr(r["R2BackdropUrl"]) || undefined,
+    r2BackdropUrlDate: safeStr(r["R2BackdropUrl_Date"]) || undefined,
   };
 }
 
@@ -2288,6 +2342,11 @@ export default function Page() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
+  const [coverSyncQuery, setCoverSyncQuery] = useState("");
+  const [coverSyncMediaFilter, setCoverSyncMediaFilter] = useState<"all" | "movie" | "tv" | "game" | "book">("all");
+  const [coverSyncStateFilter, setCoverSyncStateFilter] = useState<"all" | "unsynced" | "synced" | "missing-cover" | "missing-backdrop">("unsynced");
+  const [coverSyncSortKey, setCoverSyncSortKey] = useState<"title" | "media" | "status" | "coverDate" | "backdropDate">("status");
+  const [coverSyncSortDir, setCoverSyncSortDir] = useState<"asc" | "desc">("asc");
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
@@ -3704,62 +3763,18 @@ export default function Page() {
   const getDisplayCoverUrl = (item: any, skipFailedFilter?: boolean) => {
     const itemKey = getMediaItemKey(item);
     const failed = skipFailedFilter ? new Set<string>() : new Set(failedCoverUrls[itemKey] || []);
-    const coverMode = getPopupCoverModeForItem(item);
-    const isBook = getMediaType(item) === "book";
-    const isGame = getMediaType(item) === "game";
-    let metadataUrl =
-      isBook
-        ? getBookSourceUrlByMode(item, coverMode)
-        : isGame
-        ? safeStr(item?.CoverURL || item?.coverUrl || item?.["Cover URL"] || item?.metadataCoverUrl)
-        : safeStr(item?.metadataCoverUrl);
-
-    // Fallback for books/audiobooks: if metadataUrl is empty, directly check for ImageURL field
-    // This ensures audiobooks with ImageURL but no explicit detection are still found
-    if (isBook && !metadataUrl) {
-      metadataUrl = safeStr(item?.ImageURL || item?.imageUrl || item?.["Image URL"] || "");
-    }
-
+    const mediaType = getMediaType(item);
+    const baseCover = getDisplayCover(item, mediaType);
     const overrideUrl = safeStr(coverOverrides[itemKey]);
-    const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
-
-    // Priority: override > R2 backup > metadata > fallbacks
-    // R2 is prioritized because it's synced for persistence
-    const candidates = isBook
-      ? [overrideUrl, r2CoverUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean)
-      : [overrideUrl, r2CoverUrl, metadataUrl, safeStr(item?.posterUrl), safeStr(item?.posterUrlFallback)].filter(Boolean);
+    const candidates = [overrideUrl, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
-    const result = uniqueCandidates.find((url) => !failed.has(url)) || "";
-
-    // Debug logging for audiobooks or when title contains "beacon"
-    const title = safeStr(item?.title || item?.Title).toLowerCase();
-    if (title.includes("beacon") || title.includes("midnight") || isGame) {
-      console.log(`[DisplayCoverUrl] ${title}:`, {
-        itemKey,
-        isBook,
-        isGame,
-        coverUrl: isGame ? (item?.CoverURL ? `[CSV] ${item.CoverURL.substring(0, 50)}...` : "none") : "n/a",
-        overrideUrl: overrideUrl ? `[OVERRIDE] ${overrideUrl.substring(0, 50)}...` : "none",
-        r2CoverUrl: r2CoverUrl ? `[R2] ${r2CoverUrl.substring(0, 50)}...` : "none",
-        metadataUrl: metadataUrl ? `[METADATA] ${metadataUrl.substring(0, 50)}...` : "none",
-        selected: result ? result.substring(0, 50) + "..." : "none"
-      });
-    }
-
-    return result;
+    return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
 
   const getDisplayBackdropUrl = (item: any) => {
-    return safeStr(
-      item?.backdropUrl ||
-      item?.BackdropURL ||
-      item?.backdrop ||
-      item?.BackDropURL ||
-      item?.backdrops?.[0] ||
-      item?.screenshotsUrl ||
-      item?.ScreenshotsURL ||
-      ""
-    );
+    const mediaType = getMediaType(item);
+    if (mediaType !== "movie" && mediaType !== "tv" && mediaType !== "game") return "";
+    return getDisplayBackdrop(item, mediaType);
   };
 
   const getPopupCoverModeForItem = (item: any): "custom" | "default" | undefined => {
@@ -4690,26 +4705,40 @@ export default function Page() {
         );
       }
 
-      // Write CustomURL to the item's own sheet row for movies, TV shows, and games
+      // Persist replacement as R2 cover override in sheet (do not overwrite source metadata URLs)
       const title = safeStr(item?.title || item?.Title);
+      const replacementDate = new Date().toISOString();
       if (mediaType === "movie" && moviesWriteUrl) {
         postSheetWrite(moviesWriteUrl, {
           action: "updateMovie",
           match: { tmdbId: safeStr(item?.tmdbId), title },
-          updates: { CustomURL: uploadedUrl, CustomImageURL: uploadedUrl },
-        }, "Failed to save movie custom cover").catch(() => {});
+          updates: { R2CoverUrl: uploadedUrl, r2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+        }, "Failed to save movie R2 cover").catch(() => {});
       } else if (mediaType === "tv" && showsWriteUrl) {
         postSheetWrite(showsWriteUrl, {
           action: "updateShow",
           match: { tmdbId: safeStr(item?.tmdbId), title },
-          updates: { CustomURL: uploadedUrl, CustomImageURL: uploadedUrl },
-        }, "Failed to save TV show custom cover").catch(() => {});
+          updates: { R2CoverUrl: uploadedUrl, r2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+        }, "Failed to save TV show R2 cover").catch(() => {});
       } else if (mediaType === "game" && gamesWriteUrl) {
         postSheetWrite(gamesWriteUrl, {
           action: "updateGame",
           match: { igdbId: safeStr(item?.igdbId || item?.IGDB_ID), title },
-          updates: { CustomURL: uploadedUrl, CustomImageURL: uploadedUrl },
-        }, "Failed to save game custom cover").catch(() => {});
+          updates: { R2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+        }, "Failed to save game R2 cover").catch(() => {});
+      } else if (mediaType === "book" && booksWriteUrl) {
+        postSheetWrite(booksWriteUrl, {
+          action: "updateBook",
+          match: {
+            title,
+            type: safeStr(item?.types || item?.type || item?.Type),
+            imageUrl: safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image),
+            isbn: safeStr(item?.isbn || item?.ISBN),
+            googleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
+            openLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
+          },
+          updates: { R2CoverUrl: uploadedUrl, r2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+        }, "Failed to save book R2 cover").catch(() => {});
       }
 
       setModalItem((prev: any) => {
@@ -4866,7 +4895,7 @@ export default function Page() {
             }
           : {};
         const lowerCamelFieldName = fieldName ? fieldName.charAt(0).toLowerCase() + fieldName.slice(1) : fieldName;
-        const syncedAtField = imageType === "backdrop" ? "R2BackdropSyncedAt" : "R2CoverSyncedAt";
+        const syncedAtField = imageType === "backdrop" ? "R2BackdropUrl_Date" : "R2CoverUrl_Date";
         const syncedAtValue = new Date().toISOString();
         const updates: Record<string, string> = {
           [fieldName]: payload.url,
@@ -4904,54 +4933,80 @@ export default function Page() {
     return payload.url;
   };
 
-  // Silent automatic R2 sync for a single item (called after add/edit)
+  // One-off automatic R2 sync for a single newly added/edited item.
   const syncSingleItemCoverToR2 = async (item: any, mediaType: "book" | "movie" | "tv" | "game") => {
     try {
-      const displayUrl = getDisplayCoverUrl(item, true);
+      const displayUrl = getDisplayCover(item, mediaType);
       const existingR2Url = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
 
-      // Skip if no cover URL, but DO sync if cover has changed (displayUrl !== existingR2Url)
-      if (!displayUrl) {
-        return;
-      }
-
-      // If already synced and the cover hasn't changed, skip
-      if (existingR2Url && existingR2Url === displayUrl) {
-        return;
-      }
+      if (!displayUrl) return;
+      if (existingR2Url && existingR2Url === displayUrl) return;
 
       const r2Url = await uploadCoverToR2(item, displayUrl, mediaType, "cover", true);
       const itemKey = buildTypedItemKey(item, mediaType);
+      const nowIso = new Date().toISOString();
 
       // Update the local row data with the synced R2CoverUrl
       if (mediaType === "book") {
         setBookRows((prev) =>
           prev.map((row) =>
-            buildTypedItemKey(row, "book") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "book") === itemKey ? { ...row, R2CoverUrl: r2Url, R2CoverUrl_Date: nowIso } : row
           )
         );
       } else if (mediaType === "movie") {
         setMovieRows((prev) =>
           prev.map((row) =>
-            buildTypedItemKey(row, "movie") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "movie") === itemKey ? { ...row, R2CoverUrl: r2Url, R2CoverUrl_Date: nowIso } : row
           )
         );
       } else if (mediaType === "tv") {
         setTvRows((prev) =>
           prev.map((row) =>
-            buildTypedItemKey(row, "tv") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "tv") === itemKey ? { ...row, R2CoverUrl: r2Url, R2CoverUrl_Date: nowIso } : row
           )
         );
       } else if (mediaType === "game") {
         setGameRows((prev) =>
           prev.map((row) =>
-            buildTypedItemKey(row, "game") === itemKey ? { ...row, R2CoverUrl: r2Url } : row
+            buildTypedItemKey(row, "game") === itemKey ? { ...row, R2CoverUrl: r2Url, R2CoverUrl_Date: nowIso } : row
           )
         );
       }
+
+      if (mediaType === "movie" || mediaType === "tv" || mediaType === "game") {
+        const backdropSource = getDisplayBackdrop(item, mediaType);
+        if (backdropSource) {
+          try {
+            const backdropR2 = await uploadCoverToR2(item, backdropSource, mediaType, "backdrop", true);
+            if (mediaType === "movie") {
+              setMovieRows((prev) =>
+                prev.map((row) =>
+                  buildTypedItemKey(row, "movie") === itemKey ? { ...row, R2BackdropUrl: backdropR2, R2BackdropUrl_Date: nowIso } : row
+                )
+              );
+            } else if (mediaType === "tv") {
+              setTvRows((prev) =>
+                prev.map((row) =>
+                  buildTypedItemKey(row, "tv") === itemKey ? { ...row, R2BackdropUrl: backdropR2, R2BackdropUrl_Date: nowIso } : row
+                )
+              );
+            } else {
+              setGameRows((prev) =>
+                prev.map((row) =>
+                  buildTypedItemKey(row, "game") === itemKey ? { ...row, R2BackdropUrl: backdropR2, R2BackdropUrl_Date: nowIso } : row
+                )
+              );
+            }
+          } catch (backdropError) {
+            console.debug("Auto backdrop R2 sync failed (non-critical):", backdropError);
+          }
+        }
+      }
     } catch (e) {
-      // Silently fail - don't interrupt the user's workflow
+      const msg = e instanceof Error ? e.message : "R2 sync failed";
       console.debug("Auto R2 sync failed (non-critical):", e);
+      setSyncState("error");
+      setSyncMsg(`Item added, but R2 sync failed. Falling back to source image. (${msg})`);
     }
   };
 
@@ -16575,200 +16630,207 @@ export default function Page() {
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
           ) : nav === "cover-sync" ? (
-            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "rgba(246, 245, 243, 0.6)" }}>
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.2)", background: "rgba(250,250,252,0.8)", flexShrink: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.94) 0%, rgba(238,241,246,0.92) 100%)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.2)", background: "rgba(252,253,255,0.76)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <button
-                    type="button"
-                    onClick={handleExitCoverSync}
-                    style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: 20, padding: "0 4px", lineHeight: 1 }}
-                  >
-                    ←
-                  </button>
-                  <div style={{ fontSize: 18, fontWeight: 750, color: "#1d2735" }}>Cover Sync to R2</div>
+                  <button type="button" onClick={handleExitCoverSync} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: 20, padding: "0 4px", lineHeight: 1 }}>←</button>
+                  <div style={{ fontSize: 18, fontWeight: 750, color: "#1d2735" }}>Cover Sync Status</div>
                 </div>
-                {selectedSyncCategory && (
-                  <button
-                    type="button"
-                    disabled={syncInProgress}
-                    onClick={() => syncCoversToR2(selectedSyncCategory)}
-                    style={{
-                      border: "1px solid rgba(0, 113, 227, 0.4)",
-                      background: syncInProgress ? "rgba(0,113,227,0.06)" : "rgba(0, 113, 227, 0.1)",
-                      color: "#0a4f9e",
-                      borderRadius: 10,
-                      padding: "8px 16px",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: syncInProgress ? "not-allowed" : "pointer",
-                      opacity: syncInProgress ? 0.7 : 1,
-                    }}
-                  >
-                    {syncInProgress ? `Syncing ${syncProgress.current}/${syncProgress.total}…` : "Sync Missing"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setRefreshNonce((n) => n + 1)}
+                  disabled={loading}
+                  style={{
+                    border: "1px solid rgba(121,131,145,0.44)",
+                    borderRadius: 9,
+                    padding: "7px 12px",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(241,244,249,0.95) 100%)",
+                    color: "#2f3c4d",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: loading ? "default" : "pointer",
+                    opacity: loading ? 0.68 : 1,
+                  }}
+                >
+                  {loading ? "Refreshing..." : "Refresh Sync Status"}
+                </button>
               </div>
 
-              {/* Category tabs row */}
-              <div style={{ display: "flex", gap: 8, padding: "12px 24px", overflowX: "auto", flexShrink: 0, borderBottom: "1px solid rgba(152, 162, 171, 0.15)" }}>
-                {([
-                  { key: "book" as const, label: "Books", color: sidebarHighlightColorsLight.books, total: bookRows.length },
-                  { key: "movieCover" as const, label: "Movie Covers", color: sidebarHighlightColorsLight.movies, total: movieRows.length },
-                  { key: "movieBackdrop" as const, label: "Movie Backdrops", color: sidebarHighlightColorsLight.movies, total: movieRows.length },
-                  { key: "tvCover" as const, label: "TV Show Covers", color: sidebarHighlightColorsLight.tv, total: tvRows.length },
-                  { key: "tvBackdrop" as const, label: "TV Show Backdrops", color: sidebarHighlightColorsLight.tv, total: tvRows.length },
-                  { key: "gameCover" as const, label: "Game Covers", color: sidebarHighlightColorsLight.games, total: gameRows.length },
-                  { key: "gameBackdrop" as const, label: "Game Backdrops", color: sidebarHighlightColorsLight.games, total: gameRows.length },
-                ] as const).map(({ key, label, color, total }) => {
-                  const csvSynced = key === "book"
-                    ? bookRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
-                    : key === "movieCover"
-                    ? movieRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
-                    : key === "movieBackdrop"
-                    ? movieRows.filter((r) => safeStr(r?.r2BackdropUrl || r?.R2BackdropUrl)).length
-                    : key === "tvCover"
-                    ? tvRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
-                    : key === "tvBackdrop"
-                    ? tvRows.filter((r) => safeStr(r?.r2BackdropUrl || r?.R2BackdropUrl)).length
-                    : key === "gameCover"
-                    ? gameRows.filter((r) => safeStr(r?.r2CoverUrl || r?.R2CoverUrl)).length
-                    : gameRows.filter((r) => safeStr(r?.r2BackdropUrl || r?.R2BackdropUrl)).length;
+              <div style={{ padding: "10px 24px", borderBottom: "1px solid rgba(152, 162, 171, 0.15)", color: "#4e5a66", fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.5)" }}>
+                Bulk sync is now handled from the Google Sheet menu.
+              </div>
 
-                  let synced = csvSynced;
-                  if (typeof localStorage !== "undefined") {
-                    const ck = key === "book" ? "cdlSyncedBookCovers" : key === "movieCover" ? "cdlSyncedMovieCovers" : key === "movieBackdrop" ? "cdlSyncedMovieBackdrops" : key === "tvCover" ? "cdlSyncedTvCovers" : key === "tvBackdrop" ? "cdlSyncedTvBackdrops" : key === "gameCover" ? "cdlSyncedGameCovers" : "cdlSyncedGameBackdrops";
-                    try { const c = localStorage.getItem(ck); if (c) { const n = Object.keys(JSON.parse(c)).length; if (n > synced) synced = n; } } catch { /* ignore */ }
-                  }
+              <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
+                {(() => {
+                  const buildStatusRows = (rows: any[], mediaType: "book" | "movie" | "tv" | "game") =>
+                    rows
+                      .map((item) => {
+                        const title = safeStr(item?.title || item?.Title || item?.name || "Untitled");
+                        const coverSource = mediaType === "book"
+                          ? safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"])
+                          : mediaType === "game"
+                          ? safeStr(item?.coverUrl || item?.CoverURL)
+                          : safeStr(item?.posterUrl || item?.PosterURL);
+                        const backdropSource = mediaType === "book"
+                          ? ""
+                          : mediaType === "game"
+                          ? safeStr(item?.screenshotsUrl || item?.ScreenshotsURL)
+                          : safeStr(item?.backdropUrl || item?.BackdropURL);
+                        const r2Cover = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+                        const r2Backdrop = safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl);
+                        const r2CoverDate = safeStr(item?.r2CoverUrlDate || item?.R2CoverUrl_Date);
+                        const r2BackdropDate = safeStr(item?.r2BackdropUrlDate || item?.R2BackdropUrl_Date);
+                        const missingCover = !r2Cover;
+                        const missingBackdrop = mediaType !== "book" && !r2Backdrop;
+                        return {
+                          mediaType,
+                          title,
+                          missingCover,
+                          missingBackdrop,
+                          coverSource,
+                          backdropSource,
+                          r2Cover,
+                          r2Backdrop,
+                          r2CoverDate,
+                          r2BackdropDate,
+                          fullySynced: !missingCover && !missingBackdrop,
+                        };
+                      })
+                      .filter((row) => Boolean(row.title));
 
-                  const isActive = selectedSyncCategory === key;
-                  const typeProgress = syncByCategory[key] || { current: 0, total: 0 };
+                  const movieRowsStatus = buildStatusRows(movieRows, "movie");
+                  const tvRowsStatus = buildStatusRows(tvRows, "tv");
+                  const gameRowsStatus = buildStatusRows(gameRows, "game");
+                  const bookRowsStatus = buildStatusRows(bookRows, "book");
+                  const allRowsStatus = [...movieRowsStatus, ...tvRowsStatus, ...gameRowsStatus, ...bookRowsStatus];
+
+                  const total = allRowsStatus.length;
+                  const fullySynced = allRowsStatus.filter((r) => r.fullySynced).length;
+                  const missingCover = allRowsStatus.filter((r) => r.missingCover).length;
+                  const missingBackdrop = allRowsStatus.filter((r) => r.mediaType !== "book" && r.missingBackdrop).length;
+                  const mediaLabel = (m: string) => (m === "movie" ? "Movies" : m === "tv" ? "Shows" : m === "game" ? "Games" : "Books");
+                  const statusRank = (row: any) => (row.fullySynced ? 3 : row.missingCover && row.missingBackdrop ? 0 : row.missingCover || row.missingBackdrop ? 1 : 2);
+                  const searchable = allRowsStatus.map((row) => ({
+                    ...row,
+                    mediaLabel: mediaLabel(row.mediaType),
+                    statusLabel: row.fullySynced ? "Synced" : row.missingCover && row.missingBackdrop ? "Missing cover + backdrop" : row.missingCover ? "Missing cover" : row.missingBackdrop ? "Missing backdrop" : "Partial",
+                  }));
+                  const filteredRows = searchable.filter((row) => {
+                    if (coverSyncMediaFilter !== "all" && row.mediaType !== coverSyncMediaFilter) return false;
+                    if (coverSyncStateFilter === "unsynced" && row.fullySynced) return false;
+                    if (coverSyncStateFilter === "synced" && !row.fullySynced) return false;
+                    if (coverSyncStateFilter === "missing-cover" && !row.missingCover) return false;
+                    if (coverSyncStateFilter === "missing-backdrop" && !row.missingBackdrop) return false;
+                    const q = coverSyncQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    return `${row.title} ${row.mediaType} ${row.statusLabel}`.toLowerCase().includes(q);
+                  });
+                  const sortedRows = [...filteredRows].sort((a, b) => {
+                    const direction = coverSyncSortDir === "asc" ? 1 : -1;
+                    if (coverSyncSortKey === "title") return a.title.localeCompare(b.title) * direction;
+                    if (coverSyncSortKey === "media") return a.mediaLabel.localeCompare(b.mediaLabel) * direction;
+                    if (coverSyncSortKey === "status") return (statusRank(a) - statusRank(b)) * direction;
+                    if (coverSyncSortKey === "coverDate") return (safeStr(a.r2CoverDate).localeCompare(safeStr(b.r2CoverDate))) * direction;
+                    return (safeStr(a.r2BackdropDate).localeCompare(safeStr(b.r2BackdropDate))) * direction;
+                  });
+
                   return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => loadItemsForCategory(key)}
-                      style={{
-                        flexShrink: 0,
-                        border: isActive ? `2px solid ${color}` : `1px solid ${color}4d`,
-                        borderRadius: 12,
-                        background: isActive ? `${color}18` : `${color}0d`,
-                        padding: "10px 16px",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                        minWidth: 120,
-                        textAlign: "left",
-                        transition: "border 120ms, background 120ms",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: "nowrap" }}>{label}</div>
-                      <div style={{ fontSize: 15, fontWeight: 750, color: "#1d2735" }}>
-                        {typeProgress.total > 0
-                          ? `${Math.min(typeProgress.current, typeProgress.total)}/${typeProgress.total}`
-                          : `${synced}/${total}`}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                        {[
+                          { label: "Total Media Items", value: String(total), accent: activeSidebarHighlightColors.home },
+                          { label: "Fully Synced", value: String(fullySynced), accent: activeSidebarHighlightColors.books },
+                          { label: "Missing R2 Cover", value: String(missingCover), accent: activeSidebarHighlightColors.movies },
+                          { label: "Missing R2 Backdrop", value: String(missingBackdrop), accent: activeSidebarHighlightColors.games },
+                        ].map((card) => (
+                          <div key={card.label} style={{ border: `1px solid ${hexToRgba(card.accent, 0.42, "#96a2b0")}`, borderRadius: 10, background: `linear-gradient(180deg, ${hexToRgba(card.accent, 0.2, "#ffffff")} 0%, ${hexToRgba(card.accent, 0.1, "#f7faff")} 100%)`, boxShadow: "0 1px 6px rgba(31,41,55,0.06)", padding: "10px 12px" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#4a5868" }}>{card.label}</div>
+                            <div style={{ marginTop: 4, fontSize: 18, fontWeight: 800, color: "#1d2735" }}>{card.value}</div>
+                          </div>
+                        ))}
                       </div>
-                      <div style={{ width: "100%", height: 4, borderRadius: 2, background: `${color}28`, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: total > 0 ? `${Math.round(((typeProgress.total > 0 ? Math.min(typeProgress.current, typeProgress.total) : synced) / total) * 100)}%` : "0%", background: color, transition: "width 300ms" }} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
 
-              {/* Items table */}
-              <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", padding: "16px 24px" }}>
-                {!selectedSyncCategory ? (
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#7b8794", fontSize: 14 }}>
-                    Select a category above to view and sync items
-                  </div>
-                ) : (
-                  <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", borderRadius: 14, border: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(255,255,255,0.94)" }}>
-                    {/* Table header */}
-                    <div style={{ display: "grid", gridTemplateColumns: "36px 2fr 0.8fr 1.1fr 2fr 2fr 0.9fr", gap: 8, padding: "11px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(244,245,247,0.97)", fontSize: 11, fontWeight: 700, color: "#4c5a66", flexShrink: 0 }}>
-                      <div style={{ textAlign: "right" }}>#</div>
-                      <div>Title</div>
-                      <div>Status</div>
-                      <div>Last Sync</div>
-                      <div>Source URL</div>
-                      <div>R2 URL</div>
-                      <div style={{ textAlign: "right" }}>Action</div>
-                    </div>
-                    {/* Table body */}
-                    <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
-                      {syncItems.length === 0 ? (
-                        <div style={{ padding: 24, color: "#6b7784", fontSize: 13 }}>No items loaded.</div>
-                      ) : (
-                        [...syncItems].sort((a, b) => {
-                          const order = { error: 0, pending: 1, missing: 2, syncing: 3, success: 4, synced: 5 };
-                          return (order[a.status as keyof typeof order] ?? 1) - (order[b.status as keyof typeof order] ?? 1);
-                        }).map((row, idx) => {
-                          const isDone = row.status === "synced" || row.status === "success";
-                          const isSyncing = row.status === "syncing";
-                          const isError = row.status === "error";
-                          const isMissing = row.status === "missing";
-                          const statusColor = isDone ? "#0b7f3f" : isSyncing ? "#7c5c00" : isError ? "#b4232f" : "#6b7280";
-                          const btnBorder = isDone ? "rgba(16,185,129,0.4)" : isSyncing ? "rgba(202,150,0,0.5)" : isError ? "rgba(180,35,47,0.4)" : "rgba(0,113,227,0.4)";
-                          const btnBg = isDone ? "rgba(16,185,129,0.12)" : isSyncing ? "rgba(255,190,0,0.15)" : isError ? "rgba(180,35,47,0.1)" : "rgba(0,113,227,0.08)";
-                          const btnColor = isDone ? "#0b8147" : isSyncing ? "#7c5c00" : isError ? "#b4232f" : "#0a4f9e";
-                          const btnLabel = isDone ? "Resync" : isMissing ? "No source" : isSyncing ? "Syncing…" : isError ? "Retry" : "Sync";
-                          const btnDisabled = isMissing || isSyncing;
-                          return (
-                            <div key={`${row.category}-${row.itemKey}-${idx}`} style={{ display: "grid", gridTemplateColumns: "36px 2fr 0.8fr 1.1fr 2fr 2fr 0.9fr", gap: 8, padding: "10px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.1)", alignItems: "center" }}>
-                              <div style={{ fontSize: 11, color: "#9aa3ad", fontWeight: 600, textAlign: "right" }}>{idx + 1}</div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: "#1f2937", wordBreak: "break-word" }}>{row.title}</div>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: statusColor, textTransform: "capitalize" }}>{row.status}</div>
-                              <div style={{ fontSize: 12, color: "#52606d" }}>{row.lastSync ? new Date(row.lastSync).toLocaleString() : "—"}</div>
-                              <div style={{ fontSize: 12, color: "#52606d", wordBreak: "break-all" }}>
-                                {row.sourceUrl ? <a href={row.sourceUrl} target="_blank" rel="noreferrer" style={{ color: "#52606d" }}>{row.sourceUrl}</a> : "—"}
-                              </div>
-                              <div style={{ fontSize: 12, color: "#0f4d91", wordBreak: "break-all" }}>
-                                {row.r2Url ? <a href={row.r2Url} target="_blank" rel="noreferrer" style={{ color: "#0f4d91" }}>{row.r2Url}</a> : "—"}
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => syncSingleItemToR2(row.itemKey)}
-                                  disabled={btnDisabled}
-                                  style={{
-                                    border: `1px solid ${btnBorder}`,
-                                    background: btnBg,
-                                    color: btnColor,
-                                    borderRadius: 8,
-                                    padding: "5px 10px",
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    cursor: btnDisabled ? "not-allowed" : "pointer",
-                                    transition: "background 200ms, border 200ms, color 200ms",
-                                  }}
-                                >
-                                  {btnLabel}
-                                </button>
-                              </div>
-                              {isError && row.error && (
-                                <div style={{ gridColumn: "2 / -1", fontSize: 11, color: "#b4232f", marginTop: -4, paddingBottom: 4 }}>
-                                  Error: {row.error}
-                                </div>
-                              )}
+                      <div style={{ border: "1px solid rgba(152, 162, 171, 0.22)", borderRadius: 12, background: "rgba(255,255,255,0.94)", overflow: "hidden" }}>
+                        <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.18)", background: "rgba(245,246,248,0.92)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#445262" }}>Library Image Sync List</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#5b6675" }}>{sortedRows.length} rows</div>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 120px 160px 130px 130px 130px 130px", gap: 8, padding: "10px 14px", background: "rgba(251,252,255,0.94)", borderBottom: "1px solid rgba(152, 162, 171, 0.16)", alignItems: "center" }}>
+                          <input
+                            value={coverSyncQuery}
+                            onChange={(e) => setCoverSyncQuery(e.target.value)}
+                            placeholder="Filter title or status…"
+                            style={{ border: "1px solid rgba(145,157,172,0.45)", borderRadius: 8, padding: "7px 9px", background: "rgba(255,255,255,0.95)", fontSize: 12, color: "#1c2738" }}
+                          />
+                          <select value={coverSyncMediaFilter} onChange={(e) => setCoverSyncMediaFilter(e.target.value as any)} style={{ border: "1px solid rgba(145,157,172,0.45)", borderRadius: 8, padding: "7px 8px", background: "rgba(255,255,255,0.95)", fontSize: 12 }}>
+                            <option value="all">All Media</option>
+                            <option value="movie">Movies</option>
+                            <option value="tv">Shows</option>
+                            <option value="game">Games</option>
+                            <option value="book">Books</option>
+                          </select>
+                          <select value={coverSyncStateFilter} onChange={(e) => setCoverSyncStateFilter(e.target.value as any)} style={{ border: "1px solid rgba(145,157,172,0.45)", borderRadius: 8, padding: "7px 8px", background: "rgba(255,255,255,0.95)", fontSize: 12 }}>
+                            <option value="unsynced">Unsynced</option>
+                            <option value="all">All Status</option>
+                            <option value="synced">Synced only</option>
+                            <option value="missing-cover">Missing cover</option>
+                            <option value="missing-backdrop">Missing backdrop</option>
+                          </select>
+                          <select value={coverSyncSortKey} onChange={(e) => setCoverSyncSortKey(e.target.value as any)} style={{ border: "1px solid rgba(145,157,172,0.45)", borderRadius: 8, padding: "7px 8px", background: "rgba(255,255,255,0.95)", fontSize: 12 }}>
+                            <option value="status">Sort: Status</option>
+                            <option value="title">Sort: Title</option>
+                            <option value="media">Sort: Media</option>
+                            <option value="coverDate">Sort: Cover Date</option>
+                            <option value="backdropDate">Sort: Backdrop Date</option>
+                          </select>
+                          <button type="button" onClick={() => setCoverSyncSortDir((prev) => prev === "asc" ? "desc" : "asc")} style={{ border: "1px solid rgba(121,131,145,0.5)", borderRadius: 8, padding: "7px 8px", background: "rgba(255,255,255,0.95)", fontSize: 12, fontWeight: 700, color: "#2f3c4d", cursor: "pointer" }}>
+                            {coverSyncSortDir === "asc" ? "Asc" : "Desc"}
+                          </button>
+                          <button type="button" onClick={() => { setCoverSyncQuery(""); setCoverSyncMediaFilter("all"); setCoverSyncStateFilter("unsynced"); setCoverSyncSortKey("status"); setCoverSyncSortDir("asc"); }} style={{ border: "1px solid rgba(121,131,145,0.5)", borderRadius: 8, padding: "7px 8px", background: "rgba(255,255,255,0.95)", fontSize: 12, fontWeight: 700, color: "#2f3c4d", cursor: "pointer" }}>
+                            Reset
+                          </button>
+                          <div style={{ display: "inline-flex", justifyContent: "center" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#4d5a6b", border: "1px solid rgba(152,162,171,0.35)", borderRadius: 999, padding: "4px 10px", background: "rgba(255,255,255,0.9)" }}>Airtable Mode</span>
+                          </div>
+                        </div>
+                        <div style={{ overflow: "auto", maxHeight: "60vh" }}>
+                          <div style={{ minWidth: 1180 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "2.2fr 0.9fr 1.4fr 1fr 1fr 1fr 1fr 1fr", gap: 8, padding: "9px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.2)", background: "rgba(247,249,252,0.96)", fontSize: 11, fontWeight: 750, color: "#5a6676", position: "sticky", top: 0, zIndex: 2 }}>
+                              <div>Title</div>
+                              <div>Media</div>
+                              <div>Status</div>
+                              <div>Source Cover</div>
+                              <div>Source Backdrop</div>
+                              <div>R2 Cover</div>
+                              <div>R2 Backdrop</div>
+                              <div>Last Sync</div>
                             </div>
-                          );
-                        })
-                      )}
+                            {sortedRows.length === 0 ? (
+                              <div style={{ padding: "22px 14px", color: "#758191", fontSize: 12 }}>No rows match current filters.</div>
+                            ) : (
+                              sortedRows.map((row, idx) => {
+                                const accent = row.mediaType === "movie" ? activeSidebarHighlightColors.movies : row.mediaType === "tv" ? activeSidebarHighlightColors.tv : row.mediaType === "game" ? activeSidebarHighlightColors.games : activeSidebarHighlightColors.books;
+                                const statusText = row.fullySynced ? "Synced" : row.missingCover && row.missingBackdrop ? "Missing cover + backdrop" : row.missingCover ? "Missing cover" : row.missingBackdrop ? "Missing backdrop" : "Partial";
+                                return (
+                                  <div key={`${row.mediaType}-${row.title}-${idx}`} style={{ display: "grid", gridTemplateColumns: "2.2fr 0.9fr 1.4fr 1fr 1fr 1fr 1fr 1fr", gap: 8, padding: "9px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.1)", background: idx % 2 === 0 ? "rgba(255,255,255,0.92)" : "rgba(250,252,255,0.92)", fontSize: 12, color: "#263342", alignItems: "center" }}>
+                                    <div style={{ fontWeight: 700, color: "#1f2a38", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.title}</div>
+                                    <div><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "3px 8px", border: `1px solid ${accent}5a`, background: `${accent}1a`, color: "#334054" }}>{row.mediaLabel}</span></div>
+                                    <div style={{ color: row.fullySynced ? "#0b7f3f" : "#9a4b00", fontWeight: 650 }}>{statusText}</div>
+                                    <div style={{ color: row.coverSource ? "#0b7f3f" : "#9b1c1c", fontWeight: 650 }}>{row.coverSource ? "Yes" : "No"}</div>
+                                    <div style={{ color: row.mediaType === "book" ? "#8390a0" : row.backdropSource ? "#0b7f3f" : "#9b1c1c", fontWeight: 650 }}>{row.mediaType === "book" ? "N/A" : row.backdropSource ? "Yes" : "No"}</div>
+                                    <div style={{ color: row.r2Cover ? "#0b7f3f" : "#9b1c1c", fontWeight: 650 }}>{row.r2Cover ? "Yes" : "No"}</div>
+                                    <div style={{ color: row.mediaType === "book" ? "#8390a0" : row.r2Backdrop ? "#0b7f3f" : "#9b1c1c", fontWeight: 650 }}>{row.mediaType === "book" ? "N/A" : row.r2Backdrop ? "Yes" : "No"}</div>
+                                    <div style={{ color: "#58677a", fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.r2CoverDate || row.r2BackdropDate || "—"}</div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    {/* Footer status */}
-                    {syncStatus === "complete" && syncResults && (
-                      <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(11,127,63,0.2)", background: "rgba(11,127,63,0.07)", color: "#0b7f3f", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-                        ✓ {syncResults.succeeded} synced{syncResults.failed > 0 ? `, ${syncResults.failed} failed` : ""}
-                      </div>
-                    )}
-                    {syncStatus === "error" && (
-                      <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(180,35,47,0.2)", background: "rgba(180,35,47,0.07)", color: "#b4232f", fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-                        Error during sync — check rows above for details.
-                      </div>
-                    )}
-                  </div>
-                )}
+                  );
+                })()} 
               </div>
             </div>
           ) : bookDetailItem && getMediaType(bookDetailItem) === "book" ? (
@@ -16805,6 +16867,7 @@ export default function Page() {
               }}
               onRate={(item) => handleOpenRateIt(item, "movie", sidebarHighlightColorsLight.movies)}
               getDisplayCoverUrl={getDisplayCoverUrl}
+              getDisplayBackdropUrl={getDisplayBackdropUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
               relatedMovies={movieRelated.movies}
               relatedMoviesLabel={movieRelated.label}
@@ -16825,6 +16888,7 @@ export default function Page() {
               }}
               onRate={(item) => handleOpenRateIt(item, "tv", sidebarHighlightColorsLight.tv)}
               getDisplayCoverUrl={getDisplayCoverUrl}
+              getDisplayBackdropUrl={getDisplayBackdropUrl}
               onPaletteChange={handleTvDetailPaletteChange}
               relatedShows={tvRelated.shows}
               relatedShowsLabel={tvRelated.label}
@@ -16845,6 +16909,7 @@ export default function Page() {
               }}
               onRate={(item) => handleOpenRateIt(item, "game", sidebarHighlightColorsLight.games)}
               getDisplayCoverUrl={getDisplayCoverUrl}
+              getDisplayBackdropUrl={getDisplayBackdropUrl}
               onPaletteChange={handleGameDetailPaletteChange}
               relatedGames={gameRelated.games}
               relatedGamesLabel={gameRelated.label}
