@@ -285,7 +285,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "8.6";
+const APP_VERSION = "9.0";
 const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
@@ -371,6 +371,8 @@ const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
+const TRANSPARENT_ICON_DATA_URI =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
@@ -454,6 +456,17 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "9.0",
+    date: "2026-05-13",
+    notes: [
+      "Standardized game details date display to MM-DD-YYYY for completed and release dates.",
+      "Aligned TV details first-air and last-air date formatting to MM-DD-YYYY for consistent detail-page dates.",
+      "Removed sidebar icon flash on initial load so uploaded icons behave as the default without briefly showing old fallback icons.",
+      "Fixed game edit-save behavior so saved changes update the open details page immediately instead of waiting for a refresh.",
+      "Updated save confirmation toast to explicitly show Google Sheet write success with a timestamp.",
+    ],
+  },
   {
     version: "8.7",
     date: "2026-05-10",
@@ -3567,9 +3580,11 @@ export default function Page() {
   const [gameDetailsEditOpen, setGameDetailsEditOpen] = useState(false);
   const [gameDetailEditItem, setGameDetailEditItem] = useState<any>(null);
   const [saveToast, setSaveToast] = useState(false);
+  const [lastSheetSaveAt, setLastSheetSaveAt] = useState<number | null>(null);
   const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerSaveToast = () => {
     if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
+    setLastSheetSaveAt(Date.now());
     setSaveToast(true);
     saveToastTimer.current = setTimeout(() => setSaveToast(false), 5000);
   };
@@ -3578,7 +3593,6 @@ export default function Page() {
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
   const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>(() => {
-    if (isReadOnlySettingsMode) return {};
     if (typeof window === "undefined") return {};
     try {
       const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
@@ -4377,6 +4391,8 @@ export default function Page() {
     }
   }, [isReadOnlySettingsMode, settingsRows]);
 
+  const sidebarIconsHydrated = settingsRows.length > 0 || Object.keys(sidebarIconOverrides).length > 0;
+
   useEffect(() => {
     if (!modalItem && !bookDetailItem) return;
 
@@ -4420,7 +4436,9 @@ export default function Page() {
 
   const getSidebarIconSrc = (iconKey: string, fallbackSrc: string): string => {
     const override = safeStr(sidebarIconOverrides[iconKey]);
-    return override || fallbackSrc;
+    if (override) return override;
+    if (!sidebarIconsHydrated) return TRANSPARENT_ICON_DATA_URI;
+    return fallbackSrc;
   };
 
   const openSidebarIconFilePicker = (event: ReactMouseEvent<HTMLElement>, iconKey: string) => {
@@ -6182,6 +6200,42 @@ export default function Page() {
       return;
     }
 
+    const buildGameNextItem = (prev: any) => ({
+      ...prev,
+      title: safeStr(updates.title) || prev.title,
+      cover: safeStr(updates.cover),
+      platform: safeStr(updates.platform),
+      status: safeStr(updates.status),
+      name: safeStr(updates.name),
+      releaseDate: safeStr(updates.releaseDate),
+      releaseDateAlt: safeStr(updates.releaseDateAlt),
+      platforms: safeStr(updates.platforms),
+      coverUrl: safeStr(updates.coverUrl),
+      rating: safeStr(updates.rating),
+      igdbRating: safeStr(updates.igdbRating),
+      myRating: safeStr(updates.myRating),
+      ownership: safeStr(updates.ownership),
+      format: safeStr(updates.format),
+      backlog: safeStr(updates.backlog),
+      completed: safeStr(updates.completed),
+      dateCompleted: safeStr(updates.dateCompleted),
+      yearPlayed: safeStr(updates.yearPlayed),
+      dateAdded: safeStr(updates.dateAdded),
+      description: safeStr(updates.description),
+      genres: safeStr(updates.genres),
+      hoursPlayed: safeStr(updates.hoursPlayed),
+      coverCachedAt: safeStr(updates.coverCachedAt),
+      developer: safeStr(updates.developer),
+      screenshotsUrl: safeStr(updates.screenshotsUrl),
+      wishlistOrder: safeStr(updates.wishlistOrder),
+      queuedOrder: safeStr(updates.queuedOrder),
+      igdbId: safeStr(updates.igdbId),
+      igdbIdOverride: safeStr(updates.igdbIdOverride),
+      localCoverUrl: safeStr(updates.localCoverUrl),
+      gameStatus: safeStr(updates.status),
+      playStatus: safeStr(updates.status),
+    });
+
     const payload = {
       action: "updateGame",
       match: {
@@ -6211,42 +6265,12 @@ export default function Page() {
 
     setModalItem((prev: any) => {
       if (!prev) return prev;
-      const nextItem = {
-        ...prev,
-        title: safeStr(updates.title) || prev.title,
-        cover: safeStr(updates.cover),
-        platform: safeStr(updates.platform),
-        status: safeStr(updates.status),
-        name: safeStr(updates.name),
-        releaseDate: safeStr(updates.releaseDate),
-        releaseDateAlt: safeStr(updates.releaseDateAlt),
-        platforms: safeStr(updates.platforms),
-        coverUrl: safeStr(updates.coverUrl),
-        rating: safeStr(updates.rating),
-        igdbRating: safeStr(updates.igdbRating),
-        myRating: safeStr(updates.myRating),
-        ownership: safeStr(updates.ownership),
-        format: safeStr(updates.format),
-        backlog: safeStr(updates.backlog),
-        completed: safeStr(updates.completed),
-        dateCompleted: safeStr(updates.dateCompleted),
-        yearPlayed: safeStr(updates.yearPlayed),
-        dateAdded: safeStr(updates.dateAdded),
-        description: safeStr(updates.description),
-        genres: safeStr(updates.genres),
-        hoursPlayed: safeStr(updates.hoursPlayed),
-        coverCachedAt: safeStr(updates.coverCachedAt),
-        developer: safeStr(updates.developer),
-        screenshotsUrl: safeStr(updates.screenshotsUrl),
-        wishlistOrder: safeStr(updates.wishlistOrder),
-        queuedOrder: safeStr(updates.queuedOrder),
-        igdbId: safeStr(updates.igdbId),
-        igdbIdOverride: safeStr(updates.igdbIdOverride),
-        localCoverUrl: safeStr(updates.localCoverUrl),
-        gameStatus: safeStr(updates.status),
-        playStatus: safeStr(updates.status),
-      };
-      return buildItemWithCoverSelection(nextItem, coverOverrides);
+      return buildItemWithCoverSelection(buildGameNextItem(prev), coverOverrides);
+    });
+
+    setGameDetailItem((prev: any) => {
+      if (!prev) return prev;
+      return buildItemWithCoverSelection(buildGameNextItem(prev), coverOverrides);
     });
 
     setGameRows((prev) =>
@@ -18547,7 +18571,9 @@ export default function Page() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6L9 17l-5-5" />
           </svg>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", letterSpacing: "0.01em" }}>Saved successfully</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", letterSpacing: "0.01em" }}>
+            {`Saved to Google Sheet${lastSheetSaveAt ? ` • ${new Date(lastSheetSaveAt).toLocaleTimeString()}` : ""}`}
+          </span>
         </div>
       </div>
 

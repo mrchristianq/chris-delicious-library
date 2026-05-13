@@ -44,6 +44,22 @@ function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
 function splitList(v: unknown): string[] { return safeStr(v).split(/[,|/]/g).map(p => p.trim()).filter(Boolean); }
 function formatYear(v: unknown): string { const r = safeStr(v); const m = r.match(/\b((?:19|20)\d{2})\b/); return m ? m[1] : r; }
+function formatMmDdYyyy(v: unknown): string {
+  const raw = safeStr(v);
+  if (!raw) return "";
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const mm = iso[2].padStart(2, "0");
+    const dd = iso[3].padStart(2, "0");
+    return `${mm}-${dd}-${iso[1]}`;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const yyyy = String(parsed.getFullYear());
+  return `${mm}-${dd}-${yyyy}`;
+}
 
 function toScorePct(raw: string): number {
   const n = parseFloat(raw);
@@ -237,7 +253,8 @@ export function GameDetailsPage({
   const myRating = safeStr(item.myRating || item.rating);
   const igdbRating = safeStr(item.igdbRating);
   const playStatus = safeStr(item.playStatus || item.gameStatus || item.status);
-  const dateCompleted = safeStr(item.dateCompleted);
+  const dateCompleted = formatMmDdYyyy(item.dateCompleted);
+  const releaseDate = formatMmDdYyyy(item.releaseDate || item.releaseDateAlt);
   const yearPlayed = safeStr(item.yearPlayed);
   const hoursPlayed = safeStr(item.hoursPlayed);
   const ownership = safeStr(item.ownership);
@@ -274,7 +291,7 @@ export function GameDetailsPage({
     hoursPlayed ? { label: "HOURS PLAYED", value: hoursPlayed } : null,
     platformDisplay ? { label: "PLATFORM", value: platformDisplay } : null,
     developer ? { label: "DEVELOPER", value: developer } : null,
-    year ? { label: "RELEASED", value: year } : null,
+    (releaseDate || year) ? { label: "RELEASED", value: releaseDate || year } : null,
     ownership ? { label: "OWNERSHIP", value: ownership } : null,
     ...tags.map(t => ({ label: "TAG", value: t })),
   ].filter(Boolean) as { label: string; value: string }[];

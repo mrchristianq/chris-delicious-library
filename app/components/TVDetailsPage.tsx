@@ -44,6 +44,22 @@ function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
 function splitList(v: unknown): string[] { return safeStr(v).split(/[,|/]/g).map(p => p.trim()).filter(Boolean); }
 function formatYear(v: unknown): string { const r = safeStr(v); const m = r.match(/\b((?:19|20)\d{2})\b/); return m ? m[1] : r; }
+function formatMmDdYyyy(v: unknown): string {
+  const raw = safeStr(v);
+  if (!raw) return "";
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const mm = iso[2].padStart(2, "0");
+    const dd = iso[3].padStart(2, "0");
+    return `${mm}-${dd}-${iso[1]}`;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const yyyy = String(parsed.getFullYear());
+  return `${mm}-${dd}-${yyyy}`;
+}
 
 function toScorePct(raw: string): number {
   const n = parseFloat(raw);
@@ -229,8 +245,8 @@ export function TVDetailsPage({
   const tmdbRating = safeStr(item.tmdbRating);
   const watchStatus = safeStr(item.watchStatus || item.watched);
   const tvShowStatus = safeStr(item.showStatus);
-  const firstAirDate = safeStr(item.firstAirDate);
-  const lastAirDate = safeStr(item.lastAirDate);
+  const firstAirDate = formatMmDdYyyy(item.firstAirDate);
+  const lastAirDate = formatMmDdYyyy(item.lastAirDate);
   const dateCompleted = safeStr(item.dateCompleted);
   const caughtUp = safeStr(item.caughtUp);
   const networks = safeStr(item.networks);
