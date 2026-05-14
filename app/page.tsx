@@ -2584,6 +2584,7 @@ export default function Page() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [mobileFullLibraryOpen, setMobileFullLibraryOpen] = useState(false);
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -4234,11 +4235,18 @@ export default function Page() {
   ]);
 
   const handleMobileNavSelect = useCallback((nextNav: NavKey) => {
+    setMobileFullLibraryOpen(false);
     setNav(nextNav);
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
     setMobileSearchOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (nav !== "home" && mobileFullLibraryOpen) {
+      setMobileFullLibraryOpen(false);
+    }
+  }, [mobileFullLibraryOpen, nav]);
 
   useEffect(() => {
     if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync") {
@@ -12310,14 +12318,24 @@ export default function Page() {
   }, [bookDetailItem, closeAllDetails, gameDetailItem, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
   const handleMobileHome = useCallback(() => {
     closeAllDetails();
+    setMobileFullLibraryOpen(false);
     setNav("home");
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
     setMobileSearchOpen(false);
   }, [closeAllDetails]);
+  const handleMobileFullLibrary = useCallback(() => {
+    closeAllDetails();
+    activateHomeLibrary();
+    setMobileFullLibraryOpen(true);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+    setMobileSearchOpen(false);
+  }, [activateHomeLibrary, closeAllDetails]);
   const mobileLandingVisible =
     isMobileLayout &&
     nav === "home" &&
+    !mobileFullLibraryOpen &&
     !query &&
     !bookDetailItem &&
     !movieDetailItem &&
@@ -17449,10 +17467,7 @@ export default function Page() {
                   type="button"
                   onClick={() => {
                     if (card.action === "library") {
-                      activateHomeLibrary();
-                      setMobileSidebarOpen(false);
-                      setMobileSettingsOpen(false);
-                      setMobileSearchOpen(false);
+                      handleMobileFullLibrary();
                       return;
                     }
                     handleMobileNavSelect(card.navKey);
@@ -17519,54 +17534,63 @@ export default function Page() {
                   DISCOVER
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileSidebarOpen(false);
-                      setMobileSettingsOpen(false);
-                      setMobileSearchOpen(false);
-                      setNav("statistics");
-                    }}
-                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
-                  >
-                    Statistics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileSidebarOpen(false);
-                      setMobileSettingsOpen(false);
-                      setMobileSearchOpen(false);
-                      setNav("roadmap");
-                    }}
-                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
-                  >
-                    Roadmap
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileSidebarOpen(false);
-                      setMobileSearchOpen(false);
-                      setThemesOpen(true);
-                      setMobileSettingsOpen(true);
-                    }}
-                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
-                  >
-                    Themes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileSidebarOpen(false);
-                      setMobileSettingsOpen(false);
-                      setMobileSearchOpen(false);
-                      setNav("cover-sync");
-                    }}
-                    style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "10px 9px", fontSize: 13, fontWeight: 800, textAlign: "left" }}
-                  >
-                    Cover Sync
-                  </button>
+                  {[
+                    {
+                      key: "statistics",
+                      label: "Statistics",
+                      icon: getSidebarIconSrc("statistics", "/icon-statistics.png"),
+                      action: () => {
+                        setMobileSidebarOpen(false);
+                        setMobileSettingsOpen(false);
+                        setMobileSearchOpen(false);
+                        setNav("statistics");
+                      },
+                    },
+                    {
+                      key: "roadmap",
+                      label: "Roadmap",
+                      icon: getSidebarIconSrc("roadmap", "/icon-statistics.png"),
+                      action: () => {
+                        setMobileSidebarOpen(false);
+                        setMobileSettingsOpen(false);
+                        setMobileSearchOpen(false);
+                        setNav("roadmap");
+                      },
+                    },
+                    {
+                      key: "themes",
+                      label: "Themes",
+                      icon: getSidebarIconSrc("themes", "/icon-theme.png"),
+                      action: () => {
+                        setMobileSidebarOpen(false);
+                        setMobileSearchOpen(false);
+                        setThemesOpen(true);
+                        setMobileSettingsOpen(true);
+                      },
+                    },
+                    {
+                      key: "cover-sync",
+                      label: "Cover Sync",
+                      icon: getSidebarIconSrc("r2-sync", "/icon-statistics.png"),
+                      action: () => {
+                        setMobileSidebarOpen(false);
+                        setMobileSettingsOpen(false);
+                        setMobileSearchOpen(false);
+                        setNav("cover-sync");
+                      },
+                    },
+                  ].map((item) => (
+                    <button
+                      key={`mobile-discover-card-${item.key}`}
+                      type="button"
+                      onClick={item.action}
+                      style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "9px 9px", fontSize: 13, fontWeight: 800, textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.icon} alt="" width={22} height={22} style={{ display: "block", objectFit: "contain", flex: "0 0 auto" }} />
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
               <div
@@ -17576,25 +17600,63 @@ export default function Page() {
                   background: "rgba(248, 250, 253, 0.86)",
                   boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
                   padding: 14,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 0.82fr) minmax(0, 1.18fr)",
+                  gap: 12,
+                  alignItems: "stretch",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>COVER SIZE</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#1f2c3f" }}>{mobileCoverScalePct}%</span>
+                <button
+                  type="button"
+                  onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
+                  aria-label="Toggle status indicators"
+                  aria-pressed={showStatusIndicators}
+                  style={{
+                    border: showStatusIndicators ? "1px solid rgba(91, 158, 72, 0.52)" : "1px solid rgba(145, 160, 182, 0.42)",
+                    borderRadius: 14,
+                    background: showStatusIndicators ? "rgba(105, 190, 88, 0.18)" : "rgba(255,255,255,0.68)",
+                    color: showStatusIndicators ? "#1f6f35" : "#1f2c3f",
+                    padding: "10px 8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    justifyContent: "center",
+                    gap: 5,
+                    cursor: "pointer",
+                    minHeight: 74,
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>STATUS</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 16, fontWeight: 900 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: showStatusIndicators ? "#41b65c" : "#9aa5b1",
+                        boxShadow: showStatusIndicators ? "0 0 0 3px rgba(65, 182, 92, 0.16)" : "none",
+                      }}
+                    />
+                    {showStatusIndicators ? "On" : "Off"}
+                  </span>
+                </button>
+                <div style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 14, background: "rgba(255,255,255,0.68)", padding: "10px 9px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, minWidth: 0, minHeight: 74 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>COVER SIZE</span>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#1f2c3f" }}>{mobileCoverScalePct}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={70}
+                    max={125}
+                    step={1}
+                    value={mobileCoverScalePct}
+                    onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
+                    aria-label="Scale all covers for mobile home view"
+                    style={{ width: "100%" }}
+                  />
                 </div>
-                <input
-                  type="range"
-                  min={70}
-                  max={125}
-                  step={1}
-                  value={mobileCoverScalePct}
-                  onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
-                  aria-label="Scale all covers for mobile home view"
-                  style={{ width: "100%" }}
-                />
               </div>
             </div>
           ) : (
