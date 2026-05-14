@@ -19276,7 +19276,7 @@ export default function Page() {
                             color: isSimpleShelfPresentation ? "rgba(45,55,72,0.72)" : "rgba(255,255,255,0.74)",
                           }}
                         >
-                          {watchlistTvSectionCounts[tvWatchlistShelfSection]} shows
+                          {tvWatchlistShelfSection ? watchlistTvSectionCounts[tvWatchlistShelfSection] : 0} shows
                         </span>
                       </div>
                     </div>
