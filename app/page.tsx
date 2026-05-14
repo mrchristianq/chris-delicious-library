@@ -67,6 +67,7 @@ type WishlistPointerDrag = {
   momentumX: number;
   momentumY: number;
   active: boolean;
+  startTimeMs?: number;
 };
 
 type WishlistDragPlacement = "before" | "after";
@@ -10422,7 +10423,8 @@ export default function Page() {
         token === "reading" ||
         token === "currently reading" ||
         token === "in progress" ||
-        token === "paused"
+        token === "paused" ||
+        token === "started"
       );
     };
     const isCompletedOrWatchedToken = (value?: string) => {
@@ -11866,6 +11868,7 @@ export default function Page() {
         momentumX: 0,
         momentumY: 0,
         active: false,
+        startTimeMs: performance.now(),
       };
 
       wishlistPointerDragRef.current = nextDrag;
@@ -11884,7 +11887,11 @@ export default function Page() {
       if (!currentDrag || currentDrag.pointerId !== event.pointerId) return;
 
       const distance = Math.hypot(event.clientX - currentDrag.startX, event.clientY - currentDrag.startY);
-      const active = currentDrag.active || distance >= 2;
+      const isTouchLike = event.pointerType === "touch" || event.pointerType === "pen" || isMobileLayout;
+      const dragActivationThreshold = isTouchLike ? 22 : 2;
+      const elapsedMs = performance.now() - (currentDrag.startTimeMs ?? 0);
+      const meetsTouchActivation = !isTouchLike || (distance >= dragActivationThreshold && elapsedMs >= 180);
+      const active = currentDrag.active || meetsTouchActivation;
 
       const nextDrag: WishlistPointerDrag = {
         ...currentDrag,
@@ -11934,7 +11941,7 @@ export default function Page() {
       wishlistDragHoverPlacementRef.current = target.placement;
       reorderWishlistDuringPointerDrag(currentDrag.key, target.key, target.placement);
     },
-    [activateWishlistPointerDrag, findWishlistDragTarget, reorderWishlistDuringPointerDrag, scheduleWishlistDragVisual]
+    [activateWishlistPointerDrag, findWishlistDragTarget, isMobileLayout, reorderWishlistDuringPointerDrag, scheduleWishlistDragVisual]
   );
 
   const handleWishlistGlobalPointerEnd = useCallback(
@@ -11998,7 +12005,9 @@ export default function Page() {
         token === "paused" ||
         token === "watching" ||
         token === "currently watching" ||
-        token === "started"
+        token === "started" ||
+        token === "watch next" ||
+        token === "pending return"
       );
     };
     const isCompletedOrWatchedToken = (value?: string) => {
@@ -17462,6 +17471,16 @@ export default function Page() {
           ) : mobileLandingVisible ? (
             <div style={{ padding: "58px 14px 0", display: "flex", flexDirection: "column", gap: 14 }}>
               {mobileLandingCards.map((card) => (
+                (() => {
+                  const isTightIconCard =
+                    card.key === "library" ||
+                    card.key === "books" ||
+                    card.key === "movies" ||
+                    card.key === "tv" ||
+                    card.key === "games";
+                  const iconSizePx = isTightIconCard ? 72 : 84;
+                  const labelMarginTop = isTightIconCard ? -10 : -1;
+                  return (
                 <button
                   key={`mobile-landing-card-${card.key}`}
                   type="button"
@@ -17477,7 +17496,7 @@ export default function Page() {
                     borderRadius: 18,
                     background: "rgba(248, 250, 253, 0.86)",
                     boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
-                    minHeight: 132,
+                    minHeight: 118,
                     padding: 14,
                     display: "grid",
                     gridTemplateColumns: "1fr auto",
@@ -17490,19 +17509,19 @@ export default function Page() {
                   <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 3, minWidth: 96, width: 96 }}>
                     <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={card.icon} alt="" width={84} height={84} style={{ display: "block", objectFit: "contain" }} />
+                      <img src={card.icon} alt="" width={iconSizePx} height={iconSizePx} style={{ display: "block", objectFit: "contain" }} />
                     </div>
-                    <div style={{ marginTop: -1, width: "100%", textAlign: "center", fontSize: 17, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.01em", lineHeight: 1.05 }}>
+                    <div style={{ marginTop: labelMarginTop, width: "100%", textAlign: "center", fontSize: 17, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.01em", lineHeight: 1.05 }}>
                       {card.label}
                     </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", minHeight: 104, minWidth: 120, paddingRight: 4 }}>
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", minHeight: 92, minWidth: 120, paddingRight: 4 }}>
                     {card.covers.map((coverUrl, index) => (
                       <div
                         key={`${card.key}-cover-${index}`}
                         style={{
-                          width: 76,
-                          height: 104,
+                          width: 68,
+                          height: 92,
                           borderRadius: 14,
                           overflow: "hidden",
                           border: "1px solid rgba(255,255,255,0.65)",
@@ -17517,6 +17536,8 @@ export default function Page() {
                     ))}
                   </div>
                 </button>
+                );
+                })()
               ))}
               <div
                 style={{
@@ -17669,7 +17690,7 @@ export default function Page() {
 			                  style={{
 			                    position: "sticky",
 			                    top: topSafeInset,
-		                    height: isMobileLayout && (nav === "books" || nav === "movies" || nav === "tv" || nav === "games") ? 56 : 45,
+		                    height: isMobileLayout && (nav === "books" || nav === "movies" || nav === "tv" || nav === "games" || showBacklogHeaderQuickLinks) ? 56 : 45,
 		                    overflow: "hidden",
 		                    background: isSimpleHeaderTheme
 		                      ? stickyHeaderSimpleBackground
@@ -17804,6 +17825,43 @@ export default function Page() {
                                   border: active ? `1px solid ${sidebarAccentPalette.games.border}` : "1px solid rgba(120,130,145,0.35)",
                                   background: active ? sidebarAccentPalette.games.background : "rgba(255,255,255,0.55)",
                                   color: active ? sidebarAccentPalette.games.text : "#4d5b6a",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      {showBacklogHeaderQuickLinks && isMobileLayout ? (
+                        <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+                          {backlogHeaderQuickLinks.map(({ key, label }) => {
+                            const active = activeBacklogQuickLink === key;
+                            return (
+                              <button
+                                key={`mobile-backlog-quick-link-${key}`}
+                                type="button"
+                                onClick={() => {
+                                  if (key === "home") {
+                                    activateHomeLibrary();
+                                    return;
+                                  }
+                                  if (key === "upcoming") {
+                                    setSortField("ReleaseDate");
+                                    setSortOrder("Asc");
+                                  }
+                                  setNav(key);
+                                }}
+                                style={{
+                                  height: 28,
+                                  padding: "0 10px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${sidebarAccentPalette.home.border}` : "1px solid rgba(120,130,145,0.35)",
+                                  background: active ? sidebarAccentPalette.home.background : "rgba(255,255,255,0.55)",
+                                  color: active ? "#ffffff" : "#4d5b6a",
                                   fontSize: 11,
                                   fontWeight: 800,
                                   whiteSpace: "nowrap",
@@ -19168,8 +19226,10 @@ export default function Page() {
                                 width: statusDotPixelSize,
                                 height: statusDotPixelSize,
                                 borderRadius: "50%",
-                                border: `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
-                                background: statusIndicator.color,
+                                border: getStatusIconSrc(statusIndicator.key)
+                                  ? "2px solid rgba(255,255,255,0.18)"
+                                  : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
+                                background: getStatusIconSrc(statusIndicator.key) ? "transparent" : statusIndicator.color,
                                 boxShadow:
                                   "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
                                 zIndex: 26,

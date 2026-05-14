@@ -165,6 +165,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: string
 
 export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew }: MovieDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -197,6 +198,14 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [isSaving, isSyncing, onClose, open, syncDiff]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateLayout = () => setIsMobileLayout(window.innerWidth <= 980);
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    return () => window.removeEventListener("resize", updateLayout);
+  }, []);
 
   // Auto-derive Release Status from Release Date
   useEffect(() => {
@@ -304,16 +313,16 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
         background: "rgba(7,10,16,0.42)",
         backdropFilter: "blur(14px) saturate(1.08)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 10,
+        padding: isMobileLayout ? 0 : 10,
       }}
       onClick={() => { if (!isSaving && !isSyncing) { if (syncDiff) { setSyncDiff(null); } else { onClose(); } } }}
     >
       <div
         style={{
-          width: "min(1100px,100%)",
-          maxHeight: "calc(100vh - 20px)",
+          width: isMobileLayout ? "100%" : "min(1100px,100%)",
+          maxHeight: isMobileLayout ? "100vh" : "calc(100vh - 20px)",
           overflow: "auto",
-          borderRadius: 18,
+          borderRadius: isMobileLayout ? 0 : 18,
           border: "1px solid rgba(255,255,255,0.55)",
           background: "linear-gradient(180deg,rgba(251,252,254,0.96) 0%,rgba(241,244,249,0.98) 100%)",
           boxShadow: "0 24px 48px rgba(15,23,40,0.26), inset 0 1px 0 rgba(255,255,255,0.86)",
@@ -323,17 +332,17 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
       >
         {/* Title bar */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "10px 14px", borderBottom: "1px solid rgba(167,177,191,0.42)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: isMobileLayout ? "wrap" : "nowrap",
+          padding: isMobileLayout ? "10px 10px" : "10px 14px", borderBottom: "1px solid rgba(167,177,191,0.42)",
           gap: 12,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: isMobileLayout ? "wrap" : "nowrap" }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
             <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>{isNew ? "Add Movie" : "Edit Movie"}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: isMobileLayout ? "wrap" : "nowrap" }}>
             {/* Sync notice / error inline */}
             {syncNotice && !syncDiff ? (
               <span style={{ fontSize: 11, color: "#335480" }}>{syncNotice}</span>
@@ -350,7 +359,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
               onClick={handleSyncFromTMDB}
               style={{
                 border: "1px solid rgba(0,113,227,0.4)", borderRadius: 8,
-                padding: "6px 12px",
+                padding: isMobileLayout ? "8px 10px" : "6px 12px",
                 background: isSyncing ? "rgba(0,113,227,0.07)" : "rgba(0,113,227,0.09)",
                 color: "#0071e3", cursor: isSyncing || isSaving ? "default" : "pointer",
                 fontSize: 12, fontWeight: 650,
@@ -366,7 +375,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
               onClick={handleSave}
               style={{
                 border: "1px solid rgba(27,83,217,0.5)", borderRadius: 8,
-                padding: "6px 12px",
+                padding: isMobileLayout ? "8px 10px" : "6px 12px",
                 background: "linear-gradient(180deg,rgba(86,150,255,0.95) 0%,rgba(45,109,237,0.98) 100%)",
                 color: "#f6f9ff", fontSize: 12, fontWeight: 750,
                 cursor: isSaving ? "default" : "pointer",
@@ -380,7 +389,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
               disabled={isSaving}
               style={{
                 border: "1px solid rgba(149,161,178,0.5)", borderRadius: 8,
-                padding: "6px 12px", background: "rgba(255,255,255,0.86)",
+                padding: isMobileLayout ? "8px 10px" : "6px 12px", background: "rgba(255,255,255,0.86)",
                 color: "#243244", cursor: "pointer", fontSize: 12, fontWeight: 650,
               }}
             >
@@ -506,7 +515,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
         ) : null}
 
         {/* Body */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,210px) minmax(0,1fr)", gap: 12, padding: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(180px,210px) minmax(0,1fr)", gap: 12, padding: isMobileLayout ? 10 : 12 }}>
 
           {/* Cover panel */}
           <div style={{
@@ -519,7 +528,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
               <img
                 src={posterUrl}
                 alt={safeStr(item.title) || "Movie poster"}
-                style={{ width: "100%", objectFit: "cover", maxHeight: 280, ...COVER_IMAGE_RADIUS_STYLE }}
+                style={{ width: "100%", objectFit: "cover", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }}
               />
             ) : (
               <div style={{
@@ -553,7 +562,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
             background: "rgba(255,255,255,0.78)", padding: 12,
             display: "flex", flexDirection: "column",
           }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
               {MOVIE_FIELDS.map((field) => (
                 <label
                   key={field.key}

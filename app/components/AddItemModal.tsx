@@ -63,6 +63,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
   const [isSearching, setIsSearching]     = useState(false);
   const [searchError, setSearchError]     = useState<string | null>(null);
   const [searched, setSearched]           = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const inputRef                          = useRef<HTMLInputElement>(null);
 
   // Reset when opening
@@ -83,6 +84,14 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [selectedType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateLayout = () => setIsMobileLayout(window.innerWidth <= 980);
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    return () => window.removeEventListener("resize", updateLayout);
+  }, []);
 
   // Keyboard dismiss
   useEffect(() => {
@@ -150,23 +159,26 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
       role="dialog"
       aria-modal="true"
       style={{
-        position: "fixed", inset: 0, zIndex: 9200,
-        background: "rgba(7,10,16,0.48)",
-        backdropFilter: "blur(16px) saturate(1.1)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 16,
+        position: "fixed", inset: 0, zIndex: isMobileLayout ? 2400 : 9200,
+        background: isMobileLayout ? "transparent" : "rgba(7,10,16,0.48)",
+        backdropFilter: isMobileLayout ? "none" : "blur(16px) saturate(1.1)",
+        display: "flex",
+        alignItems: isMobileLayout ? "stretch" : "center",
+        justifyContent: isMobileLayout ? "stretch" : "center",
+        padding: isMobileLayout ? 0 : 16,
         fontFamily: FONT,
       }}
-      onClick={onClose}
+      onClick={isMobileLayout ? undefined : onClose}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
+        onClick={isMobileLayout ? undefined : (e) => e.stopPropagation()}
         style={{
-          width: "min(580px, 100%)",
-          borderRadius: 18,
+          width: isMobileLayout ? "100%" : "min(580px, 100%)",
+          height: isMobileLayout ? "100%" : "auto",
+          borderRadius: isMobileLayout ? 0 : 18,
           border: "1px solid rgba(255,255,255,0.58)",
           background: "linear-gradient(180deg, rgba(251,252,254,0.97) 0%, rgba(241,244,249,0.99) 100%)",
-          boxShadow: "0 28px 56px rgba(10,18,36,0.30), inset 0 1px 0 rgba(255,255,255,0.90)",
+          boxShadow: isMobileLayout ? "none" : "0 28px 56px rgba(10,18,36,0.30), inset 0 1px 0 rgba(255,255,255,0.90)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
@@ -190,7 +202,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
           </span>
         </div>
 
-        <div style={{ padding: "20px 20px 24px", display: "flex", flexDirection: "column", gap: 20, overflow: "auto", maxHeight: "calc(100vh - 120px)" }}>
+        <div style={{ padding: isMobileLayout ? "16px 16px calc(env(safe-area-inset-bottom, 0px) + 112px)" : "20px 20px 24px", display: "flex", flexDirection: "column", gap: 20, overflow: "auto", maxHeight: isMobileLayout ? "none" : "calc(100vh - 120px)" }}>
 
           {/* ── Step 1: Type picker ── */}
           {!selectedType && (
@@ -198,14 +210,19 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
               <p style={{ margin: 0, fontSize: 12, color: "#6b7280", textAlign: "center", fontWeight: 500 }}>
                 What type of media would you like to add?
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(5, 1fr)", gap: isMobileLayout ? 10 : 8 }}>
                 {TYPE_OPTIONS.map((opt) => (
                   <button
                     key={opt.type}
                     onClick={() => setSelectedType(opt.type)}
                     style={{
-                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                      gap: 6, padding: "14px 10px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: isMobileLayout ? 12 : 10,
+                      padding: isMobileLayout ? "12px 12px 10px" : "14px 10px",
+                      minHeight: isMobileLayout ? 96 : undefined,
                       background: "rgba(255,255,255,0.85)",
                       border: "1px solid rgba(149,161,178,0.36)",
                       borderRadius: 13,
@@ -225,10 +242,10 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
                       (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
                     }}
                   >
-                    <span style={{ fontSize: 24, lineHeight: 1 }}>{opt.emoji}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", letterSpacing: 0.1 }}>{opt.label}</span>
+                    <span style={{ fontSize: isMobileLayout ? 34 : 24, lineHeight: 1 }}>{opt.emoji}</span>
+                    <span style={{ fontSize: isMobileLayout ? 18 : 12, fontWeight: 700, color: "#1e293b", letterSpacing: 0.1, textAlign: "center" }}>{opt.label}</span>
                     {opt.sub && (
-                      <span style={{ fontSize: 10, fontWeight: 500, color: "#6b7280", letterSpacing: 0.1 }}>{opt.sub}</span>
+                      <span style={{ fontSize: isMobileLayout ? 13 : 10, fontWeight: 500, color: "#6b7280", letterSpacing: 0.1, textAlign: "center" }}>{opt.sub}</span>
                     )}
                   </button>
                 ))}
@@ -275,18 +292,20 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
           {/* ── Step 2+: Search input ── */}
           {selectedType && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Back link */}
-              <button
-                onClick={() => { setSelectedType(null); setQuery(""); setResults([]); setSearched(false); }}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  background: "none", border: "none", cursor: "pointer",
-                  fontSize: 11.5, fontWeight: 600, color: "#6b7280",
-                  padding: "2px 0", alignSelf: "flex-start", fontFamily: FONT,
-                }}
-              >
-                ← Change type
-              </button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                {/* Back link */}
+                <button
+                  onClick={() => { setSelectedType(null); setQuery(""); setResults([]); setSearched(false); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 11.5, fontWeight: 600, color: "#6b7280",
+                    padding: "2px 0", alignSelf: "flex-start", fontFamily: FONT,
+                  }}
+                >
+                  ← Change type
+                </button>
+              </div>
 
               <div style={{ display: "flex", gap: 8 }}>
                 <input
@@ -302,18 +321,46 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
                     borderRadius: 10,
                     padding: "9px 12px",
                     background: "rgba(255,255,255,0.94)",
-                    fontSize: 13,
+                    fontSize: isMobileLayout ? 16 : 13,
                     color: "#1c2738",
                     fontFamily: FONT,
                     outline: "none",
                     boxShadow: "inset 0 1px 3px rgba(0,0,0,0.06)",
                   }}
                 />
+                {!isMobileLayout && (
+                  <button
+                    onClick={handleSearch}
+                    disabled={!query.trim() || isSearching}
+                    style={{
+                      padding: "9px 18px",
+                      background: (!query.trim() || isSearching)
+                        ? "rgba(149,161,178,0.22)"
+                        : "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
+                      border: "none",
+                      borderRadius: 10,
+                      color: (!query.trim() || isSearching) ? "#9ca3af" : "#fff",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: (!query.trim() || isSearching) ? "not-allowed" : "pointer",
+                      fontFamily: FONT,
+                      boxShadow: (!query.trim() || isSearching) ? "none" : "0 2px 8px rgba(37,99,235,0.28)",
+                      whiteSpace: "nowrap",
+                      transition: "all 0.1s ease",
+                    }}
+                  >
+                    {isSearching ? "Searching…" : "Search"}
+                  </button>
+                )}
+              </div>
+
+              {isMobileLayout && (
                 <button
                   onClick={handleSearch}
                   disabled={!query.trim() || isSearching}
                   style={{
-                    padding: "9px 18px",
+                    width: "100%",
+                    padding: "10px 14px",
                     background: (!query.trim() || isSearching)
                       ? "rgba(149,161,178,0.22)"
                       : "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
@@ -321,17 +368,16 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
                     borderRadius: 10,
                     color: (!query.trim() || isSearching) ? "#9ca3af" : "#fff",
                     fontSize: 13,
-                    fontWeight: 600,
+                    fontWeight: 650,
                     cursor: (!query.trim() || isSearching) ? "not-allowed" : "pointer",
                     fontFamily: FONT,
                     boxShadow: (!query.trim() || isSearching) ? "none" : "0 2px 8px rgba(37,99,235,0.28)",
-                    whiteSpace: "nowrap",
                     transition: "all 0.1s ease",
                   }}
                 >
                   {isSearching ? "Searching…" : "Search"}
                 </button>
-              </div>
+              )}
 
               {/* Add manually link */}
               <button

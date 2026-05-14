@@ -506,6 +506,7 @@ export function MovieDetailsPage({
             display: "flex",
             alignItems: isMobileLayout ? "flex-start" : "stretch",
             flexDirection: isMobileLayout ? "column" : "row",
+            paddingTop: isMobileLayout ? 56 : 0,
           }}>
             {/* Left: poster — bottom-anchored */}
             <div style={{
