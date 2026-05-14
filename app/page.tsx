@@ -19945,11 +19945,12 @@ export default function Page() {
                                 height: statusDotPixelSize,
                                 borderRadius: "50%",
                                 border: getStatusIconSrc(statusIndicator.key)
-                                  ? "2px solid rgba(255,255,255,0.18)"
+                                  ? "none"
                                   : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
                                 background: getStatusIconSrc(statusIndicator.key) ? "transparent" : statusIndicator.color,
-                                boxShadow:
-                                  "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
+                                boxShadow: getStatusIconSrc(statusIndicator.key)
+                                  ? "0 2px 6px rgba(0,0,0,0.35)"
+                                  : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
                                 zIndex: 26,
                                 pointerEvents: "none",
                               }}
