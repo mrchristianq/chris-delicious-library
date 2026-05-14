@@ -392,6 +392,7 @@ const MEDIA_COVER_SIZE_SETTING_KEYS = {
   audiobooks: "mediaCoverSizePct:audiobooks",
 } as const;
 const SHELF_THEME_MODE_SETTING_KEY = "shelfThemeMode";
+const COVER_TITLES_VISIBLE_SETTING_KEY = "coverTitlesVisible";
 const DEFAULT_MEDIA_COVER_SIZE_PCT = {
   tv: 93,
   movies: 100,
@@ -1701,10 +1702,11 @@ type StatusIndicator = {
   label: string;
 };
 
-type TvWatchlistSectionKey = "pendingReturn" | "watching" | "backlog";
+type TvWatchlistSectionKey = "watching" | "watchNext" | "paused" | "notStarted";
 
 type TvWatchlistSectionMeta = {
   label: string;
+  headerColor: string;
   badgeBackground: string;
   badgeBorder: string;
   badgeColor: string;
@@ -1728,13 +1730,13 @@ const STATUS_DOT_MIN_SIZE = 8;
 const STATUS_DOT_MAX_SIZE = 40;
 const STATUS_DOT_NUDGE_LEFT_PX = 7;
 const STATUS_DOT_NUDGE_UP_PX = 7;
+const TV_WATCHLIST_SECTION_HEADER_SPACE = 42;
 
-const TV_WATCHLIST_SECTION_ORDER: TvWatchlistSectionKey[] = ["watching", "backlog", "pendingReturn"];
+const TV_WATCHLIST_SECTION_ORDER: TvWatchlistSectionKey[] = ["watching", "watchNext", "paused", "notStarted"];
 const TV_WATCHLIST_ACTIVE_STATUSES = new Set([
   "watching",
   "currently watching",
   "in progress",
-  "watch next",
 ]);
 const TV_HEADER_WATCHING_STATUSES = new Set([
   "watching",
@@ -1743,22 +1745,33 @@ const TV_HEADER_WATCHING_STATUSES = new Set([
   "paused",
   "pending return",
 ]);
-const TV_WATCHLIST_BACKLOG_STATUSES = new Set(["backlog", "wishlist", "paused"]);
+const TV_WATCHLIST_PAUSED_STATUSES = new Set(["paused", "pending return"]);
+const TV_WATCHLIST_NOT_STARTED_STATUSES = new Set(["backlog", "wishlist"]);
 const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
-  pendingReturn: {
-    label: "Pending Return",
-    badgeBackground: "rgba(57, 117, 163, 0.9)",
-    badgeBorder: "rgba(169, 221, 255, 0.82)",
-    badgeColor: "rgba(238, 248, 255, 0.98)",
-  },
   watching: {
     label: "Watching",
+    headerColor: STATUS_COLOR_YELLOW,
     badgeBackground: "rgba(117, 90, 34, 0.88)",
     badgeBorder: "rgba(241, 213, 141, 0.82)",
     badgeColor: "rgba(255, 247, 224, 0.98)",
   },
-  backlog: {
-    label: "Backlog",
+  watchNext: {
+    label: "Watch Next",
+    headerColor: STATUS_COLOR_GREEN,
+    badgeBackground: "rgba(45, 99, 74, 0.9)",
+    badgeBorder: "rgba(158, 236, 193, 0.84)",
+    badgeColor: "rgba(231, 255, 243, 0.98)",
+  },
+  paused: {
+    label: "Paused",
+    headerColor: STATUS_COLOR_ORANGE,
+    badgeBackground: "rgba(117, 90, 34, 0.9)",
+    badgeBorder: "rgba(241, 213, 141, 0.84)",
+    badgeColor: "rgba(255, 247, 224, 0.98)",
+  },
+  notStarted: {
+    label: "Not Started",
+    headerColor: STATUS_COLOR_RED,
     badgeBackground: "rgba(84, 55, 96, 0.9)",
     badgeBorder: "rgba(202, 167, 223, 0.82)",
     badgeColor: "rgba(249, 236, 255, 0.98)",
@@ -1767,10 +1780,11 @@ const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectio
 
 function getTvWatchlistSectionKey(rawStatus?: string): TvWatchlistSectionKey {
   const status = normalizeStatusToken(rawStatus);
-  if (status === "pending return") return "pendingReturn";
+  if (status === "watch next") return "watchNext";
+  if (TV_WATCHLIST_PAUSED_STATUSES.has(status)) return "paused";
   if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "watching";
-  if (TV_WATCHLIST_BACKLOG_STATUSES.has(status)) return "backlog";
-  return "backlog";
+  if (TV_WATCHLIST_NOT_STARTED_STATUSES.has(status)) return "notStarted";
+  return "notStarted";
 }
 
 function getTvWatchlistBadgeLabel(rawStatus?: string, fallbackSection?: TvWatchlistSectionKey): string {
@@ -1790,11 +1804,7 @@ function getTvWatchlistBadgeColors(
 ): TvWatchlistBadgeColors {
   const status = normalizeStatusToken(rawStatus);
   if (status === "paused") {
-    return {
-      badgeBackground: "rgba(117, 90, 34, 0.9)",
-      badgeBorder: "rgba(241, 213, 141, 0.84)",
-      badgeColor: "rgba(255, 247, 224, 0.98)",
-    };
+    return TV_WATCHLIST_SECTION_META.paused;
   }
   if (status === "backlog" || status === "wishlist") {
     return {
@@ -1804,14 +1814,14 @@ function getTvWatchlistBadgeColors(
     };
   }
   if (status === "pending return") {
-    return TV_WATCHLIST_SECTION_META.pendingReturn;
+    return {
+      badgeBackground: "rgba(57, 117, 163, 0.9)",
+      badgeBorder: "rgba(169, 221, 255, 0.82)",
+      badgeColor: "rgba(238, 248, 255, 0.98)",
+    };
   }
   if (status === "watch next") {
-    return {
-      badgeBackground: "rgba(45, 99, 74, 0.9)",
-      badgeBorder: "rgba(158, 236, 193, 0.84)",
-      badgeColor: "rgba(231, 255, 243, 0.98)",
-    };
+    return TV_WATCHLIST_SECTION_META.watchNext;
   }
   if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) {
     return TV_WATCHLIST_SECTION_META.watching;
@@ -1819,12 +1829,12 @@ function getTvWatchlistBadgeColors(
   if (fallbackSection) {
     return TV_WATCHLIST_SECTION_META[fallbackSection];
   }
-  return TV_WATCHLIST_SECTION_META.backlog;
+  return TV_WATCHLIST_SECTION_META.notStarted;
 }
 
-function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource): TvWatchlistSectionKey {
+function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource | null | undefined): TvWatchlistSectionKey {
   return getTvWatchlistSectionKey(
-    safeStr(item.watchStatus) || safeStr(item.watched) || safeStr(item.showStatus) || safeStr(item.status)
+    safeStr(item?.watchStatus) || safeStr(item?.watched) || safeStr(item?.showStatus) || safeStr(item?.status)
   );
 }
 
@@ -2197,7 +2207,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
 type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
@@ -2379,7 +2389,9 @@ export default function Page() {
     nav === "smart-custom" ||
     nav === "statistics" ||
     nav === "roadmap" ||
-    nav === "cover-sync";
+    nav === "cover-sync" ||
+    nav === "themes" ||
+    nav === "icons";
   const isHomeSidebar = nav === "home" || isBacklogSidebarView || isSmartListOrDiscoverNav;
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
@@ -2548,7 +2560,6 @@ export default function Page() {
     (nav === "movies" && movieUpcomingFilter) ||
     (nav === "tv" && tvViewMode === "upcoming") ||
     (nav === "games" && gameViewMode === "upcoming");
-  const [watchlistTvSectionFilter, setWatchlistTvSectionFilter] = useState<TvWatchlistSectionKey>("watching");
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
   const [wishlistManualOrderKeys, setWishlistManualOrderKeys] = useState<string[]>([]);
@@ -2576,6 +2587,7 @@ export default function Page() {
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
+  const [coverTitlesVisible, setCoverTitlesVisible] = useState<boolean>(false);
   const [sandboxMode, setSandboxMode] = useState<boolean>(false);
   const [coverTrimAssets, setCoverTrimAssets] = useState<Record<string, { url: string; aspect: number }>>({});
   const [viewportW, setViewportW] = useState(0);
@@ -2608,11 +2620,9 @@ export default function Page() {
     setGameYearPlayedFilter(null);
     setGameGenreFilter(null);
     setWishlistFilter(false);
-    setWatchlistTvSectionFilter("watching");
   }, []);
 
   const DISABLE_INSETS = true;
-  const COVER_STAGE_BACKGROUND = "#ececec";
 
   const measureCoverTrimBounds = useCallback((src: string, img: HTMLImageElement) => {
     if (!src || !img?.naturalWidth || !img?.naturalHeight) return;
@@ -2706,7 +2716,6 @@ export default function Page() {
   const [discoverSidebarHeaderFontSize, setDiscoverSidebarHeaderFontSize] = useState<number>(11);
   const [discoverSidebarHeaderFontWeight, setDiscoverSidebarHeaderFontWeight] = useState<string>("700");
   const [discoverSidebarIconSize, setDiscoverSidebarIconSize] = useState<number>(16);
-  const [themesOpen, setThemesOpen] = useState<boolean>(false);
   const [shelfThemeMode, setShelfThemeMode] = useState<ShelfThemeMode>("light");
   const [sidebarSectionGap, setSidebarSectionGap] = useState<number>(3);
   const [librarySidebarItemGap, setLibrarySidebarItemGap] = useState<number>(0);
@@ -2863,6 +2872,10 @@ export default function Page() {
   const isDarkSidebarTheme = false;
   const isDarkShelfMode = shelfThemeMode === "dark";
   const isClassicShelfMode = shelfThemeMode === "classic";
+  const COVER_STAGE_BACKGROUND = isDarkShelfMode ? "#1a1d22" : "#ececec";
+  const coverSurfaceBoxShadow = isDarkShelfMode
+    ? "0 0 6px 0 rgba(0, 0, 0, 0.6)"
+    : undefined;
   const isElectricBlueSidebarTheme = false;
   const activeSidebarHighlightColors =
     shelfThemeMode === "dark"
@@ -3471,6 +3484,7 @@ export default function Page() {
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
   const UPCOMING_LABEL_SPACE = -3;
+  const COVER_TITLE_LABEL_SPACE = 28;
   const RAW_COVER_STANDARD_GAP = 10;
   const LIP_FROM_BOTTOM = 5;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
@@ -3647,6 +3661,22 @@ export default function Page() {
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [uploadingStatusIconKey, setUploadingStatusIconKey] = useState<string | null>(null);
+  type IconCropEditorState = {
+    iconKind: "sidebar" | "status";
+    iconKey: string;
+    iconLabel: string;
+    sourceUrl: string;
+    natural: { width: number; height: number };
+    baseScale: number;
+    zoomX: number;
+    zoomY: number;
+    offsetX: number;
+    offsetY: number;
+    saving: boolean;
+  };
+  const [iconCropEditor, setIconCropEditor] = useState<IconCropEditorState | null>(null);
+  type IconCropPickerTarget = { iconKind: "sidebar" | "status"; iconKey: string; iconLabel: string };
+  const [iconCropPickerTarget, setIconCropPickerTarget] = useState<IconCropPickerTarget | null>(null);
   const [sidebarIconRefreshVersion, setSidebarIconRefreshVersion] = useState<number>(0);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   type SyncCategory =
@@ -3724,6 +3754,7 @@ export default function Page() {
   const sidebarIconTargetKeyRef = useRef<string | null>(null);
   const statusIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const statusIconTargetKeyRef = useRef<string | null>(null);
+  const iconCropPickerInputRef = useRef<HTMLInputElement | null>(null);
   const debugHeaderLayerRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -4297,6 +4328,34 @@ export default function Page() {
     setMobileSettingsOpen(false);
   }, []);
 
+  const openThemesView = useCallback(() => {
+    setNav("themes");
+    setSortPopupOpen(false);
+    setSettingsPopupOpen(false);
+    setFaqPopupOpen(false);
+    setShowVersionNotes(false);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, []);
+
+  const handleExitThemes = useCallback(() => {
+    setNav(lastLibraryNav || "home");
+  }, [lastLibraryNav]);
+
+  const openIconsView = useCallback(() => {
+    setNav("icons");
+    setSortPopupOpen(false);
+    setSettingsPopupOpen(false);
+    setFaqPopupOpen(false);
+    setShowVersionNotes(false);
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, []);
+
+  const handleExitIcons = useCallback(() => {
+    setNav(lastLibraryNav || "home");
+  }, [lastLibraryNav]);
+
   const handleExitCoverSync = useCallback(() => {
     setNav(lastLibraryNav || "home");
     setMobileSidebarOpen(false);
@@ -4661,6 +4720,245 @@ export default function Page() {
       event.target.value = "";
     }
   };
+
+  const ICON_CROP_VIEWPORT = 280;
+  const ICON_CROP_OUTPUT = 512;
+
+  const beginIconCrop = (target: IconCropPickerTarget) => {
+    setIconCropPickerTarget(target);
+    const input = iconCropPickerInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+
+  const loadIconImageDataUrl = async (url: string): Promise<string> => {
+    // Determine whether the URL is absolute (cross-origin) — if so route through
+    // /api/cover-proxy so the response is same-origin and safe for canvas draws.
+    let fetchUrl = url;
+    try {
+      if (typeof window !== "undefined") {
+        const parsed = new URL(url, window.location.origin);
+        if (parsed.origin !== window.location.origin) {
+          fetchUrl = `/api/cover-proxy?src=${encodeURIComponent(parsed.toString())}`;
+        }
+      }
+    } catch {
+      // Not a parseable URL — fall through to direct fetch.
+    }
+    let res: Response;
+    try {
+      res = await fetch(fetchUrl, { cache: "no-cache" });
+    } catch (e) {
+      // Direct fetch threw (likely network/CORS). If we didn't already use the proxy, try it.
+      if (fetchUrl === url) {
+        res = await fetch(`/api/cover-proxy?src=${encodeURIComponent(url)}`, { cache: "no-cache" });
+      } else {
+        throw e;
+      }
+    }
+    if (!res.ok) {
+      // Proxy fallback for same-origin URLs that 4xx'd (rare, but safe).
+      if (fetchUrl === url) {
+        res = await fetch(`/api/cover-proxy?src=${encodeURIComponent(url)}`, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`Failed to load icon image (${res.status}).`);
+      } else {
+        throw new Error(`Failed to load icon image (${res.status}).`);
+      }
+    }
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to decode icon image."));
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const openEmptyIconEditor = (target: IconCropPickerTarget) => {
+    setIconCropEditor({
+      iconKind: target.iconKind,
+      iconKey: target.iconKey,
+      iconLabel: target.iconLabel,
+      sourceUrl: "",
+      natural: { width: 0, height: 0 },
+      baseScale: 1,
+      zoomX: 1,
+      zoomY: 1,
+      offsetX: 0,
+      offsetY: 0,
+      saving: false,
+    });
+  };
+
+  const openIconEditorWithUrl = async (target: IconCropPickerTarget, url: string) => {
+    try {
+      const dataUrl = await loadIconImageDataUrl(url);
+      const img = new Image();
+      const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+        img.onerror = () => reject(new Error("Failed to load image."));
+        img.src = dataUrl;
+      });
+      const baseScale = ICON_CROP_VIEWPORT / Math.max(dims.width, dims.height);
+      setIconCropEditor({
+        iconKind: target.iconKind,
+        iconKey: target.iconKey,
+        iconLabel: target.iconLabel,
+        sourceUrl: dataUrl,
+        natural: dims,
+        baseScale,
+        zoomX: 1,
+        zoomY: 1,
+        offsetX: 0,
+        offsetY: 0,
+        saving: false,
+      });
+    } catch (e: any) {
+      console.warn("Falling back to file picker for icon edit:", e);
+      beginIconCrop(target);
+    }
+  };
+
+  const handleIconCropFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const target = iconCropPickerTarget;
+    setIconCropPickerTarget(null);
+    if (!file || !target) {
+      event.target.value = "";
+      return;
+    }
+    if (!safeStr(file.type).toLowerCase().startsWith("image/")) {
+      alert("Please select an image file.");
+      event.target.value = "";
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const img = new Image();
+      const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+        img.onerror = () => reject(new Error("Failed to load image."));
+        img.src = dataUrl;
+      });
+      const baseScale = ICON_CROP_VIEWPORT / Math.max(dims.width, dims.height);
+      setIconCropEditor((prev) => {
+        // If an editor is already open for this same icon, replace the image in place.
+        if (prev && prev.iconKind === target.iconKind && prev.iconKey === target.iconKey) {
+          return {
+            ...prev,
+            sourceUrl: dataUrl,
+            natural: dims,
+            baseScale,
+            zoomX: 1,
+            zoomY: 1,
+            offsetX: 0,
+            offsetY: 0,
+            saving: false,
+          };
+        }
+        return {
+          iconKind: target.iconKind,
+          iconKey: target.iconKey,
+          iconLabel: target.iconLabel,
+          sourceUrl: dataUrl,
+          natural: dims,
+          baseScale,
+          zoomX: 1,
+          zoomY: 1,
+          offsetX: 0,
+          offsetY: 0,
+          saving: false,
+        };
+      });
+    } catch (e: any) {
+      alert(e?.message || "Could not read that image.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const renderCroppedIconBlob = async (state: IconCropEditorState): Promise<Blob> => {
+    const canvas = document.createElement("canvas");
+    canvas.width = ICON_CROP_OUTPUT;
+    canvas.height = ICON_CROP_OUTPUT;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context unavailable.");
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Failed to draw image."));
+      img.src = state.sourceUrl;
+    });
+    const ratio = ICON_CROP_OUTPUT / ICON_CROP_VIEWPORT;
+    const scaleX = state.baseScale * state.zoomX * ratio;
+    const scaleY = state.baseScale * state.zoomY * ratio;
+    const displayedW = state.natural.width * scaleX;
+    const displayedH = state.natural.height * scaleY;
+    const centerX = ICON_CROP_OUTPUT / 2 + state.offsetX * ratio;
+    const centerY = ICON_CROP_OUTPUT / 2 + state.offsetY * ratio;
+    ctx.fillStyle = "rgba(0,0,0,0)";
+    ctx.clearRect(0, 0, ICON_CROP_OUTPUT, ICON_CROP_OUTPUT);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(
+      img,
+      0, 0, state.natural.width, state.natural.height,
+      centerX - displayedW / 2, centerY - displayedH / 2, displayedW, displayedH
+    );
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Failed to encode image."))), "image/png", 0.95);
+    });
+  };
+
+  const commitIconCrop = async () => {
+    const state = iconCropEditor;
+    if (!state || state.saving) return;
+    setIconCropEditor({ ...state, saving: true });
+    try {
+      const blob = await renderCroppedIconBlob(state);
+      const filename = `${state.iconKind}-${state.iconKey}.png`;
+      const formData = new FormData();
+      formData.append("file", new File([blob], filename, { type: "image/png" }));
+      if (state.iconKind === "sidebar") {
+        formData.append("itemKey", `sidebar-icon-${state.iconKey}`);
+        formData.append("mediaType", "sidebar-icon");
+        formData.append("title", state.iconKey);
+        formData.append("objectKey", `icons/sidebar/${state.iconKey}`);
+        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        setSidebarIconRefreshVersion((v) => v + 1);
+      } else {
+        formData.append("itemKey", `status-icon-${state.iconKey}`);
+        formData.append("mediaType", "status-icon");
+        formData.append("title", state.iconKey);
+        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        const iconUrl = String(payload.url);
+        setStatusIconOverrides((prev) => {
+          const next = { ...prev, [state.iconKey]: iconUrl };
+          try { localStorage.setItem(STATUS_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next)); } catch {}
+          return next;
+        });
+        saveSetting(`${STATUS_ICON_SETTING_PREFIX}${state.iconKey}`, iconUrl, "Status Icons", `Custom status icon for ${state.iconKey}`);
+      }
+      setSyncState("ok");
+      setSyncMsg("Icon saved");
+      setLastSyncAt(Date.now());
+      setTimeout(() => setSyncMsg("Synced"), 1200);
+      setIconCropEditor(null);
+    } catch (e: any) {
+      const msg = e?.message || "Failed to save icon.";
+      setSyncState("error");
+      setSyncMsg(msg);
+      alert(msg);
+      setIconCropEditor((prev) => (prev ? { ...prev, saving: false } : prev));
+    }
+  };
+
+  const cancelIconCrop = () => setIconCropEditor(null);
 
   const resetStatusIconOverride = useCallback((statusKey: string) => {
     setStatusIconOverrides((prev) => {
@@ -7376,7 +7674,8 @@ export default function Page() {
     setRatingBadgeOffsetX(getSetting("ratingBadgeOffsetX", 0));
     setRatingBadgeOffsetY(getSetting("ratingBadgeOffsetY", 0));
     setShelfThemeMode(normalizeShelfThemeMode(getSetting(SHELF_THEME_MODE_SETTING_KEY, "light")));
-    
+    setCoverTitlesVisible(getSetting(COVER_TITLES_VISIBLE_SETTING_KEY, false));
+
     setIconSize(getSetting("iconSize", 16));
     
     setSidebarFontSize(getSetting("sidebarFontSize", 11));
@@ -7961,11 +8260,6 @@ export default function Page() {
   }, [getSetting, nav]);
 
   useEffect(() => {
-    if (nav !== "watchlist-tv") return;
-    setWatchlistTvSectionFilter("watching");
-  }, [nav]);
-
-  useEffect(() => {
     const smartListSupportsManualSort = nav === "smart-custom" && Boolean(activeSmartList?.allowManualSort);
     if (
       nav === "wishlist" ||
@@ -8081,6 +8375,7 @@ export default function Page() {
       { key: "sidebarHighlightColorDark:games", value: sidebarHighlightColorsDark.games, category: "Sidebar", description: "Games Highlight Color (Dark)" },
       { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
       { key: SHELF_THEME_MODE_SETTING_KEY, value: shelfThemeMode, category: "Themes", description: "Shelf Theme Mode" },
+      { key: COVER_TITLES_VISIBLE_SETTING_KEY, value: coverTitlesVisible, category: "Themes", description: "Show item titles under covers" },
     ];
     
     try {
@@ -8251,6 +8546,7 @@ export default function Page() {
         setRatingBadgeOffsetX(getNum("ratingBadgeOffsetX", 0));
         setRatingBadgeOffsetY(getNum("ratingBadgeOffsetY", 0));
         setShelfThemeMode(normalizeShelfThemeMode(getStr(SHELF_THEME_MODE_SETTING_KEY, "light")));
+        setCoverTitlesVisible(getBool(COVER_TITLES_VISIBLE_SETTING_KEY, false));
         
         setIconSize(getNum("iconSize", 16));
         setSidebarFontSize(getNum("sidebarFontSize", 11));
@@ -8389,6 +8685,10 @@ export default function Page() {
     setShelfThemeMode(nextMode);
     saveSetting(SHELF_THEME_MODE_SETTING_KEY, nextMode, "Themes", "Shelf Theme Mode");
   };
+  const updateCoverTitlesVisible = (value: boolean) => {
+    setCoverTitlesVisible(value);
+    saveSetting(COVER_TITLES_VISIBLE_SETTING_KEY, value, "Themes", "Show item titles under covers");
+  };
   
   // Update UI immediately; debounce only persistence so controls remain responsive.
   const debouncedUpdate = useCallback((key: string, value: number, setter: (v: number) => void, category: string, description: string) => {
@@ -8459,7 +8759,7 @@ export default function Page() {
     }, "Cover Sizes", `${group === "home" ? "Home" : group === "tv" ? "TV Shows" : group === "books" ? "Books" : group === "movies" ? "Movies" : "Games"} Cover Scale (%)`);
   }, [debouncedUpdate]);
   const updateCurrentCoverScale = useCallback((value: number) => {
-    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync") return;
+    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons") return;
     const currentGroup = activeCoverScaleGroup;
     updateCoverScaleForGroup(currentGroup, value);
   }, [activeCoverScaleGroup, nav, updateCoverScaleForGroup]);
@@ -9258,7 +9558,12 @@ export default function Page() {
   const watchlistMovieItems = useMemo(
     () =>
       indexedMovies
-        .filter((movie) => !isMovieWatchedStatus(movie.item) && !isMovieAbandonedStatus(movie.item))
+        .filter(
+          (movie) =>
+            !isMovieWatchedStatus(movie.item) &&
+            !isMovieAbandonedStatus(movie.item) &&
+            !isMovieUpcomingOnlyStatus(movie.item)
+        )
         .map((movie) => ({ ...movie.item, __type: "movie" } as Movie & { __type: "movie" })),
     [indexedMovies]
   );
@@ -10248,7 +10553,7 @@ export default function Page() {
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
-    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync") {
+    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons") {
       return [
         ...indexedBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...indexedShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
@@ -10402,13 +10707,12 @@ export default function Page() {
               .filter(Boolean) as Array<Show & { __type: "tv" }>
           : applySorting(watchlistTvItems, sortField, sortOrder);
 
-      const sectionFiltered = ordered.filter(
-        (item) => getTvWatchlistSectionForItem(item) === watchlistTvSectionFilter
-      );
       const queryFiltered = q
-        ? sectionFiltered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
-        : sectionFiltered;
-      return queryFiltered as any[];
+        ? ordered.filter((item) => safeStr((item as any).title).toLowerCase().includes(q))
+        : ordered;
+      return TV_WATCHLIST_SECTION_ORDER.flatMap((sectionKey) =>
+        queryFiltered.filter((item) => getTvWatchlistSectionForItem(item) === sectionKey)
+      ) as any[];
     }
 
     const isCurrentToken = (value?: string) => {
@@ -10860,7 +11164,7 @@ export default function Page() {
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieTagFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
-    activeSmartList, bookUpcomingFilter, deferredQuery, gameViewMode, movieUpcomingFilter, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, watchlistTvSectionFilter, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
+    activeSmartList, bookUpcomingFilter, deferredQuery, gameViewMode, movieUpcomingFilter, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
   const watchlistTvSectionByVisibleKey = useMemo(() => {
@@ -10876,9 +11180,10 @@ export default function Page() {
 
   const watchlistTvSectionCounts = useMemo(() => {
     const counts: Record<TvWatchlistSectionKey, number> = {
-      pendingReturn: 0,
       watching: 0,
-      backlog: 0,
+      watchNext: 0,
+      paused: 0,
+      notStarted: 0,
     };
     watchlistTvItems.forEach((item) => {
       const section = getTvWatchlistSectionForItem(item);
@@ -11228,6 +11533,12 @@ export default function Page() {
       : null;
 
   const showBacklogHeaderQuickLinks = nav === "home" || activeBacklogQuickLink !== null;
+  const useHomeHeaderWrapLayout =
+    (showBacklogHeaderQuickLinks ||
+      nav === "books" ||
+      nav === "movies" ||
+      nav === "tv" ||
+      nav === "games") && !isMobileLayout;
 
   const persistBacklogManualOrder = useCallback(
     async (
@@ -12142,19 +12453,28 @@ export default function Page() {
     // Pack every shelf by rendered visual width so row edges stay consistent across all views.
     let currentShelf: any[] = [];
     let currentWidth = 0;
+    let currentTvWatchlistSection: TvWatchlistSectionKey | null = null;
+    const isGroupedTvWatchlist = nav === "watchlist-tv";
 
     for (let i = 0; i < shows.length; i++) {
       const show = shows[i];
       const { caseWidth } = getItemVisualLayout(show);
       const itemWidth = caseWidth + (currentShelf.length > 0 ? shelfGap : 0);
+      const nextTvWatchlistSection = isGroupedTvWatchlist ? getTvWatchlistSectionForItem(show) : null;
+      const shouldStartNewTvWatchlistSection =
+        isGroupedTvWatchlist &&
+        currentShelf.length > 0 &&
+        nextTvWatchlistSection !== currentTvWatchlistSection;
 
-      if (currentShelf.length > 0 && currentWidth + itemWidth > usable) {
+      if (shouldStartNewTvWatchlistSection || (currentShelf.length > 0 && currentWidth + itemWidth > usable)) {
         out.push(currentShelf);
         currentShelf = [show];
         currentWidth = caseWidth;
+        currentTvWatchlistSection = nextTvWatchlistSection;
       } else {
         currentShelf.push(show);
         currentWidth += itemWidth;
+        currentTvWatchlistSection = currentTvWatchlistSection ?? nextTvWatchlistSection;
       }
     }
 
@@ -12165,10 +12485,11 @@ export default function Page() {
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout]);
+  }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout, nav]);
 
   const shelfHeights = useMemo(() => {
     const upcomingExtra = isUpcomingView ? UPCOMING_LABEL_SPACE : 0;
+    const titleExtra = coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0;
     // For upcoming, compute a fixed offset that matches the current look for the
     // most common (game) cover type, then apply it per-shelf based on each row's
     // tallest cover so the gap between label text and the next row's tallest cover
@@ -12176,24 +12497,33 @@ export default function Page() {
     const upcomingFixedOffset = isUpcomingView
       ? (shelfRowHeight + UPCOMING_LABEL_SPACE) - Math.round(shelfRowHeight * (mediaCoverSizePct.games / 100))
       : 0;
-    return shelves.map((shelfShows) => {
+    return shelves.map((shelfShows, shelfIndex) => {
+      const tvWatchlistSectionSpace =
+        nav === "watchlist-tv" &&
+        shelfShows.length > 0 &&
+        (
+          shelfIndex === 0 ||
+          getTvWatchlistSectionForItem(shelfShows[0]) !== getTvWatchlistSectionForItem(shelves[shelfIndex - 1]?.[0])
+        )
+          ? TV_WATCHLIST_SECTION_HEADER_SPACE
+          : 0;
       if (isUpcomingView) {
-        if (!shelfShows.length) return shelfRowHeight + upcomingExtra;
+        if (!shelfShows.length) return shelfRowHeight + upcomingExtra + tvWatchlistSectionSpace + titleExtra;
         const maxCoverH = shelfShows.reduce((max, show) => {
           const { caseHeight } = getItemVisualLayout(show);
           return Math.max(max, caseHeight);
         }, 0);
-        return Math.max(1, maxCoverH + upcomingFixedOffset);
+        return Math.max(1, maxCoverH + upcomingFixedOffset + tvWatchlistSectionSpace + titleExtra);
       }
-      if (nav !== "books") return shelfRowHeight;
-      if (!shelfShows.length) return shelfRowHeight;
+      if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
+      if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
         const { caseHeight } = getItemVisualLayout(show);
         return Math.max(maxHeight, caseHeight);
       }, 0);
-      return Math.max(1, tallestCover + 15);
+      return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + titleExtra);
     });
-  }, [getItemVisualLayout, isUpcomingView, mediaCoverSizePct.games, nav, shelfRowHeight, shelves]);
+  }, [coverTitlesVisible, getItemVisualLayout, isUpcomingView, mediaCoverSizePct.games, nav, shelfRowHeight, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -12210,7 +12540,7 @@ export default function Page() {
   const shelfRenderWindow = useMemo(() => {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
-    if (nav !== "books" && !isUpcomingView) {
+    if (nav !== "books" && nav !== "watchlist-tv" && !isUpcomingView) {
       const effectiveRowH = shelfRowHeight;
       const start = Math.max(0, Math.floor(localScroll / effectiveRowH) - 2);
       const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / effectiveRowH) + 2);
@@ -13077,38 +13407,6 @@ export default function Page() {
                 </div>
               </div>
             </div>
-            {nav === "watchlist-tv" ? (
-              <div style={mobilePanelCardStyle}>
-                <div style={mobilePanelSectionHeadingStyle}>
-                  TV WATCHLIST
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {TV_WATCHLIST_SECTION_ORDER.map((sectionKey) => {
-                    const sectionMeta = TV_WATCHLIST_SECTION_META[sectionKey];
-                    const active = watchlistTvSectionFilter === sectionKey;
-                    return (
-                      <button
-                        key={`mobile-watchlist-tv-filter-${sectionKey}`}
-                        type="button"
-                        onClick={() => setWatchlistTvSectionFilter(sectionKey)}
-                        style={{
-                          border: active ? `1px solid ${sectionMeta.badgeBorder}` : mobilePanelButtonBorder,
-                          background: active ? sectionMeta.badgeBackground : mobilePanelButtonBackground,
-                          color: active ? sectionMeta.badgeColor : mobilePanelButtonTextColor,
-                          borderRadius: 999,
-                          padding: "4px 8px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {sectionMeta.label} ({watchlistTvSectionCounts[sectionKey]})
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
             <button
               type="button"
               onClick={() => {
@@ -14953,82 +15251,89 @@ export default function Page() {
                   </span>
                 </button>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
-                    type="button"
-                    onClick={() => setThemesOpen((prev) => !prev)}
-                    className={`sideSubItem ${themesOpen ? "active" : ""}`}
-                    style={{
-                      ...discoverRowStyle,
-                      background: themesOpen ? "rgba(120, 128, 140, 0.09)" : "transparent",
-                      border: themesOpen ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
-                      borderRadius: 10,
-                      color: themesOpen ? "rgba(62, 70, 80, 0.92)" : undefined,
-                    }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
-                      <span
-                        aria-hidden
-                        style={{
-                          width: 18,
-                          height: 14,
-                          borderRadius: 4,
-                          background: themesOpen ? "rgba(0,0,0,0.05)" : "transparent",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flex: "0 0 auto",
-                          overflow: "visible",
-                        }}
-                      >
-                        <img
-                          src={getSidebarIconSrc("themes", "/icon-theme.png")}
-                          alt=""
-                          width={discoverSidebarIconSize}
-                          height={discoverSidebarIconSize}
-                          onClick={(event) => openSidebarIconFilePicker(event, "themes")}
-                          title={uploadingSidebarIconKey === "themes" ? "Uploading..." : "Change icon"}
-                          style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
-                        />
-                      </span>
-                      <span style={discoverLabelStyle}>Themes</span>
+                <button
+                  type="button"
+                  onClick={openThemesView}
+                  className={`sideSubItem ${nav === "themes" ? "active" : ""}`}
+                  style={{
+                    ...discoverRowStyle,
+                    background: nav === "themes" ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: nav === "themes" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    borderRadius: 10,
+                    color: nav === "themes" ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "themes" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img
+                        src={getSidebarIconSrc("themes", "/icon-theme.png")}
+                        alt=""
+                        width={discoverSidebarIconSize}
+                        height={discoverSidebarIconSize}
+                        onClick={(event) => openSidebarIconFilePicker(event, "themes")}
+                        title={uploadingSidebarIconKey === "themes" ? "Uploading..." : "Change icon"}
+                        style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
+                      />
                     </span>
-                  </button>
+                    <span style={discoverLabelStyle}>Themes</span>
+                  </span>
+                </button>
 
-                  {themesOpen ? (
-                    <div style={{ marginLeft: 18 + discoverSidebarGap, display: "flex", flexDirection: "column", gap: 4 }}>
-                      {[
-                        { key: "light" as const, label: "Light" },
-                        { key: "dark" as const, label: "Dark" },
-                        { key: "classic" as const, label: "Classic" },
-                      ].map((themeOption) => {
-                        const active = shelfThemeMode === themeOption.key;
-                        return (
-                          <button
-                            key={`theme-option-${themeOption.key}`}
-                            type="button"
-                            onClick={() => updateShelfThemeMode(themeOption.key)}
-                            style={{
-                              border: "none",
-                              background: "transparent",
-                              boxShadow: "none",
-                              padding: 0,
-                              margin: 0,
-                              textAlign: "left",
-                              cursor: "pointer",
-                              fontSize: discoverSidebarFontSize,
-                              fontWeight: active ? 700 : 500,
-                              color: active ? themesOptionActiveTextColor : themesOptionTextColor,
-                              letterSpacing: "0",
-                            }}
-                          >
-                            {themeOption.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+                <button
+                  type="button"
+                  onClick={openIconsView}
+                  className={`sideSubItem ${nav === "icons" ? "active" : ""}`}
+                  style={{
+                    ...discoverRowStyle,
+                    background: nav === "icons" ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: nav === "icons" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    borderRadius: 10,
+                    color: nav === "icons" ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "icons" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img
+                        src={getSidebarIconSrc("icons", "/icon-settings.png")}
+                        alt=""
+                        width={discoverSidebarIconSize}
+                        height={discoverSidebarIconSize}
+                        onClick={(event) => openSidebarIconFilePicker(event, "icons")}
+                        title={uploadingSidebarIconKey === "icons" ? "Uploading..." : "Change icon"}
+                        style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
+                      />
+                    </span>
+                    <span style={discoverLabelStyle}>Icons</span>
+                  </span>
+                </button>
 
                 <button
                   type="button"
@@ -15073,38 +15378,6 @@ export default function Page() {
                 </button>
 
               </div>
-
-              {nav === "watchlist-tv" ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
-                  {TV_WATCHLIST_SECTION_ORDER.map((sectionKey) => {
-                    const sectionMeta = TV_WATCHLIST_SECTION_META[sectionKey];
-                    const active = watchlistTvSectionFilter === sectionKey;
-                    return (
-                      <button
-                        key={`watchlist-tv-sidebar-${sectionKey}`}
-                        type="button"
-                        onClick={() => setWatchlistTvSectionFilter(sectionKey)}
-                        style={{
-                          ...sidebarSubItemRowStyle,
-                          width: "100%",
-                          borderRadius: 8,
-                          border: `1px solid ${active ? sectionMeta.badgeBorder : "rgba(255,255,255,0.1)"}`,
-                          background: active ? sectionMeta.badgeBackground : "rgba(255,255,255,0.04)",
-                          padding: "5px 8px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span style={{ fontSize: 12, fontWeight: active ? 700 : 500, color: active ? sectionMeta.badgeColor : currentTheme.syncedTextColor }}>
-                          {sectionMeta.label}
-                        </span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: active ? sectionMeta.badgeColor : sidebarInlineCountColor, opacity: active ? 1 : 0.75 }}>
-                          {watchlistTvSectionCounts[sectionKey]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
 
             </div>
             </div>
@@ -15936,7 +16209,7 @@ export default function Page() {
             </div>
 
             {/* Synced Module at Bottom */}
-            {nav === "statistics" || nav === "roadmap" || nav === "cover-sync" ? null : (
+            {nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons" ? null : (
             <div style={{ padding: "0 4px", marginTop: "auto", marginBottom: 12 }}>
               <div
                 className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
@@ -17181,6 +17454,415 @@ export default function Page() {
             />
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
+          ) : nav === "themes" ? (
+            (() => {
+              const themeChoices: Array<{
+                key: ShelfThemeMode;
+                label: string;
+                description: string;
+                shelfBg: string;
+                tileBg: string;
+                titleColor: string;
+                accent: string;
+              }> = [
+                { key: "light", label: "Light", description: "Bright off-white shelves with crisp covers and dark titles.", shelfBg: "linear-gradient(180deg, #f6f5f3 0%, #e9e8e4 100%)", tileBg: "linear-gradient(135deg, #e6edf3 0%, #c6d4e3 100%)", titleColor: "rgba(48, 56, 70, 0.92)", accent: "#41b65c" },
+                { key: "dark", label: "Dark", description: "Deep slate shelves with soft halos around covers and light titles.", shelfBg: "linear-gradient(180deg, #1c2128 0%, #14181d 100%)", tileBg: "linear-gradient(135deg, #3a4554 0%, #1f2731 100%)", titleColor: "rgba(232, 236, 244, 0.86)", accent: "#5fb3ff" },
+                { key: "classic", label: "Classic", description: "Warm wood-tone shelves echoing the original Delicious Library look.", shelfBg: "linear-gradient(180deg, #8b6a44 0%, #614528 100%)", tileBg: "linear-gradient(135deg, #d6b58a 0%, #9a6f3e 100%)", titleColor: "rgba(247, 235, 215, 0.92)", accent: "#f0b463" },
+              ];
+              const preview = themeChoices.find((c) => c.key === shelfThemeMode) || themeChoices[0];
+              const previewTextOnLight = "#2b3445";
+              const previewTextOnDark = "rgba(235, 240, 248, 0.94)";
+              const previewMutedOnLight = "rgba(70, 78, 90, 0.72)";
+              const previewMutedOnDark = "rgba(220, 226, 236, 0.66)";
+              const previewIsDark = preview.key === "dark";
+              const previewPrimaryText = previewIsDark || preview.key === "classic" ? previewTextOnDark : previewTextOnLight;
+              const previewMutedText = previewIsDark || preview.key === "classic" ? previewMutedOnDark : previewMutedOnLight;
+
+              type PreviewSample = { key: string; title: string; coverUrl: string; mediaType: "book" | "movie" | "tv" | "game" };
+              const previewSamples: PreviewSample[] = [];
+              const collectSamples = (
+                source: Array<{ item: any }>,
+                mediaType: PreviewSample["mediaType"],
+                max: number
+              ) => {
+                let added = 0;
+                for (let i = 0; i < source.length && added < max; i++) {
+                  const raw = source[i]?.item;
+                  if (!raw) continue;
+                  const typedItem = { ...raw, __type: mediaType };
+                  const url = getDisplayCoverUrl(typedItem, true);
+                  if (!url) continue;
+                  previewSamples.push({
+                    key: `${mediaType}-${added}-${safeStr(raw.title) || i}`,
+                    title: safeStr(raw.title),
+                    coverUrl: url,
+                    mediaType,
+                  });
+                  added += 1;
+                }
+              };
+              collectSamples(indexedBooks, "book", 2);
+              collectSamples(indexedMovies, "movie", 2);
+              collectSamples(indexedShows, "tv", 2);
+              collectSamples(indexedGames, "game", 2);
+              // Interleave by media type so each row mixes formats.
+              const interleaved: PreviewSample[] = [];
+              const buckets: Record<PreviewSample["mediaType"], PreviewSample[]> = { book: [], movie: [], tv: [], game: [] };
+              for (const s of previewSamples) buckets[s.mediaType].push(s);
+              const order: Array<PreviewSample["mediaType"]> = ["book", "movie", "tv", "game"];
+              while (interleaved.length < previewSamples.length) {
+                let advanced = false;
+                for (const t of order) {
+                  const next = buckets[t].shift();
+                  if (next) { interleaved.push(next); advanced = true; }
+                }
+                if (!advanced) break;
+              }
+              const previewRows: PreviewSample[][] = [interleaved.slice(0, 4), interleaved.slice(4, 8)].filter((row) => row.length > 0);
+              const previewHasItems = previewRows.length > 0;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.96) 0%, rgba(236,240,246,0.94) 100%)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobileLayout ? "12px 14px 10px" : "20px 28px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(252,253,255,0.78)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 10 : 14, minWidth: 0 }}>
+                      <button type="button" onClick={handleExitThemes} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: isMobileLayout ? 20 : 22, padding: "0 4px", lineHeight: 1, flex: "0 0 auto" }} aria-label="Back">←</button>
+                      <img src={getSidebarIconSrc("themes", "/icon-theme.png")} alt="" width={isMobileLayout ? 26 : 32} height={isMobileLayout ? 26 : 32} style={{ display: "block", borderRadius: 8, flex: "0 0 auto" }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: isMobileLayout ? 17 : 22, fontWeight: 750, color: "#1d2735", lineHeight: 1.1 }}>Themes</div>
+                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", marginTop: 2, lineHeight: 1.3, display: isMobileLayout ? "-webkit-box" : "block", WebkitLineClamp: isMobileLayout ? 1 : undefined, WebkitBoxOrient: isMobileLayout ? "vertical" : undefined, overflow: isMobileLayout ? "hidden" : undefined }}>
+                          {isMobileLayout ? "Choose a shelf look." : "Choose a shelf look and decide whether titles appear under each cover."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flex: 1, minHeight: 0, padding: isMobileLayout ? 14 : "24px 28px", gap: isMobileLayout ? 16 : 24, overflow: isMobileLayout ? "auto" : "hidden", flexDirection: isMobileLayout ? "column" : "row" }}>
+                    {/* Options column */}
+                    <div style={{ flex: isMobileLayout ? "0 0 auto" : "0 0 360px", display: "flex", flexDirection: "column", gap: isMobileLayout ? 12 : 18, overflowY: isMobileLayout ? "visible" : "auto", paddingRight: isMobileLayout ? 0 : 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Shelf Mode</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {themeChoices.map((choice) => {
+                          const active = shelfThemeMode === choice.key;
+                          return (
+                            <button
+                              key={`theme-choice-${choice.key}`}
+                              type="button"
+                              onClick={() => updateShelfThemeMode(choice.key)}
+                              aria-pressed={active}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 14,
+                                padding: "14px 16px",
+                                borderRadius: 14,
+                                border: active ? "2px solid #41b65c" : "1px solid rgba(150, 160, 175, 0.32)",
+                                background: active ? "rgba(65, 182, 92, 0.06)" : "rgba(255, 255, 255, 0.86)",
+                                boxShadow: active ? "0 6px 18px rgba(65, 182, 92, 0.14)" : "0 2px 6px rgba(40, 50, 70, 0.05)",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                transition: "background 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+                              }}
+                            >
+                              <span aria-hidden style={{ width: 64, height: 44, borderRadius: 10, background: choice.shelfBg, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 4, flex: "0 0 auto" }}>
+                                <span style={{ width: 22, height: 30, borderRadius: 3, background: choice.tileBg, boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
+                              </span>
+                              <span style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: 16, fontWeight: 750, color: "#1d2735", letterSpacing: "-0.01em" }}>{choice.label}</span>
+                                <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.35 }}>{choice.description}</span>
+                              </span>
+                              <span aria-hidden style={{ width: 22, height: 22, borderRadius: 999, border: active ? "2px solid #41b65c" : "2px solid rgba(150,160,175,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", background: active ? "#41b65c" : "transparent" }}>
+                                {active ? <span style={{ width: 8, height: 8, borderRadius: 999, background: "#fff" }} /> : null}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ height: 1, background: "rgba(152, 162, 171, 0.2)", margin: "6px 0" }} />
+
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Cover Labels</div>
+                      <button
+                        type="button"
+                        onClick={() => updateCoverTitlesVisible(!coverTitlesVisible)}
+                        aria-pressed={coverTitlesVisible}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 14,
+                          padding: "14px 16px",
+                          borderRadius: 14,
+                          border: coverTitlesVisible ? "2px solid #41b65c" : "1px solid rgba(150, 160, 175, 0.32)",
+                          background: coverTitlesVisible ? "rgba(65, 182, 92, 0.06)" : "rgba(255, 255, 255, 0.86)",
+                          boxShadow: coverTitlesVisible ? "0 6px 18px rgba(65, 182, 92, 0.14)" : "0 2px 6px rgba(40, 50, 70, 0.05)",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span aria-hidden style={{ width: 64, height: 44, borderRadius: 10, background: "linear-gradient(180deg, #f6f5f3 0%, #e9e8e4 100%)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", padding: 4, gap: 2, flex: "0 0 auto" }}>
+                          <span style={{ width: 22, height: 26, borderRadius: 3, background: "linear-gradient(135deg, #e6edf3 0%, #c6d4e3 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
+                          {coverTitlesVisible ? <span style={{ width: 26, height: 3, borderRadius: 1, background: "rgba(48, 56, 70, 0.62)" }} /> : null}
+                        </span>
+                        <span style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
+                          <span style={{ fontSize: 16, fontWeight: 750, color: "#1d2735", letterSpacing: "-0.01em" }}>Show Titles</span>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.35 }}>
+                            {coverTitlesVisible ? "Titles appear under every cover." : "Covers only — clean, exact spacing."}
+                          </span>
+                        </span>
+                        <span aria-hidden style={{ width: 44, height: 24, borderRadius: 999, background: coverTitlesVisible ? "#41b65c" : "rgba(150,160,175,0.5)", padding: 2, display: "flex", flex: "0 0 auto", boxShadow: coverTitlesVisible ? "0 0 0 3px rgba(65,182,92,0.16)" : "none", transition: "background 140ms ease" }}>
+                          <span style={{ width: 20, height: 20, borderRadius: 999, background: "#fff", marginLeft: coverTitlesVisible ? 20 : 0, transition: "margin-left 160ms cubic-bezier(0.22, 0.76, 0.2, 1)", boxShadow: "0 1px 3px rgba(0,0,0,0.28)" }} />
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Preview column */}
+                    <div style={{ flex: isMobileLayout ? "0 0 auto" : 1, minWidth: 0, display: "flex", flexDirection: "column", borderRadius: 18, overflow: "hidden", border: "1px solid rgba(152, 162, 171, 0.28)", background: "rgba(255,255,255,0.55)", boxShadow: "0 12px 28px rgba(40, 50, 70, 0.08)" }}>
+                      <div style={{ padding: isMobileLayout ? "10px 14px" : "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(152, 162, 171, 0.24)", background: "rgba(252,253,255,0.85)", flexWrap: "wrap", gap: 6 }}>
+                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.75)", textTransform: "uppercase" }}>Live Preview</div>
+                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 700, color: "#1d2735" }}>{preview.label}{coverTitlesVisible ? " · Titles On" : " · Titles Off"}</div>
+                      </div>
+                      <div style={{ flex: isMobileLayout ? "0 0 auto" : 1, minHeight: 0, overflow: isMobileLayout ? "auto" : "auto", padding: isMobileLayout ? 16 : 24, background: preview.shelfBg, WebkitOverflowScrolling: "touch" }}>
+                        {previewHasItems ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: isMobileLayout ? 20 : 28 }}>
+                            {previewRows.map((row, rowIdx) => {
+                              const coverHeight = isMobileLayout ? 104 : 132;
+                              const coverMaxW = isMobileLayout ? 132 : 160;
+                              return (
+                                <div key={`preview-row-${rowIdx}`} style={{ display: "flex", alignItems: "flex-end", gap: isMobileLayout ? 10 : 18, paddingBottom: 12, borderBottom: previewIsDark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.08)", flexWrap: isMobileLayout ? "wrap" : "nowrap" }}>
+                                  {row.map((sample) => {
+                                    const coverShadow = previewIsDark
+                                      ? "0 0 6px 0 rgba(0, 0, 0, 0.6)"
+                                      : preview.key === "classic"
+                                        ? "8px 10px 14px rgba(40, 22, 8, 0.32)"
+                                        : "8px 10px 14px rgba(40, 50, 70, 0.22)";
+                                    return (
+                                      <div key={sample.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, maxWidth: coverMaxW }}>
+                                        <img
+                                          src={sample.coverUrl}
+                                          alt={sample.title}
+                                          loading="lazy"
+                                          style={{
+                                            height: coverHeight,
+                                            width: "auto",
+                                            maxWidth: coverMaxW,
+                                            display: "block",
+                                            borderRadius: 6,
+                                            objectFit: "cover",
+                                            boxShadow: coverShadow,
+                                            background: preview.tileBg,
+                                          }}
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = "none";
+                                          }}
+                                        />
+                                        {coverTitlesVisible ? (
+                                          <div
+                                            title={sample.title}
+                                            style={{
+                                              fontSize: 11,
+                                              fontWeight: 600,
+                                              lineHeight: 1.2,
+                                              color: previewPrimaryText,
+                                              textAlign: "center",
+                                              maxWidth: coverMaxW - 12,
+                                              display: "-webkit-box",
+                                              WebkitLineClamp: 2,
+                                              WebkitBoxOrient: "vertical",
+                                              overflow: "hidden",
+                                            }}
+                                          >
+                                            {sample.title}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                  {!isMobileLayout ? (
+                                    <div style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: previewMutedText, alignSelf: "flex-end", paddingBottom: 6 }}>Shelf {rowIdx + 1}</div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 160, color: previewMutedText, fontSize: 13, fontWeight: 600, textAlign: "center", padding: 24 }}>
+                            No covers available yet — add items to your library to see the preview here.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
+          ) : nav === "icons" ? (
+            (() => {
+              const sidebarCatalog: Array<{ key: string; label: string; fallback: string }> = [
+                { key: "home", label: "Home", fallback: "/icon-home.png" },
+                { key: "books", label: "Books", fallback: "/icon-books.png" },
+                { key: "movies", label: "Movies", fallback: "/icon-movies.png" },
+                { key: "tv", label: "TV", fallback: "/icon-tv.png" },
+                { key: "games", label: "Games", fallback: "/icon-games.png" },
+                { key: "statistics", label: "Statistics", fallback: "/icon-statistics.png" },
+                { key: "roadmap", label: "Roadmap", fallback: "/icon-year.png" },
+                { key: "themes", label: "Themes", fallback: "/icon-theme.png" },
+                { key: "icons", label: "Icons", fallback: "/icon-settings.png" },
+                { key: "r2-sync", label: "Cover Sync", fallback: "/icon-statistics.png" },
+              ];
+              const statusCatalog = statusIconOptions;
+              const cardGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(auto-fill, minmax(140px, 1fr))" : "repeat(auto-fill, minmax(180px, 1fr))", gap: isMobileLayout ? 12 : 16 };
+              return (
+                <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.96) 0%, rgba(236,240,246,0.94) 100%)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobileLayout ? "12px 14px 10px" : "20px 28px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(252,253,255,0.78)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 10 : 14, minWidth: 0 }}>
+                      <button type="button" onClick={handleExitIcons} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: isMobileLayout ? 20 : 22, padding: "0 4px", lineHeight: 1, flex: "0 0 auto" }} aria-label="Back">←</button>
+                      <img src={getSidebarIconSrc("icons", "/icon-settings.png")} alt="" width={isMobileLayout ? 26 : 32} height={isMobileLayout ? 26 : 32} style={{ display: "block", borderRadius: 8, flex: "0 0 auto" }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: isMobileLayout ? 17 : 22, fontWeight: 750, color: "#1d2735", lineHeight: 1.1 }}>Icons</div>
+                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", marginTop: 2 }}>
+                          {isMobileLayout ? "Tap any icon to replace it." : "Tap any icon to replace it — you'll be able to zoom and reposition before saving."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: isMobileLayout ? 14 : "24px 28px", WebkitOverflowScrolling: "touch" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: isMobileLayout ? 22 : 28 }}>
+                      <section>
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase", marginBottom: 12 }}>Sidebar Icons</div>
+                        <div style={cardGridStyle}>
+                          {sidebarCatalog.map((entry) => {
+                            const url = getSidebarIconSrc(entry.key, entry.fallback);
+                            const isUploading = uploadingSidebarIconKey === entry.key || (iconCropEditor?.iconKind === "sidebar" && iconCropEditor.iconKey === entry.key && iconCropEditor.saving);
+                            const target: IconCropPickerTarget = { iconKind: "sidebar", iconKey: entry.key, iconLabel: entry.label };
+                            return (
+                              <button
+                                key={`sidebar-icon-card-${entry.key}`}
+                                type="button"
+                                onClick={() => {
+                                  if (url) {
+                                    void openIconEditorWithUrl(target, url);
+                                  } else {
+                                    beginIconCrop(target);
+                                  }
+                                }}
+                                disabled={isUploading}
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  padding: 14,
+                                  borderRadius: 14,
+                                  border: "1px solid rgba(150, 160, 175, 0.32)",
+                                  background: "rgba(255,255,255,0.86)",
+                                  boxShadow: "0 2px 6px rgba(40, 50, 70, 0.05)",
+                                  cursor: isUploading ? "wait" : "pointer",
+                                  opacity: isUploading ? 0.55 : 1,
+                                  transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+                                }}
+                                title={isUploading ? "Saving…" : `Replace ${entry.label} icon`}
+                                aria-label={`Replace ${entry.label} icon`}
+                              >
+                                <div style={{ width: isMobileLayout ? 56 : 72, height: isMobileLayout ? 56 : 72, borderRadius: 12, background: "rgba(232, 237, 244, 0.6)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid rgba(0,0,0,0.04)" }}>
+                                  <img src={url} alt="" width={isMobileLayout ? 48 : 60} height={isMobileLayout ? 48 : 60} style={{ display: "block", objectFit: "contain", maxWidth: "100%", maxHeight: "100%" }} />
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "#1d2735", lineHeight: 1.15, textAlign: "center" }}>{entry.label}</div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: sidebarIconOverrides[entry.key] ? "#2f8f5b" : "rgba(80, 90, 105, 0.7)" }}>
+                                  {sidebarIconOverrides[entry.key] ? "Custom" : "Default"}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+
+                      <section>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Status Icons</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: "rgba(80,90,105,0.6)" }}>Shown on covers when status indicators are on.</div>
+                        </div>
+                        <div style={cardGridStyle}>
+                          {statusCatalog.map((option) => {
+                            const customSrc = getStatusIconSrc(option.key);
+                            const isUploading = uploadingStatusIconKey === option.key || (iconCropEditor?.iconKind === "status" && iconCropEditor.iconKey === option.key && iconCropEditor.saving);
+                            const target: IconCropPickerTarget = { iconKind: "status", iconKey: option.key, iconLabel: option.label };
+                            return (
+                              <button
+                                key={`status-icon-card-${option.key}`}
+                                type="button"
+                                onClick={() => {
+                                  if (customSrc) {
+                                    void openIconEditorWithUrl(target, customSrc);
+                                  } else {
+                                    beginIconCrop(target);
+                                  }
+                                }}
+                                disabled={isUploading}
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  padding: 14,
+                                  borderRadius: 14,
+                                  border: "1px solid rgba(150, 160, 175, 0.32)",
+                                  background: "rgba(255,255,255,0.86)",
+                                  boxShadow: "0 2px 6px rgba(40, 50, 70, 0.05)",
+                                  cursor: isUploading ? "wait" : "pointer",
+                                  opacity: isUploading ? 0.55 : 1,
+                                }}
+                                title={isUploading ? "Saving…" : customSrc ? `Edit ${option.label} icon` : `Choose ${option.label} icon`}
+                                aria-label={customSrc ? `Edit ${option.label} icon` : `Choose ${option.label} icon`}
+                              >
+                                <div
+                                  style={{
+                                    width: isMobileLayout ? 56 : 72,
+                                    height: isMobileLayout ? 56 : 72,
+                                    borderRadius: "50%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    overflow: "hidden",
+                                    background: customSrc ? "transparent" : option.color,
+                                    border: customSrc
+                                      ? "2px solid rgba(150, 160, 175, 0.32)"
+                                      : `2px solid color-mix(in srgb, ${option.color} 70%, black)`,
+                                    boxShadow: customSrc
+                                      ? "0 2px 8px rgba(40, 50, 70, 0.18)"
+                                      : `0 0 0 4px color-mix(in srgb, ${option.color} 22%, transparent)`,
+                                  }}
+                                >
+                                  {customSrc ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={customSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                  ) : null}
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "#1d2735", lineHeight: 1.15, textAlign: "center" }}>{option.label}</div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: customSrc ? "#2f8f5b" : "rgba(80, 90, 105, 0.7)" }}>
+                                    {customSrc ? "Custom" : "Default"}
+                                  </span>
+                                  {customSrc ? (
+                                    <span
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={(e) => { e.stopPropagation(); resetStatusIconOverride(option.key); }}
+                                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); resetStatusIconOverride(option.key); } }}
+                                      style={{ fontSize: 11, fontWeight: 700, color: "#4a7ed4", cursor: "pointer", textDecoration: "underline" }}
+                                    >
+                                      Reset
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
           ) : nav === "cover-sync" ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.94) 0%, rgba(238,241,246,0.92) 100%)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.2)", background: "rgba(252,253,255,0.76)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
@@ -17585,8 +18267,8 @@ export default function Page() {
                       action: () => {
                         setMobileSidebarOpen(false);
                         setMobileSearchOpen(false);
-                        setThemesOpen(true);
-                        setMobileSettingsOpen(true);
+                        setMobileSettingsOpen(false);
+                        openThemesView();
                       },
                     },
                     {
@@ -17690,8 +18372,17 @@ export default function Page() {
 			                  style={{
 			                    position: "sticky",
 			                    top: topSafeInset,
-		                    height: isMobileLayout && (nav === "books" || nav === "movies" || nav === "tv" || nav === "games" || showBacklogHeaderQuickLinks) ? 56 : 45,
-		                    overflow: "hidden",
+		                    height: useHomeHeaderWrapLayout
+		                      ? "auto"
+		                      : isMobileLayout && (nav === "books" || nav === "movies" || nav === "tv" || nav === "games" || showBacklogHeaderQuickLinks) ? 56 : 45,
+		                    minHeight: useHomeHeaderWrapLayout ? 45 : undefined,
+		                    overflow: useHomeHeaderWrapLayout ? "visible" : "hidden",
+		                    display: useHomeHeaderWrapLayout ? "flex" : undefined,
+		                    flexWrap: useHomeHeaderWrapLayout ? "wrap" : undefined,
+		                    alignItems: useHomeHeaderWrapLayout ? "center" : undefined,
+		                    columnGap: useHomeHeaderWrapLayout ? 8 : undefined,
+		                    rowGap: useHomeHeaderWrapLayout ? 4 : undefined,
+		                    padding: useHomeHeaderWrapLayout ? "6px 10px" : undefined,
 		                    background: isSimpleHeaderTheme
 		                      ? stickyHeaderSimpleBackground
 		                      : stickyHeaderDarkBackground,
@@ -17876,13 +18567,17 @@ export default function Page() {
                       {showBacklogHeaderQuickLinks && !isMobileLayout ? (
                         <div
                           style={{
-                            position: "absolute",
-                            left: 12,
-                            top: 8,
+                            position: useHomeHeaderWrapLayout ? "relative" : "absolute",
+                            left: useHomeHeaderWrapLayout ? undefined : 12,
+                            top: useHomeHeaderWrapLayout ? undefined : 8,
                             zIndex: 1402,
-                            display: "inline-flex",
+                            display: "flex",
                             alignItems: "center",
-                            gap: 0,
+                            flexWrap: useHomeHeaderWrapLayout ? "wrap" : "nowrap",
+                            flex: useHomeHeaderWrapLayout ? "1 1 auto" : undefined,
+                            minWidth: useHomeHeaderWrapLayout ? 0 : undefined,
+                            rowGap: useHomeHeaderWrapLayout ? 4 : undefined,
+                            columnGap: 0,
                           }}
                         >
                           {backlogHeaderQuickLinks.map(({ key, label }) => {
@@ -17927,13 +18622,17 @@ export default function Page() {
                       {nav === "movies" && !isMobileLayout ? (
                         <div
                           style={{
-                            position: "absolute",
-                            left: 12,
-                            top: 8,
+                            position: useHomeHeaderWrapLayout ? "relative" : "absolute",
+                            left: useHomeHeaderWrapLayout ? undefined : 12,
+                            top: useHomeHeaderWrapLayout ? undefined : 8,
                             zIndex: 1402,
-                            display: "inline-flex",
+                            display: "flex",
                             alignItems: "center",
-                            gap: 0,
+                            flexWrap: useHomeHeaderWrapLayout ? "wrap" : "nowrap",
+                            flex: useHomeHeaderWrapLayout ? "1 1 auto" : undefined,
+                            minWidth: useHomeHeaderWrapLayout ? 0 : undefined,
+                            rowGap: useHomeHeaderWrapLayout ? 4 : undefined,
+                            columnGap: 0,
                           }}
                         >
                           {([
@@ -17975,13 +18674,17 @@ export default function Page() {
                       {nav === "tv" && !isMobileLayout ? (
                         <div
                           style={{
-                            position: "absolute",
-                            left: 12,
-                            top: 8,
+                            position: useHomeHeaderWrapLayout ? "relative" : "absolute",
+                            left: useHomeHeaderWrapLayout ? undefined : 12,
+                            top: useHomeHeaderWrapLayout ? undefined : 8,
                             zIndex: 1402,
-                            display: "inline-flex",
+                            display: "flex",
                             alignItems: "center",
-                            gap: 0,
+                            flexWrap: useHomeHeaderWrapLayout ? "wrap" : "nowrap",
+                            flex: useHomeHeaderWrapLayout ? "1 1 auto" : undefined,
+                            minWidth: useHomeHeaderWrapLayout ? 0 : undefined,
+                            rowGap: useHomeHeaderWrapLayout ? 4 : undefined,
+                            columnGap: 0,
                           }}
                         >
                           {([
@@ -18023,13 +18726,17 @@ export default function Page() {
                       {nav === "games" && !isMobileLayout ? (
                         <div
                           style={{
-                            position: "absolute",
-                            left: 12,
-                            top: 8,
+                            position: useHomeHeaderWrapLayout ? "relative" : "absolute",
+                            left: useHomeHeaderWrapLayout ? undefined : 12,
+                            top: useHomeHeaderWrapLayout ? undefined : 8,
                             zIndex: 1402,
-                            display: "inline-flex",
+                            display: "flex",
                             alignItems: "center",
-                            gap: 0,
+                            flexWrap: useHomeHeaderWrapLayout ? "wrap" : "nowrap",
+                            flex: useHomeHeaderWrapLayout ? "1 1 auto" : undefined,
+                            minWidth: useHomeHeaderWrapLayout ? 0 : undefined,
+                            rowGap: useHomeHeaderWrapLayout ? 4 : undefined,
+                            columnGap: 0,
                           }}
                         >
                           {([
@@ -18071,13 +18778,17 @@ export default function Page() {
                       {nav === "books" && !isMobileLayout ? (
                         <div
                           style={{
-                            position: "absolute",
-                            left: 12,
-                            top: 8,
+                            position: useHomeHeaderWrapLayout ? "relative" : "absolute",
+                            left: useHomeHeaderWrapLayout ? undefined : 12,
+                            top: useHomeHeaderWrapLayout ? undefined : 8,
                             zIndex: 1402,
-                            display: "inline-flex",
+                            display: "flex",
                             alignItems: "center",
-                            gap: 8,
+                            flexWrap: useHomeHeaderWrapLayout ? "wrap" : "nowrap",
+                            flex: useHomeHeaderWrapLayout ? "1 1 auto" : undefined,
+                            minWidth: useHomeHeaderWrapLayout ? 0 : undefined,
+                            rowGap: useHomeHeaderWrapLayout ? 4 : undefined,
+                            columnGap: 8,
                           }}
                         >
                           {([
@@ -18116,17 +18827,19 @@ export default function Page() {
                       ) : null}
 			                  <div
 				                    style={{
-				                      position: "absolute",
-			                      inset: 0,
+				                      position: useHomeHeaderWrapLayout ? "relative" : "absolute",
+			                      inset: useHomeHeaderWrapLayout ? undefined : 0,
+			                      marginLeft: useHomeHeaderWrapLayout ? "auto" : undefined,
+			                      flexShrink: useHomeHeaderWrapLayout ? 0 : undefined,
 			                      zIndex: 1401,
 			                      display: isMobileLayout ? "none" : "flex",
 			                      flexDirection: "row",
 			                      alignItems: "center",
 			                      justifyContent: isMobileLayout ? "space-between" : "flex-end",
-		                      paddingLeft: isMobileLayout ? 6 : 10,
-		                      paddingRight: isMobileLayout ? 6 : 10,
+		                      paddingLeft: useHomeHeaderWrapLayout ? 0 : (isMobileLayout ? 6 : 10),
+		                      paddingRight: useHomeHeaderWrapLayout ? 0 : (isMobileLayout ? 6 : 10),
 		                      gap: 5,
-		                      transform: "translateY(-4.5px)",
+		                      transform: useHomeHeaderWrapLayout ? undefined : "translateY(-4.5px)",
 		                    }}
 		                  >
 		                    <div style={{ display: "flex", alignItems: "center", gap: 5, width: isMobileLayout ? "100%" : "auto" }}>
@@ -18465,6 +19178,19 @@ export default function Page() {
               ) : null}
               {visibleShelves.map((shelfShows, visibleShelfIndex) => {
                 const shelfIndex = shelfRenderWindow.start + visibleShelfIndex;
+                const tvWatchlistShelfSection =
+                  nav === "watchlist-tv" && shelfShows.length > 0
+                    ? getTvWatchlistSectionForItem(shelfShows[0])
+                    : null;
+                const tvWatchlistPreviousShelfSection =
+                  nav === "watchlist-tv" && shelfIndex > 0
+                    ? getTvWatchlistSectionForItem(shelves[shelfIndex - 1]?.[0])
+                    : null;
+                const showTvWatchlistSectionHeader =
+                  Boolean(tvWatchlistShelfSection) && tvWatchlistShelfSection !== tvWatchlistPreviousShelfSection;
+                const tvWatchlistSectionMeta = tvWatchlistShelfSection
+                  ? TV_WATCHLIST_SECTION_META[tvWatchlistShelfSection]
+                  : null;
                 return (
                 <div
                   key={`shelf-${shelfIndex}`}
@@ -18513,12 +19239,54 @@ export default function Page() {
                       Row {shelfIndex + 1} · h {Math.round(shelfHeights[shelfIndex] || shelfRowHeight)}px · gap {Math.round(shelfGap)}px
                     </div>
                   ) : null}
+                  {showTvWatchlistSectionHeader && tvWatchlistSectionMeta ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: shelfSidePadding,
+                        right: shelfSidePadding,
+                        top: 8,
+                        zIndex: 38,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 9,
+                          padding: "0 2px",
+                          color: tvWatchlistSectionMeta.headerColor,
+                          textShadow: isSimpleShelfPresentation ? "none" : "0 2px 10px rgba(0,0,0,0.45)",
+                          fontSize: 18,
+                          fontWeight: 900,
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        <span>{tvWatchlistSectionMeta.label}</span>
+                        <span
+                          style={{
+                            opacity: 0.72,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            letterSpacing: 0,
+                            color: isSimpleShelfPresentation ? "rgba(45,55,72,0.72)" : "rgba(255,255,255,0.74)",
+                          }}
+                        >
+                          {watchlistTvSectionCounts[tvWatchlistShelfSection]} shows
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       position: "absolute",
                       left: shelfSidePadding,
                       right: shelfSidePadding,
-                      top: 0,
+                      top: showTvWatchlistSectionHeader ? TV_WATCHLIST_SECTION_HEADER_SPACE : 0,
                       bottom: 0,
                     }}
                   >
@@ -18629,29 +19397,6 @@ export default function Page() {
                       const upcomingDateDisplay = itemReleaseDate
                         ? itemReleaseDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : null;
-                      const tvWatchlistSectionKey =
-                        nav === "watchlist-tv" && show.__type === "tv"
-                          ? watchlistTvSectionByVisibleKey.get(itemKey) || getTvWatchlistSectionForItem(show)
-                          : null;
-                      const tvWatchlistSectionMeta = tvWatchlistSectionKey
-                        ? TV_WATCHLIST_SECTION_META[tvWatchlistSectionKey]
-                        : null;
-                      const tvWatchlistRawStatus =
-                        safeStr(show.watchStatus) ||
-                        safeStr(show.watched) ||
-                        safeStr(show.showStatus) ||
-                        safeStr(show.status);
-                      const tvWatchlistBadgeLabel =
-                        tvWatchlistSectionKey && show.__type === "tv"
-                          ? getTvWatchlistBadgeLabel(
-                              tvWatchlistRawStatus,
-                              tvWatchlistSectionKey
-                            )
-                          : null;
-                      const tvWatchlistBadgeColors =
-                        tvWatchlistSectionKey && show.__type === "tv"
-                          ? getTvWatchlistBadgeColors(tvWatchlistRawStatus, tvWatchlistSectionKey)
-                          : null;
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "now-playing" ||
@@ -18706,7 +19451,7 @@ export default function Page() {
                             position: isWishlistPointerDragging ? "fixed" : "absolute",
                             left: dragLeft,
                             top: isWishlistPointerDragging ? dragTop : undefined,
-                            bottom: isWishlistPointerDragging ? undefined : shelfBottomOffset + (isUpcomingView ? UPCOMING_LABEL_SPACE : 0),
+                            bottom: isWishlistPointerDragging ? undefined : shelfBottomOffset + (isUpcomingView ? UPCOMING_LABEL_SPACE : 0) + (coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0),
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
@@ -18741,6 +19486,8 @@ export default function Page() {
                             className="caseSurface"
                             style={{
                               borderRadius: coverImageRadiusPx,
+                              background: "transparent",
+                              overflow: "visible",
                               outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.35)" : "none",
                             }}
                           >
@@ -18756,6 +19503,7 @@ export default function Page() {
                                   overflow: isSimpleShelfPresentation ? "hidden" : "hidden",
                                   borderRadius: 0,
                                   background: COVER_STAGE_BACKGROUND,
+                                  boxShadow: coverSurfaceBoxShadow,
                                 }}
                               >
                                 {selectedCoverUrl ? (
@@ -18882,6 +19630,7 @@ export default function Page() {
                                       borderRadius: coverImageRadiusPx,
                                       clipPath: undefined,
                                       background: COVER_STAGE_BACKGROUND,
+                                      boxShadow: coverSurfaceBoxShadow,
                                     }}
                                   >
                                 {sandboxMode ? (
@@ -19151,37 +19900,6 @@ export default function Page() {
                             </div>
                           ) : null}
 
-                          {tvWatchlistSectionMeta && tvWatchlistBadgeLabel && tvWatchlistBadgeColors ? (
-                            <div
-                              aria-label={`Watchlist status: ${tvWatchlistBadgeLabel}`}
-                              title={`Watchlist status: ${tvWatchlistBadgeLabel}`}
-                              style={{
-                                position: "absolute",
-                                left: Math.max(4, insetLeft + 4),
-                                top: Math.max(4, insetTop + 4),
-                                maxWidth: Math.max(36, caseWidth - insetLeft - insetRight - 8),
-                                borderRadius: 999,
-                                border: `1px solid ${tvWatchlistBadgeColors.badgeBorder}`,
-                                background: tvWatchlistBadgeColors.badgeBackground,
-                                color: tvWatchlistBadgeColors.badgeColor,
-                                boxShadow: "0 2px 5px rgba(0,0,0,0.34)",
-                                padding: "2px 6px",
-                                fontSize: 8,
-                                lineHeight: 1,
-                                fontWeight: 900,
-                                letterSpacing: "0.04em",
-                                textTransform: "uppercase",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                pointerEvents: "none",
-                                zIndex: 28,
-                              }}
-                            >
-                              {tvWatchlistBadgeLabel}
-                            </div>
-                          ) : null}
-
                           {shouldShowRatingBadge ? (
                             <div
                               aria-label={`Rating: ${ratingBadgeLabel}`}
@@ -19290,6 +20008,34 @@ export default function Page() {
                             </div>
                           ) : null}
 
+                          {coverTitlesVisible && show.title ? (
+                            <div
+                              title={show.title}
+                              style={{
+                                position: "absolute",
+                                top: caseHeight + (isUpcomingView && upcomingLabel ? 32 : 6),
+                                left: 0,
+                                width: caseWidth,
+                                textAlign: "center",
+                                pointerEvents: "none",
+                                zIndex: 10,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                lineHeight: 1.2,
+                                color: isDarkShelfMode ? "rgba(232, 236, 244, 0.86)" : "rgba(60, 70, 84, 0.86)",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                wordBreak: "break-word",
+                                padding: "0 2px",
+                              }}
+                            >
+                              {show.title}
+                            </div>
+                          ) : null}
+
                         </div>
                       );
                     });
@@ -19331,6 +20077,285 @@ export default function Page() {
         style={{ display: "none" }}
         onChange={handleStatusIconFileChange}
       />
+      <input
+        ref={iconCropPickerInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleIconCropFileChange}
+      />
+
+      {iconCropEditor ? (() => {
+        const state = iconCropEditor;
+        const hasImage = Boolean(state.sourceUrl);
+        const scaleX = state.baseScale * state.zoomX;
+        const scaleY = state.baseScale * state.zoomY;
+        const displayedW = state.natural.width * scaleX;
+        const displayedH = state.natural.height * scaleY;
+        const clampOffset = (next: { x: number; y: number }) => {
+          const maxX = Math.max(0, (displayedW - ICON_CROP_VIEWPORT) / 2);
+          const maxY = Math.max(0, (displayedH - ICON_CROP_VIEWPORT) / 2);
+          return { x: Math.max(-maxX, Math.min(maxX, next.x)), y: Math.max(-maxY, Math.min(maxY, next.y)) };
+        };
+        const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+          if (state.saving || !hasImage) return;
+          const target = e.currentTarget;
+          target.setPointerCapture(e.pointerId);
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const startOffsetX = state.offsetX;
+          const startOffsetY = state.offsetY;
+          const move = (ev: PointerEvent) => {
+            const next = clampOffset({ x: startOffsetX + (ev.clientX - startX), y: startOffsetY + (ev.clientY - startY) });
+            setIconCropEditor((prev) => prev ? { ...prev, offsetX: next.x, offsetY: next.y } : prev);
+          };
+          const up = (ev: PointerEvent) => {
+            try { target.releasePointerCapture(ev.pointerId); } catch {}
+            target.removeEventListener("pointermove", move);
+            target.removeEventListener("pointerup", up);
+            target.removeEventListener("pointercancel", up);
+          };
+          target.addEventListener("pointermove", move);
+          target.addEventListener("pointerup", up);
+          target.addEventListener("pointercancel", up);
+        };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Edit ${state.iconLabel} icon`}
+            style={{ position: "fixed", inset: 0, zIndex: 5000, background: "rgba(10, 14, 24, 0.62)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            onClick={(e) => { if (e.target === e.currentTarget && !state.saving) cancelIconCrop(); }}
+          >
+            <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(245,247,251,0.98) 100%)", borderRadius: 18, boxShadow: "0 24px 56px rgba(10, 18, 36, 0.45)", width: "min(540px, 100%)", maxHeight: "calc(100vh - 32px)", overflow: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>{state.iconKind === "sidebar" ? "Sidebar Icon" : "Status Icon"}</div>
+                  <div style={{ fontSize: 19, fontWeight: 750, color: "#1d2735", lineHeight: 1.15, marginTop: 2 }}>{state.iconLabel}</div>
+                </div>
+                <button type="button" onClick={cancelIconCrop} disabled={state.saving} style={{ border: "none", background: "transparent", cursor: state.saving ? "default" : "pointer", color: "#576371", fontSize: 22, lineHeight: 1, padding: "0 6px" }} aria-label="Close">×</button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <div
+                  onPointerDown={handlePointerDown}
+                  style={{
+                    width: ICON_CROP_VIEWPORT,
+                    height: ICON_CROP_VIEWPORT,
+                    maxWidth: "100%",
+                    borderRadius: 16,
+                    border: "1px solid rgba(152, 162, 171, 0.32)",
+                    background: "linear-gradient(135deg, #e6edf3 0%, #c6d4e3 100%)",
+                    overflow: "hidden",
+                    position: "relative",
+                    cursor: state.saving ? "default" : hasImage ? "grab" : "default",
+                    touchAction: "none",
+                    userSelect: "none",
+                  }}
+                >
+                  {hasImage ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={state.sourceUrl}
+                        alt=""
+                        draggable={false}
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: "50%",
+                          width: state.natural.width,
+                          height: state.natural.height,
+                          transformOrigin: "center center",
+                          transform: `translate(-50%, -50%) translate(${state.offsetX}px, ${state.offsetY}px) scale(${scaleX}, ${scaleY})`,
+                          pointerEvents: "none",
+                          maxWidth: "none",
+                          maxHeight: "none",
+                        }}
+                      />
+                      <div aria-hidden style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.65), inset 0 0 0 3px rgba(35, 50, 80, 0.35)", borderRadius: 16, pointerEvents: "none" }} />
+                    </>
+                  ) : (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 24, textAlign: "center", color: "#3a4554" }}>
+                      <div style={{ width: 56, height: 56, borderRadius: "50%", border: "2px dashed rgba(74, 126, 212, 0.55)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: "#4a7ed4" }}>+</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#1d2735" }}>No image yet</div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.35, maxWidth: 220 }}>
+                        Click <strong>Replace image…</strong> below to pick a file. You'll be able to zoom and reposition before saving.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1d2735" }}>Horizontal Zoom</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(80, 90, 105, 0.78)" }}>{Math.round(state.zoomX * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={4}
+                    step={0.01}
+                    value={state.zoomX}
+                    disabled={state.saving || !hasImage}
+                    onChange={(e) => {
+                      const nextZoom = Number(e.target.value);
+                      setIconCropEditor((prev) => {
+                        if (!prev) return prev;
+                        const newScaleX = prev.baseScale * nextZoom;
+                        const newW = prev.natural.width * newScaleX;
+                        const newScaleY = prev.baseScale * prev.zoomY;
+                        const newH = prev.natural.height * newScaleY;
+                        const maxX = Math.max(0, (newW - ICON_CROP_VIEWPORT) / 2);
+                        const maxY = Math.max(0, (newH - ICON_CROP_VIEWPORT) / 2);
+                        return {
+                          ...prev,
+                          zoomX: nextZoom,
+                          offsetX: Math.max(-maxX, Math.min(maxX, prev.offsetX)),
+                          offsetY: Math.max(-maxY, Math.min(maxY, prev.offsetY)),
+                        };
+                      });
+                    }}
+                    style={{ width: "100%", accentColor: "#41b65c", opacity: hasImage ? 1 : 0.45 }}
+                    aria-label="Horizontal zoom"
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1d2735" }}>Vertical Zoom</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(80, 90, 105, 0.78)" }}>{Math.round(state.zoomY * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={4}
+                    step={0.01}
+                    value={state.zoomY}
+                    disabled={state.saving || !hasImage}
+                    onChange={(e) => {
+                      const nextZoom = Number(e.target.value);
+                      setIconCropEditor((prev) => {
+                        if (!prev) return prev;
+                        const newScaleY = prev.baseScale * nextZoom;
+                        const newH = prev.natural.height * newScaleY;
+                        const newScaleX = prev.baseScale * prev.zoomX;
+                        const newW = prev.natural.width * newScaleX;
+                        const maxX = Math.max(0, (newW - ICON_CROP_VIEWPORT) / 2);
+                        const maxY = Math.max(0, (newH - ICON_CROP_VIEWPORT) / 2);
+                        return {
+                          ...prev,
+                          zoomY: nextZoom,
+                          offsetX: Math.max(-maxX, Math.min(maxX, prev.offsetX)),
+                          offsetY: Math.max(-maxY, Math.min(maxY, prev.offsetY)),
+                        };
+                      });
+                    }}
+                    style={{ width: "100%", accentColor: "#41b65c", opacity: hasImage ? 1 : 0.45 }}
+                    aria-label="Vertical zoom"
+                  />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, color: "rgba(80, 90, 105, 0.7)", lineHeight: 1.35 }}>
+                    Drag inside the box to reposition. The visible square will be saved.
+                  </div>
+                  <button
+                    type="button"
+                    disabled={state.saving}
+                    onClick={() => {
+                      setIconCropEditor((prev) => {
+                        if (!prev) return prev;
+                        const avg = (prev.zoomX + prev.zoomY) / 2;
+                        const newScale = prev.baseScale * avg;
+                        const newW = prev.natural.width * newScale;
+                        const newH = prev.natural.height * newScale;
+                        const maxX = Math.max(0, (newW - ICON_CROP_VIEWPORT) / 2);
+                        const maxY = Math.max(0, (newH - ICON_CROP_VIEWPORT) / 2);
+                        return {
+                          ...prev,
+                          zoomX: avg,
+                          zoomY: avg,
+                          offsetX: Math.max(-maxX, Math.min(maxX, prev.offsetX)),
+                          offsetY: Math.max(-maxY, Math.min(maxY, prev.offsetY)),
+                        };
+                      });
+                    }}
+                    style={{ fontSize: 11, fontWeight: 700, color: "#4a7ed4", background: "transparent", border: "1px solid rgba(74, 126, 212, 0.4)", padding: "4px 10px", borderRadius: 999, cursor: state.saving ? "default" : "pointer" }}
+                    title="Match horizontal and vertical zoom"
+                  >
+                    Match X = Y
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", paddingTop: 4, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => beginIconCrop({ iconKind: state.iconKind, iconKey: state.iconKey, iconLabel: state.iconLabel })}
+                    disabled={state.saving}
+                    style={{
+                      border: hasImage ? "1px solid rgba(74, 126, 212, 0.45)" : "1px solid #3461ad",
+                      background: hasImage ? "rgba(74, 126, 212, 0.08)" : "linear-gradient(180deg, #6aa0f1 0%, #3461ad 100%)",
+                      color: hasImage ? "#3461ad" : "#fff",
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: state.saving ? "default" : "pointer",
+                      boxShadow: hasImage ? "none" : "0 6px 16px rgba(52, 97, 173, 0.32)",
+                    }}
+                    title="Pick an image file"
+                  >
+                    {hasImage ? "Replace image…" : "Choose image…"}
+                  </button>
+                  {state.iconKind === "status" && getStatusIconSrc(state.iconKey) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (state.saving) return;
+                        resetStatusIconOverride(state.iconKey);
+                        cancelIconCrop();
+                      }}
+                      disabled={state.saving}
+                      style={{ border: "1px solid rgba(195, 80, 80, 0.45)", background: "rgba(195, 80, 80, 0.08)", color: "#a4382f", padding: "10px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: state.saving ? "default" : "pointer" }}
+                      title="Remove custom icon and restore the colored dot"
+                    >
+                      Reset to Default
+                    </button>
+                  ) : null}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button type="button" onClick={cancelIconCrop} disabled={state.saving} style={{ border: "1px solid rgba(150, 160, 175, 0.4)", background: "rgba(255,255,255,0.9)", color: "#3a4554", padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: state.saving ? "default" : "pointer" }}>Cancel</button>
+                  <button
+                    type="button"
+                    onClick={commitIconCrop}
+                    disabled={state.saving || !hasImage}
+                    style={{
+                      border: "1px solid #2f8a4a",
+                      background: state.saving || !hasImage ? "rgba(65,182,92,0.45)" : "linear-gradient(180deg, #4cc36b 0%, #2f8a4a 100%)",
+                      color: "#fff",
+                      padding: "10px 22px",
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: state.saving || !hasImage ? "default" : "pointer",
+                      boxShadow: state.saving || !hasImage ? "none" : "0 6px 16px rgba(47, 138, 74, 0.32)",
+                      opacity: !hasImage ? 0.7 : 1,
+                    }}
+                    title={!hasImage ? "Pick an image first" : undefined}
+                  >
+                    {state.saving ? "Saving…" : "Save Icon"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       <AddItemModal
         open={addModalOpen}

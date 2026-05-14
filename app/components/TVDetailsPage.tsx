@@ -65,8 +65,7 @@ function toScorePct(raw: string): number {
   const n = parseFloat(raw);
   if (!isFinite(n) || n <= 0) return 0;
   if (n > 10) return Math.min(100, Math.round(n));
-  if (n > 5) return Math.round(n * 10);
-  return Math.round(n * 20);
+  return Math.round(n * 10);
 }
 
 function scoreColor(pct: number): string {
@@ -194,7 +193,7 @@ function useFitCount(ref: React.RefObject<HTMLDivElement | null>, itemW: number,
     ro.observe(el);
     return () => ro.disconnect();
   }, [ref, itemW, gap]);
-  return count || 99;
+  return count || 1;
 }
 
 const PANEL_STYLE: React.CSSProperties = {
@@ -247,7 +246,7 @@ export function TVDetailsPage({
   const tvShowStatus = safeStr(item.showStatus);
   const firstAirDate = formatMmDdYyyy(item.firstAirDate);
   const lastAirDate = formatMmDdYyyy(item.lastAirDate);
-  const dateCompleted = safeStr(item.dateCompleted);
+  const dateCompleted = formatMmDdYyyy(item.dateCompleted);
   const caughtUp = safeStr(item.caughtUp);
   const networks = safeStr(item.networks);
   const ownership = safeStr(item.ownership);
@@ -262,13 +261,15 @@ export function TVDetailsPage({
 
   const descriptionText = overview || "";
 
+  const castRowRef = useRef<HTMLDivElement>(null);
   const relatedRowRef = useRef<HTMLDivElement>(null);
   const CAST_ITEM_W = isMobileLayout ? 68 : 90;
   const CAST_GAP = isMobileLayout ? 14 : 20;
   const RELATED_ITEM_W = 90;
   const RELATED_GAP = 10;
+  const maxCast = useFitCount(castRowRef, CAST_ITEM_W, CAST_GAP);
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
-  const visibleCast = castMembers;
+  const visibleCast = castMembers.slice(0, maxCast);
   const visibleRelated = (relatedShows ?? []).slice(0, maxRelated);
 
   const chipStatus = watchStatus || tvShowStatus;
@@ -591,7 +592,7 @@ export function TVDetailsPage({
           {castMembers.length > 0 ? sectionBox(
             <>
               {sectionLabel("CAST")}
-              <div style={{ display: "flex", gap: CAST_GAP, flexWrap: "wrap" }}>
+              <div ref={castRowRef} style={{ display: "flex", gap: CAST_GAP, justifyContent: "center", overflow: "hidden" }}>
                 {visibleCast.map((member, i) => (
                   <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
                     {member.photo ? (

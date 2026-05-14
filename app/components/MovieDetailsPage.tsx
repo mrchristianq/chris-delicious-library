@@ -55,6 +55,18 @@ function formatFullDate(v: unknown): string {
   }
   return s;
 }
+function formatMmDdYyyy(v: unknown): string {
+  const raw = safeStr(v);
+  if (!raw) return "";
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}-${iso[1]}`;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  const yyyy = String(parsed.getFullYear());
+  return `${mm}-${dd}-${yyyy}`;
+}
 function formatRuntime(v: string): string {
   const n = parseInt(v, 10);
   if (!isFinite(n) || n <= 0) return v || "";
@@ -68,8 +80,7 @@ function toScorePct(raw: string): number {
   const n = parseFloat(raw);
   if (!isFinite(n) || n <= 0) return 0;
   if (n > 10) return Math.min(100, Math.round(n));
-  if (n > 5) return Math.round(n * 10);
-  return Math.round(n * 20);
+  return Math.round(n * 10);
 }
 
 function scoreColor(pct: number): string {
@@ -197,7 +208,7 @@ function useFitCount(ref: React.RefObject<HTMLDivElement | null>, itemW: number,
     ro.observe(el);
     return () => ro.disconnect();
   }, [ref, itemW, gap]);
-  return count || 99;
+  return count || 1;
 }
 
 const PANEL_STYLE: React.CSSProperties = {
@@ -245,7 +256,7 @@ export function MovieDetailsPage({
   const myRating = safeStr(item.myRating);
   const tmdbRating = safeStr(item.tmdbRating);
   const watchStatus = safeStr(item.watchStatus || item.watched);
-  const watchDate = safeStr(item.watchDate);
+  const watchDate = formatMmDdYyyy(item.watchDate);
   const ownership = safeStr(item.ownership);
   const tags = splitList(item.tag || item.tags);
   const director = safeStr(item.director);
@@ -264,13 +275,15 @@ export function MovieDetailsPage({
 
   const descViewport = useRef<HTMLDivElement>(null);
   const descContent = useRef<HTMLDivElement>(null);
+  const castRowRef = useRef<HTMLDivElement>(null);
   const relatedRowRef = useRef<HTMLDivElement>(null);
   const CAST_ITEM_W = isMobileLayout ? 68 : 82;
   const CAST_GAP = isMobileLayout ? 14 : 20;
   const RELATED_ITEM_W = 80;
   const RELATED_GAP = 10;
+  const maxCast = useFitCount(castRowRef, CAST_ITEM_W, CAST_GAP);
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
-  const visibleCast = castMembers; // already capped at 5
+  const visibleCast = castMembers.slice(0, maxCast);
   const visibleRelated = (relatedMovies ?? []).slice(0, maxRelated);
 
   useEffect(() => {
@@ -600,18 +613,18 @@ export function MovieDetailsPage({
 
           {/* Cast + Related — side by side */}
           {(castMembers.length > 0 || hasRelated) ? (
-            <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "stretch" }}>
 
               {castMembers.length > 0 ? (
                 <div style={{
-                  flex: 1, minWidth: 0,
+                  flex: "1 1 260px", minWidth: 0,
                   borderRadius: 16, padding: isMobileLayout ? "14px 14px" : "16px 18px",
                   background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.02)} 100%)`,
                   border: `1px solid ${palette.surfaceBorder}`,
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                 }}>
                   {sectionLabel("CAST")}
-                  <div style={{ display: "flex", gap: CAST_GAP, justifyContent: "center" }}>
+                  <div ref={castRowRef} style={{ display: "flex", gap: CAST_GAP, justifyContent: "center", overflow: "hidden" }}>
                     {visibleCast.map((member, i) => (
                       <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
                         {member.photo ? (
@@ -645,7 +658,7 @@ export function MovieDetailsPage({
 
               {hasRelated ? (
                 <div style={{
-                  flex: 1, minWidth: 0,
+                  flex: "1 1 260px", minWidth: 0,
                   borderRadius: 16, padding: isMobileLayout ? "14px 14px" : "16px 18px",
                   background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.02)} 100%)`,
                   border: `1px solid ${palette.surfaceBorder}`,

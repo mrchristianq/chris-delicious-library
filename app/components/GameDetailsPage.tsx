@@ -65,8 +65,7 @@ function toScorePct(raw: string): number {
   const n = parseFloat(raw);
   if (!isFinite(n) || n <= 0) return 0;
   if (n > 10) return Math.min(100, Math.round(n));
-  if (n > 5) return Math.round(n * 10);
-  return Math.round(n * 20);
+  return Math.round(n * 10);
 }
 
 function scoreColor(pct: number): string {
