@@ -498,18 +498,60 @@ type HardcoverEdition = {
   pages?: number | null;
   release_date?: string | null;
   edition_format?: string | null;
+  audio_seconds?: number | null;
+  subtitle?: string | null;
   image?: { url?: string } | null;
   publisher?: { name?: string } | null;
+  book?: {
+    subtitle?: string | null;
+    rating?: number | null;
+    book_series?: Array<{ position?: number | null; series?: { name?: string | null } | null }> | null;
+  } | null;
 };
 
-async function lookupHardcoverEditions(bookId: string, bookFormat: string): Promise<SearchResult[]> {
+function deriveBookTypeFromFormat(format: string): string {
+  const fmt = safeStr(format).toLowerCase();
+  if (!fmt) return "";
+  if (fmt.includes("audio")) return "Audiobook";
+  if (fmt.includes("hardcover") || fmt.includes("hardback")) return "Hardcover";
+  if (fmt.includes("paperback") || fmt.includes("mass market")) return "Paperback";
+  if (fmt.includes("ebook") || fmt.includes("kindle") || fmt.includes("digital")) return "eBook";
+  return "Book";
+}
+
+function formatAudioDurationFromSeconds(seconds: number | null | undefined): string {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return "";
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes <= 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+function buildHardcoverSeriesLabel(
+  bookSeries: HardcoverEdition["book"] extends infer T ? (T extends { book_series?: infer S } ? S : never) : never
+): string {
+  if (!Array.isArray(bookSeries) || bookSeries.length === 0) return "";
+  return bookSeries
+    .map((entry) => {
+      const name = safeStr(entry?.series?.name);
+      if (!name) return "";
+      const pos = entry?.position;
+      return pos != null && Number.isFinite(pos) ? `${name} #${pos}` : name;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+async function lookupHardcoverEditions(bookId: string, _bookFormat: string): Promise<SearchResult[]> {
   const apiKey = pickEnv(["HARDCOVER_API_KEY"]);
   if (!apiKey) throw new Error("Hardcover API key not configured (HARDCOVER_API_KEY).");
 
   const numericId = parseInt(bookId, 10);
   if (!Number.isFinite(numericId)) throw new Error("Invalid Hardcover book ID.");
 
-  const gqlQuery = `{ editions(where: {book_id: {_eq: ${numericId}}}, limit: 40, order_by: {users_count: desc_nulls_last}) { id isbn_13 isbn_10 pages release_date edition_format image { url } publisher { name } } }`;
+  const gqlQuery = `{ editions(where: {book_id: {_eq: ${numericId}}}, limit: 40, order_by: {users_count: desc_nulls_last}) { id isbn_13 isbn_10 pages release_date edition_format audio_seconds subtitle image { url } publisher { name } book { subtitle rating book_series { position series { name } } } } }`;
 
   const res = await fetch("https://api.hardcover.app/v1/graphql", {
     method: "POST",
@@ -527,16 +569,25 @@ async function lookupHardcoverEditions(bookId: string, bookFormat: string): Prom
     throw new Error(payload.errors?.[0]?.message || "Hardcover editions fetch failed.");
   }
 
-  const isAudiobook = bookFormat.toLowerCase() === "audiobook";
   const editions = Array.isArray(payload.data?.editions) ? payload.data!.editions : [];
   return editions.map((ed) => {
     const format = safeStr(ed.edition_format) || "Unknown";
+    const formatLower = format.toLowerCase();
+    const isAudio = formatLower.includes("audio");
     const isbn = safeStr(ed.isbn_13 || ed.isbn_10);
     const image = safeStr(ed.image?.url);
     const publisher = safeStr(ed.publisher?.name);
     const releaseDate = safeStr(ed.release_date);
     const year = releaseDate ? releaseDate.slice(0, 4) : "";
-    const pages = !isAudiobook && ed.pages != null ? String(ed.pages) : "";
+    const pages = !isAudio && ed.pages != null ? String(ed.pages) : "";
+    const audiobookDuration = isAudio ? formatAudioDurationFromSeconds(ed.audio_seconds) : "";
+    const subtitle = safeStr(ed.subtitle) || safeStr(ed.book?.subtitle);
+    const seriesLabel = buildHardcoverSeriesLabel(ed.book?.book_series ?? []);
+    const userRating =
+      ed.book?.rating != null && Number.isFinite(ed.book.rating)
+        ? String(Math.round(ed.book.rating * 10) / 10)
+        : "";
+    const derivedType = deriveBookTypeFromFormat(format);
     const label = [format, publisher, year].filter(Boolean).join(" · ");
     return {
       id: `book-hardcover-edition:${String(ed.id)}`,
@@ -549,6 +600,11 @@ async function lookupHardcoverEditions(bookId: string, bookFormat: string): Prom
         isbn,
         releaseDate,
         ...(pages ? { pages } : {}),
+        ...(audiobookDuration ? { audiobookDuration } : {}),
+        ...(subtitle ? { subtitle } : {}),
+        ...(seriesLabel ? { series: seriesLabel } : {}),
+        ...(userRating ? { userRating } : {}),
+        ...(derivedType ? { type: derivedType } : {}),
         editionFormat: format,
         publisher,
       },

@@ -68,6 +68,10 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
   const [searchError, setSearchError]     = useState<string | null>(null);
   const [searched, setSearched]           = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [hardcoverBook, setHardcoverBook] = useState<SearchResult | null>(null);
+  const [editionResults, setEditionResults] = useState<SearchResult[]>([]);
+  const [isLoadingEditions, setIsLoadingEditions] = useState(false);
+  const [editionsError, setEditionsError] = useState<string | null>(null);
   const inputRef                          = useRef<HTMLInputElement>(null);
 
   // Reset when opening
@@ -80,6 +84,10 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
     setIsSearching(false);
     setSearchError(null);
     setSearched(false);
+    setHardcoverBook(null);
+    setEditionResults([]);
+    setIsLoadingEditions(false);
+    setEditionsError(null);
   }, [open, initialSelection]);
 
   // Focus input after type selected
@@ -102,7 +110,11 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (selectedType) {
+        if (hardcoverBook) {
+          setHardcoverBook(null);
+          setEditionResults([]);
+          setEditionsError(null);
+        } else if (selectedType) {
           setSelectedType(null);
           setQuery("");
           setResults([]);
@@ -111,7 +123,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
           onClose();
         }
       }
-      if (e.key === "Enter" && selectedType && query.trim() && !isSearching) {
+      if (e.key === "Enter" && selectedType && query.trim() && !isSearching && !hardcoverBook) {
         handleSearch();
       }
     };
@@ -123,6 +135,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
   if (!open) return null;
 
   const isBook = selectedType === "book-apple" || selectedType === "book-hardcover";
+  const showBookFormatPicker = selectedType === "book-apple";
 
   const handleSearch = async () => {
     if (!selectedType || !query.trim()) return;
@@ -144,13 +157,58 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
     }
   };
 
-  const handleSelectResult = (result: SearchResult) => {
+  const handleSelectResult = async (result: SearchResult) => {
     if (!selectedType) return;
+
+    // For Hardcover books, drill into editions so the user can pick a specific one
+    // (e.g., audiobook vs paperback) instead of grabbing the canonical book record.
+    if (selectedType === "book-hardcover") {
+      const hardcoverBookId = safeStr((result.data as Record<string, unknown>)?.hardcoverBookId);
+      if (hardcoverBookId) {
+        setHardcoverBook(result);
+        setEditionResults([]);
+        setEditionsError(null);
+        setIsLoadingEditions(true);
+        try {
+          const params = new URLSearchParams({
+            type: "book-hardcover",
+            lookupId: hardcoverBookId,
+            bookFormat,
+          });
+          const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+          const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: SearchResult[] };
+          if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to load editions.");
+          setEditionResults(Array.isArray(payload.results) ? payload.results : []);
+        } catch (e: unknown) {
+          setEditionsError(e instanceof Error ? e.message : "Failed to load editions.");
+        } finally {
+          setIsLoadingEditions(false);
+        }
+        return;
+      }
+    }
+
     const data: Record<string, unknown> = {
       ...result.data,
       type: isBook ? bookFormat : undefined,
     };
     onSelectResult(selectedType, data, bookFormat);
+  };
+
+  const handleSelectEdition = (edition: SearchResult) => {
+    if (!selectedType || !hardcoverBook) return;
+    const editionData = edition.data as Record<string, unknown>;
+    // Merge the canonical book fields with the edition-specific fields (isbn, pages,
+    // releaseDate, edition cover, publisher). Edition data wins on conflict, and the
+    // API already derived a normalized `type` string from the edition format.
+    const data: Record<string, unknown> = {
+      ...(hardcoverBook.data as Record<string, unknown>),
+      ...editionData,
+    };
+    const derivedType = safeStr(editionData?.type) || "Book";
+    if (!safeStr(data.type)) data.type = derivedType;
+    // Forward the derived type as bookFormat so downstream prefill stores the right thing.
+    onSelectResult(selectedType, data, derivedType);
   };
 
   const handleAddManually = () => {
@@ -257,8 +315,124 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
             </div>
           )}
 
-          {/* ── Step 2: Book format picker (shown when book selected and no search yet) ── */}
-          {selectedType && isBook && !searched && (
+          {/* ── Editions view (Hardcover only, after a book is picked) ── */}
+          {hardcoverBook && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                onClick={() => { setHardcoverBook(null); setEditionResults([]); setEditionsError(null); }}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: 11.5, fontWeight: 600, color: "#6b7280",
+                  padding: "2px 0", alignSelf: "flex-start", fontFamily: FONT,
+                }}
+              >
+                ← Back to results
+              </button>
+
+              <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 12px", background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: 12 }}>
+                <div style={{ width: 48, height: 70, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "rgba(149,161,178,0.18)", boxShadow: "0 2px 6px rgba(0,0,0,0.16)" }}>
+                  {hardcoverBook.imageUrl ? (
+                    <img src={hardcoverBook.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : null}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hardcoverBook.title}</div>
+                  {hardcoverBook.subtitle && (
+                    <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hardcoverBook.subtitle}</div>
+                  )}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginTop: 4 }}>
+                    {isLoadingEditions ? "Loading editions…" : `${editionResults.length} edition${editionResults.length !== 1 ? "s" : ""}`}
+                  </div>
+                </div>
+              </div>
+
+              {editionsError && (
+                <div style={{
+                  background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.28)",
+                  borderRadius: 10, padding: "10px 14px",
+                  fontSize: 12, color: "#b91c1c", fontWeight: 500,
+                }}>
+                  {editionsError}
+                </div>
+              )}
+
+              {!isLoadingEditions && !editionsError && editionResults.length === 0 && (
+                <div style={{ textAlign: "center", padding: "16px 0", fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>
+                  No editions found for this book.
+                </div>
+              )}
+
+              {editionResults.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {editionResults.map((edition) => {
+                    const editionData = edition.data as Record<string, unknown>;
+                    const fmt = safeStr(editionData?.editionFormat);
+                    const isAudio = fmt.toLowerCase().includes("audio");
+                    return (
+                      <button
+                        key={edition.id}
+                        onClick={() => handleSelectEdition(edition)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
+                          background: "rgba(255,255,255,0.80)",
+                          border: "1px solid rgba(149,161,178,0.28)",
+                          borderRadius: 12, cursor: "pointer", textAlign: "left", width: "100%",
+                          fontFamily: FONT, transition: "all 0.1s ease",
+                          boxShadow: "0 1px 3px rgba(10,18,36,0.05)",
+                        }}
+                        onMouseEnter={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,1)";
+                          (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 3px 10px rgba(10,18,36,0.10)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(59,130,246,0.40)";
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.80)";
+                          (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 1px 3px rgba(10,18,36,0.05)";
+                          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(149,161,178,0.28)";
+                        }}
+                      >
+                        <div style={{
+                          width: 56, height: 82, borderRadius: 6,
+                          overflow: "hidden", flexShrink: 0,
+                          background: "rgba(149,161,178,0.18)",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.14)",
+                        }}>
+                          {edition.imageUrl ? (
+                            <img src={edition.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", ...COVER_IMAGE_RADIUS_STYLE }} />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, opacity: 0.4 }}>{isAudio ? "🎧" : "📖"}</div>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{fmt || "Unknown format"}</span>
+                          </div>
+                          {edition.subtitle && (
+                            <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{edition.subtitle}</div>
+                          )}
+                          {(() => {
+                            const isbn = safeStr(editionData?.isbn);
+                            const pages = safeStr(editionData?.pages);
+                            const duration = safeStr(editionData?.audiobookDuration);
+                            const bits = [isbn && `ISBN ${isbn}`, pages && `${pages} pages`, duration && duration].filter(Boolean);
+                            if (!bits.length) return null;
+                            return <div style={{ fontSize: 10.5, color: "#94a3b8", fontWeight: 500, marginTop: 3 }}>{bits.join(" · ")}</div>;
+                          })()}
+                        </div>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.35 }}>
+                          <path d="M9 18l6-6-6-6" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 2: Book format picker (Apple Books only — Hardcover lets you pick the edition later) ── */}
+          {selectedType && showBookFormatPicker && !searched && !hardcoverBook && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: "#516279", letterSpacing: 0.2, textTransform: "uppercase" }}>
                 Format
@@ -294,7 +468,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
           )}
 
           {/* ── Step 2+: Search input ── */}
-          {selectedType && (
+          {selectedType && !hardcoverBook && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 {/* Back link */}
@@ -410,7 +584,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
           )}
 
           {/* ── Results ── */}
-          {searched && results.length === 0 && !isSearching && !searchError && (
+          {searched && !hardcoverBook && results.length === 0 && !isSearching && !searchError && (
             <div style={{
               textAlign: "center", padding: "20px 0",
               fontSize: 13, color: "#9ca3af", fontWeight: 500,
@@ -425,7 +599,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
             </div>
           )}
 
-          {results.length > 0 && (
+          {results.length > 0 && !hardcoverBook && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.25, textTransform: "uppercase" }}>
                 {results.length} Result{results.length !== 1 ? "s" : ""}

@@ -75,14 +75,19 @@ const APPLE_BOOKS_SYNC_FIELDS: { key: string; label: string }[] = [
 ];
 
 const HARDCOVER_SYNC_FIELDS: { key: string; label: string }[] = [
-  { key: "title",       label: "Title" },
-  { key: "author",      label: "Author" },
-  { key: "description", label: "Description" },
-  { key: "genre",       label: "Genre" },
-  { key: "releaseDate", label: "Release Date" },
-  { key: "imageUrl",    label: "Image URL" },
-  { key: "pages",       label: "Pages" },
-  { key: "isbn",        label: "ISBN" },
+  { key: "title",             label: "Title" },
+  { key: "subtitle",          label: "Subtitle" },
+  { key: "series",            label: "Series" },
+  { key: "author",            label: "Author" },
+  { key: "description",       label: "Description" },
+  { key: "genre",             label: "Genre" },
+  { key: "releaseDate",       label: "Release Date" },
+  { key: "imageUrl",          label: "Image URL" },
+  { key: "pages",             label: "Pages" },
+  { key: "audiobookDuration", label: "Audiobook Duration" },
+  { key: "isbn",              label: "ISBN" },
+  { key: "userRating",        label: "User Rating" },
+  { key: "type",              label: "Type" },
 ];
 
 const INPUT_STYLE: React.CSSProperties = {
