@@ -43,6 +43,7 @@ type IgdbGame = {
 };
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
+const TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280";
 
 let igdbTokenCache: { token: string; expiresAt: number } | null = null;
 
@@ -273,7 +274,7 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
       year,
       tmdbId,
       posterUrl: safeStr(item.poster_path) ? `${TMDB_IMAGE_BASE}${safeStr(item.poster_path)}` : "",
-      backdropUrl: safeStr(item.backdrop_path) ? `${TMDB_IMAGE_BASE}${safeStr(item.backdrop_path)}` : "",
+      backdropUrl: safeStr(item.backdrop_path) ? `${TMDB_BACKDROP_BASE}${safeStr(item.backdrop_path)}` : "",
       tmdbRating: item.vote_average != null ? String(item.vote_average) : "",
       overview: safeStr(item.overview),
     };
@@ -360,7 +361,7 @@ async function lookupTmdbById(type: "tv" | "movie", id: string): Promise<SearchR
     year,
     tmdbId: tmdbId,
     posterUrl: safeStr(payload.poster_path) ? `${TMDB_IMAGE_BASE}${safeStr(payload.poster_path)}` : "",
-    backdropUrl: safeStr(payload.backdrop_path) ? `${TMDB_IMAGE_BASE}${safeStr(payload.backdrop_path)}` : "",
+    backdropUrl: safeStr(payload.backdrop_path) ? `${TMDB_BACKDROP_BASE}${safeStr(payload.backdrop_path)}` : "",
     tmdbRating: payload.vote_average != null ? String(payload.vote_average) : "",
     overview: safeStr(payload.overview),
   };
@@ -709,7 +710,13 @@ function normalizeIgdbScreenshotUrl(url: string): string {
   const normalized = safeStr(url);
   if (!normalized) return "";
   const https = normalized.startsWith("//") ? `https:${normalized}` : normalized;
-  return https.replace("/t_thumb/", "/t_screenshot_big/");
+  // Bump every legacy size to a 1080p screenshot so heroes render sharp.
+  return https
+    .replace("/t_thumb/", "/t_1080p/")
+    .replace("/t_screenshot_med/", "/t_1080p/")
+    .replace("/t_screenshot_big/", "/t_1080p/")
+    .replace("/t_screenshot_huge/", "/t_1080p/")
+    .replace("/t_720p/", "/t_1080p/");
 }
 
 function normalizeIgdbCoverUrl(url: string): string {

@@ -1714,11 +1714,42 @@ function getDisplayCover(item: any, mediaType: "book" | "movie" | "tv" | "game")
   );
 }
 
-function getDisplayBackdrop(item: any, mediaType: "movie" | "tv" | "game"): string {
-  if (mediaType === "movie" || mediaType === "tv") {
-    return safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl || item?.backdropUrl || item?.BackdropURL || "");
+function upgradeTmdbImageSize(url: string, size: string = "w1280"): string {
+  if (!url) return url;
+  if (!/image\.tmdb\.org\/t\/p\//.test(url)) return url;
+  return url.replace(/\/t\/p\/(w\d+|original)\//, `/t/p/${size}/`);
+}
+
+function upgradeIgdbScreenshotSize(url: string, size: string = "t_1080p"): string {
+  if (!url) return url;
+  if (!/images\.igdb\.com/.test(url)) return url;
+  return url.replace(/\/(t_thumb|t_screenshot_med|t_screenshot_big|t_screenshot_huge|t_720p|t_cover_big|t_cover_small|t_micro)\//, `/${size}/`);
+}
+
+function upgradeBackdropForDisplay(url: string, mediaType: "movie" | "tv" | "game"): string {
+  if (!url) return url;
+  if (mediaType === "movie" || mediaType === "tv") return upgradeTmdbImageSize(url, "w1280");
+  if (mediaType === "game") {
+    // The game "backdrop" is an IGDB screenshot — keep TMDB upgrade as a no-op
+    // for cross-pollinated rows that happen to mix sources.
+    const tmdbUpgraded = upgradeTmdbImageSize(url, "w1280");
+    return upgradeIgdbScreenshotSize(tmdbUpgraded, "t_1080p");
   }
-  return safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl || item?.screenshotsUrl || item?.ScreenshotsURL || "");
+  return url;
+}
+
+function getDisplayBackdrop(item: any, mediaType: "movie" | "tv" | "game"): string {
+  // Prefer R2 backdrop (already saved bytes); otherwise use the upstream URL and
+  // upgrade legacy lower-res references to the larger size for a sharp hero.
+  const r2 = safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl);
+  if (r2) return r2;
+  if (mediaType === "movie" || mediaType === "tv") {
+    return upgradeBackdropForDisplay(safeStr(item?.backdropUrl || item?.BackdropURL || ""), mediaType);
+  }
+  // Game "backdrop" = first IGDB screenshot. Bump the IGDB size for HD heroes.
+  const raw = safeStr(item?.screenshotsUrl || item?.ScreenshotsURL || "");
+  const firstShot = raw.split(",")[0]?.trim() || "";
+  return upgradeBackdropForDisplay(firstShot, "game");
 }
 
 type StatusIndicator = {
@@ -2417,6 +2448,15 @@ export default function Page() {
   const [coverSyncStateFilter, setCoverSyncStateFilter] = useState<"all" | "unsynced" | "synced" | "missing-cover" | "missing-backdrop">("unsynced");
   const [coverSyncSortKey, setCoverSyncSortKey] = useState<"title" | "media" | "status" | "coverDate" | "backdropDate">("status");
   const [coverSyncSortDir, setCoverSyncSortDir] = useState<"asc" | "desc">("asc");
+  const [backdropMigration, setBackdropMigration] = useState<{
+    active: boolean;
+    total: number;
+    completed: number;
+    failed: number;
+    currentTitle: string;
+    failedTitles: string[];
+  }>({ active: false, total: 0, completed: 0, failed: 0, currentTitle: "", failedTitles: [] });
+  const cancelBackdropMigrationRef = useRef<boolean>(false);
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
@@ -5351,6 +5391,61 @@ export default function Page() {
   };
 
   // One-off automatic R2 sync for a single newly added/edited item.
+  const runBackdropMigrationToW1280 = async () => {
+    if (backdropMigration.active) return;
+    cancelBackdropMigrationRef.current = false;
+    // Collect every movie/TV row with a TMDB backdrop and every game row with a
+    // first IGDB screenshot. The display-time upgrade helper bumps each URL to
+    // its larger size (w1280 / t_1080p) before re-upload.
+    const targets: Array<{ row: any; mediaType: "movie" | "tv" | "game"; source: string }> = [];
+    for (const row of movieRows) {
+      const src = safeStr((row as any)?.backdropUrl || (row as any)?.BackdropURL);
+      if (src) targets.push({ row, mediaType: "movie", source: upgradeBackdropForDisplay(src, "movie") });
+    }
+    for (const row of tvRows) {
+      const src = safeStr((row as any)?.backdropUrl || (row as any)?.BackdropURL);
+      if (src) targets.push({ row, mediaType: "tv", source: upgradeBackdropForDisplay(src, "tv") });
+    }
+    for (const row of gameRows) {
+      const raw = safeStr((row as any)?.screenshotsUrl || (row as any)?.ScreenshotsURL);
+      const firstShot = raw.split(",")[0]?.trim() || "";
+      if (firstShot) targets.push({ row, mediaType: "game", source: upgradeBackdropForDisplay(firstShot, "game") });
+    }
+    if (!targets.length) {
+      alert("No movie, TV, or game rows have a backdrop / screenshot URL to migrate.");
+      return;
+    }
+    if (!confirm(`Migrate ${targets.length} backdrop(s) to HD?\n\nMovies & TV will re-download at TMDB w1280.\nGames will re-download the first IGDB screenshot at t_1080p.\n\nThis overwrites the R2 copy and can take several minutes.`)) {
+      return;
+    }
+    setBackdropMigration({ active: true, total: targets.length, completed: 0, failed: 0, currentTitle: "", failedTitles: [] });
+    let completed = 0;
+    let failed = 0;
+    const failedTitles: string[] = [];
+    for (const { row, mediaType, source } of targets) {
+      if (cancelBackdropMigrationRef.current) break;
+      const title = safeStr((row as any)?.title || (row as any)?.Title) || "(untitled)";
+      setBackdropMigration((prev) => ({ ...prev, currentTitle: title }));
+      try {
+        await uploadCoverToR2(row, source, mediaType, "backdrop", true);
+        completed += 1;
+      } catch (e) {
+        console.warn("Backdrop migration failed for", title, e);
+        failed += 1;
+        failedTitles.push(title);
+      }
+      setBackdropMigration((prev) => ({ ...prev, completed, failed, failedTitles: [...failedTitles] }));
+    }
+    setBackdropMigration((prev) => ({ ...prev, active: false, currentTitle: "" }));
+    setRefreshNonce((n) => n + 1);
+    const tail = cancelBackdropMigrationRef.current ? " (canceled)" : "";
+    alert(`Backdrop migration complete${tail}.\n\nUpgraded: ${completed}\nFailed: ${failed}${failedTitles.length ? `\n\nFailed:\n${failedTitles.slice(0, 10).join("\n")}${failedTitles.length > 10 ? `\n…and ${failedTitles.length - 10} more` : ""}` : ""}`);
+  };
+
+  const cancelBackdropMigration = () => {
+    cancelBackdropMigrationRef.current = true;
+  };
+
   const syncSingleItemCoverToR2 = async (item: any, mediaType: "book" | "movie" | "tv" | "game") => {
     try {
       const displayUrl = getDisplayCover(item, mediaType);
@@ -18096,25 +18191,80 @@ export default function Page() {
                   <button type="button" onClick={handleExitCoverSync} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: 20, padding: "0 4px", lineHeight: 1 }}>←</button>
                   <div style={{ fontSize: 18, fontWeight: 750, color: "#1d2735" }}>Cover Sync Status</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setRefreshNonce((n) => n + 1)}
-                  disabled={loading}
-                  style={{
-                    border: "1px solid rgba(121,131,145,0.44)",
-                    borderRadius: 9,
-                    padding: "7px 12px",
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(241,244,249,0.95) 100%)",
-                    color: "#2f3c4d",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: loading ? "default" : "pointer",
-                    opacity: loading ? 0.68 : 1,
-                  }}
-                >
-                  {loading ? "Refreshing..." : "Refresh Sync Status"}
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={runBackdropMigrationToW1280}
+                    disabled={backdropMigration.active || loading}
+                    style={{
+                      border: "1px solid rgba(74, 126, 212, 0.55)",
+                      borderRadius: 9,
+                      padding: "7px 12px",
+                      background: backdropMigration.active
+                        ? "rgba(74, 126, 212, 0.18)"
+                        : "linear-gradient(180deg, rgba(110, 156, 232, 1) 0%, rgba(74, 126, 212, 1) 100%)",
+                      color: backdropMigration.active ? "#274a82" : "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: backdropMigration.active ? "default" : "pointer",
+                      opacity: loading ? 0.68 : 1,
+                      boxShadow: backdropMigration.active ? "none" : "0 4px 10px rgba(74, 126, 212, 0.25)",
+                    }}
+                    title="Re-download every TMDB backdrop at w1280 and overwrite the R2 copy"
+                  >
+                    {backdropMigration.active ? `Migrating… ${backdropMigration.completed}/${backdropMigration.total}` : "Migrate Backdrops to HD"}
+                  </button>
+                  {backdropMigration.active ? (
+                    <button
+                      type="button"
+                      onClick={cancelBackdropMigration}
+                      style={{
+                        border: "1px solid rgba(195, 80, 80, 0.45)",
+                        borderRadius: 9,
+                        padding: "7px 10px",
+                        background: "rgba(195, 80, 80, 0.08)",
+                        color: "#a4382f",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setRefreshNonce((n) => n + 1)}
+                    disabled={loading || backdropMigration.active}
+                    style={{
+                      border: "1px solid rgba(121,131,145,0.44)",
+                      borderRadius: 9,
+                      padding: "7px 12px",
+                      background: "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(241,244,249,0.95) 100%)",
+                      color: "#2f3c4d",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: loading || backdropMigration.active ? "default" : "pointer",
+                      opacity: loading || backdropMigration.active ? 0.68 : 1,
+                    }}
+                  >
+                    {loading ? "Refreshing..." : "Refresh Sync Status"}
+                  </button>
+                </div>
               </div>
+
+              {backdropMigration.active || backdropMigration.completed > 0 || backdropMigration.failed > 0 ? (
+                <div style={{ padding: "8px 24px", borderBottom: "1px solid rgba(152, 162, 171, 0.15)", color: "#4e5a66", fontSize: 12, fontWeight: 600, background: "rgba(74, 126, 212, 0.06)", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontWeight: 800, color: "#274a82" }}>Backdrop HD migration:</span>
+                  <span>{backdropMigration.completed} / {backdropMigration.total} uploaded</span>
+                  {backdropMigration.failed > 0 ? <span style={{ color: "#a4382f", fontWeight: 700 }}>· {backdropMigration.failed} failed</span> : null}
+                  {backdropMigration.active && backdropMigration.currentTitle ? (
+                    <span style={{ color: "#6a7484", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      · {backdropMigration.currentTitle}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div style={{ padding: "10px 24px", borderBottom: "1px solid rgba(152, 162, 171, 0.15)", color: "#4e5a66", fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.5)" }}>
                 Bulk sync is now handled from the Google Sheet menu.

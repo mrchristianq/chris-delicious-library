@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
-import { scaledPx, useDesktopDetailScale } from "./detailScale";
+import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 
 type BookDetailsPageProps = {
   item: Record<string, unknown>;
@@ -476,6 +476,7 @@ export function BookDetailsPage({
 }: BookDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const detailScale = useDesktopDetailScale(isMobileLayout);
+  const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
   const seededPalette = useMemo(() => buildSeedDetailPalette(item, coverUrl), [coverUrl, item]);
   const paletteCacheKey = useMemo(
@@ -725,6 +726,7 @@ export function BookDetailsPage({
     <div
       style={{
         opacity: paletteReady ? 1 : 0,
+        height: isMobileLayout ? "auto" : "100vh",
         minHeight: isMobileLayout ? `calc(100vh - 58px)` : "100vh",
         padding: isMobileLayout ? "12px 10px 24px" : "12px 16px 16px",
         background: usePageBackground
@@ -762,8 +764,21 @@ export function BookDetailsPage({
       ) : null}
       <div
         style={{
-          maxWidth: 1500,
-          margin: "0 auto",
+          position: "relative",
+          zIndex: 1,
+          width: "100%",
+          height: isMobileLayout ? "auto" : "100%",
+          display: isMobileLayout ? "block" : "flex",
+          justifyContent: isMobileLayout ? undefined : "center",
+          alignItems: isMobileLayout ? undefined : "flex-start",
+        }}
+      >
+      <div
+        ref={stageRef}
+        style={{
+          width: isMobileLayout ? "100%" : 1500,
+          maxWidth: isMobileLayout ? 1500 : 1500,
+          margin: isMobileLayout ? "0 auto" : 0,
           borderRadius: isMobileLayout ? 24 : 28,
           padding: isMobileLayout ? "12px" : "12px 12px 14px",
           background: usePageBackground
@@ -772,11 +787,12 @@ export function BookDetailsPage({
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15)",
           backdropFilter: "blur(12px) saturate(1.05)",
           minHeight: isMobileLayout ? undefined : "calc(100vh - 24px)",
-          overflow: isMobileLayout ? "hidden" : "auto",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          position: "relative",
-          zIndex: 1,
+          transform: isMobileLayout ? undefined : `scale(${fitScale})`,
+          transformOrigin: "top center",
+          flexShrink: 0,
         }}
       >
         <div
@@ -1401,6 +1417,7 @@ export function BookDetailsPage({
             </div>
           ) : null}
         </div>
+      </div>
       </div>
     </div>
   );

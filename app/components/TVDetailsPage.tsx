@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
-import { scaledPx, useDesktopDetailScale } from "./detailScale";
+import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 
 type TVDetailsPageProps = {
   item: Record<string, unknown>;
@@ -232,6 +232,7 @@ export function TVDetailsPage({
 }: TVDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const detailScale = useDesktopDetailScale(isMobileLayout);
+  const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
   const backdropUrl = getDisplayBackdropUrl(item);
 
@@ -326,12 +327,12 @@ export function TVDetailsPage({
   })();
 
   const detailFacts = [
-    dateCompleted ? { label: "COMPLETED", value: dateCompleted } : null,
     caughtUp ? { label: "CAUGHT UP", value: caughtUp } : null,
     tvShowStatus ? { label: "SHOW STATUS", value: tvShowStatus } : null,
-    firstAirDate ? { label: "FIRST AIR DATE", value: firstAirDate } : null,
-    lastAirDate ? { label: "LAST AIR DATE", value: lastAirDate } : null,
-    creator ? { label: "CREATOR", value: creator } : null,
+    firstAirDate ? { label: "FIRST AIR DATE", value: firstAirDate, half: true } : null,
+    lastAirDate ? { label: "LAST AIR DATE", value: lastAirDate, half: true } : null,
+    creator ? { label: "CREATOR", value: creator, half: true } : null,
+    dateCompleted ? { label: "COMPLETED", value: dateCompleted, half: true } : null,
     numberOfSeasons ? { label: "SEASONS", value: numberOfSeasons, half: true } : null,
     numberOfEpisodes ? { label: "EPISODES", value: numberOfEpisodes, half: true } : null,
   ].filter(Boolean) as { label: string; value: string; half?: boolean }[];
@@ -343,7 +344,7 @@ export function TVDetailsPage({
 
   const POSTER_W = isMobileLayout ? 120 : scaledPx(190, detailScale);
   const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + scaledPx(44, detailScale);
-  const DETAILS_W = isMobileLayout ? 0 : scaledPx(220, detailScale);
+  const DETAILS_W = isMobileLayout ? 0 : scaledPx(320, detailScale);
   const HERO_H = isMobileLayout ? "auto" : scaledPx(418, detailScale);
 
   const hasRelated = visibleRelated.length > 0;
@@ -369,11 +370,12 @@ export function TVDetailsPage({
     <div style={{
       opacity: ready ? 1 : 0,
       transition: "opacity 260ms ease",
+      height: isMobileLayout ? "auto" : "100vh",
       minHeight: "100vh",
       background: usePageBackground ? "transparent" : `linear-gradient(160deg, ${mixHex(palette.start, "#06080f", 0.08)} 0%, ${palette.start} 30%, ${mixHex(palette.end, palette.start, 0.18)} 58%, ${palette.end} 100%)`,
       color: palette.text,
       position: "relative",
-      overflow: "hidden auto",
+      overflow: isMobileLayout ? "hidden auto" : "hidden",
     }}>
       {/* Ambient blur */}
       {backdropUrl ? (
@@ -381,12 +383,31 @@ export function TVDetailsPage({
           position: "fixed", inset: 0,
           backgroundImage: `url("${backdropUrl}")`,
           backgroundSize: "cover", backgroundPosition: "center top",
-          opacity: 0.10, filter: "blur(52px) saturate(1.4) brightness(0.6)",
+          opacity: 0.18, filter: "blur(52px) saturate(1.4) brightness(0.85)",
           transform: "scale(1.12)", zIndex: 0, pointerEvents: "none",
         }} />
       ) : null}
 
-      <div style={{ position: "relative", zIndex: 1, maxWidth: 1600, margin: "0 auto" }}>
+      <div style={{
+        position: "relative",
+        zIndex: 1,
+        width: "100%",
+        height: isMobileLayout ? "auto" : "100%",
+        display: isMobileLayout ? "block" : "flex",
+        justifyContent: isMobileLayout ? undefined : "center",
+        alignItems: isMobileLayout ? undefined : "flex-start",
+      }}>
+        <div
+          ref={stageRef}
+          style={{
+            width: isMobileLayout ? "100%" : 1400,
+            maxWidth: isMobileLayout ? 1600 : 1400,
+            margin: isMobileLayout ? "0 auto" : 0,
+            transform: isMobileLayout ? undefined : `scale(${fitScale})`,
+            transformOrigin: "top center",
+            flexShrink: 0,
+          }}
+        >
 
         {/* ── HERO ── */}
         <div style={{
@@ -411,11 +432,11 @@ export function TVDetailsPage({
           {/* Darkening overlays */}
           <div aria-hidden style={{
             position: "absolute", inset: 0,
-            background: "linear-gradient(to right, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.60) 50%, rgba(0,0,0,0.38) 100%)",
+            background: "linear-gradient(to right, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.36) 50%, rgba(0,0,0,0.16) 100%)",
           }} />
           <div aria-hidden style={{
             position: "absolute", inset: 0,
-            background: `linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.04) 35%, ${rgba(palette.start, 0.55)} 78%, ${rgba(palette.start, 0.98)} 100%)`,
+            background: `linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.02) 35%, ${rgba(palette.start, 0.4)} 78%, ${rgba(palette.start, 0.92)} 100%)`,
           }} />
 
           {/* Top bar: buttons (left) + back (right) */}
@@ -489,19 +510,19 @@ export function TVDetailsPage({
           {/* Details panel — absolute bottom-right inside hero */}
           {!isMobileLayout && (detailFacts.length > 0 || ratingFacts.length > 0) ? (
             <div style={{
-              position: "absolute", bottom: 16, right: 16, width: "max-content", minWidth: 160, maxWidth: 260,
+              position: "absolute", bottom: 16, right: 16, width: "max-content", minWidth: 220, maxWidth: 320,
               zIndex: 5,
               ...PANEL_STYLE,
-              padding: "14px 16px",
+              padding: "16px 20px",
               maxHeight: HERO_H === "auto" ? undefined : (HERO_H as number) - scaledPx(74, detailScale),
               overflow: "hidden",
             }}>
-              <div style={{ fontSize: 10, fontWeight: 860, letterSpacing: "0.09em", color: "rgba(255,255,255,0.45)", marginBottom: 12 }}>DETAILS</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 8px" }}>
+              <div style={{ fontSize: 12, fontWeight: 860, letterSpacing: "0.09em", color: "rgba(255,255,255,0.5)", marginBottom: 14 }}>DETAILS</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 10px" }}>
                 {detailFacts.map((f, i) => (
-                  <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: f.half ? undefined : "1 / -1" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.42)", letterSpacing: "0.06em" }}>{f.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{f.value}</div>
+                  <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 3, gridColumn: f.half ? undefined : "1 / -1" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.5)", letterSpacing: "0.06em" }}>{f.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{f.value}</div>
                   </div>
                 ))}
               </div>
@@ -674,15 +695,6 @@ export function TVDetailsPage({
             </>
           ) : null}
 
-          {/* Creator — full width */}
-          {creator ? sectionBox(
-            <>
-              {sectionLabel("CREATOR")}
-              <div style={{ fontSize: 16, fontWeight: 750, color: palette.text, lineHeight: 1.3 }}>
-                {creator}
-              </div>
-            </>
-          ) : null}
 
           {/* Similar Shows — full width */}
           {hasRelated ? sectionBox(
@@ -793,6 +805,7 @@ export function TVDetailsPage({
             </>
           ) : null}
 
+        </div>
         </div>
       </div>
     </div>

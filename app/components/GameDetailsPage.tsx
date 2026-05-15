@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
-import { scaledPx, useDesktopDetailScale } from "./detailScale";
+import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 
 type GameDetailsPageProps = {
   item: Record<string, unknown>;
@@ -243,6 +243,7 @@ export function GameDetailsPage({
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const detailScale = useDesktopDetailScale(isMobileLayout);
+  const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
   const screenshotUrl = getDisplayBackdropUrl(item);
 
@@ -368,14 +369,13 @@ export function GameDetailsPage({
   const completedLabel = dateCompleted || yearPlayed;
 
   const detailFacts = [
-    completedLabel ? { label: "COMPLETED", value: completedLabel } : null,
-    hoursPlayed ? { label: "HOURS PLAYED", value: hoursPlayed } : null,
-    platformDisplay ? { label: "PLATFORM", value: platformDisplay } : null,
+    (releaseDate || year) ? { label: "RELEASED", value: releaseDate || year, half: true } : null,
+    completedLabel ? { label: "COMPLETED", value: completedLabel, half: true } : null,
+    platformDisplay ? { label: "PLATFORM", value: platformDisplay, half: true } : null,
+    ownership ? { label: "OWNERSHIP", value: ownership, half: true } : null,
     developer ? { label: "DEVELOPER", value: developer } : null,
-    (releaseDate || year) ? { label: "RELEASED", value: releaseDate || year } : null,
-    ownership ? { label: "OWNERSHIP", value: ownership } : null,
     ...tags.map(t => ({ label: "TAG", value: t })),
-  ].filter(Boolean) as { label: string; value: string }[];
+  ].filter(Boolean) as { label: string; value: string; half?: boolean }[];
 
   const ratingFacts = [
     igdbRating ? { label: "IGDB Rating", value: igdbRating } : null,
@@ -384,7 +384,7 @@ export function GameDetailsPage({
 
   const POSTER_W = isMobileLayout ? 120 : scaledPx(190, detailScale);
   const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + scaledPx(44, detailScale);
-  const DETAILS_W = isMobileLayout ? 0 : scaledPx(220, detailScale);
+  const DETAILS_W = isMobileLayout ? 0 : scaledPx(320, detailScale);
   const HERO_H = isMobileLayout ? "auto" : scaledPx(520, detailScale);
 
   const sectionBox = (children: React.ReactNode, style?: React.CSSProperties) => (
@@ -408,11 +408,12 @@ export function GameDetailsPage({
     <div style={{
       opacity: ready ? 1 : 0,
       transition: "opacity 260ms ease",
+      height: isMobileLayout ? "auto" : "100vh",
       minHeight: "100vh",
       background: usePageBackground ? "transparent" : `linear-gradient(160deg, ${mixHex(palette.start, "#06080f", 0.08)} 0%, ${palette.start} 30%, ${mixHex(palette.end, palette.start, 0.18)} 58%, ${palette.end} 100%)`,
       color: palette.text,
       position: "relative",
-      overflow: "hidden auto",
+      overflow: isMobileLayout ? "hidden auto" : "hidden",
     }}>
       {/* Ambient blur */}
       {screenshotUrl ? (
@@ -420,12 +421,31 @@ export function GameDetailsPage({
           position: "fixed", inset: 0,
           backgroundImage: `url("${screenshotUrl}")`,
           backgroundSize: "cover", backgroundPosition: "center top",
-          opacity: 0.10, filter: "blur(52px) saturate(1.4) brightness(0.6)",
+          opacity: 0.18, filter: "blur(52px) saturate(1.4) brightness(0.85)",
           transform: "scale(1.12)", zIndex: 0, pointerEvents: "none",
         }} />
       ) : null}
 
-      <div style={{ position: "relative", zIndex: 1, maxWidth: 1600, margin: "0 auto" }}>
+      <div style={{
+        position: "relative",
+        zIndex: 1,
+        width: "100%",
+        height: isMobileLayout ? "auto" : "100%",
+        display: isMobileLayout ? "block" : "flex",
+        justifyContent: isMobileLayout ? undefined : "center",
+        alignItems: isMobileLayout ? undefined : "flex-start",
+      }}>
+        <div
+          ref={stageRef}
+          style={{
+            width: isMobileLayout ? "100%" : 1400,
+            maxWidth: isMobileLayout ? 1600 : 1400,
+            margin: isMobileLayout ? "0 auto" : 0,
+            transform: isMobileLayout ? undefined : `scale(${fitScale})`,
+            transformOrigin: "top center",
+            flexShrink: 0,
+          }}
+        >
 
         {/* ── HERO ── */}
         <div style={{
@@ -450,11 +470,11 @@ export function GameDetailsPage({
           {/* Darkening overlays */}
           <div aria-hidden style={{
             position: "absolute", inset: 0,
-            background: "linear-gradient(to right, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.60) 50%, rgba(0,0,0,0.38) 100%)",
+            background: "linear-gradient(to right, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.36) 50%, rgba(0,0,0,0.16) 100%)",
           }} />
           <div aria-hidden style={{
             position: "absolute", inset: 0,
-            background: `linear-gradient(to bottom, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.04) 35%, ${rgba(palette.start, 0.55)} 78%, ${rgba(palette.start, 0.98)} 100%)`,
+            background: `linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.02) 35%, ${rgba(palette.start, 0.4)} 78%, ${rgba(palette.start, 0.92)} 100%)`,
           }} />
 
           {/* Top bar: buttons (left) + back (right) */}
@@ -528,26 +548,43 @@ export function GameDetailsPage({
           {/* Details panel — absolute bottom-right inside hero */}
           {!isMobileLayout && (detailFacts.length > 0 || ratingFacts.length > 0) ? (
             <div style={{
-              position: "absolute", bottom: 16, right: 16, width: "max-content", minWidth: 160, maxWidth: 260,
+              position: "absolute", bottom: 16, right: 16, width: "max-content", minWidth: 220, maxWidth: 320,
               zIndex: 5,
               ...PANEL_STYLE,
-              padding: "14px 16px",
+              padding: "16px 20px",
             }}>
-              <div style={{ fontSize: 10, fontWeight: 860, letterSpacing: "0.09em", color: "rgba(255,255,255,0.45)", marginBottom: 12 }}>DETAILS</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 8px" }}>
+              <div style={{ fontSize: 12, fontWeight: 860, letterSpacing: "0.09em", color: "rgba(255,255,255,0.5)", marginBottom: 14 }}>DETAILS</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 10px" }}>
                 {detailFacts.map((f, i) => (
-                  <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.42)", letterSpacing: "0.06em" }}>{f.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{f.label === "PLATFORM" ? renderPlatformValue(f.value, 22) : f.value}</div>
+                  <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.half ? undefined : "1 / -1" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.5)", letterSpacing: "0.06em" }}>{f.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{f.label === "PLATFORM" ? renderPlatformValue(f.value, 22) : f.value}</div>
                   </div>
                 ))}
               </div>
-              {ratingFacts.length > 0 ? (
+              {(ratingFacts.length > 0 || hoursPlayed) ? (
                 <>
                   <div style={{ height: 1, background: "rgba(255,255,255,0.10)", margin: "12px 0" }} />
-                  <div style={{ display: "flex", gap: 16 }}>
+                  <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
                     {igdbRating ? <ScoreCircle raw={igdbRating} label="IGDB Rating" /> : null}
                     {myRating ? <ScoreCircle raw={myRating} label="My Rating" /> : null}
+                    {hoursPlayed ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                        <div style={{
+                          width: 56, height: 56,
+                          borderRadius: "50%",
+                          background: "rgba(0,0,0,0.55)",
+                          border: "2px solid rgba(255,255,255,0.10)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 14, fontWeight: 800, color: "#fff",
+                        }}>
+                          {hoursPlayed}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
+                          Hours
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </>
               ) : null}
@@ -798,6 +835,7 @@ export function GameDetailsPage({
             </>
           ) : null}
 
+        </div>
         </div>
       </div>
     </div>
