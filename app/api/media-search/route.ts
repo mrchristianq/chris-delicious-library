@@ -39,6 +39,7 @@ type IgdbGame = {
   genres?: Array<{ name?: string }>;
   platforms?: Array<{ name?: string }>;
   involved_companies?: Array<{ company?: { name?: string } }>;
+  screenshots?: Array<{ url?: string }>;
 };
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
@@ -648,6 +649,13 @@ async function lookupGoogleBookById(volumeId: string): Promise<SearchResult | nu
   return mapGoogleBookVolumeToResult(payload);
 }
 
+function normalizeIgdbScreenshotUrl(url: string): string {
+  const normalized = safeStr(url);
+  if (!normalized) return "";
+  const https = normalized.startsWith("//") ? `https:${normalized}` : normalized;
+  return https.replace("/t_thumb/", "/t_screenshot_big/");
+}
+
 function normalizeIgdbCoverUrl(url: string): string {
   const normalized = safeStr(url);
   if (!normalized) return "";
@@ -671,6 +679,12 @@ function mapIgdbGameToResult(item: IgdbGame): SearchResult {
         .filter(Boolean)
     : [];
   const coverUrl = normalizeIgdbCoverUrl(safeStr(item.cover?.url));
+  const screenshotUrls = Array.isArray(item.screenshots)
+    ? item.screenshots
+        .map((s) => normalizeIgdbScreenshotUrl(safeStr(s?.url)))
+        .filter(Boolean)
+    : [];
+  const screenshotsUrl = screenshotUrls.join(", ");
 
   return {
     id: `game:${String(item.id || title)}`,
@@ -689,6 +703,7 @@ function mapIgdbGameToResult(item: IgdbGame): SearchResult {
       developer: developers[0] || "",
       description: safeStr(item.summary),
       coverUrl,
+      screenshotsUrl,
     },
   };
 }
@@ -700,7 +715,7 @@ async function searchIgdb(query: string): Promise<SearchResult[]> {
   }
   const token = await getIgdbAccessToken();
 
-  const body = `search \"${query.replace(/\"/g, "") }\"; fields id,name,first_release_date,rating,summary,cover.url,genres.name,platforms.name,involved_companies.company.name; limit 8;`;
+  const body = `search \"${query.replace(/\"/g, "") }\"; fields id,name,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name; limit 8;`;
 
   const res = await fetch("https://api.igdb.com/v4/games", {
     method: "POST",
@@ -733,7 +748,7 @@ async function lookupIgdbById(id: string): Promise<SearchResult | null> {
   const token = await getIgdbAccessToken();
   const body =
     `where id = ${normalizedId}; ` +
-    "fields id,name,first_release_date,rating,summary,cover.url,genres.name,platforms.name,involved_companies.company.name; " +
+    "fields id,name,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name; " +
     "limit 1;";
 
   const res = await fetch("https://api.igdb.com/v4/games", {
