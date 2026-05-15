@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
+import { scaledPx, useDesktopDetailScale } from "./detailScale";
 
 type BookDetailsPageProps = {
   item: Record<string, unknown>;
@@ -474,6 +475,7 @@ export function BookDetailsPage({
   highlightColor,
 }: BookDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const detailScale = useDesktopDetailScale(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
   const seededPalette = useMemo(() => buildSeedDetailPalette(item, coverUrl), [coverUrl, item]);
   const paletteCacheKey = useMemo(
@@ -637,11 +639,24 @@ export function BookDetailsPage({
           : 15;
   const titleFontSize = isMobileLayout
     ? 34
-    : title.length > 48
-      ? 42
-      : title.length > 32
-        ? 48
-        : 56;
+    : scaledPx(
+      title.length > 48
+        ? 42
+        : title.length > 32
+          ? 48
+          : 56,
+      detailScale
+    );
+  const desktopSideColumnW = scaledPx(260, detailScale);
+  const desktopHeroCoverMaxW = scaledPx(210, detailScale);
+  const desktopHeroCoverMaxH = scaledPx(258, detailScale);
+  const desktopHeroMinCoverColW = scaledPx(155, detailScale);
+  const desktopRecommendationCardW = scaledPx(104, detailScale);
+  const desktopRecommendationCardH = scaledPx(132, detailScale);
+  const desktopGridHeaderH = scaledPx(64, detailScale);
+  const desktopGridFeatureMinH = scaledPx(205, detailScale);
+  const desktopGridFactsMinH = scaledPx(144, detailScale);
+  const desktopGridRelatedMinH = scaledPx(320, detailScale);
   const descriptionViewportRef = useRef<HTMLDivElement | null>(null);
   const descriptionContentRef = useRef<HTMLDivElement | null>(null);
 
@@ -767,8 +782,10 @@ export function BookDetailsPage({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(0, 1fr) 260px",
-            gridTemplateRows: isMobileLayout ? undefined : "64px minmax(205px, 0.82fr) minmax(144px, 0.53fr) minmax(320px, 1fr)",
+            gridTemplateColumns: isMobileLayout ? "1fr" : `minmax(0, 1fr) ${desktopSideColumnW}px`,
+            gridTemplateRows: isMobileLayout
+              ? undefined
+              : `${desktopGridHeaderH}px minmax(${desktopGridFeatureMinH}px, 0.82fr) minmax(${desktopGridFactsMinH}px, 0.53fr) minmax(${desktopGridRelatedMinH}px, 1fr)`,
             gap: isMobileLayout ? 14 : 12,
             height: isMobileLayout ? undefined : "100%",
             minHeight: 0,
@@ -928,7 +945,9 @@ export function BookDetailsPage({
               minHeight: 0,
               overflow: "hidden",
               display: "grid",
-              gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(155px, 210px) minmax(0, 1fr)",
+              gridTemplateColumns: isMobileLayout
+                ? "1fr"
+                : `minmax(${desktopHeroMinCoverColW}px, ${desktopHeroCoverMaxW}px) minmax(0, 1fr)`,
               gap: isMobileLayout ? 16 : 22,
               alignItems: "center",
               padding: isMobileLayout ? "8px 4px" : "6px 6px",
@@ -938,7 +957,7 @@ export function BookDetailsPage({
               <div
                 style={{
                   width: isMobileLayout ? 210 : "100%",
-                  maxWidth: 210,
+                  maxWidth: isMobileLayout ? 210 : desktopHeroCoverMaxW,
                 }}
               >
                 {(() => {
@@ -956,7 +975,7 @@ export function BookDetailsPage({
                         alt={title}
                         style={{
                           width: "100%",
-                          maxHeight: isMobileLayout ? undefined : 258,
+                          maxHeight: isMobileLayout ? undefined : desktopHeroCoverMaxH,
                           objectFit: "contain",
                           filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
                           cursor: "pointer",
@@ -970,7 +989,7 @@ export function BookDetailsPage({
                       alt={title}
                       style={{
                         width: "100%",
-                        maxHeight: isMobileLayout ? undefined : 258,
+                        maxHeight: isMobileLayout ? undefined : desktopHeroCoverMaxH,
                         objectFit: "contain",
                         filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
                         ...COVER_IMAGE_RADIUS_STYLE,
@@ -1191,7 +1210,7 @@ export function BookDetailsPage({
                   display: "grid",
                   gridTemplateColumns: isMobileLayout
                     ? "repeat(2, minmax(0, 1fr))"
-                    : `repeat(${Math.min(displayBooksModule.items.length, 6)}, 104px)`,
+                    : `repeat(${Math.min(displayBooksModule.items.length, 6)}, ${desktopRecommendationCardW}px)`,
                   gap: isMobileLayout ? 13 : 13,
                   height: isMobileLayout ? undefined : "calc(100% - 26px)",
                   alignItems: "start",
@@ -1246,7 +1265,7 @@ export function BookDetailsPage({
                       color: palette.text,
                       cursor: "pointer",
                       minWidth: 0,
-                      width: isMobileLayout ? "100%" : 104,
+                      width: isMobileLayout ? "100%" : desktopRecommendationCardW,
                       display: "flex",
                       flexDirection: "column",
                     }}
@@ -1265,7 +1284,7 @@ export function BookDetailsPage({
                         overflow: "hidden",
                         filter: "drop-shadow(0 4px 8px rgba(5, 9, 16, 0.28))",
                         cursor: showNotInLibrary && hardcoverUrl ? "pointer" : "default",
-                        height: isMobileLayout ? 148 : 132,
+                        height: isMobileLayout ? 148 : desktopRecommendationCardH,
                         display: "flex",
                         alignItems: "flex-end",
                         justifyContent: "flex-start",
@@ -1288,8 +1307,8 @@ export function BookDetailsPage({
                       ) : (
                         <div
                           style={{
-                            width: isMobileLayout ? "100%" : 104,
-                            height: isMobileLayout ? 148 : 132,
+                            width: isMobileLayout ? "100%" : desktopRecommendationCardW,
+                            height: isMobileLayout ? 148 : desktopRecommendationCardH,
                             borderRadius: 6,
                             background: "rgba(255,255,255,0.16)",
                             border: `1px solid ${palette.surfaceBorder}`,

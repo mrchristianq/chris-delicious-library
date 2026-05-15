@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
+import { scaledPx, useDesktopDetailScale } from "./detailScale";
 
 type MovieDetailsPageProps = {
   item: Record<string, unknown>;
@@ -233,6 +234,7 @@ export function MovieDetailsPage({
   recommendedMovies,
 }: MovieDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const detailScale = useDesktopDetailScale(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
   const backdropUrl = getDisplayBackdropUrl(item);
 
@@ -276,7 +278,7 @@ export function MovieDetailsPage({
   const castMembers = topcastNames.slice(0, 5).map((name, i) => ({ name, photo: topcastPhotoList[i] || "" }));
 
   const metaParts = [year, rawRuntime, ...genres].filter(Boolean);
-  const titleFontSize = isMobileLayout ? 22 : title.length > 44 ? 26 : title.length > 28 ? 32 : 38;
+  const titleFontSize = isMobileLayout ? 22 : scaledPx(title.length > 44 ? 26 : title.length > 28 ? 32 : 38, detailScale);
 
   const descriptionText = overview || "No description available.";
   const descFontSize = isMobileLayout ? 13 : 13;
@@ -285,10 +287,10 @@ export function MovieDetailsPage({
   const descContent = useRef<HTMLDivElement>(null);
   const castRowRef = useRef<HTMLDivElement>(null);
   const relatedRowRef = useRef<HTMLDivElement>(null);
-  const CAST_ITEM_W = isMobileLayout ? 68 : 82;
-  const CAST_GAP = isMobileLayout ? 14 : 20;
-  const RELATED_ITEM_W = 80;
-  const RELATED_GAP = 10;
+  const CAST_ITEM_W = isMobileLayout ? 68 : scaledPx(82, detailScale);
+  const CAST_GAP = isMobileLayout ? 14 : scaledPx(20, detailScale);
+  const RELATED_ITEM_W = isMobileLayout ? 80 : scaledPx(80, detailScale);
+  const RELATED_GAP = isMobileLayout ? 10 : scaledPx(10, detailScale);
   const maxCast = useFitCount(castRowRef, CAST_ITEM_W, CAST_GAP);
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
   const visibleCast = castMembers.slice(0, maxCast);
@@ -361,10 +363,10 @@ export function MovieDetailsPage({
     myRating ? { label: "MY RATING", value: myRating } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
-  const POSTER_W = isMobileLayout ? 120 : 190;
-  const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + 44;
-  const DETAILS_W = isMobileLayout ? 0 : 220;
-  const HERO_H = isMobileLayout ? "auto" : 460;
+  const POSTER_W = isMobileLayout ? 120 : scaledPx(190, detailScale);
+  const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + scaledPx(44, detailScale);
+  const DETAILS_W = isMobileLayout ? 0 : scaledPx(220, detailScale);
+  const HERO_H = isMobileLayout ? "auto" : scaledPx(460, detailScale);
 
   const hasRelated = effectiveRelatedItems.length > 0;
 
@@ -513,7 +515,7 @@ export function MovieDetailsPage({
               zIndex: 5,
               ...PANEL_STYLE,
               padding: "14px 16px",
-              maxHeight: HERO_H === "auto" ? undefined : (HERO_H as number) - 74,
+              maxHeight: HERO_H === "auto" ? undefined : (HERO_H as number) - scaledPx(74, detailScale),
               overflow: "hidden",
             }}>
               <div style={{ fontSize: 10, fontWeight: 860, letterSpacing: "0.09em", color: "rgba(255,255,255,0.45)", marginBottom: 12 }}>DETAILS</div>
@@ -540,7 +542,7 @@ export function MovieDetailsPage({
           {/* Hero content: left column (poster+circles) + middle (title/meta) */}
           <div style={{
             position: isMobileLayout ? "relative" : "absolute",
-            top: isMobileLayout ? undefined : 52,
+            top: isMobileLayout ? undefined : scaledPx(52, detailScale),
             left: 0, right: 0, bottom: isMobileLayout ? undefined : 0,
             zIndex: 2,
             display: "flex",

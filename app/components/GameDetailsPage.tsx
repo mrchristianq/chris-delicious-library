@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
+import { scaledPx, useDesktopDetailScale } from "./detailScale";
 
 type GameDetailsPageProps = {
   item: Record<string, unknown>;
@@ -241,6 +242,7 @@ export function GameDetailsPage({
   relatedGames, relatedGamesLabel, recommendedGames, onSelectRelatedGame, highlightColor,
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const detailScale = useDesktopDetailScale(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
   const screenshotUrl = getDisplayBackdropUrl(item);
 
@@ -282,13 +284,13 @@ export function GameDetailsPage({
   const tags = splitList(item.tag || item.tags);
 
   const metaParts = [year, platformDisplay, developer, ...genres].filter(Boolean);
-  const titleFontSize = isMobileLayout ? 22 : title.length > 44 ? 26 : title.length > 28 ? 32 : 38;
+  const titleFontSize = isMobileLayout ? 22 : scaledPx(title.length > 44 ? 26 : title.length > 28 ? 32 : 38, detailScale);
 
   const descriptionText = description || "";
 
   const relatedRowRef = useRef<HTMLDivElement>(null);
-  const RELATED_ITEM_W = 90;
-  const RELATED_GAP = 10;
+  const RELATED_ITEM_W = isMobileLayout ? 90 : scaledPx(90, detailScale);
+  const RELATED_GAP = isMobileLayout ? 10 : scaledPx(10, detailScale);
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
   const currentDeveloperKey = safeStr(developer).toLowerCase();
   const currentGenreSet = useMemo(
@@ -380,10 +382,10 @@ export function GameDetailsPage({
     myRating ? { label: "My Rating", value: myRating } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
-  const POSTER_W = isMobileLayout ? 120 : 190;
-  const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + 44;
-  const DETAILS_W = isMobileLayout ? 0 : 220;
-  const HERO_H = isMobileLayout ? "auto" : 520;
+  const POSTER_W = isMobileLayout ? 120 : scaledPx(190, detailScale);
+  const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + scaledPx(44, detailScale);
+  const DETAILS_W = isMobileLayout ? 0 : scaledPx(220, detailScale);
+  const HERO_H = isMobileLayout ? "auto" : scaledPx(520, detailScale);
 
   const sectionBox = (children: React.ReactNode, style?: React.CSSProperties) => (
     <div style={{
@@ -555,7 +557,7 @@ export function GameDetailsPage({
           {/* Hero content: left column (poster) + middle (title/meta/desc) */}
           <div style={{
             position: isMobileLayout ? "relative" : "absolute",
-            top: isMobileLayout ? undefined : 52,
+            top: isMobileLayout ? undefined : scaledPx(52, detailScale),
             left: 0, right: 0, bottom: isMobileLayout ? undefined : 0,
             zIndex: 2,
             display: "flex",
