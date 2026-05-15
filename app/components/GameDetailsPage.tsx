@@ -273,6 +273,14 @@ export function GameDetailsPage({
   const RELATED_GAP = 10;
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
   const currentDeveloperKey = safeStr(developer).toLowerCase();
+  const currentGenreSet = useMemo(
+    () => new Set(splitList(item.genres || item.genre).map((g) => g.toLowerCase())),
+    [item]
+  );
+  const currentPlatformSet = useMemo(
+    () => new Set(splitList(item.platforms || item.platform).map((p) => p.toLowerCase())),
+    [item]
+  );
   const libraryRelatedItems = useMemo(() => relatedGames ?? [], [relatedGames]);
   const recommendationItems = (recommendedGames ?? []).filter((game) => safeStr(game.title));
   const effectiveRelatedItems = useMemo(() => {
@@ -303,26 +311,17 @@ export function GameDetailsPage({
 
     const uniqueLibrary = dedupe(libraryRelatedItems);
     const uniqueRecommendations = dedupe(recommendationItems);
-    const recommendationQuota = Math.min(3, uniqueRecommendations.length);
-    const libraryQuota = Math.max(0, maxRelated - recommendationQuota);
-    const initial = [
-      ...uniqueLibrary.slice(0, libraryQuota),
-      ...uniqueRecommendations.slice(0, recommendationQuota),
+    const sameDeveloperLibrary = uniqueLibrary.filter((entry) => {
+      const relatedDeveloper = safeStr((entry as Record<string, unknown>).developer).toLowerCase();
+      return Boolean(currentDeveloperKey && relatedDeveloper && relatedDeveloper === currentDeveloperKey);
+    });
+    const libSlots = Math.min(3, sameDeveloperLibrary.length, maxRelated);
+    const recSlots = Math.max(0, maxRelated - libSlots);
+    return [
+      ...sameDeveloperLibrary.slice(0, libSlots),
+      ...uniqueRecommendations.slice(0, recSlots),
     ];
-
-    if (initial.length >= maxRelated) return initial;
-
-    const already = new Set(initial.map((entry) => keyOf(entry)).filter(Boolean));
-    const fillPool = [...uniqueRecommendations.slice(recommendationQuota), ...uniqueLibrary.slice(libraryQuota)];
-    for (const entry of fillPool) {
-      const key = keyOf(entry);
-      if (!key || already.has(key)) continue;
-      already.add(key);
-      initial.push(entry);
-      if (initial.length >= maxRelated) break;
-    }
-    return initial;
-  }, [libraryRelatedItems, recommendationItems, maxRelated]);
+  }, [libraryRelatedItems, recommendationItems, maxRelated, currentDeveloperKey]);
   const effectiveRelatedLabel =
     recommendationItems.length > 0
       ? "YOU MAY ALSO LIKE"
@@ -642,8 +641,32 @@ export function GameDetailsPage({
                   const gYear = formatYear(game.releaseDate || game.releaseDateAlt);
                   const gCover = getDisplayCoverUrl(game);
                   const isRecommendation = Boolean((game as Record<string, unknown>).__isRecommendation);
+                  const igdbUrl = isRecommendation ? safeStr((game as Record<string, unknown>).externalUrl) : "";
                   const relatedDeveloper = safeStr((game as Record<string, unknown>).developer).toLowerCase();
                   const sameDeveloper = Boolean(!isRecommendation && currentDeveloperKey && relatedDeveloper && currentDeveloperKey === relatedDeveloper);
+                  const relatedGenreSet = new Set(
+                    splitList((game as Record<string, unknown>).genres || (game as Record<string, unknown>).genre)
+                      .map((g) => g.toLowerCase())
+                  );
+                  const sameGenre = !isRecommendation && !sameDeveloper && Array.from(relatedGenreSet).some((g) => currentGenreSet.has(g));
+                  const relatedPlatformSet = new Set(
+                    splitList((game as Record<string, unknown>).platforms || (game as Record<string, unknown>).platform)
+                      .map((p) => p.toLowerCase())
+                  );
+                  const samePlatform =
+                    !isRecommendation &&
+                    !sameDeveloper &&
+                    !sameGenre &&
+                    Array.from(relatedPlatformSet).some((p) => currentPlatformSet.has(p));
+                  const bottomLabel = isRecommendation
+                    ? "Not in Library"
+                    : sameDeveloper
+                      ? "Same Developer"
+                      : sameGenre
+                        ? "Same Genre"
+                        : samePlatform
+                          ? "Same Platform"
+                          : "In Library";
                   return (
                     <div
                       key={i}
@@ -656,11 +679,23 @@ export function GameDetailsPage({
                       }}
                     >
                       {gCover ? (
-                        <img src={gCover} alt={gTitle} style={{
-                          width: RELATED_ITEM_W,
-                          border: `1px solid ${palette.surfaceBorder}`,
-                          ...COVER_IMAGE_RADIUS_STYLE,
-                        }} />
+                        <div
+                          onClick={(event) => {
+                            if (!isRecommendation || !igdbUrl) return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (typeof window !== "undefined") {
+                              window.open(igdbUrl, "_blank", "noopener,noreferrer");
+                            }
+                          }}
+                          style={{ cursor: isRecommendation && igdbUrl ? "pointer" : "inherit" }}
+                        >
+                          <img src={gCover} alt={gTitle} style={{
+                            width: RELATED_ITEM_W,
+                            border: `1px solid ${palette.surfaceBorder}`,
+                            ...COVER_IMAGE_RADIUS_STYLE,
+                          }} />
+                        </div>
                       ) : (
                         <div style={{
                           width: RELATED_ITEM_W, height: RELATED_ITEM_W * 1.5, borderRadius: 6,
@@ -677,24 +712,31 @@ export function GameDetailsPage({
                       {gYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{gYear}</div> : null}
                       <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 6, minHeight: 24, alignItems: "center", flexWrap: "wrap" }}>
                         {isRecommendation ? (
-                          <span style={{ fontSize: 8, fontWeight: 800, color: palette.text, border: `1px solid ${palette.surfaceBorder}`, borderRadius: 999, padding: "2px 6px", background: palette.chip }}>
-                            Not in Library
+                          <span
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onSelectRelatedGame?.(game);
+                            }}
+                            style={{ fontSize: 8, fontWeight: 800, color: palette.text, border: `1px solid ${palette.surfaceBorder}`, borderRadius: 999, padding: "2px 6px", background: palette.chip }}
+                          >
+                            {bottomLabel}
                           </span>
-                        ) : sameDeveloper ? (
+                        ) : (
                           <span
                             style={{
                               fontSize: 8,
                               fontWeight: 800,
-                              color: "#0f5132",
-                              border: "1px solid rgba(134, 239, 172, 0.7)",
+                              color: sameDeveloper ? "#0f5132" : palette.text,
+                              border: sameDeveloper ? "1px solid rgba(134, 239, 172, 0.7)" : `1px solid ${palette.surfaceBorder}`,
                               borderRadius: 999,
                               padding: "2px 6px",
-                              background: "rgba(187, 247, 208, 0.85)",
+                              background: sameDeveloper ? "rgba(187, 247, 208, 0.85)" : palette.chip,
                             }}
                           >
-                            Same Developer
+                            {bottomLabel}
                           </span>
-                        ) : null}
+                        )}
                       </div>
                     </div>
                   );

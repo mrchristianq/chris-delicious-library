@@ -77,6 +77,12 @@ function formatRuntime(v: string): string {
   return `${h}h ${m}m`;
 }
 
+function getTmdbMovieUrl(item: Record<string, unknown>): string {
+  const id = safeStr((item as Record<string, unknown>).tmdbId || (item as Record<string, unknown>).TMDB_ID || (item as Record<string, unknown>).id);
+  if (!id) return "";
+  return `https://www.themoviedb.org/movie/${encodeURIComponent(id)}`;
+}
+
 function toScorePct(raw: string): number {
   const n = parseFloat(raw);
   if (!isFinite(n) || n <= 0) return 0;
@@ -695,9 +701,18 @@ export function MovieDetailsPage({
                       const mYear = formatYear(movie.releaseDate || movie.year);
                       const mCover = getDisplayCoverUrl(movie);
                       const isRecommendation = Boolean((movie as any).__isRecommendation);
+                      const tmdbUrl = isRecommendation ? getTmdbMovieUrl(movie) : "";
                       return (
                         <div key={i}
-                          onClick={() => onSelectRelated?.(movie)}
+                          onClick={() => {
+                            if (isRecommendation && tmdbUrl) {
+                              if (typeof window !== "undefined") {
+                                window.open(tmdbUrl, "_blank", "noopener,noreferrer");
+                              }
+                              return;
+                            }
+                            onSelectRelated?.(movie);
+                          }}
                           style={{
                             flexShrink: 0, width: RELATED_ITEM_W,
                             cursor: onSelectRelated ? "pointer" : "default",
@@ -727,6 +742,12 @@ export function MovieDetailsPage({
                           {mYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{mYear}</div> : null}
                           <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 4, flexWrap: "wrap", minHeight: 20, alignItems: "center" }}>
                             <span
+                              onClick={(event) => {
+                                if (!isRecommendation) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onSelectRelated?.(movie);
+                              }}
                               style={
                                 isRecommendation
                                   ? {

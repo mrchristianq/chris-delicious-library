@@ -1190,15 +1190,7 @@ export function BookDetailsPage({
                   <button
                     key={`${safeStr(book.title)}-${safeStr((book as any).id || book.isbn || book.isbn13)}`}
                     type="button"
-                    onClick={() => {
-                      if (showNotInLibrary && hardcoverUrl) {
-                        if (typeof window !== "undefined") {
-                          window.open(hardcoverUrl, "_blank", "noopener,noreferrer");
-                        }
-                        return;
-                      }
-                      onSelectRelated(book);
-                    }}
+                    onClick={() => onSelectRelated(book)}
                     style={{
                       border: "none",
                       background: "transparent",
@@ -1214,10 +1206,19 @@ export function BookDetailsPage({
                     }}
                   >
                     <div
+                      onClick={(event) => {
+                        if (!showNotInLibrary || !hardcoverUrl) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof window !== "undefined") {
+                          window.open(hardcoverUrl, "_blank", "noopener,noreferrer");
+                        }
+                      }}
                       style={{
                         borderRadius: 6,
                         overflow: "hidden",
                         filter: "drop-shadow(0 4px 8px rgba(5, 9, 16, 0.28))",
+                        cursor: showNotInLibrary && hardcoverUrl ? "pointer" : "default",
                       }}
                     >
                       {coverSrc ? (

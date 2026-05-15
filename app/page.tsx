@@ -6984,6 +6984,25 @@ export default function Page() {
     setAddModalOpen(true);
   }, []);
 
+  const openAddFlowFromGameRecommendation = useCallback((item: Record<string, unknown>) => {
+    const prefill: Record<string, unknown> = {
+      title: safeStr(item?.title),
+      year: safeStr(item?.year),
+      releaseDate: safeStr(item?.releaseDate),
+      coverUrl: safeStr(item?.posterUrl || item?.imageUrl),
+      backdropUrl: safeStr(item?.backdropUrl),
+      igdbId: safeStr(item?.igdbId || item?.IGDB_ID || item?.id),
+      igdbRating: safeStr(item?.igdbRating || item?.rating),
+      description: safeStr(item?.overview || item?.description),
+      genres: Array.isArray(item?.genres) ? (item.genres as string[]).join(", ") : safeStr(item?.genres),
+      platforms: Array.isArray(item?.platforms) ? (item.platforms as string[]).join(", ") : safeStr(item?.platforms),
+    };
+    setIsAddingNewItem(true);
+    setAddNewItemType("game");
+    setGameDetailEditItem(prefill as any);
+    setGameDetailsEditOpen(true);
+  }, []);
+
   const openNewlyAddedItemFromRow = useCallback(
     (mediaType: "movie" | "tv" | "book" | "game", row: Record<string, string>) => {
       const typedRow = row as Row;
@@ -18319,7 +18338,7 @@ export default function Page() {
               recommendedMovies={movieRecommendations}
               onSelectRelated={(m) => {
                 if (Boolean((m as any)?.__isRecommendation)) {
-                  setMovieRecommendationPreview(m);
+                  openAddFlowFromMovieRecommendation(m);
                   return;
                 }
                 setMovieDetailItem(m);
@@ -18347,7 +18366,7 @@ export default function Page() {
               recommendedShows={tvRecommendations}
               onSelectRelated={(s) => {
                 if (Boolean((s as any)?.__isRecommendation)) {
-                  setTvRecommendationPreview(s);
+                  openAddFlowFromTvRecommendation(s);
                   return;
                 }
                 setTvDetailItem(s);
@@ -18373,7 +18392,13 @@ export default function Page() {
               relatedGames={gameRelated.games}
               relatedGamesLabel={gameRelated.label}
               recommendedGames={gameRecommendations}
-              onSelectRelatedGame={(g) => setGameDetailItem(g)}
+              onSelectRelatedGame={(g) => {
+                if (Boolean((g as any)?.__isRecommendation)) {
+                  openAddFlowFromGameRecommendation(g);
+                  return;
+                }
+                setGameDetailItem(g);
+              }}
               highlightColor={sidebarHighlightColorsLight.games}
             />
           ) : mobileLandingVisible ? (

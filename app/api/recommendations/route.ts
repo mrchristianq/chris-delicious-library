@@ -13,6 +13,7 @@ type RecommendationCard = {
   rating?: string;
   genres?: string[];
   platforms?: string[];
+  externalUrl?: string;
   overview?: string;
   subtitle?: string;
   author?: string;
@@ -500,6 +501,7 @@ async function fetchIgdbRecommendations(ids: string[], inLibrarySet: Set<string>
   const fields = [
     "id",
     "name",
+    "slug",
     "first_release_date",
     "rating",
     "cover.url",
@@ -528,6 +530,7 @@ async function fetchIgdbRecommendations(ids: string[], inLibrarySet: Set<string>
       const ts = Number(game.first_release_date || 0);
       const releaseDate = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000).toISOString().slice(0, 10) : "";
       const year = parseYear(releaseDate);
+      const slug = safeStr(game.slug);
       const coverUrlRaw = safeStr((game.cover as { url?: string } | undefined)?.url);
       const imageUrl = coverUrlRaw
         ? `https:${coverUrlRaw.replace("t_thumb", "t_cover_big").replace("t_cover_small", "t_cover_big")}`
@@ -540,6 +543,7 @@ async function fetchIgdbRecommendations(ids: string[], inLibrarySet: Set<string>
         year: year || undefined,
         releaseDate: releaseDate || undefined,
         imageUrl,
+        externalUrl: slug ? `https://www.igdb.com/games/${encodeURIComponent(slug)}` : undefined,
         rating: game.rating != null ? String(game.rating) : undefined,
         genres: Array.isArray(game.genres)
           ? (game.genres as Array<{ name?: string }>).map((g) => safeStr(g?.name)).filter(Boolean)

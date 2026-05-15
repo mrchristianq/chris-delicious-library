@@ -75,6 +75,12 @@ function parseCreatorTokens(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function getTmdbTvUrl(item: Record<string, unknown>): string {
+  const id = safeStr((item as Record<string, unknown>).tmdbId || (item as Record<string, unknown>).TMDB_ID || (item as Record<string, unknown>).id);
+  if (!id) return "";
+  return `https://www.themoviedb.org/tv/${encodeURIComponent(id)}`;
+}
+
 function toScorePct(raw: string): number {
   const n = parseFloat(raw);
   if (!isFinite(n) || n <= 0) return 0;
@@ -677,6 +683,7 @@ export function TVDetailsPage({
                   const sYear = formatYear(show.firstAirDate || show.year);
                   const sCover = getDisplayCoverUrl(show);
                   const isRecommendation = Boolean((show as any).__isRecommendation);
+                  const tmdbUrl = isRecommendation ? getTmdbTvUrl(show) : "";
                   const currentCreatorTokens = new Set(parseCreatorTokens(creator));
                   const showCreatorTokens = parseCreatorTokens(show.creator);
                   const sameCreator =
@@ -684,7 +691,15 @@ export function TVDetailsPage({
                     showCreatorTokens.some((token) => currentCreatorTokens.has(token));
                   return (
                     <div key={i}
-                      onClick={() => onSelectRelated?.(show)}
+                      onClick={() => {
+                        if (isRecommendation && tmdbUrl) {
+                          if (typeof window !== "undefined") {
+                            window.open(tmdbUrl, "_blank", "noopener,noreferrer");
+                          }
+                          return;
+                        }
+                        onSelectRelated?.(show);
+                      }}
                       style={{
                         flexShrink: 0, width: RELATED_ITEM_W,
                         cursor: onSelectRelated ? "pointer" : "default",
@@ -714,6 +729,12 @@ export function TVDetailsPage({
                       {sYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{sYear}</div> : null}
                       <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 4, flexWrap: "wrap", minHeight: 20, alignItems: "center" }}>
                         <span
+                          onClick={(event) => {
+                            if (!isRecommendation) return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onSelectRelated?.(show);
+                          }}
                           style={
                             isRecommendation || !sameCreator
                               ? {
