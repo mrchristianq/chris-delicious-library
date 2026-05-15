@@ -1707,6 +1707,9 @@ function getDisplayCover(item: any, mediaType: "book" | "movie" | "tv" | "game")
       item?.coverUrl ||
       item?.CoverURL ||
       item?.metadataCoverUrl ||
+      item?.imageUrl ||
+      item?.ImageURL ||
+      item?.posterUrl ||
       ""
   );
 }

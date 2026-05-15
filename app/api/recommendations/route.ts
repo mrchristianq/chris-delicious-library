@@ -489,6 +489,28 @@ async function fetchTmdbRecommendationIds(mediaType: "movie" | "tv", sourceId: s
   return collectIds(`/${mediaType}/${encodeURIComponent(sourceId)}/similar`);
 }
 
+function normalizeIgdbImageUrl(raw: string): string {
+  // IGDB returns cover URLs in a few different forms depending on caller / cache
+  // state — handle them all and always emit a full https:// URL pointing at the
+  // larger `t_cover_big` size.
+  let url = safeStr(raw);
+  if (!url) return "";
+  url = url
+    .replace("t_thumb", "t_cover_big")
+    .replace("t_cover_small", "t_cover_big")
+    .replace("t_micro", "t_cover_big");
+  if (url.startsWith("//")) return `https:${url}`;
+  if (url.startsWith("http://")) return url.replace(/^http:/, "https:");
+  if (url.startsWith("https://")) return url;
+  if (url.startsWith("images.igdb.com")) return `https://${url}`;
+  if (url.startsWith("/")) return `https://images.igdb.com${url}`;
+  // Some responses just give a bare "co3xxx.jpg" file token; build the URL ourselves.
+  if (/^[a-z0-9]+\.(?:jpg|jpeg|png|webp)$/i.test(url)) {
+    return `https://images.igdb.com/igdb/image/upload/t_cover_big/${url}`;
+  }
+  return url;
+}
+
 async function fetchIgdbRecommendations(ids: string[], inLibrarySet: Set<string>): Promise<RecommendationCard[]> {
   const numericIds = ids.map((id) => Number.parseInt(id, 10)).filter((n) => Number.isFinite(n));
   const filteredIds = numericIds.filter((n) => !inLibrarySet.has(String(n)));
@@ -508,7 +530,9 @@ async function fetchIgdbRecommendations(ids: string[], inLibrarySet: Set<string>
     "genres.name",
     "platforms.name",
   ].join(",");
-  const body = `fields ${fields}; where id = (${filteredIds.join(",")}); limit ${Math.min(30, filteredIds.length)};`;
+  // Only return games that actually have a cover in IGDB so the UI never gets stuck
+  // on the no-cover placeholder for an otherwise valid recommendation.
+  const body = `fields ${fields}; where id = (${filteredIds.join(",")}) & cover != null; limit ${Math.min(30, filteredIds.length)};`;
   const res = await fetch("https://api.igdb.com/v4/games", {
     method: "POST",
     headers: {
@@ -532,9 +556,10 @@ async function fetchIgdbRecommendations(ids: string[], inLibrarySet: Set<string>
       const year = parseYear(releaseDate);
       const slug = safeStr(game.slug);
       const coverUrlRaw = safeStr((game.cover as { url?: string } | undefined)?.url);
-      const imageUrl = coverUrlRaw
-        ? `https:${coverUrlRaw.replace("t_thumb", "t_cover_big").replace("t_cover_small", "t_cover_big")}`
-        : undefined;
+      const imageUrl = coverUrlRaw ? normalizeIgdbImageUrl(coverUrlRaw) : undefined;
+      // Some IGDB games have a cover record but no usable URL — drop them so the
+      // client never has to render a no-cover placeholder for a "Not in Library" rec.
+      if (!imageUrl) return null;
       return {
         id,
         source: "igdb",
@@ -580,6 +605,50 @@ async function fetchIgdbSimilarGameIds(sourceGameId: string): Promise<string[]> 
   const payload = (await res.json().catch(() => [])) as Array<Record<string, unknown>>;
   const similar = Array.isArray(payload?.[0]?.similar_games) ? (payload[0].similar_games as unknown[]) : [];
   return similar.map((id) => safeStr(id)).filter(Boolean);
+}
+
+// Fallback when IGDB's similar_games field is empty/sparse — query top-rated games
+// that share genres (and optionally themes) with the source game.
+async function fetchIgdbGenreFallbackGameIds(sourceGameId: string): Promise<string[]> {
+  const sourceId = Number.parseInt(sourceGameId, 10);
+  if (!Number.isFinite(sourceId)) return [];
+  const clientId = pickEnv(["IGDB_CLIENT_ID", "TWITCH_CLIENT_ID"]);
+  if (!clientId) return [];
+  let token: string;
+  try {
+    token = await getIgdbAccessToken();
+  } catch {
+    return [];
+  }
+  const headers = {
+    "Client-ID": clientId,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "text/plain",
+  };
+  // Fetch the source game's genres + themes for matching.
+  const sourceRes = await fetch("https://api.igdb.com/v4/games", {
+    method: "POST",
+    headers,
+    body: `fields genres,themes; where id = ${sourceId}; limit 1;`,
+    cache: "no-store",
+  });
+  if (!sourceRes.ok) return [];
+  const sourcePayload = (await sourceRes.json().catch(() => [])) as Array<{ genres?: number[]; themes?: number[] }>;
+  const genres = Array.isArray(sourcePayload?.[0]?.genres) ? sourcePayload[0].genres : [];
+  if (!genres.length) return [];
+  const genreClause = `genres = (${genres.join(",")})`;
+  const themes = Array.isArray(sourcePayload?.[0]?.themes) ? sourcePayload[0].themes : [];
+  const themeClause = themes.length ? ` | themes = (${themes.join(",")})` : "";
+  // Top-rated games sharing at least one genre (or theme) with the source.
+  const queryRes = await fetch("https://api.igdb.com/v4/games", {
+    method: "POST",
+    headers,
+    body: `fields id; where (${genreClause}${themeClause}) & id != ${sourceId} & rating_count > 30 & cover != null; sort rating desc; limit 30;`,
+    cache: "no-store",
+  });
+  if (!queryRes.ok) return [];
+  const payload = (await queryRes.json().catch(() => [])) as Array<{ id?: number }>;
+  return payload.map((g) => safeStr(g.id)).filter(Boolean);
 }
 
 async function fetchHardcoverRecommendations(
@@ -676,7 +745,16 @@ export async function POST(req: NextRequest) {
       } else if (mediaType === "game") {
         const sourceId = safeStr(item.igdbId ?? item.IGDB_ID ?? item.igdbIdOverride ?? item.id);
         if (sourceId) {
-          filteredIds = (await fetchIgdbSimilarGameIds(sourceId)).filter((id) => !hiddenIds.has(id));
+          const similarIds = (await fetchIgdbSimilarGameIds(sourceId)).filter((id) => !hiddenIds.has(id));
+          // If IGDB's similar_games is sparse or empty, augment with a genre/theme-based
+          // top-rated query so the row still has plenty of "Not in Library" candidates.
+          if (similarIds.length < 12) {
+            const fallbackIds = (await fetchIgdbGenreFallbackGameIds(sourceId)).filter((id) => !hiddenIds.has(id));
+            const merged = Array.from(new Set([...similarIds, ...fallbackIds]));
+            filteredIds = merged.slice(0, 30);
+          } else {
+            filteredIds = similarIds;
+          }
         }
       }
     }

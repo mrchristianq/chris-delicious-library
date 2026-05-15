@@ -536,15 +536,24 @@ export function TVDetailsPage({
               justifyContent: isMobileLayout ? undefined : "flex-end",
               padding: isMobileLayout ? "12px 14px 14px" : "0 16px 22px",
             }}>
-              {coverUrl ? (
-                <img src={coverUrl} alt={title} style={{
-                  width: POSTER_W,
-                  flexShrink: 0,
-                  border: "2px solid rgba(255,255,255,0.16)",
-                  filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.75))",
-                  ...COVER_IMAGE_RADIUS_STYLE,
-                }} />
-              ) : null}
+              {coverUrl ? (() => {
+                const externalHref = getTmdbTvUrl(item);
+                const img = (
+                  <img src={coverUrl} alt={title} style={{
+                    width: POSTER_W,
+                    flexShrink: 0,
+                    border: "2px solid rgba(255,255,255,0.16)",
+                    filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.75))",
+                    cursor: externalHref ? "pointer" : "default",
+                    ...COVER_IMAGE_RADIUS_STYLE,
+                  }} />
+                );
+                return externalHref ? (
+                  <a href={externalHref} target="_blank" rel="noopener noreferrer" title="Open on TMDB" style={{ display: "block", lineHeight: 0, flexShrink: 0 }}>
+                    {img}
+                  </a>
+                ) : img;
+              })() : null}
             </div>
 
             {/* Middle: title + meta (bottom-anchored on desktop) */}
@@ -631,7 +640,7 @@ export function TVDetailsPage({
           {castMembers.length > 0 ? sectionBox(
             <>
               {sectionLabel("CAST")}
-              <div ref={castRowRef} style={{ display: "flex", gap: CAST_GAP, justifyContent: "center", overflow: "hidden" }}>
+              <div ref={castRowRef} style={{ display: "flex", gap: CAST_GAP, justifyContent: "flex-start", overflow: "hidden" }}>
                 {visibleCast.map((member, i) => (
                   <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
                     {member.photo ? (
@@ -704,30 +713,45 @@ export function TVDetailsPage({
                         flexShrink: 0, width: RELATED_ITEM_W,
                         cursor: onSelectRelated ? "pointer" : "default",
                         display: "flex", flexDirection: "column", gap: 5,
-                        minHeight: 208,
                       }}
                     >
-                      {sCover ? (
-                        <img src={sCover} alt={sTitle} style={{
-                          width: RELATED_ITEM_W,
-                          border: `1px solid ${palette.surfaceBorder}`,
-                          ...COVER_IMAGE_RADIUS_STYLE,
-                        }} />
-                      ) : (
-                        <div style={{
-                          width: RELATED_ITEM_W, height: RELATED_ITEM_W * 1.5, borderRadius: 6,
-                          background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          padding: "0 5px", textAlign: "center",
-                        }}>
-                          <span style={{ fontSize: 9, color: palette.mutedText, lineHeight: 1.3 }}>{sTitle}</span>
-                        </div>
-                      )}
-                      <div style={{ fontSize: 10, fontWeight: 650, color: palette.text, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                      <div style={{
+                        width: RELATED_ITEM_W,
+                        height: Math.round(RELATED_ITEM_W * 1.5),
+                        display: "flex",
+                        alignItems: "flex-end",
+                        justifyContent: "flex-start",
+                        overflow: "hidden",
+                        borderRadius: 6,
+                      }}>
+                        {sCover ? (
+                          <img src={sCover} alt={sTitle} style={{
+                            width: "100%",
+                            maxHeight: "100%",
+                            objectFit: "cover",
+                            objectPosition: "center bottom",
+                            display: "block",
+                            border: `1px solid ${palette.surfaceBorder}`,
+                            ...COVER_IMAGE_RADIUS_STYLE,
+                          }} />
+                        ) : (
+                          <div style={{
+                            width: "100%", height: "100%", borderRadius: 6,
+                            background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            padding: "0 5px", textAlign: "center",
+                          }}>
+                            <span style={{ fontSize: 9, color: palette.mutedText, lineHeight: 1.3 }}>{sTitle}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10, fontWeight: 650, color: palette.text, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, minHeight: 25 }}>
                         {sTitle}
                       </div>
-                      {sYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{sYear}</div> : null}
-                      <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 4, flexWrap: "wrap", minHeight: 20, alignItems: "center" }}>
+                      <div style={{ fontSize: 9, color: palette.mutedText, minHeight: 11 }}>
+                        {sYear || ""}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minHeight: 20, alignItems: "center" }}>
                         <span
                           onClick={(event) => {
                             if (!isRecommendation) return;

@@ -757,8 +757,7 @@ export function BookDetailsPage({
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15)",
           backdropFilter: "blur(12px) saturate(1.05)",
           minHeight: isMobileLayout ? undefined : "calc(100vh - 24px)",
-          height: isMobileLayout ? undefined : "calc(100vh - 24px)",
-          overflow: "hidden",
+          overflow: isMobileLayout ? "hidden" : "auto",
           display: "flex",
           flexDirection: "column",
           position: "relative",
@@ -769,7 +768,7 @@ export function BookDetailsPage({
           style={{
             display: "grid",
             gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(0, 1fr) 260px",
-            gridTemplateRows: isMobileLayout ? undefined : "64px minmax(205px, 0.82fr) minmax(144px, 0.53fr) minmax(170px, 0.72fr)",
+            gridTemplateRows: isMobileLayout ? undefined : "64px minmax(205px, 0.82fr) minmax(144px, 0.53fr) minmax(320px, 1fr)",
             gap: isMobileLayout ? 14 : 12,
             height: isMobileLayout ? undefined : "100%",
             minHeight: 0,
@@ -942,17 +941,43 @@ export function BookDetailsPage({
                   maxWidth: 210,
                 }}
               >
-                <img
-                  src={coverUrl}
-                  alt={title}
-                  style={{
-                    width: "100%",
-                    maxHeight: isMobileLayout ? undefined : 258,
-                    objectFit: "contain",
-                    filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
-                    ...COVER_IMAGE_RADIUS_STYLE,
-                  }}
-                />
+                {(() => {
+                  const externalHref = getHardcoverBookUrl(item);
+                  return externalHref ? (
+                    <a
+                      href={externalHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open on Hardcover"
+                      style={{ display: "block", lineHeight: 0 }}
+                    >
+                      <img
+                        src={coverUrl}
+                        alt={title}
+                        style={{
+                          width: "100%",
+                          maxHeight: isMobileLayout ? undefined : 258,
+                          objectFit: "contain",
+                          filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
+                          cursor: "pointer",
+                          ...COVER_IMAGE_RADIUS_STYLE,
+                        }}
+                      />
+                    </a>
+                  ) : (
+                    <img
+                      src={coverUrl}
+                      alt={title}
+                      style={{
+                        width: "100%",
+                        maxHeight: isMobileLayout ? undefined : 258,
+                        objectFit: "contain",
+                        filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
+                        ...COVER_IMAGE_RADIUS_STYLE,
+                      }}
+                    />
+                  );
+                })()}
               </div>
             </div>
 
@@ -1174,7 +1199,28 @@ export function BookDetailsPage({
                   justifyContent: "start",
                 }}
               >
-                {(isMobileLayout ? displayBooksModule.items : displayBooksModule.items.slice(0, 6)).map((book) => {
+                {(() => {
+                  const currentSeriesNorm = seriesLabel.toLowerCase();
+                  const currentGenreSet = new Set(genres.map((g) => g.toLowerCase()));
+                  const tokenizeAuthors = (raw: string) =>
+                    safeStr(raw)
+                      .toLowerCase()
+                      .split(/\s*(?:,|;|&| and )\s*/)
+                      .map((t) => t.replace(/\s+/g, " ").trim())
+                      .filter(Boolean);
+                  const currentAuthorTokens = new Set(tokenizeAuthors(author));
+                  const computeReason = (book: any): string => {
+                    const bookAuthorTokens = tokenizeAuthors(safeStr(book.author || book.Author));
+                    if (currentAuthorTokens.size > 0 && bookAuthorTokens.some((t) => currentAuthorTokens.has(t))) return "Same Author";
+                    const bookSeries = safeStr(book.series || book.Series).toLowerCase();
+                    if (currentSeriesNorm && bookSeries && bookSeries === currentSeriesNorm) return "Same Series";
+                    const bookGenreList: string[] = Array.isArray(book.genres)
+                      ? (book.genres as unknown[]).map((g) => safeStr(g))
+                      : splitList(book.genre || book.categories || book.Genre);
+                    if (bookGenreList.some((g) => currentGenreSet.has(g.toLowerCase()))) return "Same Genre";
+                    return Boolean(book.__isRecommendation) ? "Recommended" : "Suggested";
+                  };
+                  return (isMobileLayout ? displayBooksModule.items : displayBooksModule.items.slice(0, 6)).map((book) => {
                   const isRecommendation = Boolean((book as any).__isRecommendation);
                   const fallbackCover = safeStr((book as any).posterUrl || (book as any).imageUrl || (book as any).ImageURL);
                   const coverSrc = getDisplayCoverUrl(book) || fallbackCover;
@@ -1186,6 +1232,7 @@ export function BookDetailsPage({
                     inLibraryTitleAuthorKeys.has(titleAuthorKey);
                   const hasExternalTarget = Boolean(hardcoverUrl);
                   const showNotInLibrary = hasExternalTarget && (isRecommendation || !isInLibrary);
+                  const reason = computeReason(book);
                   return (
                   <button
                     key={`${safeStr(book.title)}-${safeStr((book as any).id || book.isbn || book.isbn13)}`}
@@ -1202,7 +1249,6 @@ export function BookDetailsPage({
                       width: isMobileLayout ? "100%" : 104,
                       display: "flex",
                       flexDirection: "column",
-                      minHeight: isMobileLayout ? 262 : 246,
                     }}
                   >
                     <div
@@ -1219,6 +1265,10 @@ export function BookDetailsPage({
                         overflow: "hidden",
                         filter: "drop-shadow(0 4px 8px rgba(5, 9, 16, 0.28))",
                         cursor: showNotInLibrary && hardcoverUrl ? "pointer" : "default",
+                        height: isMobileLayout ? 148 : 132,
+                        display: "flex",
+                        alignItems: "flex-end",
+                        justifyContent: "flex-start",
                       }}
                     >
                       {coverSrc ? (
@@ -1226,11 +1276,12 @@ export function BookDetailsPage({
                           src={coverSrc}
                           alt={safeStr(book.title)}
                           style={{
-                            width: isMobileLayout ? "100%" : "auto",
+                            width: "auto",
                             maxWidth: "100%",
-                            height: isMobileLayout ? "auto" : 132,
+                            maxHeight: "100%",
                             objectFit: "contain",
-                            objectPosition: "left center",
+                            objectPosition: "left bottom",
+                            display: "block",
                             ...COVER_IMAGE_RADIUS_STYLE,
                           }}
                         />
@@ -1267,6 +1318,7 @@ export function BookDetailsPage({
                         display: "-webkit-box",
                         WebkitBoxOrient: "vertical",
                         WebkitLineClamp: 2,
+                        minHeight: isMobileLayout ? 34 : 26,
                       }}
                     >
                       {safeStr(book.title)}
@@ -1281,11 +1333,34 @@ export function BookDetailsPage({
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
+                        minHeight: isMobileLayout ? 16 : 12,
                       }}
                     >
                       {formatLongDate(book.releaseDate || book.ReleaseDate)}
                     </div>
-                    <div style={{ display: "flex", gap: 4, marginTop: 8, paddingTop: 2, flexWrap: "wrap", minHeight: 24, alignItems: "center" }}>
+                    {(() => {
+                      // "Not in Library" already implies it's a recommendation, so suppress
+                      // the generic "Recommended" / "Suggested" reason pill in that case.
+                      const reasonIsImpliedByNotInLibrary = showNotInLibrary && (reason === "Recommended" || reason === "Suggested");
+                      const showReasonPill = !reasonIsImpliedByNotInLibrary;
+                      return (
+                    <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap", minHeight: 24, alignItems: "center" }}>
+                      {showReasonPill ? (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          letterSpacing: "0.02em",
+                          color: palette.text,
+                          border: `1px solid ${palette.surfaceBorder}`,
+                          borderRadius: 999,
+                          padding: "2px 6px",
+                          background: palette.chip,
+                        }}
+                      >
+                        {reason}
+                      </span>
+                      ) : null}
                       {showNotInLibrary ? (
                         <span
                           onClick={(event) => {
@@ -1299,8 +1374,10 @@ export function BookDetailsPage({
                         </span>
                       ) : null}
                     </div>
+                      );
+                    })()}
                   </button>
-                )})}
+                )})})()}
               </div>
             </div>
           ) : null}

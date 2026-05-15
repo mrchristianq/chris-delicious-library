@@ -43,6 +43,24 @@ const FALLBACK_PALETTE: PaletteState = {
 
 function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math.round(v))); }
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
+function slugifyForIgdb(value: string): string {
+  return safeStr(value)
+    .toLowerCase()
+    .replace(/['']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+function getIgdbGameUrl(item: Record<string, unknown>): string {
+  // Recommendation cards from the API already supply an externalUrl.
+  const provided = safeStr((item as Record<string, unknown>).externalUrl);
+  if (provided) return provided;
+  const slug = safeStr((item as Record<string, unknown>).igdbSlug || (item as Record<string, unknown>).slug);
+  if (slug) return `https://www.igdb.com/games/${encodeURIComponent(slug)}`;
+  const title = safeStr((item as Record<string, unknown>).title);
+  const guessed = slugifyForIgdb(title);
+  if (guessed) return `https://www.igdb.com/games/${guessed}`;
+  return "";
+}
 function normalizeGameTitle(v: unknown): string {
   return safeStr(v).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -284,8 +302,6 @@ export function GameDetailsPage({
   const libraryRelatedItems = useMemo(() => relatedGames ?? [], [relatedGames]);
   const recommendationItems = (recommendedGames ?? []).filter((game) => safeStr(game.title));
   const effectiveRelatedItems = useMemo(() => {
-    if (!recommendationItems.length) return libraryRelatedItems;
-
     const keyOf = (entry: Record<string, unknown>) => {
       const idKey = safeStr(
         (entry as Record<string, unknown>).id ||
@@ -315,17 +331,23 @@ export function GameDetailsPage({
       const relatedDeveloper = safeStr((entry as Record<string, unknown>).developer).toLowerCase();
       return Boolean(currentDeveloperKey && relatedDeveloper && relatedDeveloper === currentDeveloperKey);
     });
-    const libSlots = Math.min(3, sameDeveloperLibrary.length, maxRelated);
-    const recSlots = Math.max(0, maxRelated - libSlots);
-    return [
-      ...sameDeveloperLibrary.slice(0, libSlots),
-      ...uniqueRecommendations.slice(0, recSlots),
-    ];
+
+    // Always present same-developer library items first, then recommendations, and
+    // finally fall back to any remaining library items so the row never goes empty.
+    const combined: Record<string, unknown>[] = [];
+    const usedKeys = new Set<string>();
+    const tryAdd = (entry: Record<string, unknown>) => {
+      const k = keyOf(entry);
+      if (!k || usedKeys.has(k)) return;
+      usedKeys.add(k);
+      combined.push(entry);
+    };
+    for (const dev of sameDeveloperLibrary.slice(0, 3)) tryAdd(dev);
+    for (const rec of uniqueRecommendations) tryAdd(rec);
+    for (const lib of uniqueLibrary) tryAdd(lib);
+    return combined.slice(0, maxRelated);
   }, [libraryRelatedItems, recommendationItems, maxRelated, currentDeveloperKey]);
-  const effectiveRelatedLabel =
-    recommendationItems.length > 0
-      ? "YOU MAY ALSO LIKE"
-      : ((relatedGamesLabel || "SIMILAR GAMES").toUpperCase());
+  const effectiveRelatedLabel = "YOU MAY ALSO LIKE";
   const visibleRelated = effectiveRelatedItems.slice(0, maxRelated);
   const hasRelated = visibleRelated.length > 0;
 
@@ -551,15 +573,24 @@ export function GameDetailsPage({
               justifyContent: isMobileLayout ? undefined : "flex-end",
               padding: isMobileLayout ? "12px 14px 14px" : "0 16px 22px",
             }}>
-              {coverUrl ? (
-                <img src={coverUrl} alt={title} style={{
-                  width: POSTER_W,
-                  flexShrink: 0,
-                  border: "2px solid rgba(255,255,255,0.16)",
-                  filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.75))",
-                  ...COVER_IMAGE_RADIUS_STYLE,
-                }} />
-              ) : null}
+              {coverUrl ? (() => {
+                const externalHref = getIgdbGameUrl(item);
+                const img = (
+                  <img src={coverUrl} alt={title} style={{
+                    width: POSTER_W,
+                    flexShrink: 0,
+                    border: "2px solid rgba(255,255,255,0.16)",
+                    filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.75))",
+                    cursor: externalHref ? "pointer" : "default",
+                    ...COVER_IMAGE_RADIUS_STYLE,
+                  }} />
+                );
+                return externalHref ? (
+                  <a href={externalHref} target="_blank" rel="noopener noreferrer" title="Open on IGDB" style={{ display: "block", lineHeight: 0, flexShrink: 0 }}>
+                    {img}
+                  </a>
+                ) : img;
+              })() : null}
             </div>
 
             {/* Middle: title + meta + description */}
@@ -639,7 +670,13 @@ export function GameDetailsPage({
                 {visibleRelated.map((game, i) => {
                   const gTitle = safeStr(game.title);
                   const gYear = formatYear(game.releaseDate || game.releaseDateAlt);
-                  const gCover = getDisplayCoverUrl(game);
+                  const gameRec = game as Record<string, unknown>;
+                  const directRecCover =
+                    safeStr(gameRec.imageUrl) ||
+                    safeStr(gameRec.posterUrl) ||
+                    safeStr((gameRec as { ImageURL?: string }).ImageURL) ||
+                    safeStr((gameRec as { PosterURL?: string }).PosterURL);
+                  const gCover = getDisplayCoverUrl(game) || directRecCover;
                   const isRecommendation = Boolean((game as Record<string, unknown>).__isRecommendation);
                   const igdbUrl = isRecommendation ? safeStr((game as Record<string, unknown>).externalUrl) : "";
                   const relatedDeveloper = safeStr((game as Record<string, unknown>).developer).toLowerCase();
@@ -675,42 +712,56 @@ export function GameDetailsPage({
                         flexShrink: 0, width: RELATED_ITEM_W,
                         cursor: onSelectRelatedGame ? "pointer" : "default",
                         display: "flex", flexDirection: "column", gap: 5,
-                        minHeight: 206,
                       }}
                     >
-                      {gCover ? (
-                        <div
-                          onClick={(event) => {
-                            if (!isRecommendation || !igdbUrl) return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            if (typeof window !== "undefined") {
-                              window.open(igdbUrl, "_blank", "noopener,noreferrer");
-                            }
-                          }}
-                          style={{ cursor: isRecommendation && igdbUrl ? "pointer" : "inherit" }}
-                        >
+                      <div
+                        onClick={(event) => {
+                          if (!isRecommendation || !igdbUrl) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (typeof window !== "undefined") {
+                            window.open(igdbUrl, "_blank", "noopener,noreferrer");
+                          }
+                        }}
+                        style={{
+                          width: RELATED_ITEM_W,
+                          height: Math.round(RELATED_ITEM_W * 1.5),
+                          display: "flex",
+                          alignItems: "flex-end",
+                          justifyContent: "flex-start",
+                          overflow: "hidden",
+                          borderRadius: 6,
+                          cursor: isRecommendation && igdbUrl ? "pointer" : "inherit",
+                        }}
+                      >
+                        {gCover ? (
                           <img src={gCover} alt={gTitle} style={{
-                            width: RELATED_ITEM_W,
+                            width: "100%",
+                            maxHeight: "100%",
+                            objectFit: "cover",
+                            objectPosition: "center bottom",
+                            display: "block",
                             border: `1px solid ${palette.surfaceBorder}`,
                             ...COVER_IMAGE_RADIUS_STYLE,
                           }} />
-                        </div>
-                      ) : (
-                        <div style={{
-                          width: RELATED_ITEM_W, height: RELATED_ITEM_W * 1.5, borderRadius: 6,
-                          background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          padding: "0 5px", textAlign: "center",
-                        }}>
-                          <span style={{ fontSize: 9, color: palette.mutedText, lineHeight: 1.3 }}>{gTitle}</span>
-                        </div>
-                      )}
-                      <div style={{ fontSize: 10, fontWeight: 650, color: palette.text, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                        ) : (
+                          <div style={{
+                            width: "100%", height: "100%", borderRadius: 6,
+                            background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            padding: "0 5px", textAlign: "center",
+                          }}>
+                            <span style={{ fontSize: 9, color: palette.mutedText, lineHeight: 1.3 }}>{gTitle}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10, fontWeight: 650, color: palette.text, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, minHeight: 25 }}>
                         {gTitle}
                       </div>
-                      {gYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{gYear}</div> : null}
-                      <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 6, minHeight: 24, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 9, color: palette.mutedText, minHeight: 11 }}>
+                        {gYear || ""}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, minHeight: 24, alignItems: "center", flexWrap: "wrap" }}>
                         {isRecommendation ? (
                           <span
                             onClick={(event) => {
