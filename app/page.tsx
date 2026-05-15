@@ -1758,7 +1758,7 @@ type StatusIndicator = {
   label: string;
 };
 
-type TvWatchlistSectionKey = "watching" | "watchNext" | "paused" | "notStarted";
+type TvWatchlistSectionKey = "watching" | "watchNext" | "paused" | "pendingReturn" | "notStarted";
 
 type TvWatchlistSectionMeta = {
   label: string;
@@ -1781,6 +1781,7 @@ const STATUS_COLOR_GREEN = "#54bf3f";
 const STATUS_COLOR_YELLOW = "#e6b52e";
 const STATUS_COLOR_RED = "#c54848";
 const STATUS_COLOR_ORANGE = "#d97a2a";
+const STATUS_COLOR_BLUE = "#3b82f6";
 const STATUS_DOT_BASE_SIZE = 16;
 const STATUS_DOT_MIN_SIZE = 8;
 const STATUS_DOT_MAX_SIZE = 40;
@@ -1788,7 +1789,7 @@ const STATUS_DOT_NUDGE_LEFT_PX = 7;
 const STATUS_DOT_NUDGE_UP_PX = 7;
 const TV_WATCHLIST_SECTION_HEADER_SPACE = 42;
 
-const TV_WATCHLIST_SECTION_ORDER: TvWatchlistSectionKey[] = ["watching", "watchNext", "paused", "notStarted"];
+const TV_WATCHLIST_SECTION_ORDER: TvWatchlistSectionKey[] = ["watching", "watchNext", "paused", "pendingReturn", "notStarted"];
 const TV_WATCHLIST_ACTIVE_STATUSES = new Set([
   "watching",
   "currently watching",
@@ -1801,7 +1802,8 @@ const TV_HEADER_WATCHING_STATUSES = new Set([
   "paused",
   "pending return",
 ]);
-const TV_WATCHLIST_PAUSED_STATUSES = new Set(["paused", "pending return"]);
+const TV_WATCHLIST_PAUSED_STATUSES = new Set(["paused"]);
+const TV_WATCHLIST_PENDING_RETURN_STATUSES = new Set(["pending return"]);
 const TV_WATCHLIST_NOT_STARTED_STATUSES = new Set(["backlog", "wishlist"]);
 const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
   watching: {
@@ -1825,6 +1827,13 @@ const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectio
     badgeBorder: "rgba(241, 213, 141, 0.84)",
     badgeColor: "rgba(255, 247, 224, 0.98)",
   },
+  pendingReturn: {
+    label: "Pending Return",
+    headerColor: STATUS_COLOR_BLUE,
+    badgeBackground: "rgba(57, 117, 163, 0.9)",
+    badgeBorder: "rgba(169, 221, 255, 0.82)",
+    badgeColor: "rgba(238, 248, 255, 0.98)",
+  },
   notStarted: {
     label: "Not Started",
     headerColor: STATUS_COLOR_RED,
@@ -1837,6 +1846,7 @@ const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectio
 function getTvWatchlistSectionKey(rawStatus?: string): TvWatchlistSectionKey {
   const status = normalizeStatusToken(rawStatus);
   if (status === "watch next") return "watchNext";
+  if (TV_WATCHLIST_PENDING_RETURN_STATUSES.has(status)) return "pendingReturn";
   if (TV_WATCHLIST_PAUSED_STATUSES.has(status)) return "paused";
   if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "watching";
   if (TV_WATCHLIST_NOT_STARTED_STATUSES.has(status)) return "notStarted";
@@ -8726,7 +8736,7 @@ export default function Page() {
         setPosterSizeTv(getNum("posterSizeTv", 100));
         setPosterSizeMovies(getNum("posterSizeMovies", 108));
         setPosterSizeBooks(getNum("posterSizeBooks", 115));
-        setMobileCoverScalePct(Math.max(70, Math.min(125, getNum("mobileCoverScalePct", 100))));
+        setMobileCoverScalePct(Math.max(50, Math.min(250, getNum("mobileCoverScalePct", 100))));
         setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
         setCoverGapSize(getNum("coverGapSize", 24));
         setTight(getBool("tight", true));
@@ -8951,7 +8961,7 @@ export default function Page() {
     saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, defaults.audiobooks, "Cover Sizes", "Audiobook Cover Size (%)");
   }, [saveSetting]);
   const updateMobileCoverScalePct = useCallback((value: number) => {
-    const nextValue = Math.max(70, Math.min(125, Math.round(value)));
+    const nextValue = Math.max(50, Math.min(250, Math.round(value)));
     setMobileCoverScalePct(nextValue);
     try {
       localStorage.setItem(MOBILE_ONLY_COVER_SCALE_LOCAL_KEY, String(nextValue));
@@ -11504,6 +11514,7 @@ export default function Page() {
       watching: 0,
       watchNext: 0,
       paused: 0,
+      pendingReturn: 0,
       notStarted: 0,
     };
     watchlistTvItems.forEach((item) => {
@@ -13419,8 +13430,8 @@ export default function Page() {
               </div>
               <input
                 type="range"
-                min={70}
-                max={125}
+                min={50}
+                max={250}
                 step={1}
                 value={mobileCoverScalePct}
                 onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
@@ -18755,8 +18766,8 @@ export default function Page() {
                   </div>
                   <input
                     type="range"
-                    min={70}
-                    max={125}
+                    min={50}
+                    max={250}
                     step={1}
                     value={mobileCoverScalePct}
                     onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}

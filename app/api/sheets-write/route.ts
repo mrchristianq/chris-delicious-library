@@ -98,15 +98,19 @@ export async function POST(req: NextRequest) {
         payloadRecord.updates &&
         typeof payloadRecord.updates === "object"
       ) {
-        nextPayloadRecord = {
-          ...(nextPayloadRecord || payloadRecord),
-          updates: {
-            ...(payloadRecord.updates as Record<string, unknown>),
-            WatchStatus: normalizeShowWatchStatus(
-              (payloadRecord.updates as Record<string, unknown>).WatchStatus
-            ),
-          },
-        };
+        const showUpdates = payloadRecord.updates as Record<string, unknown>;
+        // Only touch WatchStatus when the caller actually supplied it — otherwise a
+        // partial update (e.g. cover/backdrop sync) would unintentionally blank the
+        // existing WatchStatus cell in the sheet.
+        if (Object.prototype.hasOwnProperty.call(showUpdates, "WatchStatus")) {
+          nextPayloadRecord = {
+            ...(nextPayloadRecord || payloadRecord),
+            updates: {
+              ...showUpdates,
+              WatchStatus: normalizeShowWatchStatus(showUpdates.WatchStatus),
+            },
+          };
+        }
       }
 
       if (action === "updateGame" || action === "addGame") {
