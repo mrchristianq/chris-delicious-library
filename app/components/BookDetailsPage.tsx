@@ -13,6 +13,7 @@ type BookDetailsPageProps = {
   onDelete?: (item: Record<string, unknown>) => Promise<void> | void;
   onRate?: (item: Record<string, unknown>) => void;
   onSelectRelated: (item: Record<string, unknown>) => void;
+  recommendedBooks?: Record<string, unknown>[];
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   isAudiobookItem: (item: Record<string, unknown>) => boolean;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
@@ -64,6 +65,33 @@ function formatLongDate(value: unknown): string {
     day: "numeric",
     year: "numeric",
   }).format(parsed);
+}
+
+function getHardcoverBookUrl(book: Record<string, unknown>): string {
+  const directUrl = safeStr((book as any).hardcoverUrl || (book as any).url || (book as any).bookUrl);
+  if (directUrl) return directUrl;
+  const slug = safeStr((book as any).slug || (book as any).hardcoverSlug);
+  if (slug) return `https://hardcover.app/book/${encodeURIComponent(slug)}`;
+  const id = safeStr((book as any).id || (book as any).hardcoverId || (book as any).HardcoverID);
+  if (!id) return "";
+  return `https://hardcover.app/book/${encodeURIComponent(id)}`;
+}
+
+function normalizeBookTitle(value: unknown): string {
+  return safeStr(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(a novel|audiobook|audio book|book \d+)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeBookAuthor(value: unknown): string {
+  return safeStr(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatRating(value: string): string {
@@ -439,6 +467,7 @@ export function BookDetailsPage({
   onDelete,
   onRate,
   onSelectRelated,
+  recommendedBooks,
   getDisplayCoverUrl,
   isAudiobookItem,
   onPaletteChange,
@@ -528,6 +557,61 @@ export function BookDetailsPage({
 
     return { label: "Similar to this", items: others.slice(0, 6) };
   }, [allBooks, author, genres, title]);
+  const recommendationItems = useMemo(
+    () => (recommendedBooks ?? []).filter((book) => safeStr(book.title)),
+    [recommendedBooks]
+  );
+  const displayBooksModule = useMemo(() => {
+    const normalizedTitle = title.toLowerCase();
+    const sameAuthorItems = allBooks
+      .filter((book) => safeStr(book.title).toLowerCase() !== normalizedTitle)
+      .filter((book) => safeStr(book.author || book.Author) === author);
+
+    const sameAuthorKeys = new Set(
+      sameAuthorItems.map((book) =>
+        `${safeStr((book as any).hardcoverId || (book as any).HardcoverID || book.isbn13 || book.isbn || book.title)}::${safeStr(book.title).toLowerCase()}`
+      )
+    );
+    const recommendationFill = recommendationItems.filter((book) => {
+      const key = `${safeStr((book as any).hardcoverId || (book as any).HardcoverID || book.isbn13 || book.isbn || book.title)}::${safeStr(book.title).toLowerCase()}`;
+      return !sameAuthorKeys.has(key);
+    });
+
+    if (!sameAuthorItems.length && !recommendationFill.length) {
+      return relatedBooksModule;
+    }
+
+    const dedupeByTitle = (items: Record<string, unknown>[]) => {
+      const seen = new Set<string>();
+      return items.filter((book) => {
+        const key = safeStr(book.title).toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const combined = dedupeByTitle([...sameAuthorItems, ...recommendationFill]).slice(0, 6);
+    const label = recommendationFill.length > 0 ? "You May Also Like" : `More by ${author}`;
+    return { label, items: combined };
+  }, [allBooks, author, recommendationItems, relatedBooksModule, title]);
+  const inLibraryHardcoverIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const book of allBooks) {
+      const id = safeStr((book as any).hardcoverId || (book as any).HardcoverID || (book as any).id);
+      if (id) ids.add(id);
+    }
+    return ids;
+  }, [allBooks]);
+  const inLibraryTitleAuthorKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const book of allBooks) {
+      const titleKey = normalizeBookTitle((book as any).title);
+      const authorKey = normalizeBookAuthor((book as any).author || (book as any).Author);
+      if (!titleKey) continue;
+      keys.add(`${titleKey}|||${authorKey}`);
+    }
+    return keys;
+  }, [allBooks]);
 
   const chips = [typeLabel, statusLabel, ownershipLabel].filter(Boolean);
   const metaLine = [author, releaseDate, ...genres].filter(Boolean).join(" • ");
@@ -1059,7 +1143,7 @@ export function BookDetailsPage({
             </div>
           </div>
 
-          {relatedBooksModule.items.length > 0 ? (
+          {displayBooksModule.items.length > 0 ? (
             <div
               style={{
                 gridColumn: isMobileLayout ? undefined : "1 / -1",
@@ -1074,7 +1158,7 @@ export function BookDetailsPage({
               }}
             >
               <div style={{ fontSize: isMobileLayout ? 16 : 14, lineHeight: 1.1, fontWeight: 850, color: palette.text }}>
-                {relatedBooksModule.label}
+                {displayBooksModule.label}
               </div>
               <div
                 style={{
@@ -1082,7 +1166,7 @@ export function BookDetailsPage({
                   display: "grid",
                   gridTemplateColumns: isMobileLayout
                     ? "repeat(2, minmax(0, 1fr))"
-                    : `repeat(${Math.min(relatedBooksModule.items.length, 6)}, 104px)`,
+                    : `repeat(${Math.min(displayBooksModule.items.length, 6)}, 104px)`,
                   gap: isMobileLayout ? 13 : 13,
                   height: isMobileLayout ? undefined : "calc(100% - 26px)",
                   alignItems: "start",
@@ -1090,11 +1174,31 @@ export function BookDetailsPage({
                   justifyContent: "start",
                 }}
               >
-                {(isMobileLayout ? relatedBooksModule.items : relatedBooksModule.items.slice(0, 6)).map((book) => (
+                {(isMobileLayout ? displayBooksModule.items : displayBooksModule.items.slice(0, 6)).map((book) => {
+                  const isRecommendation = Boolean((book as any).__isRecommendation);
+                  const fallbackCover = safeStr((book as any).posterUrl || (book as any).imageUrl || (book as any).ImageURL);
+                  const coverSrc = getDisplayCoverUrl(book) || fallbackCover;
+                  const hardcoverUrl = getHardcoverBookUrl(book);
+                  const hardcoverId = safeStr((book as any).hardcoverId || (book as any).HardcoverID || (book as any).id);
+                  const titleAuthorKey = `${normalizeBookTitle((book as any).title)}|||${normalizeBookAuthor((book as any).author || (book as any).Author)}`;
+                  const isInLibrary =
+                    (hardcoverId && inLibraryHardcoverIds.has(hardcoverId)) ||
+                    inLibraryTitleAuthorKeys.has(titleAuthorKey);
+                  const hasExternalTarget = Boolean(hardcoverUrl);
+                  const showNotInLibrary = hasExternalTarget && (isRecommendation || !isInLibrary);
+                  return (
                   <button
-                    key={`${safeStr(book.title)}-${safeStr(book.isbn)}`}
+                    key={`${safeStr(book.title)}-${safeStr((book as any).id || book.isbn || book.isbn13)}`}
                     type="button"
-                    onClick={() => onSelectRelated(book)}
+                    onClick={() => {
+                      if (showNotInLibrary && hardcoverUrl) {
+                        if (typeof window !== "undefined") {
+                          window.open(hardcoverUrl, "_blank", "noopener,noreferrer");
+                        }
+                        return;
+                      }
+                      onSelectRelated(book);
+                    }}
                     style={{
                       border: "none",
                       background: "transparent",
@@ -1104,6 +1208,9 @@ export function BookDetailsPage({
                       cursor: "pointer",
                       minWidth: 0,
                       width: isMobileLayout ? "100%" : 104,
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: isMobileLayout ? 262 : 246,
                     }}
                   >
                     <div
@@ -1113,18 +1220,39 @@ export function BookDetailsPage({
                         filter: "drop-shadow(0 4px 8px rgba(5, 9, 16, 0.28))",
                       }}
                     >
-                      <img
-                        src={getDisplayCoverUrl(book)}
-                        alt={safeStr(book.title)}
-                        style={{
-                          width: isMobileLayout ? "100%" : "auto",
-                          maxWidth: "100%",
-                          height: isMobileLayout ? "auto" : 132,
-                          objectFit: "contain",
-                          objectPosition: "left center",
-                          ...COVER_IMAGE_RADIUS_STYLE,
-                        }}
-                      />
+                      {coverSrc ? (
+                        <img
+                          src={coverSrc}
+                          alt={safeStr(book.title)}
+                          style={{
+                            width: isMobileLayout ? "100%" : "auto",
+                            maxWidth: "100%",
+                            height: isMobileLayout ? "auto" : 132,
+                            objectFit: "contain",
+                            objectPosition: "left center",
+                            ...COVER_IMAGE_RADIUS_STYLE,
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: isMobileLayout ? "100%" : 104,
+                            height: isMobileLayout ? 148 : 132,
+                            borderRadius: 6,
+                            background: "rgba(255,255,255,0.16)",
+                            border: `1px solid ${palette.surfaceBorder}`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "0 8px",
+                            textAlign: "center",
+                          }}
+                        >
+                          <span style={{ fontSize: 11, fontWeight: 700, color: palette.mutedText, lineHeight: 1.2 }}>
+                            No Cover
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div
                       style={{
@@ -1156,8 +1284,22 @@ export function BookDetailsPage({
                     >
                       {formatLongDate(book.releaseDate || book.ReleaseDate)}
                     </div>
+                    <div style={{ display: "flex", gap: 4, marginTop: 8, paddingTop: 2, flexWrap: "wrap", minHeight: 24, alignItems: "center" }}>
+                      {showNotInLibrary ? (
+                        <span
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onSelectRelated(book);
+                          }}
+                          style={{ fontSize: 9, fontWeight: 800, color: palette.text, border: `1px solid ${palette.surfaceBorder}`, borderRadius: 999, padding: "2px 6px", background: palette.chip }}
+                        >
+                          Not in Library
+                        </span>
+                      ) : null}
+                    </div>
                   </button>
-                ))}
+                )})}
               </div>
             </div>
           ) : null}

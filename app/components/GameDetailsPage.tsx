@@ -16,6 +16,7 @@ type GameDetailsPageProps = {
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedGames?: Record<string, unknown>[];
   relatedGamesLabel?: string;
+  recommendedGames?: Record<string, unknown>[];
   onSelectRelatedGame?: (game: Record<string, unknown>) => void;
   highlightColor?: string;
 };
@@ -42,6 +43,9 @@ const FALLBACK_PALETTE: PaletteState = {
 
 function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math.round(v))); }
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
+function normalizeGameTitle(v: unknown): string {
+  return safeStr(v).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
 function splitList(v: unknown): string[] { return safeStr(v).split(/[,|/]/g).map(p => p.trim()).filter(Boolean); }
 function formatYear(v: unknown): string { const r = safeStr(v); const m = r.match(/\b((?:19|20)\d{2})\b/); return m ? m[1] : r; }
 function formatMmDdYyyy(v: unknown): string {
@@ -216,7 +220,7 @@ const PANEL_STYLE: React.CSSProperties = {
 export function GameDetailsPage({
   item, isMobileLayout, usePageBackground = false,
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
-  relatedGames, relatedGamesLabel, onSelectRelatedGame, highlightColor,
+  relatedGames, relatedGamesLabel, recommendedGames, onSelectRelatedGame, highlightColor,
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
@@ -268,7 +272,62 @@ export function GameDetailsPage({
   const RELATED_ITEM_W = 90;
   const RELATED_GAP = 10;
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
-  const visibleRelated = (relatedGames ?? []).slice(0, maxRelated);
+  const currentDeveloperKey = safeStr(developer).toLowerCase();
+  const libraryRelatedItems = useMemo(() => relatedGames ?? [], [relatedGames]);
+  const recommendationItems = (recommendedGames ?? []).filter((game) => safeStr(game.title));
+  const effectiveRelatedItems = useMemo(() => {
+    if (!recommendationItems.length) return libraryRelatedItems;
+
+    const keyOf = (entry: Record<string, unknown>) => {
+      const idKey = safeStr(
+        (entry as Record<string, unknown>).id ||
+        (entry as Record<string, unknown>).igdbId ||
+        (entry as Record<string, unknown>).igdbIdOverride
+      );
+      if (idKey) return `id:${idKey}`;
+      const titleKey = normalizeGameTitle((entry as Record<string, unknown>).title);
+      return titleKey ? `title:${titleKey}` : "";
+    };
+
+    const dedupe = (items: Record<string, unknown>[]) => {
+      const seen = new Set<string>();
+      const out: Record<string, unknown>[] = [];
+      for (const entry of items) {
+        const key = keyOf(entry);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(entry);
+      }
+      return out;
+    };
+
+    const uniqueLibrary = dedupe(libraryRelatedItems);
+    const uniqueRecommendations = dedupe(recommendationItems);
+    const recommendationQuota = Math.min(3, uniqueRecommendations.length);
+    const libraryQuota = Math.max(0, maxRelated - recommendationQuota);
+    const initial = [
+      ...uniqueLibrary.slice(0, libraryQuota),
+      ...uniqueRecommendations.slice(0, recommendationQuota),
+    ];
+
+    if (initial.length >= maxRelated) return initial;
+
+    const already = new Set(initial.map((entry) => keyOf(entry)).filter(Boolean));
+    const fillPool = [...uniqueRecommendations.slice(recommendationQuota), ...uniqueLibrary.slice(libraryQuota)];
+    for (const entry of fillPool) {
+      const key = keyOf(entry);
+      if (!key || already.has(key)) continue;
+      already.add(key);
+      initial.push(entry);
+      if (initial.length >= maxRelated) break;
+    }
+    return initial;
+  }, [libraryRelatedItems, recommendationItems, maxRelated]);
+  const effectiveRelatedLabel =
+    recommendationItems.length > 0
+      ? "YOU MAY ALSO LIKE"
+      : ((relatedGamesLabel || "SIMILAR GAMES").toUpperCase());
+  const visibleRelated = effectiveRelatedItems.slice(0, maxRelated);
   const hasRelated = visibleRelated.length > 0;
 
   const chipStatus = playStatus;
@@ -576,12 +635,15 @@ export function GameDetailsPage({
           {/* Similar / More From Games */}
           {hasRelated ? sectionBox(
             <>
-              {sectionLabel((relatedGamesLabel || "SIMILAR GAMES").toUpperCase())}
+              {sectionLabel(effectiveRelatedLabel)}
               <div ref={relatedRowRef} style={{ display: "flex", gap: RELATED_GAP, overflow: "hidden" }}>
                 {visibleRelated.map((game, i) => {
                   const gTitle = safeStr(game.title);
                   const gYear = formatYear(game.releaseDate || game.releaseDateAlt);
                   const gCover = getDisplayCoverUrl(game);
+                  const isRecommendation = Boolean((game as Record<string, unknown>).__isRecommendation);
+                  const relatedDeveloper = safeStr((game as Record<string, unknown>).developer).toLowerCase();
+                  const sameDeveloper = Boolean(!isRecommendation && currentDeveloperKey && relatedDeveloper && currentDeveloperKey === relatedDeveloper);
                   return (
                     <div
                       key={i}
@@ -590,6 +652,7 @@ export function GameDetailsPage({
                         flexShrink: 0, width: RELATED_ITEM_W,
                         cursor: onSelectRelatedGame ? "pointer" : "default",
                         display: "flex", flexDirection: "column", gap: 5,
+                        minHeight: 206,
                       }}
                     >
                       {gCover ? (
@@ -612,6 +675,27 @@ export function GameDetailsPage({
                         {gTitle}
                       </div>
                       {gYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{gYear}</div> : null}
+                      <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 6, minHeight: 24, alignItems: "center", flexWrap: "wrap" }}>
+                        {isRecommendation ? (
+                          <span style={{ fontSize: 8, fontWeight: 800, color: palette.text, border: `1px solid ${palette.surfaceBorder}`, borderRadius: 999, padding: "2px 6px", background: palette.chip }}>
+                            Not in Library
+                          </span>
+                        ) : sameDeveloper ? (
+                          <span
+                            style={{
+                              fontSize: 8,
+                              fontWeight: 800,
+                              color: "#0f5132",
+                              border: "1px solid rgba(134, 239, 172, 0.7)",
+                              borderRadius: 999,
+                              padding: "2px 6px",
+                              background: "rgba(187, 247, 208, 0.85)",
+                            }}
+                          >
+                            Same Developer
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}

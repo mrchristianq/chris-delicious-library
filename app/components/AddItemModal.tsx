@@ -19,6 +19,10 @@ type AddItemModalProps = {
   onClose: () => void;
   onSelectResult: (type: AddExtendedType, data: Record<string, unknown>, bookFormat: string) => void;
   onAddManually: (type: AddExtendedType, bookFormat: string) => void;
+  initialSelection?: {
+    type?: AddExtendedType;
+    query?: string;
+  } | null;
 };
 
 const TYPE_OPTIONS: Array<{ type: AddExtendedType; label: string; sub?: string; emoji: string }> = [
@@ -55,7 +59,7 @@ function typeLabel(type: AddExtendedType): string {
   return type;
 }
 
-export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: AddItemModalProps) {
+export function AddItemModal({ open, onClose, onSelectResult, onAddManually, initialSelection }: AddItemModalProps) {
   const [selectedType, setSelectedType]   = useState<AddExtendedType | null>(null);
   const [bookFormat, setBookFormat]       = useState<string>("Physical");
   const [query, setQuery]                 = useState("");
@@ -69,14 +73,14 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually }: A
   // Reset when opening
   useEffect(() => {
     if (!open) return;
-    setSelectedType(null);
+    setSelectedType(initialSelection?.type ?? null);
     setBookFormat("Physical");
-    setQuery("");
+    setQuery(safeStr(initialSelection?.query));
     setResults([]);
     setIsSearching(false);
     setSearchError(null);
     setSearched(false);
-  }, [open]);
+  }, [open, initialSelection]);
 
   // Focus input after type selected
   useEffect(() => {

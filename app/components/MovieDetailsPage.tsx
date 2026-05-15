@@ -16,6 +16,7 @@ type MovieDetailsPageProps = {
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedMovies?: Record<string, unknown>[];
   relatedMoviesLabel?: string;
+  recommendedMovies?: Record<string, unknown>[];
   onSelectRelated?: (item: Record<string, unknown>) => void;
   highlightColor?: string;
 };
@@ -223,6 +224,7 @@ export function MovieDetailsPage({
   item, isMobileLayout, usePageBackground = false,
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
   relatedMovies, relatedMoviesLabel, onSelectRelated, highlightColor,
+  recommendedMovies,
 }: MovieDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
@@ -284,7 +286,26 @@ export function MovieDetailsPage({
   const maxCast = useFitCount(castRowRef, CAST_ITEM_W, CAST_GAP);
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
   const visibleCast = castMembers.slice(0, maxCast);
-  const visibleRelated = (relatedMovies ?? []).slice(0, maxRelated);
+  const recommendationItems = (recommendedMovies ?? []).filter((item) => safeStr(item.title));
+  const libraryRelatedItems = relatedMovies ?? [];
+  const relatedKey = (item: Record<string, unknown>) => safeStr((item as any).tmdbId || (item as any).TMDB_ID || item.title).toLowerCase();
+  const libraryKeys = new Set(libraryRelatedItems.map(relatedKey).filter(Boolean));
+  const recommendationFill = recommendationItems.filter((item) => !libraryKeys.has(relatedKey(item)));
+  const effectiveRelatedItems = [...libraryRelatedItems, ...recommendationFill];
+  const effectiveRelatedLabel = recommendationFill.length > 0
+    ? "You May Also Like"
+    : (libraryRelatedItems.length > 0 ? (relatedMoviesLabel || "More Like This") : "You May Also Like");
+  const visibleRelated = (() => {
+    if (!libraryRelatedItems.length || !recommendationFill.length) {
+      return effectiveRelatedItems.slice(0, maxRelated);
+    }
+    const librarySlots = Math.max(1, Math.floor(maxRelated / 2));
+    const recSlots = Math.max(1, maxRelated - librarySlots);
+    return [
+      ...libraryRelatedItems.slice(0, librarySlots),
+      ...recommendationFill.slice(0, recSlots),
+    ].slice(0, maxRelated);
+  })();
 
   useEffect(() => {
     const vp = descViewport.current, ct = descContent.current;
@@ -339,7 +360,7 @@ export function MovieDetailsPage({
   const DETAILS_W = isMobileLayout ? 0 : 220;
   const HERO_H = isMobileLayout ? "auto" : 460;
 
-  const hasRelated = relatedMovies && relatedMovies.length > 0;
+  const hasRelated = effectiveRelatedItems.length > 0;
 
   const sectionBox = (children: React.ReactNode, style?: React.CSSProperties) => (
     <div style={{
@@ -622,6 +643,9 @@ export function MovieDetailsPage({
                   background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.02)} 100%)`,
                   border: `1px solid ${palette.surfaceBorder}`,
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
                 }}>
                   {sectionLabel("CAST")}
                   <div ref={castRowRef} style={{ display: "flex", gap: CAST_GAP, justifyContent: "center", overflow: "hidden" }}>
@@ -664,12 +688,13 @@ export function MovieDetailsPage({
                   border: `1px solid ${palette.surfaceBorder}`,
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                 }}>
-                  {sectionLabel(relatedMoviesLabel || "Similar Movies")}
+                  {sectionLabel(effectiveRelatedLabel)}
                   <div ref={relatedRowRef} style={{ display: "flex", gap: RELATED_GAP, overflow: "hidden" }}>
                     {visibleRelated.map((movie, i) => {
                       const mTitle = safeStr(movie.title);
                       const mYear = formatYear(movie.releaseDate || movie.year);
                       const mCover = getDisplayCoverUrl(movie);
+                      const isRecommendation = Boolean((movie as any).__isRecommendation);
                       return (
                         <div key={i}
                           onClick={() => onSelectRelated?.(movie)}
@@ -677,6 +702,7 @@ export function MovieDetailsPage({
                             flexShrink: 0, width: RELATED_ITEM_W,
                             cursor: onSelectRelated ? "pointer" : "default",
                             display: "flex", flexDirection: "column", gap: 5,
+                            minHeight: 208,
                           }}
                         >
                           {mCover ? (
@@ -699,6 +725,33 @@ export function MovieDetailsPage({
                             {mTitle}
                           </div>
                           {mYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{mYear}</div> : null}
+                          <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 4, flexWrap: "wrap", minHeight: 20, alignItems: "center" }}>
+                            <span
+                              style={
+                                isRecommendation
+                                  ? {
+                                      fontSize: 8,
+                                      fontWeight: 800,
+                                      color: palette.text,
+                                      border: `1px solid ${palette.surfaceBorder}`,
+                                      borderRadius: 999,
+                                      padding: "2px 6px",
+                                      background: palette.chip,
+                                    }
+                                  : {
+                                      fontSize: 8,
+                                      fontWeight: 800,
+                                      color: "#065f46",
+                                      border: "1px solid rgba(16, 185, 129, 0.45)",
+                                      borderRadius: 999,
+                                      padding: "2px 6px",
+                                      background: "rgba(167, 243, 208, 0.82)",
+                                    }
+                              }
+                            >
+                              {isRecommendation ? "Not in Library" : "Same Director"}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}

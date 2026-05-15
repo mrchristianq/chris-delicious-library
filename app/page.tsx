@@ -21,6 +21,7 @@ import { MovieDetailsEditModal } from "./components/MovieDetailsEditModal";
 import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
 import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
 import { RateItModal } from "./components/RateItModal";
+import { COVER_IMAGE_RADIUS_STYLE } from "./components/coverStyles";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -115,6 +116,11 @@ type Show = {
   r2CoverUrlDate?: string;
   r2BackdropUrl?: string;
   r2BackdropUrlDate?: string;
+  recommendationSource?: string;
+  recommendedIds?: string;
+  recommendedTitles?: string;
+  recommendationsLastChecked?: string;
+  recommendationsHidden?: string;
 };
 
 type Book = {
@@ -156,6 +162,12 @@ type Book = {
   queuedOrder?: string;
   r2CoverUrl?: string;
   r2CoverUrlDate?: string;
+  hardcoverId?: string;
+  recommendationSource?: string;
+  recommendedIds?: string;
+  recommendedTitles?: string;
+  recommendationsLastChecked?: string;
+  recommendationsHidden?: string;
 };
 
 type Movie = {
@@ -194,6 +206,11 @@ type Movie = {
   r2CoverUrlDate?: string;
   r2BackdropUrl?: string;
   r2BackdropUrlDate?: string;
+  recommendationSource?: string;
+  recommendedIds?: string;
+  recommendedTitles?: string;
+  recommendationsLastChecked?: string;
+  recommendationsHidden?: string;
 };
 
 type Game = {
@@ -240,6 +257,11 @@ type Game = {
   r2CoverUrlDate?: string;
   r2BackdropUrl?: string;
   r2BackdropUrlDate?: string;
+  recommendationSource?: string;
+  recommendedIds?: string;
+  recommendedTitles?: string;
+  recommendationsLastChecked?: string;
+  recommendationsHidden?: string;
 };
 
 type SmartListMediaType = "book" | "movie" | "tv" | "game";
@@ -1977,13 +1999,18 @@ function rowToShow(r: Row): Show | null {
     overview: safeStr(r["Overview"]) || undefined,
     ownership: safeStr(r["Ownership"]) || undefined,
     tag: safeStr(r["Tags"]) || safeStr(r["Tag"]) || undefined,
-    creator: safeStr(r["Creator"]) || undefined,
+    creator: safeStr(r["Creator"]) || safeStr(r["CreatedBy"]) || undefined,
     topcast: safeStr(r["Cast"]) || safeStr(r["Topcast"]) || undefined,
     topcastPhotos: safeStr(r["Cast Photos"]) || safeStr(r["Topcast Photos"]) || undefined,
     r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
     r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
     r2BackdropUrl: safeStr(r["R2BackdropUrl"]) || undefined,
     r2BackdropUrlDate: safeStr(r["R2BackdropUrl_Date"]) || undefined,
+    recommendationSource: safeStr(r["RecommendationSource"]) || undefined,
+    recommendedIds: safeStr(r["RecommendedIDs"]) || undefined,
+    recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
+    recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
+    recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
   };
 }
 
@@ -2056,6 +2083,12 @@ function rowToBook(r: Row): Book | null {
     queuedOrder: safeStr(r["QueuedOrder"]) || undefined,
     r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
     r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
+    hardcoverId: safeStr(r["HardcoverID"]) || undefined,
+    recommendationSource: safeStr(r["RecommendationSource"]) || undefined,
+    recommendedIds: safeStr(r["RecommendedIDs"]) || undefined,
+    recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
+    recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
+    recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
   };
 }
 
@@ -2111,6 +2144,11 @@ function rowToMovie(r: Row): Movie | null {
     r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
     r2BackdropUrl: safeStr(r["R2BackdropUrl"]) || undefined,
     r2BackdropUrlDate: safeStr(r["R2BackdropUrl_Date"]) || undefined,
+    recommendationSource: safeStr(r["RecommendationSource"]) || undefined,
+    recommendedIds: safeStr(r["RecommendedIDs"]) || undefined,
+    recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
+    recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
+    recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
   };
 }
 
@@ -2175,6 +2213,11 @@ function rowToGame(r: Row): Game | null {
     r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
     r2BackdropUrl: safeStr(r["R2BackdropUrl"]) || undefined,
     r2BackdropUrlDate: safeStr(r["R2BackdropUrl_Date"]) || undefined,
+    recommendationSource: safeStr(r["RecommendationSource"]) || undefined,
+    recommendedIds: safeStr(r["RecommendedIDs"]) || undefined,
+    recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
+    recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
+    recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
   };
 }
 
@@ -3748,8 +3791,11 @@ export default function Page() {
   const [rateItMediaType, setRateItMediaType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
   const [rateItHighlightColor, setRateItHighlightColor] = useState<string>("#007AFF");
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addModalInitialSelection, setAddModalInitialSelection] = useState<{ type?: AddExtendedType; query?: string } | null>(null);
   const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [addNewItemType, setAddNewItemType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
+  const [movieRecommendationPreview, setMovieRecommendationPreview] = useState<Record<string, unknown> | null>(null);
+  const [tvRecommendationPreview, setTvRecommendationPreview] = useState<Record<string, unknown> | null>(null);
   const sidebarIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarIconTargetKeyRef = useRef<string | null>(null);
   const statusIconFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -6847,6 +6893,7 @@ export default function Page() {
   // ── Add-new flow: open the appropriate edit modal with prefilled data ──────────
   const handleAddItemSelectResult = useCallback((type: AddExtendedType, data: Record<string, unknown>, bookFormat: string) => {
     setAddModalOpen(false);
+    setAddModalInitialSelection(null);
     const mediaType = (type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
     setIsAddingNewItem(true);
     setAddNewItemType(mediaType === "book" ? "book" : mediaType);
@@ -6868,6 +6915,7 @@ export default function Page() {
 
   const handleAddItemManually = useCallback((type: AddExtendedType, bookFormat: string) => {
     setAddModalOpen(false);
+    setAddModalInitialSelection(null);
     const mediaType = (type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
     setIsAddingNewItem(true);
     setAddNewItemType(mediaType === "book" ? "book" : mediaType);
@@ -6893,6 +6941,48 @@ export default function Page() {
     setAddNewItemType(null);
     openSelectedItem(newItem);
   }, [openSelectedItem]);
+
+  const openAddFlowFromMovieRecommendation = useCallback((item: Record<string, unknown>) => {
+    const prefill: Record<string, unknown> = {
+      title: safeStr(item?.title),
+      year: safeStr(item?.year),
+      releaseDate: safeStr(item?.releaseDate),
+      posterUrl: safeStr(item?.posterUrl || item?.imageUrl),
+      backdropUrl: safeStr(item?.backdropUrl),
+      tmdbId: safeStr(item?.tmdbId || item?.TMDB_ID || item?.id),
+      tmdbRating: safeStr(item?.tmdbRating || item?.rating),
+      overview: safeStr(item?.overview),
+    };
+    setMovieRecommendationPreview(null);
+    setIsAddingNewItem(true);
+    setAddNewItemType("movie");
+    setMovieDetailItem(prefill);
+    setMovieDetailsEditOpen(true);
+  }, []);
+
+  const openAddFlowFromTvRecommendation = useCallback((item: Record<string, unknown>) => {
+    const prefill: Record<string, unknown> = {
+      title: safeStr(item?.title),
+      year: safeStr(item?.year),
+      firstAirDate: safeStr(item?.releaseDate || item?.firstAirDate),
+      posterUrl: safeStr(item?.posterUrl || item?.imageUrl),
+      backdropUrl: safeStr(item?.backdropUrl),
+      tmdbId: safeStr(item?.tmdbId || item?.TMDB_ID || item?.id),
+      tmdbRating: safeStr(item?.tmdbRating || item?.rating),
+      overview: safeStr(item?.overview),
+    };
+    setTvRecommendationPreview(null);
+    setIsAddingNewItem(true);
+    setAddNewItemType("tv");
+    setTvDetailItem(prefill);
+    setTvDetailsEditOpen(true);
+  }, []);
+
+  const openAddFlowFromBookRecommendation = useCallback((item: Record<string, unknown>) => {
+    const title = safeStr(item?.title);
+    setAddModalInitialSelection({ type: "book-hardcover", query: title });
+    setAddModalOpen(true);
+  }, []);
 
   const openNewlyAddedItemFromRow = useCallback(
     (mediaType: "movie" | "tv" | "book" | "game", row: Record<string, string>) => {
@@ -9151,6 +9241,13 @@ export default function Page() {
     return shuffled.slice(0, count);
   }, []);
 
+  const parseCreatorTokens = useCallback((value: unknown): string[] => {
+    return safeStr(value)
+      .split(/,|\/|;|\band\b|&/gi)
+      .map((token) => token.toLowerCase().replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+  }, []);
+
   const movieRelated = useMemo(() => {
     if (!movieDetailItem) return { movies: [] as Record<string, unknown>[], label: "Similar Movies" };
     const dir = safeStr(movieDetailItem?.director);
@@ -9181,8 +9278,13 @@ export default function Page() {
     const showTitle = safeStr(tvDetailItem?.title);
     const genres = safeStr(tvDetailItem?.genres);
     if (creator) {
+      const creatorSet = new Set(parseCreatorTokens(creator));
       const byCreator = allShows
-        .filter(s => safeStr(s?.creator) === creator && safeStr(s?.title) !== showTitle)
+        .filter(s => {
+          if (safeStr(s?.title) === showTitle) return false;
+          const showCreators = parseCreatorTokens(s?.creator);
+          return showCreators.some((token) => creatorSet.has(token));
+        })
         .slice(0, 20);
       if (byCreator.length > 0) return { shows: byCreator as unknown as Record<string, unknown>[], label: `More by ${creator}` };
     }
@@ -9197,7 +9299,7 @@ export default function Page() {
       if (similar.length > 0) return { shows: similar as unknown as Record<string, unknown>[], label: "Similar Shows" };
     }
     return { shows: [] as Record<string, unknown>[], label: "Similar Shows" };
-  }, [tvDetailItem, allShows]);
+  }, [tvDetailItem, allShows, parseCreatorTokens]);
 
   const allGames = useMemo(() => {
     return gameRows.map(rowToGame).filter(game => {
@@ -9213,6 +9315,7 @@ export default function Page() {
     const developer = safeStr(gameDetailItem?.developer);
     const gameTitle = safeStr(gameDetailItem?.title);
     const genres = safeStr(gameDetailItem?.genres);
+    const platform = safeStr(gameDetailItem?.platform || gameDetailItem?.platforms);
     if (developer) {
       const byDeveloper = allGames
         .filter(g => safeStr(g?.developer) === developer && safeStr(g?.title) !== gameTitle)
@@ -9229,8 +9332,109 @@ export default function Page() {
         .slice(0, 20);
       if (similar.length > 0) return { games: similar as unknown as Record<string, unknown>[], label: "Similar Games" };
     }
+    if (platform) {
+      const byPlatform = allGames
+        .filter(g => safeStr(g?.title) !== gameTitle)
+        .filter(g => {
+          const gPlatform = safeStr(g?.platform || g?.platforms);
+          return gPlatform.toLowerCase() === platform.toLowerCase();
+        })
+        .slice(0, 20);
+      if (byPlatform.length > 0) return { games: byPlatform as unknown as Record<string, unknown>[], label: `More on ${platform}` };
+    }
+    const anyOthers = allGames
+      .filter(g => safeStr(g?.title) !== gameTitle)
+      .slice(0, 20);
+    if (anyOthers.length > 0) return { games: anyOthers as unknown as Record<string, unknown>[], label: "More Games" };
     return { games: [] as Record<string, unknown>[], label: "Similar Games" };
   }, [gameDetailItem, allGames]);
+
+  const [bookRecommendations, setBookRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [movieRecommendations, setMovieRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [tvRecommendations, setTvRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [gameRecommendations, setGameRecommendations] = useState<Record<string, unknown>[]>([]);
+
+  const loadRecommendations = useCallback(
+    async (
+      mediaType: "book" | "movie" | "tv" | "game",
+      currentItem: Record<string, unknown> | null,
+      onSuccess: (items: Record<string, unknown>[]) => void
+    ) => {
+      if (!currentItem) {
+        onSuccess([]);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/recommendations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mediaType,
+            item: currentItem,
+            libraryIds: {
+              movieTmdbIds: allMovies.map((m) => safeStr(m.tmdbId)).filter(Boolean),
+              tvTmdbIds: allShows.map((s) => safeStr(s.tmdbId)).filter(Boolean),
+              gameIgdbIds: allGames.map((g) => safeStr(g.igdbId || g.igdbIdOverride)).filter(Boolean),
+              bookHardcoverIds: allBooks.map((b) => safeStr((b as any).hardcoverId || (b as any).HardcoverID)).filter(Boolean),
+              bookIsbn13s: allBooks.map((b) => safeStr(b.isbn13 || (b as any).ISBN13)).filter(Boolean),
+              bookTitleAuthorPairs: allBooks.map((b) => `${safeStr(b.title)}|||${safeStr((b as any).author || (b as any).Author)}`).filter(Boolean),
+            },
+          }),
+        });
+        const payload = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          recommendations?: Array<Record<string, unknown>>;
+        };
+        if (!res.ok || !payload.ok || !Array.isArray(payload.recommendations)) {
+          onSuccess([]);
+          return;
+        }
+
+        const normalized = payload.recommendations.map((item) => ({
+          ...item,
+          title: safeStr(item.title),
+          posterUrl: safeStr(item.imageUrl),
+          releaseDate: safeStr(item.releaseDate),
+          year: safeStr(item.year),
+        }));
+        const toEpoch = (entry: Record<string, unknown>) => {
+          const dateRaw = safeStr(entry.releaseDate);
+          if (dateRaw) {
+            const parsed = new Date(dateRaw);
+            if (!Number.isNaN(parsed.getTime())) return parsed.getTime();
+          }
+          const yearRaw = safeStr(entry.year);
+          const yearNum = Number.parseInt(yearRaw, 10);
+          if (Number.isFinite(yearNum) && yearNum > 0) return new Date(yearNum, 0, 1).getTime();
+          return 0;
+        };
+        if (mediaType !== "book") {
+          normalized.sort((a, b) => toEpoch(b) - toEpoch(a));
+        }
+        onSuccess(normalized);
+      } catch {
+        onSuccess([]);
+      }
+    },
+    [allBooks, allGames, allMovies, allShows]
+  );
+
+  useEffect(() => {
+    void loadRecommendations("book", bookDetailItem, setBookRecommendations);
+  }, [bookDetailItem, loadRecommendations]);
+
+  useEffect(() => {
+    void loadRecommendations("movie", movieDetailItem, setMovieRecommendations);
+  }, [movieDetailItem, loadRecommendations]);
+
+  useEffect(() => {
+    void loadRecommendations("tv", tvDetailItem, setTvRecommendations);
+  }, [tvDetailItem, loadRecommendations]);
+
+  useEffect(() => {
+    void loadRecommendations("game", gameDetailItem, setGameRecommendations);
+  }, [gameDetailItem, loadRecommendations]);
 
   const indexedBooks = useMemo(
     () =>
@@ -18081,7 +18285,14 @@ export default function Page() {
                 setBookDetailItem(null);
               }}
               onRate={(item) => handleOpenRateIt(item, "book", sidebarHighlightColorsLight.books)}
-              onSelectRelated={openBookDetailItem}
+              onSelectRelated={(book) => {
+                if (Boolean((book as any)?.__isRecommendation)) {
+                  openAddFlowFromBookRecommendation(book);
+                  return;
+                }
+                openBookDetailItem(book);
+              }}
+              recommendedBooks={bookRecommendations}
               getDisplayCoverUrl={getDisplayCoverUrl}
               isAudiobookItem={isAudiobookItem}
               onPaletteChange={handleBookDetailPaletteChange}
@@ -18105,7 +18316,14 @@ export default function Page() {
               onPaletteChange={handleMovieDetailPaletteChange}
               relatedMovies={movieRelated.movies}
               relatedMoviesLabel={movieRelated.label}
-              onSelectRelated={(m) => setMovieDetailItem(m)}
+              recommendedMovies={movieRecommendations}
+              onSelectRelated={(m) => {
+                if (Boolean((m as any)?.__isRecommendation)) {
+                  setMovieRecommendationPreview(m);
+                  return;
+                }
+                setMovieDetailItem(m);
+              }}
               highlightColor={sidebarHighlightColorsLight.movies}
             />
           ) : tvDetailItem ? (
@@ -18126,7 +18344,14 @@ export default function Page() {
               onPaletteChange={handleTvDetailPaletteChange}
               relatedShows={tvRelated.shows}
               relatedShowsLabel={tvRelated.label}
-              onSelectRelated={(s) => setTvDetailItem(s)}
+              recommendedShows={tvRecommendations}
+              onSelectRelated={(s) => {
+                if (Boolean((s as any)?.__isRecommendation)) {
+                  setTvRecommendationPreview(s);
+                  return;
+                }
+                setTvDetailItem(s);
+              }}
               highlightColor={sidebarHighlightColorsLight.tv}
             />
           ) : gameDetailItem ? (
@@ -18147,6 +18372,7 @@ export default function Page() {
               onPaletteChange={handleGameDetailPaletteChange}
               relatedGames={gameRelated.games}
               relatedGamesLabel={gameRelated.label}
+              recommendedGames={gameRecommendations}
               onSelectRelatedGame={(g) => setGameDetailItem(g)}
               highlightColor={sidebarHighlightColorsLight.games}
             />
@@ -20358,11 +20584,185 @@ export default function Page() {
         );
       })() : null}
 
+      {movieRecommendationPreview ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9300,
+            background: "rgba(7,10,16,0.42)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setMovieRecommendationPreview(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(620px, 100%)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.38)",
+              background: "linear-gradient(180deg, rgba(251,252,254,0.98) 0%, rgba(241,244,249,0.99) 100%)",
+              boxShadow: "0 24px 48px rgba(10,18,36,0.30)",
+              padding: 16,
+              display: "grid",
+              gridTemplateColumns: isMobileLayout ? "1fr" : "136px 1fr",
+              gap: 14,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={getDisplayCoverUrl(movieRecommendationPreview)}
+              alt={safeStr(movieRecommendationPreview?.title) || "Recommendation cover"}
+              style={{
+                width: isMobileLayout ? 128 : 136,
+                maxWidth: "100%",
+                height: "auto",
+                margin: isMobileLayout ? "0 auto" : undefined,
+                border: "1px solid rgba(107,117,134,0.35)",
+                boxShadow: "0 8px 18px rgba(15,23,42,0.2)",
+                ...COVER_IMAGE_RADIUS_STYLE,
+              }}
+            />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 24, lineHeight: 1.12, fontWeight: 800, color: "#0f172a" }}>
+                {safeStr(movieRecommendationPreview?.title) || "Untitled"}
+              </div>
+              {safeStr(movieRecommendationPreview?.releaseDate || movieRecommendationPreview?.year) ? (
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#475569" }}>
+                  Release: {safeStr(movieRecommendationPreview?.releaseDate || movieRecommendationPreview?.year)}
+                </div>
+              ) : null}
+              {safeStr(movieRecommendationPreview?.overview) ? (
+                <div style={{ fontSize: 14, lineHeight: 1.45, color: "#334155" }}>
+                  {safeStr(movieRecommendationPreview?.overview)}
+                </div>
+              ) : (
+                <div style={{ fontSize: 14, lineHeight: 1.45, color: "#64748b" }}>
+                  No description available yet.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10, justifyContent: isMobileLayout ? "stretch" : "flex-end", marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setMovieRecommendationPreview(null)}
+                  style={{ border: "1px solid rgba(150,160,175,0.4)", background: "rgba(255,255,255,0.9)", color: "#334155", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAddFlowFromMovieRecommendation(movieRecommendationPreview)}
+                  style={{ border: "1px solid #3461ad", background: "linear-gradient(180deg, #6aa0f1 0%, #3461ad 100%)", color: "#fff", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: "pointer" }}
+                >
+                  Add to Library
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tvRecommendationPreview ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9300,
+            background: "rgba(7,10,16,0.42)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setTvRecommendationPreview(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(620px, 100%)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.38)",
+              background: "linear-gradient(180deg, rgba(251,252,254,0.98) 0%, rgba(241,244,249,0.99) 100%)",
+              boxShadow: "0 24px 48px rgba(10,18,36,0.30)",
+              padding: 16,
+              display: "grid",
+              gridTemplateColumns: isMobileLayout ? "1fr" : "136px 1fr",
+              gap: 14,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={getDisplayCoverUrl(tvRecommendationPreview)}
+              alt={safeStr(tvRecommendationPreview?.title) || "Recommendation cover"}
+              style={{
+                width: isMobileLayout ? 128 : 136,
+                maxWidth: "100%",
+                height: "auto",
+                margin: isMobileLayout ? "0 auto" : undefined,
+                border: "1px solid rgba(107,117,134,0.35)",
+                boxShadow: "0 8px 18px rgba(15,23,42,0.2)",
+                ...COVER_IMAGE_RADIUS_STYLE,
+              }}
+            />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 24, lineHeight: 1.12, fontWeight: 800, color: "#0f172a" }}>
+                {safeStr(tvRecommendationPreview?.title) || "Untitled"}
+              </div>
+              {safeStr(tvRecommendationPreview?.releaseDate || tvRecommendationPreview?.year) ? (
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#475569" }}>
+                  First Air Date: {safeStr(tvRecommendationPreview?.releaseDate || tvRecommendationPreview?.year)}
+                </div>
+              ) : null}
+              {safeStr(tvRecommendationPreview?.overview) ? (
+                <div style={{ fontSize: 14, lineHeight: 1.45, color: "#334155" }}>
+                  {safeStr(tvRecommendationPreview?.overview)}
+                </div>
+              ) : (
+                <div style={{ fontSize: 14, lineHeight: 1.45, color: "#64748b" }}>
+                  No description available yet.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10, justifyContent: isMobileLayout ? "stretch" : "flex-end", marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setTvRecommendationPreview(null)}
+                  style={{ border: "1px solid rgba(150,160,175,0.4)", background: "rgba(255,255,255,0.9)", color: "#334155", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAddFlowFromTvRecommendation(tvRecommendationPreview)}
+                  style={{ border: "1px solid #3461ad", background: "linear-gradient(180deg, #6aa0f1 0%, #3461ad 100%)", color: "#fff", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: "pointer" }}
+                >
+                  Add to Library
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <AddItemModal
         open={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
+        onClose={() => {
+          setAddModalOpen(false);
+          setAddModalInitialSelection(null);
+        }}
         onSelectResult={handleAddItemSelectResult}
         onAddManually={handleAddItemManually}
+        initialSelection={addModalInitialSelection}
       />
 
       {/* MediaModal for cover/info popup - overlays app */}
