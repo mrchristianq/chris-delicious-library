@@ -16,6 +16,7 @@ type TVDetailsPageProps = {
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
   relatedShows?: Record<string, unknown>[];
   relatedShowsLabel?: string;
+  recommendedShows?: Record<string, unknown>[];
   onSelectRelated?: (item: Record<string, unknown>) => void;
   highlightColor?: string;
 };
@@ -59,6 +60,19 @@ function formatMmDdYyyy(v: unknown): string {
   const dd = String(parsed.getDate()).padStart(2, "0");
   const yyyy = String(parsed.getFullYear());
   return `${mm}-${dd}-${yyyy}`;
+}
+
+function normalizeName(value: unknown): string {
+  return safeStr(value).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function parseCreatorTokens(value: unknown): string[] {
+  const raw = safeStr(value);
+  if (!raw) return [];
+  return raw
+    .split(/,|\/|;|\band\b|&/gi)
+    .map((token) => normalizeName(token))
+    .filter(Boolean);
 }
 
 function toScorePct(raw: string): number {
@@ -207,7 +221,7 @@ const PANEL_STYLE: React.CSSProperties = {
 export function TVDetailsPage({
   item, isMobileLayout, usePageBackground = false,
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
-  relatedShows, relatedShowsLabel, onSelectRelated, highlightColor,
+  relatedShows, relatedShowsLabel, recommendedShows, onSelectRelated, highlightColor,
 }: TVDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const coverUrl = getDisplayCoverUrl(item);
@@ -270,7 +284,26 @@ export function TVDetailsPage({
   const maxCast = useFitCount(castRowRef, CAST_ITEM_W, CAST_GAP);
   const maxRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
   const visibleCast = castMembers.slice(0, maxCast);
-  const visibleRelated = (relatedShows ?? []).slice(0, maxRelated);
+  const recommendationItems = (recommendedShows ?? []).filter((show) => safeStr(show.title));
+  const libraryRelatedItems = relatedShows ?? [];
+  const relatedKey = (item: Record<string, unknown>) => safeStr((item as any).tmdbId || (item as any).TMDB_ID || item.title).toLowerCase();
+  const libraryKeys = new Set(libraryRelatedItems.map(relatedKey).filter(Boolean));
+  const recommendationFill = recommendationItems.filter((item) => !libraryKeys.has(relatedKey(item)));
+  const effectiveRelatedItems = [...libraryRelatedItems, ...recommendationFill];
+  const effectiveRelatedLabel = recommendationFill.length > 0
+    ? "You May Also Like"
+    : (libraryRelatedItems.length > 0 ? (relatedShowsLabel || "MORE LIKE THIS") : "You May Also Like");
+  const visibleRelated = (() => {
+    if (!libraryRelatedItems.length || !recommendationFill.length) {
+      return effectiveRelatedItems.slice(0, maxRelated);
+    }
+    const librarySlots = Math.max(1, Math.floor(maxRelated / 2));
+    const recSlots = Math.max(1, maxRelated - librarySlots);
+    return [
+      ...libraryRelatedItems.slice(0, librarySlots),
+      ...recommendationFill.slice(0, recSlots),
+    ].slice(0, maxRelated);
+  })();
 
   const chipStatus = watchStatus || tvShowStatus;
   const statusColor = (() => {
@@ -305,7 +338,7 @@ export function TVDetailsPage({
   const DETAILS_W = isMobileLayout ? 0 : 220;
   const HERO_H = isMobileLayout ? "auto" : 418;
 
-  const hasRelated = relatedShows && relatedShows.length > 0;
+  const hasRelated = visibleRelated.length > 0;
 
   const sectionBox = (children: React.ReactNode, style?: React.CSSProperties) => (
     <div style={{
@@ -637,12 +670,18 @@ export function TVDetailsPage({
           {/* Similar Shows — full width */}
           {hasRelated ? sectionBox(
             <>
-              {sectionLabel(relatedShowsLabel || "SIMILAR SHOWS")}
+              {sectionLabel(effectiveRelatedLabel)}
               <div ref={relatedRowRef} style={{ display: "flex", gap: RELATED_GAP, overflow: "hidden" }}>
                 {visibleRelated.map((show, i) => {
                   const sTitle = safeStr(show.title);
                   const sYear = formatYear(show.firstAirDate || show.year);
                   const sCover = getDisplayCoverUrl(show);
+                  const isRecommendation = Boolean((show as any).__isRecommendation);
+                  const currentCreatorTokens = new Set(parseCreatorTokens(creator));
+                  const showCreatorTokens = parseCreatorTokens(show.creator);
+                  const sameCreator =
+                    !isRecommendation &&
+                    showCreatorTokens.some((token) => currentCreatorTokens.has(token));
                   return (
                     <div key={i}
                       onClick={() => onSelectRelated?.(show)}
@@ -650,6 +689,7 @@ export function TVDetailsPage({
                         flexShrink: 0, width: RELATED_ITEM_W,
                         cursor: onSelectRelated ? "pointer" : "default",
                         display: "flex", flexDirection: "column", gap: 5,
+                        minHeight: 208,
                       }}
                     >
                       {sCover ? (
@@ -672,6 +712,33 @@ export function TVDetailsPage({
                         {sTitle}
                       </div>
                       {sYear ? <div style={{ fontSize: 9, color: palette.mutedText }}>{sYear}</div> : null}
+                      <div style={{ display: "flex", gap: 4, marginTop: "auto", paddingTop: 4, flexWrap: "wrap", minHeight: 20, alignItems: "center" }}>
+                        <span
+                          style={
+                            isRecommendation || !sameCreator
+                              ? {
+                                  fontSize: 8,
+                                  fontWeight: 800,
+                                  color: palette.text,
+                                  border: `1px solid ${palette.surfaceBorder}`,
+                                  borderRadius: 999,
+                                  padding: "2px 6px",
+                                  background: palette.chip,
+                                }
+                              : {
+                                  fontSize: 8,
+                                  fontWeight: 800,
+                                  color: "#065f46",
+                                  border: "1px solid rgba(16, 185, 129, 0.45)",
+                                  borderRadius: 999,
+                                  padding: "2px 6px",
+                                  background: "rgba(167, 243, 208, 0.82)",
+                                }
+                          }
+                        >
+                          {isRecommendation ? "Not in Library" : sameCreator ? "Same Creator" : "In Library"}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
