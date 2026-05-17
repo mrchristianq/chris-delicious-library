@@ -394,7 +394,6 @@ const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
-const SIDEBAR_ICON_R2_MIGRATION_LOCAL_KEY = "cdlSidebarIconR2MigratedV1";
 const MOBILE_ONLY_COVER_SCALE_LOCAL_KEY = "cdlMobileCoverScalePct";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
@@ -4591,41 +4590,11 @@ export default function Page() {
     }
   }, [isReadOnlySettingsMode, settingsRows]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const alreadyMigrated = localStorage.getItem(SIDEBAR_ICON_R2_MIGRATION_LOCAL_KEY) === "1";
-    if (alreadyMigrated) return;
-    const entries = Object.entries(sidebarIconOverrides).filter(([, value]) => Boolean(safeStr(value)));
-    if (!entries.length) return;
-
-    let cancelled = false;
-    (async () => {
-      const results = await Promise.allSettled(
-        entries.map(async ([iconKey, sourceUrl]) => {
-          const formData = new FormData();
-          formData.append("sourceUrl", sourceUrl);
-          formData.append("mediaType", "sidebar-icon");
-          formData.append("itemKey", `sidebar-icon-${iconKey}`);
-          formData.append("title", iconKey);
-          formData.append("objectKey", `icons/sidebar/${iconKey}`);
-          const response = await fetch("/api/upload-cover", { method: "POST", body: formData });
-          if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            throw new Error(payload?.error || `Failed to migrate sidebar icon ${iconKey}`);
-          }
-        })
-      );
-      if (cancelled) return;
-      if (results.every((result) => result.status === "fulfilled")) {
-        localStorage.setItem(SIDEBAR_ICON_R2_MIGRATION_LOCAL_KEY, "1");
-        setSidebarIconRefreshVersion((v) => v + 1);
-      }
-    })().catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sidebarIconOverrides]);
+  // NOTE: A legacy "migrate sidebar icons to R2" effect used to live here. It
+  // re-uploaded the sheet's sidebarIcon:* URLs to icons/sidebar/{key} whenever
+  // its localStorage flag was missing (e.g. on a fresh clone) — which clobbered
+  // newer crop-modal uploads with stale sheet URLs. Sidebar icons now upload
+  // straight to the fixed R2 key from commitIconCrop, so the migration is gone.
 
   useEffect(() => {
     if (!modalItem && !bookDetailItem) return;
@@ -5027,6 +4996,15 @@ export default function Page() {
         const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        const iconUrl = String(payload.url);
+        // Persist the override so the Custom badge is correct and the sheet
+        // record stays current (no stale URL for any future re-sync to replay).
+        setSidebarIconOverrides((prev) => {
+          const next = { ...prev, [state.iconKey]: iconUrl };
+          try { localStorage.setItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next)); } catch {}
+          return next;
+        });
+        saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
         setSidebarIconRefreshVersion((v) => v + 1);
       } else {
         formData.append("itemKey", `status-icon-${state.iconKey}`);
@@ -12985,8 +12963,15 @@ export default function Page() {
       setMobileSearchOpen(false);
       return;
     }
+    // The mobile Library view runs with nav === "home" + mobileFullLibraryOpen,
+    // so closing it (not a nav change) is what returns to the home landing.
+    if (mobileFullLibraryOpen) {
+      setMobileFullLibraryOpen(false);
+      setQuery("");
+      return;
+    }
     if (nav !== "home") setNav("home");
-  }, [bookDetailItem, closeAllDetails, gameDetailItem, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
+  }, [bookDetailItem, closeAllDetails, gameDetailItem, mobileFullLibraryOpen, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
   const handleMobileHome = useCallback(() => {
     closeAllDetails();
     setMobileFullLibraryOpen(false);
@@ -18577,7 +18562,7 @@ export default function Page() {
                     card.key === "tv" ||
                     card.key === "games";
                   const iconSizePx = isTightIconCard ? 72 : 84;
-                  const labelMarginTop = isTightIconCard ? -10 : -1;
+                  const labelMarginTop = (isTightIconCard ? -10 : -1) + 10;
                   return (
                 <button
                   key={`mobile-landing-card-${card.key}`}

@@ -42,7 +42,10 @@ killPort(port);
 rmSync(".next", { recursive: true, force: true });
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const child = spawn(npmCommand, ["run", "dev"], {
+// Use the Turbopack dev script — Next.js 16's legacy `--webpack` mode is
+// unstable here (compiler worker dies with repeated "socket hang up" errors,
+// so the server reports Ready but never serves pages).
+const child = spawn(npmCommand, ["run", "dev:turbo"], {
   stdio: "inherit",
   shell: false,
   env: process.env,
