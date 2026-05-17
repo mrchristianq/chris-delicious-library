@@ -3362,7 +3362,7 @@ export default function Page() {
   const bottomSafeInset = "env(safe-area-inset-bottom, 0px)";
   const MOBILE_BOTTOM_DOCK_HEIGHT = 56;
   const MOBILE_BOTTOM_DOCK_SIDE_MARGIN = 12;
-  const MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN = 10;
+  const MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN = 17;
   const MOBILE_BOTTOM_DOCK_PANEL_GAP = 10;
   const mobileBottomDockBottom = `calc(${bottomSafeInset} + ${MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN}px)`;
   const mobileBottomDockReservedSpace = `calc(${bottomSafeInset} + ${MOBILE_BOTTOM_DOCK_HEIGHT + MOBILE_BOTTOM_DOCK_BOTTOM_MARGIN + MOBILE_BOTTOM_DOCK_PANEL_GAP}px)`;
@@ -12991,6 +12991,7 @@ export default function Page() {
     closeAllDetails();
     setMobileFullLibraryOpen(false);
     setNav("home");
+    setQuery("");
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
     setMobileSearchOpen(false);
@@ -19916,7 +19917,7 @@ export default function Page() {
                                   bottom: insetBottom,
                                   left: insetLeft,
                                   overflow: isSimpleShelfPresentation ? "hidden" : "hidden",
-                                  borderRadius: 0,
+                                  borderRadius: isMobileLayout ? coverImageRadiusPx : 0,
                                   background: COVER_STAGE_BACKGROUND,
                                   boxShadow: coverSurfaceBoxShadow,
                                 }}

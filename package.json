@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
+    "dev:clean": "node scripts/dev-clean.mjs",
     "dev:turbo": "next dev --turbopack -H 0.0.0.0 -p 3000",
     "build": "next build",
     "build:pages": "node scripts/build-pages.mjs",
