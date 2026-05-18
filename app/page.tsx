@@ -2503,6 +2503,7 @@ export default function Page() {
   const [viewportW, setViewportW] = useState(0);
   const [viewportH, setViewportH] = useState(0);
   const [windowScrollY, setWindowScrollY] = useState(0);
+  const lastAppliedScrollYRef = useRef(0);
   const [stageTopAbs, setStageTopAbs] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
@@ -3807,12 +3808,31 @@ export default function Page() {
 
   useEffect(() => {
     let rafId: number | null = null;
+    // Performance: scrolling stores its position in React state, which
+    // re-renders the whole page. The scroll position only affects two
+    // things — the shelf virtualization window and the sticky-header fade.
+    // The header fade completes within the first ~28px of scroll, and the
+    // virtualization window has a multi-row buffer. So we keep full
+    // precision near the top (smooth header fade) and only commit a new
+    // value every SCROLL_BUCKET_PX once scrolled past the header zone,
+    // cutting re-renders dramatically during normal reading-scroll.
+    const SCROLL_PRECISION_ZONE_PX = 600;
+    const SCROLL_BUCKET_PX = 96;
+    const apply = () => {
+      rafId = null;
+      const y = window.scrollY || window.pageYOffset || 0;
+      const last = lastAppliedScrollYRef.current;
+      const nearTop = y < SCROLL_PRECISION_ZONE_PX || last < SCROLL_PRECISION_ZONE_PX;
+      const bucketChanged =
+        Math.floor(y / SCROLL_BUCKET_PX) !== Math.floor(last / SCROLL_BUCKET_PX);
+      if (nearTop || bucketChanged) {
+        lastAppliedScrollYRef.current = y;
+        setWindowScrollY(y);
+      }
+    };
     const onScroll = () => {
       if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        setWindowScrollY(window.scrollY || window.pageYOffset || 0);
-      });
+      rafId = window.requestAnimationFrame(apply);
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -11609,8 +11629,8 @@ export default function Page() {
     const viewH = Math.max(1, viewportH);
     if (nav !== "books" && nav !== "watchlist-tv" && !isUpcomingView) {
       const effectiveRowH = shelfRowHeight;
-      const start = Math.max(0, Math.floor(localScroll / effectiveRowH) - 2);
-      const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / effectiveRowH) + 2);
+      const start = Math.max(0, Math.floor(localScroll / effectiveRowH) - 4);
+      const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / effectiveRowH) + 4);
       return {
         start,
         end,
@@ -11635,7 +11655,7 @@ export default function Page() {
         high = mid - 1;
       }
     }
-    start = Math.max(0, start - 2);
+    start = Math.max(0, start - 4);
     low = 0;
     high = rowCount - 1;
     const targetBottom = localScroll + viewH;
@@ -11648,7 +11668,7 @@ export default function Page() {
         low = mid + 1;
       }
     }
-    end = Math.min(rowCount, end + 2);
+    end = Math.min(rowCount, end + 4);
     const padTop = offsets[start] || 0;
     const padBottom = Math.max(0, shelfOffsets.totalHeight - (end < rowCount ? offsets[end] : shelfOffsets.totalHeight));
     return {
