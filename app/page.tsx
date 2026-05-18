@@ -4311,18 +4311,11 @@ export default function Page() {
         if (!prev) return prev;
         const itemKey = getMediaItemKey(prev);
         const activeOverride = safeStr(coverOverrides[itemKey]);
-        console.log(`[CoverOverrides Sync] modalItem check:`, {
-          itemKey,
-          hasOverride: Boolean(activeOverride),
-          hasCustomUrl: Boolean(safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL))
-        });
         const updated = buildItemWithCoverSelection(prev, coverOverrides);
         // If there's a pending override, auto-sync it to the CustomURL field
         if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
-          console.log(`[Modal Auto-Sync] Setting customImageUrl for ${itemKey} to override:`, activeOverride.substring(0, 50));
           return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
         }
-        console.log(`[CoverOverrides Sync] Updating modalItem with new coverOverrides, posterUrl:`, updated?.posterUrl?.substring(0, 50));
         return updated;
       });
     }
@@ -4335,7 +4328,6 @@ export default function Page() {
         const itemKey = getMediaItemKey(prev);
         const activeOverride = safeStr(coverOverrides[itemKey]);
         if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
-          console.log(`[Detail Auto-Sync] Setting customImageUrl for ${itemKey} to override:`, activeOverride.substring(0, 50));
           return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
         }
         return updated;
