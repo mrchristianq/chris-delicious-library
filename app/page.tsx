@@ -308,7 +308,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "9.0";
+const APP_VERSION = "10.0";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -391,6 +391,11 @@ const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
 const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
+// Static cache-bust tag baked into every sidebar-icon URL. The icon URLs used
+// to be a fixed "?v=0", so a browser that cached a stale icon for that exact
+// URL never re-fetched. This is a non-zero constant (identical on server and
+// client, so no hydration mismatch); bump it if a stale icon ever sticks.
+const SIDEBAR_ICON_CACHE_BUST = "2026-05-r1";
 const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
 const MOBILE_ONLY_COVER_SCALE_LOCAL_KEY = "cdlMobileCoverScalePct";
@@ -479,6 +484,19 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0",
+    date: "2026-05-18",
+    notes: [
+      "Locked the desktop Statistics layout: pages now scale uniformly with the window instead of reflowing, with each Everything-page section arranged into consistent full-width rows.",
+      "Reworked the Year in Review page — removed the Busiest Month card, made the Storyline module full-width with a new this-year-vs-last-year pace card, and grouped the highlight modules into even rows.",
+      "Stat detail popups now show each item's contribution to that stat (e.g. hours per audiobook) and sort the list by it.",
+      "Fixed clipped stars in the mobile Rate It modal and added per-section mobile cover-size sliders for each library.",
+      "Restored User/My Rating circles on mobile movie, TV, and game detail pages, and fixed newly saved ratings not appearing until refresh.",
+      "Fixed sidebar icons serving a stale cached copy by giving icon URLs a real cache-busting tag.",
+      "Major performance pass: removed unused code and cut full-page re-renders while scrolling for smoother navigation.",
+    ],
+  },
   {
     version: "9.0",
     date: "2026-05-13",
@@ -3520,7 +3538,13 @@ export default function Page() {
   const [iconCropEditor, setIconCropEditor] = useState<IconCropEditorState | null>(null);
   type IconCropPickerTarget = { iconKind: "sidebar" | "status"; iconKey: string; iconLabel: string };
   const [iconCropPickerTarget, setIconCropPickerTarget] = useState<IconCropPickerTarget | null>(null);
+  // Starts at 0 (identical on server + client, so the first render hydrates
+  // cleanly). It only becomes non-zero after an in-session icon upload, which
+  // forces the just-changed icon to reload immediately.
   const [sidebarIconRefreshVersion, setSidebarIconRefreshVersion] = useState<number>(0);
+  const bumpSidebarIconVersion = useCallback(() => {
+    setSidebarIconRefreshVersion(Date.now());
+  }, []);
   const [coverUploadError, setCoverUploadError] = useState<string | null>(null);
   type SyncCategory =
     | "book"
@@ -4362,7 +4386,14 @@ export default function Page() {
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "");
     if (!safeIconKey) return fallbackSrc;
-    return `/api/sidebar-icon?iconKey=${encodeURIComponent(safeIconKey)}&fallback=${encodeURIComponent(fallbackSrc)}&v=${sidebarIconRefreshVersion}`;
+    // v carries a static cache-bust tag (so the URL is never the old "v=0"
+    // that pinned stale icons) plus, after an in-session upload, a timestamp
+    // suffix so the changed icon reloads right away.
+    const versionTag =
+      sidebarIconRefreshVersion > 0
+        ? `${SIDEBAR_ICON_CACHE_BUST}.${sidebarIconRefreshVersion}`
+        : SIDEBAR_ICON_CACHE_BUST;
+    return `/api/sidebar-icon?iconKey=${encodeURIComponent(safeIconKey)}&fallback=${encodeURIComponent(fallbackSrc)}&v=${encodeURIComponent(versionTag)}`;
   };
 
   const openSidebarIconFilePicker = (event: ReactMouseEvent<HTMLElement>, iconKey: string) => {
@@ -4405,7 +4436,7 @@ export default function Page() {
         throw new Error(payload?.error || `Upload failed (${res.status})`);
       }
 
-      setSidebarIconRefreshVersion((v) => v + 1);
+      bumpSidebarIconVersion();
 
       setSyncState("ok");
       setSyncMsg("Sidebar icon saved");
@@ -4708,7 +4739,7 @@ export default function Page() {
           return next;
         });
         saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
-        setSidebarIconRefreshVersion((v) => v + 1);
+        bumpSidebarIconVersion();
       } else {
         formData.append("itemKey", `status-icon-${state.iconKey}`);
         formData.append("mediaType", "status-icon");
@@ -16539,6 +16570,7 @@ export default function Page() {
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
               themeMode={shelfThemeMode}
+              isMobileLayout={isMobileLayout}
               mediaTabColors={{
                 book: activeSidebarHighlightColors.books,
                 movie: activeSidebarHighlightColors.movies,
