@@ -99,14 +99,13 @@ function scoreColor(pct: number): string {
   return "#22c55e";
 }
 
-function ScoreCircle({ raw, label }: { raw: string; label: string }) {
+function ScoreCircle({ raw, label, labelColor }: { raw: string; label: string; labelColor?: string }) {
   const pct = toScorePct(raw);
   if (!pct) return null;
   const r = 22, size = 56, stroke = 3.5;
   const circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
   const color = scoreColor(pct);
-  const words = label.split(" ");
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
       <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
@@ -124,7 +123,7 @@ function ScoreCircle({ raw, label }: { raw: string; label: string }) {
           {pct}%
         </div>
       </div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
         {label}
       </div>
     </div>
@@ -271,7 +270,6 @@ export function MovieDetailsPage({
   const watchStatus = safeStr(item.watchStatus || item.watched);
   const watchDate = formatMmDdYyyy(item.watchDate);
   const ownership = safeStr(item.ownership);
-  const tags = splitList(item.tag || item.tags);
   const director = safeStr(item.director);
   const tagline = safeStr(item.tagline);
   const budget = safeStr(item.budget);
@@ -667,7 +665,7 @@ export function MovieDetailsPage({
         <div style={{ padding: isMobileLayout ? "8px 10px 28px" : "10px 14px 32px", display: "flex", flexDirection: "column", gap: 10 }}>
 
           {/* Mobile details panel */}
-          {isMobileLayout && detailFacts.length > 0 ? sectionBox(
+          {isMobileLayout && (detailFacts.length > 0 || tmdbRating || myRating) ? sectionBox(
             <>
               {sectionLabel("DETAILS")}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px" }}>
@@ -678,6 +676,15 @@ export function MovieDetailsPage({
                   </div>
                 ))}
               </div>
+              {(tmdbRating || myRating) ? (
+                <>
+                  <div style={{ height: 1, background: palette.surfaceBorder, margin: "12px 0" }} />
+                  <div style={{ display: "flex", gap: 20, justifyContent: "center" }}>
+                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" labelColor={palette.mutedText} /> : null}
+                    {myRating ? <ScoreCircle raw={myRating} label="My Rating" labelColor={palette.mutedText} /> : null}
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
 

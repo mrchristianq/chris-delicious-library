@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -93,9 +93,6 @@ export function RolodexCounter({
   const [indexes, setIndexes] = useState<number[]>(() =>
     chars.map((ch) => (/\d/.test(ch) ? 0 : -1))
   );
-
-  // Count digits for staggered animation (excluding commas)
-  const digitCount = useMemo(() => chars.filter(ch => /\d/.test(ch)).length, [chars]);
 
   // Build wheels: repeat 0-9 a few times so it can "spin" before landing.
   const repeats = clamp(extraSpins, 1, 6) + 1; // +1 so we always have the final range

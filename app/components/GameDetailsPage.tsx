@@ -99,7 +99,7 @@ function scoreColor(pct: number): string {
   return "#22c55e";
 }
 
-function ScoreCircle({ raw, label }: { raw: string; label: string }) {
+function ScoreCircle({ raw, label, labelColor }: { raw: string; label: string; labelColor?: string }) {
   const pct = toScorePct(raw);
   if (!pct) return null;
   const r = 22, size = 56, stroke = 3.5;
@@ -123,7 +123,7 @@ function ScoreCircle({ raw, label }: { raw: string; label: string }) {
           {pct}%
         </div>
       </div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
         {label}
       </div>
     </div>
@@ -239,7 +239,7 @@ const PANEL_STYLE: React.CSSProperties = {
 export function GameDetailsPage({
   item, isMobileLayout, usePageBackground = false,
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
-  relatedGames, relatedGamesLabel, recommendedGames, onSelectRelatedGame, highlightColor,
+  relatedGames, recommendedGames, onSelectRelatedGame, highlightColor,
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const detailScale = useDesktopDetailScale(isMobileLayout);
@@ -687,7 +687,7 @@ export function GameDetailsPage({
         <div style={{ padding: isMobileLayout ? "8px 10px 28px" : "10px 14px 32px", display: "flex", flexDirection: "column", gap: 10 }}>
 
           {/* Mobile details panel */}
-          {isMobileLayout && detailFacts.length > 0 ? sectionBox(
+          {isMobileLayout && (detailFacts.length > 0 || igdbRating || myRating || hoursPlayed) ? sectionBox(
             <>
               {sectionLabel("DETAILS")}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px" }}>
@@ -698,6 +698,32 @@ export function GameDetailsPage({
                   </div>
                 ))}
               </div>
+              {(igdbRating || myRating || hoursPlayed) ? (
+                <>
+                  <div style={{ height: 1, background: palette.surfaceBorder, margin: "12px 0" }} />
+                  <div style={{ display: "flex", gap: 20, justifyContent: "center", alignItems: "flex-end" }}>
+                    {igdbRating ? <ScoreCircle raw={igdbRating} label="IGDB Rating" labelColor={palette.mutedText} /> : null}
+                    {myRating ? <ScoreCircle raw={myRating} label="My Rating" labelColor={palette.mutedText} /> : null}
+                    {hoursPlayed ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                        <div style={{
+                          width: 56, height: 56,
+                          borderRadius: "50%",
+                          background: "rgba(0,0,0,0.55)",
+                          border: "2px solid rgba(255,255,255,0.10)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 14, fontWeight: 800, color: "#fff",
+                        }}>
+                          {hoursPlayed}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: palette.mutedText, textAlign: "center", lineHeight: 1.2 }}>
+                          Hours
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
 

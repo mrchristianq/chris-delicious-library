@@ -2622,9 +2622,6 @@ export function StatisticsView({
         calculation: "Sum gameplayHours for completed games in the current scope.",
       },
     }[filter];
-    const mediaYearScopeLabel = filter === "all" ? "media entries" : MEDIA_LABELS[filter].toLowerCase();
-    const mediaYearLabel =
-      filter === "all" ? "Most Popular Media Year" : `Most Popular ${MEDIA_LABELS[filter].replace("TV Shows", "TV Show")} Year`;
     const consumedHoursMetric = {
       id: `BASE_${scopeId}_TOTAL_HOURS_CONSUMED`,
       label: durationMetricByFilter.label,

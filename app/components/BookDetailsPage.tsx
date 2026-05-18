@@ -95,19 +95,6 @@ function normalizeBookAuthor(value: unknown): string {
     .trim();
 }
 
-function formatRating(value: string): string {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) return value;
-  return parsed.toFixed(1);
-}
-
-function formatBookRatingAsTenScale(value: string): string {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) return value;
-  const tenScale = parsed <= 5 ? parsed * 2 : parsed;
-  return tenScale.toFixed(1);
-}
-
 function parseBookRatingOutOfFive(value: string): number | null {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
@@ -151,35 +138,6 @@ function getBookScoreColor(value: number): string {
   if (value >= 4) return "#7ed321";
   if (value >= 3) return "#f5a623";
   return "#ff6b6b";
-}
-
-function getStarRatingValue(value: string): number {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(5, parsed > 5 ? parsed / 2 : parsed));
-}
-
-function StarRating({ value, color }: { value: string; color: string }) {
-  const rating = getStarRatingValue(value);
-  return (
-    <span style={{ display: "inline-flex", gap: 2, alignItems: "center" }} aria-label={`${value} star rating`}>
-      {[0, 1, 2, 3, 4].map((index) => {
-        const fill = Math.max(0, Math.min(1, rating - index));
-        return (
-          <span key={index} style={{ position: "relative", width: 14, height: 14, display: "inline-block" }}>
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden style={{ display: "block", color: "rgba(255,255,255,0.24)" }}>
-              <path fill="currentColor" d="M12 2.7l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.5l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.7z" />
-            </svg>
-            <span style={{ position: "absolute", inset: 0, width: `${fill * 100}%`, overflow: "hidden" }}>
-              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden style={{ display: "block", color }}>
-                <path fill="currentColor" d="M12 2.7l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.5l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.7z" />
-              </svg>
-            </span>
-          </span>
-        );
-      })}
-    </span>
-  );
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {

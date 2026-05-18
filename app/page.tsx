@@ -309,7 +309,6 @@ type SmartListYearSourceOption = {
 
 const APP_TITLE = "Chris’ Delicious Library";
 const APP_VERSION = "9.0";
-const DEFAULT_SIDEBAR_THEME = "mac";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -395,6 +394,7 @@ const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
 const MOBILE_ONLY_COVER_SCALE_LOCAL_KEY = "cdlMobileCoverScalePct";
+const MOBILE_COVER_SCALE_BY_GROUP_LOCAL_KEY = "cdlMobileCoverScaleByGroup";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
@@ -745,35 +745,10 @@ const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
 const SETTINGS_WINDOW_DRAG_BLOCK_SELECTOR = "button, input, select, textarea, a, [role='button']";
 
 // ✅ Put these in /public
-const DEFAULT_SHELF_IMAGE = "/shelf-dark-walnut.png";
-const DARK_WALNUT_TOP_HEADER_IMAGE = "/wood_beam_header_dark_walnut.png";
-const LIGHT_OAK_TOP_HEADER_IMAGE = "/wood_beam_header_light_oak.png";
-const WEATHERED_OAK_SHELF_IMAGE = "/shelf-weathered-gray-oak.png";
-const ELECTRIC_BLUE_SHELF_THEME = "/shelf-electric-blue.png";
 const SIMPLE_SHELF_THEME = "simpleShelf";
 const DEFAULT_SIMPLE_SHELF_BACKGROUND = "#ececec";
-const SHELF_TOP_HEADER_IMAGES: Record<string, string> = {
-  "/shelves-light-single2.png": LIGHT_OAK_TOP_HEADER_IMAGE,
-  "/shelf-dark-walnut.png": "/wood_beam_header_dark_walnut.png",
-  "/shelf-weathered-oak.png": "/wood_beam_header_weathered_oak.png",
-  "/shelf-weathered-gray-oak.png": "/wood_beam_header_weathered_oak.png",
-  "/shelf-honey-oak.png": "/wood_beam_header_honey_oak.png",
-  "/shelf-teak.png": "/wood_beam_header_teak.png",
-  "/shelf_white_oak.png": "/wood_beam_header_white_oak.png",
-  "/shelf-reclaimed-oak.png": "/wood_beam_header_reclaimed_oak.png",
-};
-const normalizeShelfTheme = (theme: string): string => {
-  if (theme === "/shelf-weathered-oak.png") return WEATHERED_OAK_SHELF_IMAGE;
-  return theme;
-};
 const ELECTRIC_BLUE_TOP_BEAM_BACKGROUND =
   "linear-gradient(180deg, rgba(24, 50, 97, 0.92) 0%, rgba(12, 28, 56, 0.9) 100%), radial-gradient(130% 160% at 50% -50%, rgba(123, 184, 255, 0.58) 0%, rgba(123, 184, 255, 0) 62%)";
-const CASE_FRAME_IMAGE = "/dvd-case-frame.png";
-const MOVIE_FRAME_IMAGE = "/movie-frame.png";
-const BOOK_FRAME_IMAGE = "/book-frame-overlay.png";
-const GAME_FRAME_IMAGE = "/game-frame.png";
-const DEFAULT_COVER_SCALE: CoverScaleSettings = { x: 100, y: 100 };
-const DEFAULT_COVER_OFFSET: CoverOffsetSettings = { x: 0, y: 0 };
 const APP_ICON = "/logo4.png";
 const APP_PRIMARY_LOGO_COLORS = {
   amber: "#c07800",
@@ -781,61 +756,6 @@ const APP_PRIMARY_LOGO_COLORS = {
   sky: "#8baff4",
 } as const;
 const SHOW_HEADER_DEBUG_CONTROLS = false;
-
-const COMPACT_GAME_FRAME_SIZE = { width: 646, height: 800 } as const;
-const DEFAULT_GAME_FRAME_SIZE = { width: 1024, height: 1536 } as const;
-const COMPACT_GAME_FRAME_FILES = new Set([
-  "/dreamcast-frame.png",
-  "/playstation-frame.png",
-  "/playstation-2-frame.png",
-  "/playstation-3-frame.png",
-  "/playstation-4-frame.png",
-  "/playstation-5-frame.png",
-  "/switch-frame.png",
-  "/switch-2-frame.png",
-  "/xbox-360-frame.png",
-  "/xbox-one-frame.png",
-  "/xbox-series-x-frame.png",
-]);
-const KNOWN_GAME_FRAME_FILES = new Set([
-  ...Array.from(COMPACT_GAME_FRAME_FILES),
-  "/epic-games-store-frame.png",
-  "/nes-frame.png",
-  "/steam-frame.png",
-  "/windows-11-frame.png",
-]);
-
-// Helper function to convert platform name to frame filename
-function getPlatformFrameFilename(platform?: string): string {
-  if (!platform || platform === "Default") {
-    return GAME_FRAME_IMAGE;
-  }
-  const canonicalLabel = canonicalizePlatformLabel(platform);
-  const normalizedCanonical = normalizePlatformToken(canonicalLabel);
-  const frameOverrideByPlatform: Record<string, string> = {
-    nintendoswitch: "/switch-frame.png",
-    switch: "/switch-frame.png",
-    nintendoswitch2: "/switch-2-frame.png",
-    switch2: "/switch-2-frame.png",
-  };
-  const explicitFrame = frameOverrideByPlatform[normalizedCanonical];
-  if (explicitFrame) return explicitFrame;
-  const slug = safeStr(canonicalLabel)
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  const guessedFramePath = `/${slug || "game"}-frame.png`;
-  return KNOWN_GAME_FRAME_FILES.has(guessedFramePath) ? guessedFramePath : GAME_FRAME_IMAGE;
-}
-
-function getGameFrameSourceDimensions(platform?: string): { width: number; height: number } {
-  const framePath = getPlatformFrameFilename(platform).toLowerCase();
-  if (COMPACT_GAME_FRAME_FILES.has(framePath)) {
-    return { width: COMPACT_GAME_FRAME_SIZE.width, height: COMPACT_GAME_FRAME_SIZE.height };
-  }
-  return { width: DEFAULT_GAME_FRAME_SIZE.width, height: DEFAULT_GAME_FRAME_SIZE.height };
-}
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
@@ -1251,26 +1171,6 @@ function parseManualOrderValue(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function moveKeyRelative(
-  keys: string[],
-  movingKey: string,
-  targetKey: string,
-  placement: WishlistDragPlacement
-): string[] {
-  if (!movingKey || !targetKey || movingKey === targetKey) return keys;
-  const fromIndex = keys.indexOf(movingKey);
-  const toIndex = keys.indexOf(targetKey);
-  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return keys;
-
-  const next = [...keys];
-  const [moved] = next.splice(fromIndex, 1);
-  const targetIndex = next.indexOf(targetKey);
-  if (targetIndex === -1) return keys;
-  const insertAt = placement === "after" ? targetIndex + 1 : targetIndex;
-  next.splice(Math.min(insertAt, next.length), 0, moved);
-  return next;
-}
-
 function areStringArraysEqual(a: string[], b: string[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -1554,42 +1454,6 @@ const PLATFORM_CANONICAL_LABELS: Record<string, string> = {
   xboxseriesx: "Xbox Series X",
 };
 
-function canonicalizePlatformLabel(platform: string): string {
-  const raw = safeStr(platform);
-  if (!raw || raw === "Default") return "Default";
-  const normalizedRaw = normalizePlatformToken(raw);
-  const normalized = PLATFORM_TOKEN_ALIASES[normalizedRaw] || normalizedRaw;
-  return PLATFORM_CANONICAL_LABELS[normalized] || raw;
-}
-
-function getGameCoverFit(platform?: string): "cover" | "contain" {
-  const normalized = normalizePlatformToken(safeStr(platform));
-  if (!normalized) return "cover";
-
-  const isPlayStation = normalized.startsWith("playstation") || normalized.startsWith("ps");
-  const isXboxOne =
-    normalized === "xboxone" ||
-    normalized === "xboxonex" ||
-    normalized === "xboxones";
-  const isNintendoDs =
-    normalized === "nintendods" ||
-    normalized === "nds" ||
-    normalized === "ds";
-  const isDreamcast =
-    normalized === "dreamcast" ||
-    normalized === "segadreamcast";
-  const isNintendo64 =
-    normalized === "nintendo64" ||
-    normalized === "n64";
-
-  // Square platforms should avoid side-cropping; N64 art is rectangular and should also keep full artwork.
-  if (isPlayStation || isXboxOne || isNintendoDs || isDreamcast || isNintendo64) {
-    return "contain";
-  }
-
-  return "cover";
-}
-
 function getMediaType(item: any): MediaType {
   if (item?.__type === "book") return "book";
   if (item?.__type === "movie") return "movie";
@@ -1850,51 +1714,6 @@ function getTvWatchlistSectionKey(rawStatus?: string): TvWatchlistSectionKey {
   if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "watching";
   if (TV_WATCHLIST_NOT_STARTED_STATUSES.has(status)) return "notStarted";
   return "notStarted";
-}
-
-function getTvWatchlistBadgeLabel(rawStatus?: string, fallbackSection?: TvWatchlistSectionKey): string {
-  const status = normalizeStatusToken(rawStatus);
-  if (status === "paused") return "Paused";
-  if (status === "backlog" || status === "wishlist") return "Not Started";
-  if (status === "pending return") return "Pending";
-  if (status === "watch next") return "Watch Next";
-  if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) return "Watching";
-  if (fallbackSection) return TV_WATCHLIST_SECTION_META[fallbackSection].label;
-  return "Not Started";
-}
-
-function getTvWatchlistBadgeColors(
-  rawStatus?: string,
-  fallbackSection?: TvWatchlistSectionKey
-): TvWatchlistBadgeColors {
-  const status = normalizeStatusToken(rawStatus);
-  if (status === "paused") {
-    return TV_WATCHLIST_SECTION_META.paused;
-  }
-  if (status === "backlog" || status === "wishlist") {
-    return {
-      badgeBackground: "rgba(129, 50, 50, 0.9)",
-      badgeBorder: "rgba(233, 172, 172, 0.84)",
-      badgeColor: "rgba(255, 238, 238, 0.98)",
-    };
-  }
-  if (status === "pending return") {
-    return {
-      badgeBackground: "rgba(57, 117, 163, 0.9)",
-      badgeBorder: "rgba(169, 221, 255, 0.82)",
-      badgeColor: "rgba(238, 248, 255, 0.98)",
-    };
-  }
-  if (status === "watch next") {
-    return TV_WATCHLIST_SECTION_META.watchNext;
-  }
-  if (TV_WATCHLIST_ACTIVE_STATUSES.has(status)) {
-    return TV_WATCHLIST_SECTION_META.watching;
-  }
-  if (fallbackSection) {
-    return TV_WATCHLIST_SECTION_META[fallbackSection];
-  }
-  return TV_WATCHLIST_SECTION_META.notStarted;
 }
 
 function getTvWatchlistSectionForItem(item: TvWatchlistStatusSource | null | undefined): TvWatchlistSectionKey {
@@ -2446,7 +2265,7 @@ export default function Page() {
   const [gameRows, setGameRows] = useState<Row[]>([]);
   const [settingsRows, setSettingsRows] = useState<Row[]>([]);
   const [syncState, setSyncState] = useState<"idle" | "saving" | "ok" | "error">("idle");
-  const [syncMsg, setSyncMsg] = useState<string>("");
+  const [, setSyncMsg] = useState<string>("");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [settingSyncConflicts, setSettingSyncConflicts] = useState<string[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -2492,9 +2311,7 @@ export default function Page() {
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
   const [sortPopupOpen, setSortPopupOpen] = useState<boolean>(false);
   const [faqPopupOpen, setFaqPopupOpen] = useState<boolean>(false);
-  const [openSection, setOpenSection] = useState<NavKey | null>(null);
-  const [smartListsOpen, setSmartListsOpen] = useState<boolean>(true);
-  const [discoverOpen, setDiscoverOpen] = useState<boolean>(true);
+  const [, setOpenSection] = useState<NavKey | null>(null);
   const [customSmartLists, setCustomSmartLists] = useState<SmartList[]>([]);
   const [smartListsEditMode, setSmartListsEditMode] = useState(false);
   const [builtInSmartListOrder, setBuiltInSmartListOrder] = useState<BuiltInSmartListKey[]>([
@@ -2625,7 +2442,7 @@ export default function Page() {
   const [posterSizeTv, setPosterSizeTv] = useState<number>(100);
   const [posterSizeMovies, setPosterSizeMovies] = useState<number>(108);
   const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
-  const [bookHeightMultiplier, setBookHeightMultiplier] = useState<number>(1.5);
+  const [, setBookHeightMultiplier] = useState<number>(1.5);
   const [coverGapSize, setCoverGapSize] = useState<number>(24);
   const [tight, setTight] = useState<boolean>(true);
   const [watchFilter, setWatchFilter] = useState<string | null>(null);
@@ -2669,7 +2486,6 @@ export default function Page() {
   const [watchStatusOpen, setWatchStatusOpen] = useState<boolean>(false);
   const [showStatusOpen, setShowStatusOpen] = useState<boolean>(false);
   const [tagOpen, setTagOpen] = useState<boolean>(false);
-  const [movieWatchStatusOpen, setMovieWatchStatusOpen] = useState<boolean>(false);
   const [movieGenreOpen, setMovieGenreOpen] = useState<boolean>(false);
   const [movieTagOpen, setMovieTagOpen] = useState<boolean>(true);
   const [movieStatusOpen, setMovieStatusOpen] = useState<boolean>(true);
@@ -2680,10 +2496,9 @@ export default function Page() {
   const [gameFormatOpen, setGameFormatOpen] = useState<boolean>(false);
   const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
-  const [wishlistOpen, setWishlistOpen] = useState<boolean>(false);
   const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
   const [coverTitlesVisible, setCoverTitlesVisible] = useState<boolean>(false);
-  const [sandboxMode, setSandboxMode] = useState<boolean>(false);
+  const [sandboxMode] = useState<boolean>(false);
   const [coverTrimAssets, setCoverTrimAssets] = useState<Record<string, { url: string; aspect: number }>>({});
   const [viewportW, setViewportW] = useState(0);
   const [viewportH, setViewportH] = useState(0);
@@ -2835,22 +2650,21 @@ export default function Page() {
   const [highlightThemeEditorMode, setHighlightThemeEditorMode] = useState<HighlightThemeMode>("light");
 
   // Counter configuration
-  const [counterTileSize, setCounterTileSize] = useState<number>(44);
-  const [counterTileSpacing, setCounterTileSpacing] = useState<number>(3);
-  const [counterNumberFontSize, setCounterNumberFontSize] = useState<number>(22);
-  const [counterLabelFontSize, setCounterLabelFontSize] = useState<number>(16);
-  const [counterLabelFontWeight, setCounterLabelFontWeight] = useState<string>("600");
-  const [counterLabelTop, setCounterLabelTop] = useState<number>(0);
-  const [counterLabelLeft, setCounterLabelLeft] = useState<number>(0);
-  const [counterTop, setCounterTop] = useState<number>(0);
-  const [counterLeft, setCounterLeft] = useState<number>(0);
+  const [, setCounterTileSize] = useState<number>(44);
+  const [, setCounterTileSpacing] = useState<number>(3);
+  const [, setCounterNumberFontSize] = useState<number>(22);
+  const [, setCounterLabelFontSize] = useState<number>(16);
+  const [, setCounterLabelFontWeight] = useState<string>("600");
+  const [, setCounterLabelTop] = useState<number>(0);
+  const [, setCounterLabelLeft] = useState<number>(0);
+  const [, setCounterTop] = useState<number>(0);
+  const [, setCounterLeft] = useState<number>(0);
 
   // Mac redesign baseline: Simple shelf is the only shelf presentation.
   const shelfTheme = SIMPLE_SHELF_THEME;
   const [simpleShelfBackgroundColor, setSimpleShelfBackgroundColor] = useState<string>(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   const MOBILE_LAYOUT_MAX_WIDTH = 980;
   const isMobileLayout = viewportW > 0 && viewportW <= MOBILE_LAYOUT_MAX_WIDTH;
-  const useSimpleMobileTheme = isMobileLayout;
   const isSimpleShelfPresentation = true;
   const isElectricBlueShelfPresentation = false;
   const currentTopHeaderImage = "";
@@ -3023,7 +2837,6 @@ export default function Page() {
       : {};
   const usesThemeCountBubbleColor = true;
   const sidebarModuleStackGap = Math.max(0, sidebarSectionGap);
-  const sidebarSubmenuGapValue = Math.max(0, sidebarSubmenuGap);
   const sidebarModuleMarginTop = isSimpleSidebarTheme ? 8 : isMacSidebarTheme ? 0 : 12;
   const sidebarPrimaryModuleMarginTop = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : isMacSidebarTheme ? 0 : 6;
   const sidebarModuleCardPadding = isSimpleSidebarTheme ? "8px 10px" : isMacSidebarTheme ? "8px 8px 4px" : "12px";
@@ -3082,11 +2895,6 @@ export default function Page() {
     color: "#646a73",
     fontFamily: sidebarSectionFontFamily,
     textTransform: "uppercase",
-  };
-  const sidebarSectionHeaderLabelStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: sidebarGap,
   };
   const sidebarPrimaryItemRowStyle: CSSProperties = {
     width: "100%",
@@ -3153,18 +2961,6 @@ export default function Page() {
     : isMacSidebarTheme
       ? "0 18px 42px rgba(38, 41, 46, 0.16), 0 2px 10px rgba(38, 41, 46, 0.08), inset 0 1px 0 rgba(255,255,255,0.42)"
       : "-2px 0 5px rgba(0, 0, 0, 0.2), 2px 0 4px rgba(0, 0, 0, 0.5), 6px 0 10px rgba(0, 0, 0, 0.4), 12px 0 18px rgba(0, 0, 0, 0.3), 20px 0 30px rgba(0, 0, 0, 0.22), 30px 0 44px rgba(0, 0, 0, 0.14), 6px 8px 16px rgba(0, 0, 0, 0.14)";
-  const sidebarChevronColor = isSimpleSidebarTheme
-    ? hexToRgba(simpleSidebarTextHex, 0.58, simpleSidebarTextHex)
-    : isMacSidebarTheme
-      ? "rgba(106, 112, 122, 0.66)"
-    : "rgba(0,0,0,0.4)";
-  const sidebarToggleColor = isSimpleSidebarTheme
-    ? hexToRgba(simpleSidebarTextHex, 0.74, simpleSidebarTextHex)
-    : isMacSidebarTheme
-      ? "rgba(97, 103, 112, 0.76)"
-    : "rgba(0,0,0,0.5)";
-  const sidebarOptionActiveBorder = isSimpleSidebarTheme ? `2px solid ${currentTheme.highlightBorder}` : `2px solid ${sidebarActiveAccent.border}`;
-  const sidebarOptionActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.background;
   const simpleShelfColorPanelBorder =
     shelfTheme === SIMPLE_SHELF_THEME
       ? `1px solid ${hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.16 : 0.22, simpleSidebarTextHex)}`
@@ -3290,17 +3086,6 @@ export default function Page() {
     fontSize: discoverSidebarFontSize,
     fontWeight: discoverSidebarFontWeight,
   };
-  const themesOptionTextColor = isSimpleSidebarTheme
-    ? currentTheme.textColor
-    : isMacSidebarTheme
-      ? "rgba(78, 85, 94, 0.9)"
-      : "rgba(233, 243, 255, 0.92)";
-  const themesOptionActiveTextColor = isSimpleSidebarTheme
-    ? currentTheme.secondaryColor
-    : isMacSidebarTheme
-      ? "#2f3742"
-      : "#eef4ff";
-
   useEffect(() => {
     if (shelfThemeMode === "dark") {
       setSimpleShelfBackgroundColor("#151a22");
@@ -3312,14 +3097,6 @@ export default function Page() {
     }
     setSimpleShelfBackgroundColor(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   }, [shelfThemeMode]);
-  const sidebarInlineCountActiveBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.countBubble;
-  const sidebarInlineCountBackground = isSimpleSidebarTheme
-    ? hexToRgba(simpleSidebarOverlayBase, simpleSidebarIsLight ? 0.06 : 0.1, simpleSidebarOverlayBase)
-    : isMacSidebarTheme
-      ? "rgba(121, 128, 138, 0.1)"
-    : isDarkSidebarTheme
-      ? "rgba(17, 40, 78, 0.68)"
-      : "rgba(0,0,0,0.06)";
   const sidebarInlineCountColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(241, 248, 255, 0.98)" : isMacSidebarTheme ? "#58606b" : "#333";
   const sidebarInlineCountBorder = isSimpleSidebarTheme
     ? `1px solid ${currentTheme.highlightBorder}`
@@ -3328,20 +3105,9 @@ export default function Page() {
     : isDarkSidebarTheme
       ? "1px solid rgba(146, 181, 235, 0.45)"
       : "1px solid rgba(0,0,0,0.12)";
-  const sidebarNoticeTextColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : sidebarActiveAccent.text;
   const sandboxOverlayText = "rgba(255, 248, 214, 0.96)";
   const sandboxOverlayBg = "rgba(83, 54, 0, 0.84)";
   const sandboxOverlayBorder = "1px solid rgba(255, 214, 102, 0.7)";
-  const sidebarNoticeBackground = isSimpleSidebarTheme ? currentTheme.activeHighlight : sidebarActiveAccent.background;
-  const sidebarNoticeBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : `1px solid ${sidebarActiveAccent.border}`;
-  const sidebarAccentButtonBackground = isSimpleSidebarTheme
-    ? currentTheme.activeHighlight
-    : "linear-gradient(180deg, rgba(26, 45, 74, 0.76) 0%, rgba(16, 30, 52, 0.8) 100%)";
-  const sidebarAccentButtonBorder = isSimpleSidebarTheme ? `1px solid ${currentTheme.highlightBorder}` : `1px solid ${sidebarActiveAccent.border}`;
-  const sidebarAccentButtonColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : sidebarActiveAccent.text;
-  const sidebarAccentButtonShadow = isSimpleSidebarTheme
-    ? "none"
-    : "0 10px 22px rgba(4, 12, 26, 0.3), inset 0 1px 0 rgba(188, 220, 255, 0.22)";
   const isSimpleHeaderTheme = isSimpleShelfPresentation;
   const simpleHeaderTextColor = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.78 : 0.86, simpleSidebarTextHex);
   const simpleHeaderStrongTextColor = hexToRgba(simpleSidebarTextHex, 0.94, simpleSidebarTextHex);
@@ -3351,12 +3117,8 @@ export default function Page() {
   const simpleHeaderShadow = "none";
   const simpleHeaderAccentBackground = "transparent";
   const simpleHeaderAccentBorder = "none";
-  const simpleHeaderTitleShadow = simpleSidebarIsLight
-    ? `0 1px 0 rgba(255, 255, 255, 0.32), 0 0 1px ${hexToRgba(simpleSidebarTextHex, 0.18, simpleSidebarTextHex)}`
-    : `0 1px 0 rgba(255, 255, 255, 0.14), 0 -1px 0 rgba(0, 0, 0, 0.42), 0 0 1px ${hexToRgba(simpleSidebarTextHex, 0.22, simpleSidebarTextHex)}`;
   const simpleHeaderStatusOnColor = simpleSidebarIsLight ? "#2f8f5b" : "#6fd88b";
   const simpleHeaderStatusOffColor = simpleSidebarIsLight ? "#b23b3b" : "#f07a7a";
-  const simpleHeaderIconFilter = simpleSidebarIsLight ? "brightness(0) opacity(0.62)" : "brightness(0) invert(1) opacity(0.62)";
   const topSafeInset = "env(safe-area-inset-top, 0px)";
   const bottomSafeInset = "env(safe-area-inset-bottom, 0px)";
   const MOBILE_BOTTOM_DOCK_HEIGHT = 56;
@@ -3529,21 +3291,7 @@ export default function Page() {
     color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
     fontWeight: active ? 800 : 700,
   });
-  const counterDigitHeight = isElectricBlueSidebarTheme ? Math.round(counterTileSize * 1.24) : counterTileSize;
-  const counterDigitWidth = isElectricBlueSidebarTheme
-    ? Math.round(counterDigitHeight * 0.76)
-    : Math.round(counterTileSize * 0.73);
-  const counterDigitSpacing = isElectricBlueSidebarTheme ? Math.max(4, counterTileSpacing + 1) : counterTileSpacing;
-  const counterDigitNumberFontSize = isElectricBlueSidebarTheme
-    ? Math.round(counterNumberFontSize * 1.16)
-    : counterNumberFontSize;
   const neonSyncStartOffset = useMemo(() => `-${(Math.random() * 96).toFixed(3)}s`, []);
-  const syncStatusTextColor =
-    syncState === "error"
-      ? "#8b0000"
-      : syncState === "ok"
-        ? "#0d6b3c"
-        : "#754738";
 
   // Apply cached theme settings immediately on mount so we don't flash the default theme
   // while waiting for CSV/settings sync.
@@ -3585,7 +3333,6 @@ export default function Page() {
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
   const SETTINGS_WINDOW_DEFAULT_HEIGHT = 680;
   const SETTINGS_WINDOW_MARGIN = 16;
-  const SETTINGS_WINDOW_START_Y = 84;
   const SETTINGS_WINDOW_Z_INDEX = 9000;
   const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
   const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
@@ -3610,8 +3357,8 @@ export default function Page() {
   );
 
   // Track known platforms for game filters.
-  const [customizedPlatforms, setCustomizedPlatforms] = useState<Set<string>>(new Set());
-  const [themeSaveNotice, setThemeSaveNotice] = useState<string>("");
+  const [customizedPlatforms] = useState<Set<string>>(new Set());
+  const [, setThemeSaveNotice] = useState<string>("");
   const [showVersionNotes, setShowVersionNotes] = useState(false);
   const [settingsWindowPosition, setSettingsWindowPosition] = useState<{ x: number; y: number } | null>(null);
   const settingsWindowRef = useRef<HTMLDivElement | null>(null);
@@ -3624,14 +3371,22 @@ export default function Page() {
     width: number;
     height: number;
   } | null>(null);
-  const [settingsScrollMetrics, setSettingsScrollMetrics] = useState({
+  const [, setSettingsScrollMetrics] = useState({
     hasOverflow: false,
     thumbTop: 0,
     thumbHeight: 24,
   });
   
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
-  const [mobileCoverScalePct, setMobileCoverScalePct] = useState<number>(100);
+  const [mobileCoverScaleByGroup, setMobileCoverScaleByGroup] = useState<Record<CoverScaleGroupKey, number>>({
+    home: 100,
+    books: 100,
+    movies: 100,
+    tv: 100,
+    games: 100,
+  });
+  const mobileCoverScaleGroup = getCoverScaleGroupForNav(nav) || getCoverScaleGroupForNav(lastLibraryNav) || "home";
+  const mobileCoverScalePct = mobileCoverScaleByGroup[mobileCoverScaleGroup];
   const mobileCoverScaleFactor = isMobileLayout ? mobileCoverScalePct / 100 : 1;
   const mobileShelfWidthForDefaultCoverSizing = stageWidth > 0 ? stageWidth : viewportW;
   const mobileUsableWidthForDefaultCoverSizing = Math.max(0, mobileShelfWidthForDefaultCoverSizing - shelfSidePadding * 2);
@@ -3657,20 +3412,12 @@ export default function Page() {
     mobileAdjustedPosterSizeGames
   );
   const simpleShelfCaseHeight = Math.round(simpleShelfPosterSize * 1.5);
-  const audiobookLayoutScale = 1.25;
   const rawCoverHeightScaleByMedia = {
     movie: 1.85,
     tv: 1.8,
     book: 1.6,
     game: 1.55,
     audiobook: 1.38,
-  } as const;
-  const rawCoverRowHeightRatioByMedia = {
-    movie: 0.9,
-    tv: 0.84,
-    book: 0.78,
-    game: 0.75,
-    audiobook: 0.58,
   } as const;
   const [mediaCoverSizePct, setMediaCoverSizePct] = useState<MediaCoverSizePctState>({
     tv: DEFAULT_MEDIA_COVER_SIZE_PCT.tv,
@@ -3798,46 +3545,6 @@ export default function Page() {
     error?: string;
   };
 
-  const [selectedSyncCategory, setSelectedSyncCategory] = useState<SyncCategory | null>(null);
-  const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
-  const updateSyncItemState = useCallback((itemKey: string, patch: Partial<SyncItem>) => {
-    setSyncItems((prev) => prev.map((item) => (item.itemKey === itemKey ? { ...item, ...patch } : item)));
-  }, []);
-
-  const loadCachedSyncData = useCallback((cacheKey: string) => {
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (!cached) return {} as Record<string, { url: string; lastSyncedAt?: string }>;
-      const parsed = JSON.parse(cached);
-      if (!parsed || typeof parsed !== "object") return {} as Record<string, { url: string; lastSyncedAt?: string }>;
-      const result: Record<string, { url: string; lastSyncedAt?: string }> = {};
-      Object.entries(parsed).forEach(([key, value]) => {
-        if (typeof value === "string") {
-          result[key] = { url: value };
-        } else if (value && typeof value === "object" && typeof (value as any).url === "string") {
-          result[key] = { url: (value as any).url, lastSyncedAt: safeStr((value as any).lastSyncedAt) || undefined };
-        }
-      });
-      return result;
-    } catch (e) {
-      console.warn(`Failed to load cached sync data ${cacheKey}:`, e);
-      return {} as Record<string, { url: string; lastSyncedAt?: string }>;
-    }
-  }, []);
-  const [syncInProgress, setSyncInProgress] = useState(false);
-  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
-  const [syncResults, setSyncResults] = useState<{ succeeded: number; failed: number } | null>(null);
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "complete" | "error">("idle");
-  const [syncDetails, setSyncDetails] = useState<Array<{ title: string; status: "success" | "error"; message?: string }>>([]);
-  const [syncByCategory, setSyncByCategory] = useState<Record<SyncCategory, { current: number; total: number; succeeded: number; failed: number }>>({
-    book: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    movieCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    movieBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    tvCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    tvBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    gameCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    gameBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-  });
   const [rateItModalOpen, setRateItModalOpen] = useState(false);
   const [rateItItem, setRateItItem] = useState<any>(null);
   const [rateItMediaType, setRateItMediaType] = useState<"movie" | "tv" | "book" | "game" | null>(null);
@@ -4843,22 +4550,6 @@ export default function Page() {
     });
   };
 
-  const openEmptyIconEditor = (target: IconCropPickerTarget) => {
-    setIconCropEditor({
-      iconKind: target.iconKind,
-      iconKey: target.iconKey,
-      iconLabel: target.iconLabel,
-      sourceUrl: "",
-      natural: { width: 0, height: 0 },
-      baseScale: 1,
-      zoomX: 1,
-      zoomY: 1,
-      offsetX: 0,
-      offsetY: 0,
-      saving: false,
-    });
-  };
-
   const openIconEditorWithUrl = async (target: IconCropPickerTarget, url: string) => {
     try {
       const dataUrl = await loadIconImageDataUrl(url);
@@ -5507,470 +5198,6 @@ export default function Page() {
       console.debug("Auto R2 sync failed (non-critical):", e);
       setSyncState("error");
       setSyncMsg(`Item added, but R2 sync failed. Falling back to source image. (${msg})`);
-    }
-  };
-
-  const loadItemsForCategory = useCallback((category: SyncCategory) => {
-    setSelectedSyncCategory(category);
-    setSyncResults(null);
-
-    const readCache = (cacheKey: string): Record<string, { url: string; lastSyncedAt?: string }> => {
-      try {
-        const cached = localStorage.getItem(cacheKey);
-        if (!cached) return {};
-        const parsed = JSON.parse(cached);
-        if (!parsed || typeof parsed !== "object") return {};
-        const result: Record<string, { url: string; lastSyncedAt?: string }> = {};
-        Object.entries(parsed).forEach(([key, value]) => {
-          if (typeof value === "string") {
-            result[key] = { url: value };
-          } else if (value && typeof value === "object" && typeof (value as any).url === "string") {
-            result[key] = { url: (value as any).url, lastSyncedAt: safeStr((value as any).lastSyncedAt) || undefined };
-          }
-        });
-        return result;
-      } catch {
-        return {};
-      }
-    };
-
-    const cacheKey =
-      category === "book" ? "cdlSyncedBookCovers" :
-      category === "movieCover" ? "cdlSyncedMovieCovers" :
-      category === "movieBackdrop" ? "cdlSyncedMovieBackdrops" :
-      category === "tvCover" ? "cdlSyncedTvCovers" :
-      category === "tvBackdrop" ? "cdlSyncedTvBackdrops" :
-      category === "gameCover" ? "cdlSyncedGameCovers" :
-      "cdlSyncedGameBackdrops";
-    const cacheMap = readCache(cacheKey);
-
-    const makeItemKey = (item: any, mt: "book" | "movie" | "tv" | "game"): string => {
-      const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
-      if (mt === "book") {
-        const bookFormatToken = getBookFormatKeyToken(item);
-        return `book:${normalizedTitle}:${bookFormatToken}`;
-      }
-      if (mt === "game") {
-        const normalizedPlatform = normalizePlatformToken(
-          safeStr(item?.__renderPlatform || item?.platform || item?.Platform)
-        );
-        return `game:${normalizedTitle}:${normalizedPlatform || "default"}`;
-      }
-      return `${mt}:${normalizedTitle}`;
-    };
-
-    const buildItem = (
-      item: any,
-      mediaType: "book" | "movie" | "tv" | "game",
-      imageType: "cover" | "backdrop",
-      sourceUrl: string
-    ): SyncItem => {
-      const itemKey = makeItemKey(item, mediaType);
-      const title = safeStr(item?.title || item?.Title || item?.name || item?.Name || "Untitled");
-      const existingR2 = imageType === "cover"
-        ? safeStr(item?.r2CoverUrl || item?.R2CoverUrl)
-        : safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl);
-      const cachedEntry = cacheMap[itemKey];
-      const r2Url = existingR2 || (cachedEntry ? safeStr(cachedEntry.url) : "");
-      const sheetSyncedAt = imageType === "cover"
-        ? safeStr(item?.R2CoverSyncedAt || item?.r2CoverSyncedAt)
-        : safeStr(item?.R2BackdropSyncedAt || item?.r2BackdropSyncedAt);
-      const lastSync = sheetSyncedAt || cachedEntry?.lastSyncedAt || undefined;
-      const status: SyncStatus = r2Url ? "synced" : sourceUrl ? "pending" : "missing";
-      return { item, itemKey, title, category, mediaType, imageType, sourceUrl, r2Url, status, lastSync };
-    };
-
-    const getOverride = (item: any, mt: "book" | "movie" | "tv" | "game") =>
-      safeStr(coverOverrides[makeItemKey(item, mt)]);
-    const getMoviePosterUrl = (item: any) =>
-      getOverride(item, "movie") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
-    const getTvPosterUrl = (item: any) =>
-      getOverride(item, "tv") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
-    const getGameCoverUrl = (item: any) =>
-      getOverride(item, "game") || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
-    const getGameBackdropUrl = (item: any) =>
-      safeStr(item?.ScreenshotsURL || item?.screenshotsUrl || item?.screenshotsurl);
-
-    let items: SyncItem[] = [];
-    if (category === "book") {
-      items = bookRows.map((item) => buildItem(item, "book", "cover", getOverride(item, "book") || getBookSourceUrlByMode(item)));
-    } else if (category === "movieCover") {
-      items = movieRows.map((item) => buildItem(item, "movie", "cover", getMoviePosterUrl(item)));
-    } else if (category === "movieBackdrop") {
-      items = movieRows.map((item) => buildItem(item, "movie", "backdrop", getDisplayBackdropUrl(item)));
-    } else if (category === "tvCover") {
-      items = tvRows.map((item) => buildItem(item, "tv", "cover", getTvPosterUrl(item)));
-    } else if (category === "tvBackdrop") {
-      items = tvRows.map((item) => buildItem(item, "tv", "backdrop", getDisplayBackdropUrl(item)));
-    } else if (category === "gameCover") {
-      items = gameRows.map((item) => buildItem(item, "game", "cover", getGameCoverUrl(item)));
-    } else {
-      items = gameRows.map((item) => buildItem(item, "game", "backdrop", getGameBackdropUrl(item)));
-    }
-    setSyncItems(items);
-  }, [bookRows, movieRows, tvRows, gameRows, coverOverrides, getDisplayBackdropUrl]);
-
-  const syncCoversToR2 = async (category?: SyncCategory) => {
-    setSelectedSyncCategory(category ?? null);
-    setSyncInProgress(true);
-    setSyncStatus("syncing");
-    setSyncProgress({ current: 0, total: 0 });
-    setSyncResults(null);
-    setSyncDetails([]);
-    setSyncByCategory({
-      book: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      movieCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      movieBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      tvCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      tvBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      gameCover: { current: 0, total: 0, succeeded: 0, failed: 0 },
-      gameBackdrop: { current: 0, total: 0, succeeded: 0, failed: 0 },
-    });
-
-    const normalizeCachedEntries = (value: any) => {
-      if (!value || typeof value !== "object") return null;
-      return value;
-    };
-
-    const loadCachedSyncData = (cacheKey: string) => {
-      try {
-        const cached = localStorage.getItem(cacheKey);
-        if (!cached) return {} as Record<string, { url: string; lastSyncedAt?: string }>;
-        const parsed = JSON.parse(cached);
-        const normalized = normalizeCachedEntries(parsed);
-        if (!normalized) return {} as Record<string, { url: string; lastSyncedAt?: string }>;
-        const result: Record<string, { url: string; lastSyncedAt?: string }> = {};
-        Object.entries(normalized).forEach(([key, value]) => {
-          if (typeof value === "string") {
-            result[key] = { url: value };
-          } else if (value && typeof value === "object" && typeof (value as any).url === "string") {
-            result[key] = { url: (value as any).url, lastSyncedAt: safeStr((value as any).lastSyncedAt) || undefined };
-          }
-        });
-        return result;
-      } catch (e) {
-        console.warn(`Failed to load cached sync data ${cacheKey}:`, e);
-        return {} as Record<string, { url: string; lastSyncedAt?: string }>;
-      }
-    };
-
-    const cachedBookCovers = loadCachedSyncData("cdlSyncedBookCovers");
-    const cachedMovieCovers = loadCachedSyncData("cdlSyncedMovieCovers");
-    const cachedMovieBackdrops = loadCachedSyncData("cdlSyncedMovieBackdrops");
-    const cachedTvCovers = loadCachedSyncData("cdlSyncedTvCovers");
-    const cachedTvBackdrops = loadCachedSyncData("cdlSyncedTvBackdrops");
-    const cachedGameCovers = loadCachedSyncData("cdlSyncedGameCovers");
-    const cachedGameBackdrops = loadCachedSyncData("cdlSyncedGameBackdrops");
-
-    const makeSyncItem = (
-      item: any,
-      mediaType: "book" | "movie" | "tv" | "game",
-      categoryKey: SyncCategory,
-      imageType: "cover" | "backdrop",
-      sourceUrl: string,
-      cacheMap: Record<string, { url: string; lastSyncedAt?: string }>
-    ): SyncItem => {
-      const itemKey = buildTypedItemKey(item, mediaType);
-      const title = safeStr(item?.title || item?.Title || item?.name || item?.Name || "Untitled");
-      const existingR2 = safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.r2BackdropUrl || item?.R2BackdropUrl);
-      const cachedEntry = cacheMap[itemKey];
-      const r2Url = existingR2 || (cachedEntry ? safeStr(cachedEntry.url) : "");
-      const sheetSyncedAt = safeStr(item?.R2CoverSyncedAt || item?.r2CoverSyncedAt || item?.R2BackdropSyncedAt || item?.r2BackdropSyncedAt);
-      const lastSync = sheetSyncedAt || cachedEntry?.lastSyncedAt || undefined;
-      const hasSource = Boolean(sourceUrl);
-      const hasR2 = Boolean(r2Url);
-      const status: SyncStatus = hasR2 ? "synced" : hasSource ? "pending" : "missing";
-      return {
-        item,
-        itemKey,
-        title,
-        category: categoryKey,
-        mediaType,
-        imageType,
-        sourceUrl,
-        r2Url,
-        status,
-        lastSync,
-      };
-    };
-
-    const itemsToSync: SyncItem[] = [];
-    const addItemsForCategory = (categoryKey: SyncCategory) => {
-      const getOverride = (item: any, mt: "book" | "movie" | "tv" | "game") =>
-        safeStr(coverOverrides[buildTypedItemKey(item, mt)]);
-      if (categoryKey === "book") {
-        bookRows.forEach((item) => {
-          const sourceUrl = getOverride(item, "book") || getBookSourceUrlByMode(item);
-          itemsToSync.push(makeSyncItem(item, "book", categoryKey, "cover", sourceUrl, cachedBookCovers));
-        });
-      } else if (categoryKey === "movieCover") {
-        movieRows.forEach((item) => {
-          const sourceUrl = getOverride(item, "movie") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
-          itemsToSync.push(makeSyncItem(item, "movie", categoryKey, "cover", sourceUrl, cachedMovieCovers));
-        });
-      } else if (categoryKey === "movieBackdrop") {
-        movieRows.forEach((item) => {
-          const sourceUrl = getDisplayBackdropUrl(item);
-          itemsToSync.push(makeSyncItem(item, "movie", categoryKey, "backdrop", sourceUrl, cachedMovieBackdrops));
-        });
-      } else if (categoryKey === "tvCover") {
-        tvRows.forEach((item) => {
-          const sourceUrl = getOverride(item, "tv") || safeStr(item?.posterUrl || item?.metadataCoverUrl || item?.PosterURL || item?.posterUrlFallback);
-          itemsToSync.push(makeSyncItem(item, "tv", categoryKey, "cover", sourceUrl, cachedTvCovers));
-        });
-      } else if (categoryKey === "tvBackdrop") {
-        tvRows.forEach((item) => {
-          const sourceUrl = getDisplayBackdropUrl(item);
-          itemsToSync.push(makeSyncItem(item, "tv", categoryKey, "backdrop", sourceUrl, cachedTvBackdrops));
-        });
-      } else if (categoryKey === "gameCover") {
-        gameRows.forEach((item) => {
-          const sourceUrl = getOverride(item, "game") || safeStr(item?.CoverURL || item?.coverUrl || item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl);
-          itemsToSync.push(makeSyncItem(item, "game", categoryKey, "cover", sourceUrl, cachedGameCovers));
-        });
-      } else if (categoryKey === "gameBackdrop") {
-        gameRows.forEach((item) => {
-          const sourceUrl = safeStr(item?.ScreenshotsURL || item?.screenshotsUrl);
-          itemsToSync.push(makeSyncItem(item, "game", categoryKey, "backdrop", sourceUrl, cachedGameBackdrops));
-        });
-      }
-    };
-
-    if (category) {
-      addItemsForCategory(category);
-    } else {
-      addItemsForCategory("book");
-      addItemsForCategory("movieCover");
-      addItemsForCategory("movieBackdrop");
-      addItemsForCategory("tvCover");
-      addItemsForCategory("tvBackdrop");
-      addItemsForCategory("gameCover");
-      addItemsForCategory("gameBackdrop");
-    }
-
-    // Repair: items synced in cache but whose R2 URL never made it to the sheet.
-    // Write their cached URLs to the sheet now, fire-and-forget.
-    itemsToSync.forEach((si) => {
-      if (si.status !== "synced" || !si.r2Url) return;
-      const existingInCsv = si.imageType === "cover"
-        ? safeStr(si.item?.r2CoverUrl || si.item?.R2CoverUrl)
-        : safeStr(si.item?.r2BackdropUrl || si.item?.R2BackdropUrl);
-      if (existingInCsv) return; // already in sheet, no repair needed
-      const writeUrl =
-        si.mediaType === "book" ? booksWriteUrl :
-        si.mediaType === "movie" ? moviesWriteUrl :
-        si.mediaType === "tv" ? showsWriteUrl :
-        gamesWriteUrl;
-      if (!writeUrl) return;
-      const action =
-        si.mediaType === "book" ? "updateBook" :
-        si.mediaType === "movie" ? "updateMovie" :
-        si.mediaType === "tv" ? "updateShow" : "updateGame";
-      const title = safeStr(si.item?.title || si.item?.Title || si.item?.name);
-      const fieldName = si.imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
-      const syncedAtField = si.imageType === "backdrop" ? "R2BackdropSyncedAt" : "R2CoverSyncedAt";
-      const igdbId = safeStr(si.item?.igdbId || si.item?.IGDB_ID);
-      const platform = safeStr(si.item?.platform || si.item?.Platform);
-      postSheetWrite(writeUrl, {
-        action,
-        match: { title, ...(si.mediaType === "game" ? { igdbId, platform } : {}) },
-        updates: { [fieldName]: si.r2Url, [syncedAtField]: new Date().toISOString() },
-      }, "repair sheet R2 URL").catch(() => {});
-      // Update in-memory row so sidebar count reflects immediately
-      const typedKey = si.itemKey;
-      if (si.mediaType === "book") setBookRows((prev) => prev.map((r) => buildTypedItemKey(r, "book") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
-      else if (si.mediaType === "movie") setMovieRows((prev) => prev.map((r) => buildTypedItemKey(r, "movie") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
-      else if (si.mediaType === "tv") setTvRows((prev) => prev.map((r) => buildTypedItemKey(r, "tv") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
-      else if (si.mediaType === "game") setGameRows((prev) => prev.map((r) => buildTypedItemKey(r, "game") === typedKey ? { ...r, [fieldName]: si.r2Url } : r));
-    });
-
-    setSyncItems(itemsToSync);
-    setSyncProgress({ current: 0, total: itemsToSync.length });
-
-    const updateSyncItem = (itemKey: string, patch: Partial<SyncItem>) => {
-      setSyncItems((prev) => prev.map((item) => (item.itemKey === itemKey ? { ...item, ...patch } : item)));
-    };
-
-    const pendingQueue = itemsToSync.filter((item) => item.status !== "synced" && item.status !== "missing");
-    const alreadySynced: Record<SyncCategory, number> = {
-      book: 0, movieCover: 0, movieBackdrop: 0,
-      tvCover: 0, tvBackdrop: 0, gameCover: 0, gameBackdrop: 0,
-    };
-    itemsToSync.forEach(({ category: syncCategory, status }) => {
-      if (status === "synced" || status === "success") alreadySynced[syncCategory]++;
-    });
-    const categoryStats: Record<SyncCategory, { current: number; total: number; succeeded: number; failed: number }> = {
-      book: { current: alreadySynced.book, total: 0, succeeded: 0, failed: 0 },
-      movieCover: { current: alreadySynced.movieCover, total: 0, succeeded: 0, failed: 0 },
-      movieBackdrop: { current: alreadySynced.movieBackdrop, total: 0, succeeded: 0, failed: 0 },
-      tvCover: { current: alreadySynced.tvCover, total: 0, succeeded: 0, failed: 0 },
-      tvBackdrop: { current: alreadySynced.tvBackdrop, total: 0, succeeded: 0, failed: 0 },
-      gameCover: { current: alreadySynced.gameCover, total: 0, succeeded: 0, failed: 0 },
-      gameBackdrop: { current: alreadySynced.gameBackdrop, total: 0, succeeded: 0, failed: 0 },
-    };
-
-    itemsToSync.forEach(({ category: syncCategory }) => {
-      categoryStats[syncCategory].total++;
-    });
-
-    let totalSucceeded = 0;
-    let totalFailed = 0;
-
-    const cacheKeyForItem = (item: SyncItem) => {
-      const imageSuffix = item.imageType === "backdrop" ? "Backdrops" : "Covers";
-      return `cdlSynced${item.mediaType.charAt(0).toUpperCase() + item.mediaType.slice(1)}${imageSuffix}`;
-    };
-
-    const getRowFieldName = (imageType: "cover" | "backdrop") =>
-      imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
-
-    try {
-    for (let i = 0; i < pendingQueue.length; i++) {
-      const syncItem = pendingQueue[i];
-      const { item, mediaType, sourceUrl, imageType, category: syncCategory, itemKey, title } = syncItem;
-      updateSyncItem(itemKey, { status: "syncing", error: undefined });
-
-      try {
-        const r2Url = await uploadCoverToR2(item, sourceUrl, mediaType, imageType, true);
-        updateSyncItem(itemKey, {
-          status: "success",
-          r2Url,
-          lastSync: new Date().toISOString(),
-          error: undefined,
-        });
-        categoryStats[syncCategory].succeeded++;
-        totalSucceeded++;
-
-        const fieldName = getRowFieldName(imageType);
-        if (mediaType === "book") {
-          setBookRows((prev) =>
-            prev.map((row) =>
-              buildTypedItemKey(row, "book") === itemKey ? { ...row, [fieldName]: r2Url } : row
-            )
-          );
-        } else if (mediaType === "movie") {
-          setMovieRows((prev) =>
-            prev.map((row) =>
-              buildTypedItemKey(row, "movie") === itemKey ? { ...row, [fieldName]: r2Url } : row
-            )
-          );
-        } else if (mediaType === "tv") {
-          setTvRows((prev) =>
-            prev.map((row) =>
-              buildTypedItemKey(row, "tv") === itemKey ? { ...row, [fieldName]: r2Url } : row
-            )
-          );
-        } else if (mediaType === "game") {
-          setGameRows((prev) =>
-            prev.map((row) =>
-              buildTypedItemKey(row, "game") === itemKey ? { ...row, [fieldName]: r2Url } : row
-            )
-          );
-        }
-
-        try {
-          const cacheKey = cacheKeyForItem(syncItem);
-          const cached = loadCachedSyncData(cacheKey);
-          cached[itemKey] = { url: r2Url, lastSyncedAt: new Date().toISOString() };
-          localStorage.setItem(cacheKey, JSON.stringify(cached));
-        } catch (e) {
-          console.warn(`Failed to cache synced ${syncItem.category}:`, e);
-        }
-      } catch (e) {
-        const errorMsg = e instanceof Error ? e.message : "Unknown error";
-        updateSyncItem(itemKey, { status: "error", error: errorMsg });
-        categoryStats[syncCategory].failed++;
-        totalFailed++;
-      }
-
-      categoryStats[syncCategory].current += 1;
-      setSyncProgress({ current: i + 1, total: pendingQueue.length });
-      setSyncByCategory({
-        book: { ...categoryStats.book },
-        movieCover: { ...categoryStats.movieCover },
-        movieBackdrop: { ...categoryStats.movieBackdrop },
-        tvCover: { ...categoryStats.tvCover },
-        tvBackdrop: { ...categoryStats.tvBackdrop },
-        gameCover: { ...categoryStats.gameCover },
-        gameBackdrop: { ...categoryStats.gameBackdrop },
-      });
-      const resultStatus = syncItem.status === "error" ? "error" : "success";
-      const resultMessage = syncItem.error || (resultStatus === "success" ? "Backed up" : undefined);
-      setSyncDetails((prev) => [
-        ...prev,
-        {
-          title,
-          status: resultStatus,
-          message: resultMessage,
-        },
-      ]);
-
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-
-    } finally {
-      setSyncResults({ succeeded: totalSucceeded, failed: totalFailed });
-      setSyncStatus(totalFailed > 0 && totalSucceeded === 0 ? "error" : "complete");
-      setSyncInProgress(false);
-    }
-  };
-
-  const syncSingleItemToR2 = async (itemKey: string) => {
-    const syncItem = syncItems.find((item) => item.itemKey === itemKey);
-    if (!syncItem || syncItem.status === "missing" || syncItem.status === "syncing") {
-      return;
-    }
-
-    updateSyncItemState(itemKey, { status: "syncing", error: undefined });
-
-    try {
-      const r2Url = await uploadCoverToR2(syncItem.item, syncItem.sourceUrl, syncItem.mediaType, syncItem.imageType, true);
-      updateSyncItemState(itemKey, {
-        status: "success",
-        r2Url,
-        lastSync: new Date().toISOString(),
-        error: undefined,
-      });
-
-      const fieldName = syncItem.imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl";
-      const rowKey = syncItem.itemKey;
-      if (syncItem.mediaType === "book") {
-        setBookRows((prev) =>
-          prev.map((row) =>
-            buildTypedItemKey(row, "book") === rowKey ? { ...row, [fieldName]: r2Url } : row
-          )
-        );
-      } else if (syncItem.mediaType === "movie") {
-        setMovieRows((prev) =>
-          prev.map((row) =>
-            buildTypedItemKey(row, "movie") === rowKey ? { ...row, [fieldName]: r2Url } : row
-          )
-        );
-      } else if (syncItem.mediaType === "tv") {
-        setTvRows((prev) =>
-          prev.map((row) =>
-            buildTypedItemKey(row, "tv") === rowKey ? { ...row, [fieldName]: r2Url } : row
-          )
-        );
-      } else if (syncItem.mediaType === "game") {
-        setGameRows((prev) =>
-          prev.map((row) =>
-            buildTypedItemKey(row, "game") === rowKey ? { ...row, [fieldName]: r2Url } : row
-          )
-        );
-      }
-
-      try {
-        const cacheKey = `cdlSynced${syncItem.mediaType.charAt(0).toUpperCase() + syncItem.mediaType.slice(1)}${syncItem.imageType === "backdrop" ? "Backdrops" : "Covers"}`;
-        const cached = loadCachedSyncData(cacheKey);
-        cached[itemKey] = { url: r2Url, lastSyncedAt: new Date().toISOString() };
-        localStorage.setItem(cacheKey, JSON.stringify(cached));
-      } catch (e) {
-        console.warn(`Failed to cache synced ${syncItem.category}:`, e);
-      }
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : "Unknown error";
-      updateSyncItemState(itemKey, { status: "error", error: errorMsg });
     }
   };
 
@@ -7136,7 +6363,13 @@ export default function Page() {
         if (data.watchStatus) updates["Watch Status"] = safeStr(data.watchStatus);
         if (data.watchDate) updates["WatchDate"] = safeStr(data.watchDate);
         await postSheetWrite(moviesWriteUrl, { action: "updateMovie", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save movie rating");
-        setMovieDetailItem((prev: any) => ({ ...prev, ...updates }));
+        setMovieDetailItem((prev: any) => ({
+          ...prev,
+          ...updates,
+          ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
+          ...(data.watchStatus ? { watchStatus: safeStr(data.watchStatus) } : {}),
+          ...(data.watchDate ? { watchDate: safeStr(data.watchDate) } : {}),
+        }));
       } else if (rateItMediaType === "tv") {
         if (!showsWriteUrl) throw new Error("TV write URL is not configured.");
         const updates: Record<string, string> = {};
@@ -7144,7 +6377,13 @@ export default function Page() {
         if (data.watchStatus) updates["Watch Status"] = safeStr(data.watchStatus);
         if (data.dateCompleted) updates["Date Completed"] = safeStr(data.dateCompleted);
         await postSheetWrite(showsWriteUrl, { action: "updateShow", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save show rating");
-        setTvDetailItem((prev: any) => ({ ...prev, ...updates }));
+        setTvDetailItem((prev: any) => ({
+          ...prev,
+          ...updates,
+          ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
+          ...(data.watchStatus ? { watchStatus: safeStr(data.watchStatus) } : {}),
+          ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
+        }));
       } else if (rateItMediaType === "book") {
         if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
         const updates: Record<string, string> = {};
@@ -7198,7 +6437,15 @@ export default function Page() {
         if (data.backlog !== undefined) updates["Backlog"] = data.backlog ? "Yes" : "";
         if (data.completed !== undefined) updates["Completed"] = data.completed ? "Yes" : "";
         await postSheetWrite(gamesWriteUrl, { action: "updateGame", match: { title: safeStr(rateItItem.title || rateItItem.name) }, updates }, "Failed to save game rating");
-        setGameDetailItem((prev: any) => ({ ...prev, ...updates }));
+        setGameDetailItem((prev: any) => ({
+          ...prev,
+          ...updates,
+          ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
+          ...(data.status ? { status: safeStr(data.status) } : {}),
+          ...(data.hoursPlayed ? { hoursPlayed: safeStr(data.hoursPlayed) } : {}),
+          ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
+          ...(data.yearPlayed ? { yearPlayed: safeStr(data.yearPlayed) } : {}),
+        }));
       }
       setRateItModalOpen(false);
       triggerSaveToast();
@@ -7834,15 +7081,32 @@ export default function Page() {
       }
     } catch {}
     const cachedMobileCoverScalePct = getCachedNumericSetting("mobileCoverScalePct");
-    setMobileCoverScalePct(
-      Math.max(
-        70,
-        Math.min(
-          125,
-          localMobileCoverScalePct ?? cachedMobileCoverScalePct ?? Number(getSetting("mobileCoverScalePct", 100))
-        )
-      )
+    const clampMobileCoverScale = (value: number) => Math.max(50, Math.min(250, Math.round(value)));
+    const legacyMobileCoverScalePct = clampMobileCoverScale(
+      localMobileCoverScalePct ?? cachedMobileCoverScalePct ?? Number(getSetting("mobileCoverScalePct", 100))
     );
+    let perGroupMobileCoverScale: Record<CoverScaleGroupKey, number> = {
+      home: legacyMobileCoverScalePct,
+      books: legacyMobileCoverScalePct,
+      movies: legacyMobileCoverScalePct,
+      tv: legacyMobileCoverScalePct,
+      games: legacyMobileCoverScalePct,
+    };
+    try {
+      const rawByGroup = localStorage.getItem(MOBILE_COVER_SCALE_BY_GROUP_LOCAL_KEY);
+      if (rawByGroup) {
+        const parsedByGroup = JSON.parse(rawByGroup);
+        if (parsedByGroup && typeof parsedByGroup === "object") {
+          (["home", "books", "movies", "tv", "games"] as CoverScaleGroupKey[]).forEach((group) => {
+            const value = Number(parsedByGroup[group]);
+            if (Number.isFinite(value)) {
+              perGroupMobileCoverScale[group] = clampMobileCoverScale(value);
+            }
+          });
+        }
+      }
+    } catch {}
+    setMobileCoverScaleByGroup(perGroupMobileCoverScale);
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
     setCoverGapSize(getSetting("coverGapSize", 24));
     setTight(getSetting("tight", true));
@@ -8258,25 +7522,6 @@ export default function Page() {
     [customSmartLists, persistSmartLists]
   );
 
-  const handleRenameSmartList = useCallback(
-    (listId: string) => {
-      const target = customSmartLists.find((list) => list.id === listId);
-      if (!target || typeof window === "undefined") return;
-      const nextNameRaw = window.prompt("Rename smart list:", target.name);
-      if (nextNameRaw === null) return;
-      const nextName = nextNameRaw.trim();
-      if (!nextName || nextName === target.name) return;
-      const next = customSmartLists.map((list) =>
-        list.id === listId ? { ...list, name: nextName } : list
-      );
-      persistSmartLists(next);
-      setSyncState("ok");
-      setSyncMsg("Synced");
-      setLastSyncAt(Date.now());
-    },
-    [customSmartLists, persistSmartLists]
-  );
-
   const handleReorderBuiltInSmartLists = useCallback(
     (fromKey: BuiltInSmartListKey, toKey: BuiltInSmartListKey) => {
       if (fromKey === toKey) return;
@@ -8485,332 +7730,7 @@ export default function Page() {
     }
   }, [activeSmartList?.allowManualSort, nav, sortField]);
 
-  // Function to save all current settings to spreadsheet
-  const saveAllSettings = async () => {
-    if (!canWriteSettings || !settingsWriteUrl) {
-      alert(isReadOnlySettingsMode ? "Localhost settings are read-only. Latest settings are pulled from live, but local changes are not pushed." : "No settings write URL configured");
-      return;
-    }
-    
-    setSyncState("saving");
-    setSyncMsg("Saving settings...");
-    
-    // Safety timeout: if save takes more than 5 minutes, force completion
-    const safetyTimeoutId = setTimeout(() => {
-      console.warn("Save operation timed out after 5 minutes");
-      setSyncState("error");
-      setSyncMsg("Save timeout");
-    }, 5 * 60 * 1000);
-    
-    // Build settings array WITHOUT cover insets or platform insets
-    // Cover insets and platform insets auto-save individually when changed via saveSetting()
-    const settings: any[] = [
-      { key: "posterSizeTv", value: posterSizeTv, category: "Cover Sizes", description: "TV Show Cover Size" },
-      { key: "posterSizeMovies", value: posterSizeMovies, category: "Cover Sizes", description: "Movie Cover Size" },
-      { key: "posterSizeBooks", value: posterSizeBooks, category: "Cover Sizes", description: "Book Cover Size" },
-      { key: "posterSizeGames", value: posterSizeGames, category: "Cover Sizes", description: "Game Cover Size" },
-      { key: MEDIA_COVER_SIZE_SETTING_KEYS.tv, value: mediaCoverSizePct.tv, category: "Cover Sizes", description: "TV Cover Size (%)" },
-      { key: MEDIA_COVER_SIZE_SETTING_KEYS.movies, value: mediaCoverSizePct.movies, category: "Cover Sizes", description: "Movie Cover Size (%)" },
-      { key: MEDIA_COVER_SIZE_SETTING_KEYS.books, value: mediaCoverSizePct.books, category: "Cover Sizes", description: "Book Cover Size (%)" },
-      { key: MEDIA_COVER_SIZE_SETTING_KEYS.games, value: mediaCoverSizePct.games, category: "Cover Sizes", description: "Game Cover Size (%)" },
-      { key: MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, value: mediaCoverSizePct.audiobooks, category: "Cover Sizes", description: "Audiobook Cover Size (%)" },
-      { key: COVER_SCALE_SETTING_KEYS.home, value: coverScaleByGroup.home, category: "Cover Sizes", description: "Home Cover Scale (%)" },
-      { key: COVER_SCALE_SETTING_KEYS.books, value: coverScaleByGroup.books, category: "Cover Sizes", description: "Books Cover Scale (%)" },
-      { key: COVER_SCALE_SETTING_KEYS.movies, value: coverScaleByGroup.movies, category: "Cover Sizes", description: "Movies Cover Scale (%)" },
-      { key: COVER_SCALE_SETTING_KEYS.tv, value: coverScaleByGroup.tv, category: "Cover Sizes", description: "TV Shows Cover Scale (%)" },
-      { key: COVER_SCALE_SETTING_KEYS.games, value: coverScaleByGroup.games, category: "Cover Sizes", description: "Games Cover Scale (%)" },
-      { key: "rowHeightScalePct", value: coverScaleByGroup.home, category: "Cover Sizes", description: "Legacy Home Cover Scale (%)" },
-      { key: "bookHeightMultiplier", value: bookHeightMultiplier, category: "Cover Sizes", description: "Book Height Multiplier" },
-      { key: "coverGapSize", value: coverGapSize, category: "Cover Sizes", description: "Cover Gap Size (px)" },
-      { key: "tight", value: tight, category: "Cover Sizes", description: "Tight spacing between items" },
-      { key: "logoSize", value: logoSize, category: "Logo Settings", description: "Logo Size (px)" },
-      { key: "logoTop", value: logoTop, category: "Logo Settings", description: "Logo Top Position" },
-      { key: "logoLeft", value: logoLeft, category: "Logo Settings", description: "Logo Left Position" },
-      { key: "syncIconSize", value: syncIconSize, category: "Sync Icon", description: "Sync Icon Size (px)" },
-      { key: "syncIconTop", value: syncIconTop, category: "Sync Icon", description: "Sync Icon Top Position" },
-      { key: "statusIconScale", value: statusIconScale, category: "Status Icon", description: "Status Icon Size (%)" },
-      { key: "statusIconOffsetX", value: statusIconOffsetX, category: "Status Icon", description: "Status Icon Horizontal Offset (px)" },
-      { key: "statusIconOffsetY", value: statusIconOffsetY, category: "Status Icon", description: "Status Icon Vertical Offset (px)" },
-      { key: "ratingBadgeScale", value: ratingBadgeScale, category: "Status Icon", description: "Rating Badge Size (%)" },
-      { key: "ratingBadgeOffsetX", value: ratingBadgeOffsetX, category: "Status Icon", description: "Rating Badge Horizontal Offset (px)" },
-      { key: "ratingBadgeOffsetY", value: ratingBadgeOffsetY, category: "Status Icon", description: "Rating Badge Vertical Offset (px)" },
-      { key: "iconSize", value: iconSize, category: "Icons", description: "Sidebar Icon Size (px)" },
-      { key: "sidebarFontSize", value: sidebarFontSize, category: "Sidebar", description: "Sidebar Font Size" },
-      { key: "sidebarFontWeight", value: sidebarFontWeight, category: "Sidebar", description: "Sidebar Font Weight" },
-      { key: "sidebarGap", value: sidebarGap, category: "Sidebar", description: "Sidebar Icon Gap" },
-      { key: "sidebarHeaderFontSize", value: sidebarHeaderFontSize, category: "Sidebar", description: "Sidebar Header Font Size" },
-      { key: "sidebarHeaderFontWeight", value: sidebarHeaderFontWeight, category: "Sidebar", description: "Sidebar Header Font Weight" },
-      { key: "smartListsSidebarFontSize", value: smartListsSidebarFontSize, category: "Sidebar", description: "Smart Lists Sidebar Font Size" },
-      { key: "smartListsSidebarFontWeight", value: smartListsSidebarFontWeight, category: "Sidebar", description: "Smart Lists Sidebar Font Weight" },
-      { key: "smartListsSidebarGap", value: smartListsSidebarGap, category: "Sidebar", description: "Smart Lists Sidebar Icon Gap" },
-      { key: "smartListsSidebarHeaderFontSize", value: smartListsSidebarHeaderFontSize, category: "Sidebar", description: "Smart Lists Sidebar Header Font Size" },
-      { key: "smartListsSidebarHeaderFontWeight", value: smartListsSidebarHeaderFontWeight, category: "Sidebar", description: "Smart Lists Sidebar Header Font Weight" },
-      { key: "smartListsSidebarIconSize", value: smartListsSidebarIconSize, category: "Sidebar", description: "Smart Lists Sidebar Icon Size (px)" },
-      { key: "discoverSidebarFontSize", value: discoverSidebarFontSize, category: "Sidebar", description: "Discover Sidebar Font Size" },
-      { key: "discoverSidebarFontWeight", value: discoverSidebarFontWeight, category: "Sidebar", description: "Discover Sidebar Font Weight" },
-      { key: "discoverSidebarGap", value: discoverSidebarGap, category: "Sidebar", description: "Discover Sidebar Icon Gap" },
-      { key: "discoverSidebarHeaderFontSize", value: discoverSidebarHeaderFontSize, category: "Sidebar", description: "Discover Sidebar Header Font Size" },
-      { key: "discoverSidebarHeaderFontWeight", value: discoverSidebarHeaderFontWeight, category: "Sidebar", description: "Discover Sidebar Header Font Weight" },
-      { key: "discoverSidebarIconSize", value: discoverSidebarIconSize, category: "Sidebar", description: "Discover Sidebar Icon Size (px)" },
-      { key: "sidebarSectionGap", value: sidebarSectionGap, category: "Sidebar", description: "Sidebar Vertical Gap Between Sections" },
-      { key: "librarySidebarItemGap", value: librarySidebarItemGap, category: "Sidebar", description: "Library Sidebar Item Gap" },
-      { key: "smartListsSidebarItemGap", value: smartListsSidebarItemGap, category: "Sidebar", description: "Smart Lists Sidebar Item Gap" },
-      { key: "discoverSidebarItemGap", value: discoverSidebarItemGap, category: "Sidebar", description: "Discover Sidebar Item Gap" },
-      { key: "sidebarSubmenuGap", value: sidebarSubmenuGap, category: "Sidebar", description: "Sidebar Submenu Group Gap" },
-      { key: "sidebarRowDensityOffset", value: sidebarRowDensityOffset, category: "Sidebar", description: "Sidebar Row Density Offset" },
-      { key: "sidebarHighlightColorLight:home", value: sidebarHighlightColorsLight.home, category: "Sidebar", description: "Home Highlight Color (Light)" },
-      { key: "sidebarHighlightColorLight:books", value: sidebarHighlightColorsLight.books, category: "Sidebar", description: "Books Highlight Color (Light)" },
-      { key: "sidebarHighlightColorLight:movies", value: sidebarHighlightColorsLight.movies, category: "Sidebar", description: "Movies Highlight Color (Light)" },
-      { key: "sidebarHighlightColorLight:tv", value: sidebarHighlightColorsLight.tv, category: "Sidebar", description: "TV Highlight Color (Light)" },
-      { key: "sidebarHighlightColorLight:games", value: sidebarHighlightColorsLight.games, category: "Sidebar", description: "Games Highlight Color (Light)" },
-      { key: "sidebarHighlightColorDark:home", value: sidebarHighlightColorsDark.home, category: "Sidebar", description: "Home Highlight Color (Dark)" },
-      { key: "sidebarHighlightColorDark:books", value: sidebarHighlightColorsDark.books, category: "Sidebar", description: "Books Highlight Color (Dark)" },
-      { key: "sidebarHighlightColorDark:movies", value: sidebarHighlightColorsDark.movies, category: "Sidebar", description: "Movies Highlight Color (Dark)" },
-      { key: "sidebarHighlightColorDark:tv", value: sidebarHighlightColorsDark.tv, category: "Sidebar", description: "TV Highlight Color (Dark)" },
-      { key: "sidebarHighlightColorDark:games", value: sidebarHighlightColorsDark.games, category: "Sidebar", description: "Games Highlight Color (Dark)" },
-      { key: "showStatusIndicators", value: showStatusIndicators, category: "Display", description: "Show status indicator dots on covers" },
-      { key: SHELF_THEME_MODE_SETTING_KEY, value: shelfThemeMode, category: "Themes", description: "Shelf Theme Mode" },
-      { key: COVER_TITLES_VISIBLE_SETTING_KEY, value: coverTitlesVisible, category: "Themes", description: "Show item titles under covers" },
-    ];
-    
-    try {
-      let sentCount = 0;
-      const failedKeys: string[] = [];
-      const valuesMatch = (expectedRaw: unknown, actualRaw: unknown) => {
-        const expected = String(expectedRaw ?? "").trim();
-        const actual = String(actualRaw ?? "").trim();
-        if (expected === actual) return true;
-        const expectedBool = expected.toLowerCase();
-        const actualBool = actual.toLowerCase();
-        if ((expectedBool === "true" || expectedBool === "false") && (actualBool === "true" || actualBool === "false" || actualBool === "")) {
-          const normalizedActualBool = actualBool === "" ? "false" : actualBool;
-          return expectedBool === normalizedActualBool;
-        }
-        const expectedNum = Number(expected);
-        const actualNum = Number(actual);
-        if (!Number.isNaN(expectedNum) && !Number.isNaN(actualNum)) {
-          return Math.abs(expectedNum - actualNum) < 1e-9;
-        }
-        return false;
-      };
-      // Send settings sequentially (one at a time) so they arrive in order on the sheet
-      for (const setting of settings) {
-        // Skip any settings containing "#REF!" error
-        const valueStr = String(setting.value);
-        if (valueStr.includes("#REF!")) {
-          console.log(`Skipping: ${setting.key} (contains #REF! error)`);
-          continue;
-        }
-        
-        // Log each setting being sent for debugging
-        console.log(`Sending: ${setting.key} = ${setting.value}`);
-        try {
-          await postSheetWrite(
-            settingsWriteUrl,
-            { ...setting, value: valueStr },
-            `Failed to save setting: ${setting.key}`
-          );
-          sentCount++;
-        } catch (fetchError) {
-          console.warn(`Failed to send ${setting.key}, continuing:`, fetchError);
-          failedKeys.push(setting.key);
-          // Continue with next setting even if one fails
-        }
-      }
-      
-      console.log(`Sent ${sentCount}/${settings.length} settings to Google Sheet`);
 
-      const verificationFailedKeys: string[] = [];
-      if (settingsCsvUrl && sentCount > 0) {
-        try {
-          // Give the Apps Script write endpoint a moment to commit before read-back verification.
-          await new Promise((resolve) => setTimeout(resolve, 900));
-          const verifyRes = await fetch(settingsCsvUrl, { cache: "no-store" });
-          if (!verifyRes.ok) {
-            throw new Error(`Settings verify fetch failed: ${verifyRes.status}`);
-          }
-          const verifyCsv = await verifyRes.text();
-          const parsedVerify = Papa.parse<Row>(verifyCsv, { header: true, skipEmptyLines: true });
-          const verifyRows = (parsedVerify.data || []).map((r) => r as Row);
-          const settingsMap = new Map<string, string>();
-          for (const row of verifyRows) {
-            const key = safeStr(row["Key"]).toLowerCase();
-            if (!key) continue;
-            settingsMap.set(key, safeStr(row["Value"]));
-          }
-          for (const setting of settings) {
-            if (failedKeys.includes(setting.key)) continue;
-            const actual = settingsMap.get(String(setting.key).toLowerCase());
-            if (!valuesMatch(setting.value, actual)) {
-              verificationFailedKeys.push(setting.key);
-            }
-          }
-        } catch (verifyError) {
-          console.warn("Settings save verification failed:", verifyError);
-          verificationFailedKeys.push("verification");
-        }
-      }
-      
-      clearTimeout(safetyTimeoutId);
-      const combinedFailedKeys = [...failedKeys, ...verificationFailedKeys];
-      if (combinedFailedKeys.length > 0) {
-        setSyncState("error");
-        setSyncMsg(`Save completed with errors (${sentCount}/${settings.length})`);
-        alert(
-          `Save completed with errors.\nSaved ${sentCount}/${settings.length} settings.\nFailed: ${combinedFailedKeys.join(", ")}`
-        );
-      } else {
-        setSyncState("ok");
-        setSyncMsg(`All settings saved (${sentCount}/${settings.length})`);
-        setLastSyncAt(Date.now());
-        setTimeout(() => {
-          setSyncMsg("Synced");
-        }, 2000);
-        alert(`All settings saved successfully (${sentCount}/${settings.length}).`);
-      }
-    } catch (e) {
-      console.error("Failed to save settings:", e);
-      clearTimeout(safetyTimeoutId);
-      setSyncState("error");
-      setSyncMsg("Save failed");
-      alert("Save failed. Check sync status and console logs.");
-    }
-  };
-
-  // Load settings from Google Sheet
-  const loadSettingsFromSheet = async () => {
-    if (!settingsCsvUrl) {
-      alert("No settings sheet configured");
-      return;
-    }
-
-    setSyncState("saving");
-    setSyncMsg("Loading settings...");
-
-    try {
-      const res = await fetch(settingsCsvUrl, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed to fetch settings: ${res.status}`);
-      
-      const csv = await res.text();
-      const parsed = Papa.parse<Row>(csv, { header: true, skipEmptyLines: true });
-      const newSettings = (parsed.data || []).map((r) => r as Row);
-      
-      // Update settingsRows first
-      setSettingsRows(newSettings);
-      
-      // Create a Map for O(1) lookups instead of repeated .find() calls
-      const settingsMap = new Map(newSettings.map(r => [r["Key"], r["Value"]]));
-      
-      // Helper to get setting value with type conversion
-      const getNum = (key: string, defaultValue: number) => {
-        const val = settingsMap.get(key);
-        return val ? Number(val) : defaultValue;
-      };
-      const getStr = (key: string, defaultValue: string) => settingsMap.get(key) || defaultValue;
-      const getBool = (key: string, defaultValue: boolean) => settingsMap.get(key) === "true" ? true : settingsMap.get(key) === "false" ? false : defaultValue;
-      
-      // Then reload all state variables with a small delay to ensure settingsRows is updated
-      setTimeout(() => {
-        setPosterSizeTv(getNum("posterSizeTv", 100));
-        setPosterSizeMovies(getNum("posterSizeMovies", 108));
-        setPosterSizeBooks(getNum("posterSizeBooks", 115));
-        setMobileCoverScalePct(Math.max(50, Math.min(250, getNum("mobileCoverScalePct", 100))));
-        setBookHeightMultiplier(getNum("bookHeightMultiplier", 1.5));
-        setCoverGapSize(getNum("coverGapSize", 24));
-        setTight(getBool("tight", true));
-        
-        setPosterSizeGames(getNum("posterSizeGames", 108));
-        setMediaCoverSizePct({
-          tv: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.tv, DEFAULT_MEDIA_COVER_SIZE_PCT.tv)))),
-          movies: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.movies, DEFAULT_MEDIA_COVER_SIZE_PCT.movies)))),
-          books: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.books, DEFAULT_MEDIA_COVER_SIZE_PCT.books)))),
-          games: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.games, DEFAULT_MEDIA_COVER_SIZE_PCT.games)))),
-          audiobooks: Math.max(40, Math.min(140, Math.round(getNum(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, DEFAULT_MEDIA_COVER_SIZE_PCT.audiobooks)))),
-        });
-        
-        setLogoSize(getNum("logoSize", 230));
-        setLogoTop(getNum("logoTop", 12));
-        setLogoLeft(getNum("logoLeft", -28));
-        
-        setSyncIconSize(getNum("syncIconSize", 12));
-        setSyncIconTop(getNum("syncIconTop", 8));
-        setStatusIconScale(getNum("statusIconScale", 100));
-        setStatusIconOffsetX(getNum("statusIconOffsetX", 0));
-        setStatusIconOffsetY(getNum("statusIconOffsetY", 0));
-        setRatingBadgeScale(getNum("ratingBadgeScale", 100));
-        setRatingBadgeOffsetX(getNum("ratingBadgeOffsetX", 0));
-        setRatingBadgeOffsetY(getNum("ratingBadgeOffsetY", 0));
-        setShelfThemeMode(normalizeShelfThemeMode(getStr(SHELF_THEME_MODE_SETTING_KEY, "light")));
-        setCoverTitlesVisible(getBool(COVER_TITLES_VISIBLE_SETTING_KEY, false));
-        
-        setIconSize(getNum("iconSize", 16));
-        setSidebarFontSize(getNum("sidebarFontSize", 11));
-        setSidebarFontWeight(getStr("sidebarFontWeight", "150"));
-        setSidebarGap(getNum("sidebarGap", 8));
-        setSidebarHeaderFontSize(getNum("sidebarHeaderFontSize", 11));
-        setSidebarHeaderFontWeight(getStr("sidebarHeaderFontWeight", "600"));
-        setSmartListsSidebarFontSize(getNum("smartListsSidebarFontSize", 12));
-        setSmartListsSidebarFontWeight(getStr("smartListsSidebarFontWeight", "500"));
-        setSmartListsSidebarGap(getNum("smartListsSidebarGap", 8));
-        setSmartListsSidebarHeaderFontSize(getNum("smartListsSidebarHeaderFontSize", 11));
-        setSmartListsSidebarHeaderFontWeight(getStr("smartListsSidebarHeaderFontWeight", "700"));
-        setSmartListsSidebarIconSize(getNum("smartListsSidebarIconSize", 16));
-        setDiscoverSidebarFontSize(getNum("discoverSidebarFontSize", 12));
-        setDiscoverSidebarFontWeight(getStr("discoverSidebarFontWeight", "500"));
-        setDiscoverSidebarGap(getNum("discoverSidebarGap", 8));
-        setDiscoverSidebarHeaderFontSize(getNum("discoverSidebarHeaderFontSize", 11));
-        setDiscoverSidebarHeaderFontWeight(getStr("discoverSidebarHeaderFontWeight", "700"));
-        setDiscoverSidebarIconSize(getNum("discoverSidebarIconSize", 16));
-        setSidebarSectionGap(getNum("sidebarSectionGap", 3));
-        setLibrarySidebarItemGap(getNum("librarySidebarItemGap", 0));
-        setSmartListsSidebarItemGap(getNum("smartListsSidebarItemGap", 0));
-        setDiscoverSidebarItemGap(getNum("discoverSidebarItemGap", 0));
-        setSidebarSubmenuGap(getNum("sidebarSubmenuGap", 0));
-        setSidebarRowDensityOffset(getNum("sidebarRowDensityOffset", 0));
-        setSidebarHighlightColorsLight({
-          home: normalizeHexColor(getStr("sidebarHighlightColorLight:home", getStr("sidebarHighlightColor:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home))),
-          books: normalizeHexColor(getStr("sidebarHighlightColorLight:books", getStr("sidebarHighlightColor:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books))),
-          movies: normalizeHexColor(getStr("sidebarHighlightColorLight:movies", getStr("sidebarHighlightColor:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies))),
-          tv: normalizeHexColor(getStr("sidebarHighlightColorLight:tv", getStr("sidebarHighlightColor:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv))),
-          games: normalizeHexColor(getStr("sidebarHighlightColorLight:games", getStr("sidebarHighlightColor:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games))),
-        });
-        const loadedDarkHighlightColors = {
-          home: normalizeHexColor(getStr("sidebarHighlightColorDark:home", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home)),
-          books: normalizeHexColor(getStr("sidebarHighlightColorDark:books", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books)),
-          movies: normalizeHexColor(getStr("sidebarHighlightColorDark:movies", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies)),
-          tv: normalizeHexColor(getStr("sidebarHighlightColorDark:tv", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv)),
-          games: normalizeHexColor(getStr("sidebarHighlightColorDark:games", DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games)),
-        };
-        const hasLegacyMonoDarkHighlights =
-          loadedDarkHighlightColors.home.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
-          loadedDarkHighlightColors.books.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
-          loadedDarkHighlightColors.movies.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
-          loadedDarkHighlightColors.tv.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
-          loadedDarkHighlightColors.games.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO;
-        setSidebarHighlightColorsDark(hasLegacyMonoDarkHighlights ? { ...DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK } : loadedDarkHighlightColors);
-        const coverScaleFallback = Math.max(0, Math.min(200, Math.round(getNum("rowHeightScalePct", 100))));
-        setCoverScaleByGroup({
-          home: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.home, coverScaleFallback)))),
-          books: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.books, coverScaleFallback)))),
-          movies: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.movies, coverScaleFallback)))),
-          tv: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.tv, coverScaleFallback)))),
-          games: Math.max(0, Math.min(200, Math.round(getNum(COVER_SCALE_SETTING_KEYS.games, coverScaleFallback)))),
-        });
-        setSimpleShelfBackgroundColor(normalizeHexColor(getStr("simpleShelfBackgroundColor", DEFAULT_SIMPLE_SHELF_BACKGROUND)));
-        setShowStatusIndicators(getBool("showStatusIndicators", false));
-      }, 100);
-      
-      setSyncState("ok");
-      setSyncMsg("Settings loaded!");
-      setTimeout(() => {
-        setSyncMsg("Synced");
-      }, 2000);
-    } catch (e) {
-      console.error("Failed to load settings:", e);
-      setSyncState("error");
-      setSyncMsg("Load failed");
-    }
-  };
 
   // ============================================================================
   // HOW TO ADD NEW SETTINGS IN THE FUTURE:
@@ -8845,27 +7765,6 @@ export default function Page() {
   // Wrapper functions that update state AND save to spreadsheet
   // Each follows the pattern: setState() then saveSetting()
   // This ensures immediate UI update + background persistence
-  const updatePosterSizeTv = (value: number) => {
-    setPosterSizeTv(value);
-    saveSetting("posterSizeTv", value, "Cover Sizes", "TV Show Cover Size");
-  };
-  const updatePosterSizeMovies = (value: number) => {
-    setPosterSizeMovies(value);
-    saveSetting("posterSizeMovies", value, "Cover Sizes", "Movie Cover Size");
-  };
-  const updatePosterSizeBooks = (value: number) => {
-    setPosterSizeBooks(value);
-    saveSetting("posterSizeBooks", value, "Cover Sizes", "Book Cover Size");
-  };
-  const updateTight = (value: boolean) => {
-    setTight(value);
-    saveSetting("tight", value, "Spacing", "Tight spacing between items");
-  };
-  const updateCoverGapSize = (value: number) => {
-    const next = Math.max(0, Math.min(60, Math.round(value)));
-    setCoverGapSize(next);
-    saveSetting("coverGapSize", next, "Cover Sizes", "Cover Gap Size (px)");
-  };
   const updateShowStatusIndicators = (value: boolean) => {
     setShowStatusIndicators(value);
     saveSetting("showStatusIndicators", value, "Display", "Show status indicator dots on covers");
@@ -8901,10 +7800,6 @@ export default function Page() {
     }, 150);
   }, [saveSetting]);
   
-  const updatePosterSizeGames = (value: number) => {
-    setPosterSizeGames(value);
-    saveSetting("posterSizeGames", value, "Cover Sizes", "Game Cover Size");
-  };
   const updateMediaCoverSizePct = useCallback(
     (key: keyof typeof mediaCoverSizePct, value: number) => {
       const nextValue = Math.max(40, Math.min(140, Math.round(value)));
@@ -8938,12 +7833,15 @@ export default function Page() {
     saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.games, defaults.games, "Cover Sizes", "Game Cover Size (%)");
     saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, defaults.audiobooks, "Cover Sizes", "Audiobook Cover Size (%)");
   }, [saveSetting]);
-  const updateMobileCoverScalePct = useCallback((value: number) => {
+  const updateMobileCoverScalePct = useCallback((group: CoverScaleGroupKey, value: number) => {
     const nextValue = Math.max(50, Math.min(250, Math.round(value)));
-    setMobileCoverScalePct(nextValue);
-    try {
-      localStorage.setItem(MOBILE_ONLY_COVER_SCALE_LOCAL_KEY, String(nextValue));
-    } catch {}
+    setMobileCoverScaleByGroup((prev) => {
+      const next = { ...prev, [group]: nextValue };
+      try {
+        localStorage.setItem(MOBILE_COVER_SCALE_BY_GROUP_LOCAL_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   }, []);
   const updateCoverScaleForGroup = useCallback((group: CoverScaleGroupKey, value: number) => {
     const scalePct = Math.max(0, Math.min(200, Math.round(value)));
@@ -9262,44 +8160,6 @@ export default function Page() {
       "sidebarHighlightColorDark:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv,
       "sidebarHighlightColorDark:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games,
     }).forEach(([key, value]) => saveSetting(key, value, "Sidebar", key));
-  };
-
-  // Counter configuration update functions
-  const updateCounterTileSize = (value: number) => {
-    setCounterTileSize(value);
-    saveSetting("counterTileSize", value, "Counter", "Counter Tile Size (px)");
-  };
-  const updateCounterTileSpacing = (value: number) => {
-    setCounterTileSpacing(value);
-    saveSetting("counterTileSpacing", value, "Counter", "Counter Tile Spacing (px)");
-  };
-  const updateCounterNumberFontSize = (value: number) => {
-    setCounterNumberFontSize(value);
-    saveSetting("counterNumberFontSize", value, "Counter", "Counter Number Font Size");
-  };
-  const updateCounterLabelFontSize = (value: number) => {
-    setCounterLabelFontSize(value);
-    saveSetting("counterLabelFontSize", value, "Counter", "Counter Label Font Size");
-  };
-  const updateCounterLabelFontWeight = (value: string) => {
-    setCounterLabelFontWeight(value);
-    saveSetting("counterLabelFontWeight", value, "Counter", "Counter Label Font Weight");
-  };
-  const updateCounterLabelTop = (value: number) => {
-    setCounterLabelTop(value);
-    saveSetting("counterLabelTop", value, "Counter", "Counter Label Top Offset");
-  };
-  const updateCounterLabelLeft = (value: number) => {
-    setCounterLabelLeft(value);
-    saveSetting("counterLabelLeft", value, "Counter", "Counter Label Left Offset");
-  };
-  const updateCounterTop = (value: number) => {
-    setCounterTop(value);
-    saveSetting("counterTop", value, "Counter", "Counter Top Offset");
-  };
-  const updateCounterLeft = (value: number) => {
-    setCounterLeft(value);
-    saveSetting("counterLeft", value, "Counter", "Counter Left Offset");
   };
 
   // Helper to check if a value contains spreadsheet error #REF!
@@ -10015,15 +8875,6 @@ export default function Page() {
     return Array.from(options).sort((a, b) => a.localeCompare(b));
   }, [allGames]);
 
-  const gameStatuses = useMemo(() => {
-    const values = new Set<string>();
-    allGames.forEach((game) => {
-      const value = safeStr(game.status || game.playStatus || game.gameStatus);
-      if (value) values.add(value);
-    });
-    return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [allGames]);
-
   const gameYearPlayedOptions = useMemo(() => {
     const values = new Set<string>();
     allGames.forEach((game) => {
@@ -10071,18 +8922,6 @@ export default function Page() {
     });
     return counts;
   }, [allGames, gamePlatformOptions]);
-
-  const gameStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const option of gameStatuses) counts[option] = 0;
-    allGames.forEach((game) => {
-      const value = safeStr(game.status || game.playStatus || game.gameStatus);
-      if (!value) return;
-      if (counts[value] === undefined) counts[value] = 0;
-      counts[value] += 1;
-    });
-    return counts;
-  }, [allGames, gameStatuses]);
 
   const gameOwnershipCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -10192,25 +9031,6 @@ export default function Page() {
     return Array.from(gamesByTitle.values());
   }, []);
 
-  // Dynamically detect all unique platforms from games data
-  // Parse comma-separated platform values to get individual platforms
-  const detectedPlatforms = useMemo(() => {
-    const platforms = new Set<string>(["Default"]); // Always include Default
-    allGames.forEach(game => {
-      if (game.platform) {
-        // Split comma-separated platforms and add each individually
-        const individualPlatforms = game.platform.split(',').map(p => p.trim()).filter(Boolean);
-        individualPlatforms.forEach(p => platforms.add(canonicalizePlatformLabel(p)));
-      }
-    });
-    return Array.from(platforms).sort((a, b) => {
-      // Keep "Default" first
-      if (a === "Default") return -1;
-      if (b === "Default") return 1;
-      return a.localeCompare(b);
-    });
-  }, [allGames]);
-
   const platformAliasMap = useMemo(() => {
     const map = new Map<string, string>();
     const knownPlatforms = new Set<string>([
@@ -10241,23 +9061,6 @@ export default function Page() {
       return PLATFORM_CANONICAL_LABELS[normalized] || platformAliasMap.get(normalized) || platform;
     },
     [platformAliasMap]
-  );
-
-  // For rendering: use the first platform listed in the row as primary.
-  // This keeps shelf rendering deterministic when a platform
-  // (e.g. PlayStation 5) is selected.
-  const getRenderPlatform = useCallback(
-    (platformString: string | undefined): string => {
-      if (!platformString) return "Default";
-      const platforms = platformString
-        .split(",")
-        .map((p) => p.trim())
-        .filter(Boolean)
-        .map((p) => resolvePlatformAlias(p));
-      if (platforms.length === 0) return "Default";
-      return platforms[0];
-    },
-    [resolvePlatformAlias]
   );
 
   // Note: We do NOT auto-initialize platformInsets for detected platforms
@@ -10474,10 +9277,6 @@ export default function Page() {
     return counts;
   }, [allBooks, bookGenres]);
 
-  const wishlistCount = useMemo(() => {
-    return allBooks.filter((b) => hasWishlistOwnership(b.ownership)).length;
-  }, [allBooks, hasWishlistOwnership]);
-
   const watchCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const s of watchStatuses) counts[s] = 0;
@@ -10533,29 +9332,6 @@ export default function Page() {
     }
     return counts;
   }, [allShows, tvTags]);
-
-  // Movie watch status counts
-  const movieWatchCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      Watched: 0,
-      Watching: 0,
-      Backlog: 0,
-      Abandoned: 0,
-    };
-    for (const movie of allMovies) {
-      const watchStatus = normalizeStatus(movie.watchStatus || movie.watched);
-      if (watchStatus === "abandoned" || watchStatus === "dropped" || watchStatus === "drop" || watchStatus === "quit" || watchStatus === "dnf") {
-        counts.Abandoned += 1;
-      } else if (watchStatus === "watching" || watchStatus === "currently watching" || watchStatus === "in progress" || watchStatus === "paused") {
-        counts.Watching += 1;
-      } else if (isMovieWatched(movie)) {
-        counts.Watched += 1;
-      } else {
-        counts.Backlog += 1;
-      }
-    }
-    return counts;
-  }, [allMovies, isMovieWatched, normalizeStatus]);
 
   // Extract unique movie genres from comma-separated genres
   const movieGenres = useMemo(() => {
@@ -11475,17 +10251,6 @@ export default function Page() {
     isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieTagFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,
     activeSmartList, bookUpcomingFilter, deferredQuery, gameViewMode, movieUpcomingFilter, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
-
-  const watchlistTvSectionByVisibleKey = useMemo(() => {
-    const sections = new Map<string, TvWatchlistSectionKey>();
-    if (nav !== "watchlist-tv") return sections;
-
-    shows.forEach((item) => {
-      sections.set(getMediaItemKey(item), getTvWatchlistSectionForItem(item));
-    });
-
-    return sections;
-  }, [nav, shows]);
 
   const watchlistTvSectionCounts = useMemo(() => {
     const counts: Record<TvWatchlistSectionKey, number> = {
@@ -13408,7 +12173,7 @@ export default function Page() {
             <div style={mobilePanelCardStyle}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <span style={mobilePanelSectionHeadingStyle}>
-                  COVER SIZE
+                  {`${mobileCoverScaleGroup === "home" ? "HOME" : mobileCoverScaleGroup === "tv" ? "TV" : mobileCoverScaleGroup.toUpperCase()} COVER SIZE`}
                 </span>
                 <span style={{ fontSize: 11, fontWeight: 800, color: mobilePanelTextColor }}>
                   {`${mobileCoverScalePct}%`}
@@ -13420,8 +12185,8 @@ export default function Page() {
                 max={250}
                 step={1}
                 value={mobileCoverScalePct}
-                onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
-                aria-label="Scale all covers for mobile view"
+                onChange={(event) => updateMobileCoverScalePct(mobileCoverScaleGroup, Number(event.target.value))}
+                aria-label={`Scale ${mobileCoverScaleGroup} covers for mobile view`}
                 style={{ width: "100%" }}
               />
             </div>
@@ -18688,10 +17453,10 @@ export default function Page() {
                       key={`mobile-discover-card-${item.key}`}
                       type="button"
                       onClick={item.action}
-                      style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "9px 9px", fontSize: 13, fontWeight: 800, textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}
+                      style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 12, background: "rgba(255,255,255,0.68)", color: "#1f2c3f", padding: "12px 11px", fontSize: 16, fontWeight: 800, textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.icon} alt="" width={22} height={22} style={{ display: "block", objectFit: "contain", flex: "0 0 auto" }} />
+                      <img src={item.icon} alt="" width={32} height={32} style={{ display: "block", objectFit: "contain", flex: "0 0 auto" }} />
                       <span>{item.label}</span>
                     </button>
                   ))}
@@ -18747,7 +17512,7 @@ export default function Page() {
                 </button>
                 <div style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 14, background: "rgba(255,255,255,0.68)", padding: "10px 9px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, minWidth: 0, minHeight: 74 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>COVER SIZE</span>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>{`${mobileCoverScaleGroup === "home" ? "HOME" : mobileCoverScaleGroup === "tv" ? "TV" : mobileCoverScaleGroup.toUpperCase()} COVER SIZE`}</span>
                     <span style={{ fontSize: 12, fontWeight: 900, color: "#1f2c3f" }}>{mobileCoverScalePct}%</span>
                   </div>
                   <input
@@ -18756,8 +17521,8 @@ export default function Page() {
                     max={250}
                     step={1}
                     value={mobileCoverScalePct}
-                    onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
-                    aria-label="Scale all covers for mobile home view"
+                    onChange={(event) => updateMobileCoverScalePct(mobileCoverScaleGroup, Number(event.target.value))}
+                    aria-label={`Scale ${mobileCoverScaleGroup} covers for mobile view`}
                     style={{ width: "100%" }}
                   />
                 </div>

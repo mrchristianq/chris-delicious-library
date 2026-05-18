@@ -177,7 +177,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
           </label>
 
           {/* Star Display */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 4, justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: 2, marginBottom: 4, width: "100%" }}>
             {Array.from({ length: maxRating }).map((_, i) => {
               const ratingNum = myRating ? parseFloat(myRating) : 0;
               const isFull = ratingNum > i + 0.5;
@@ -188,27 +188,36 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
                 <div
                   key={i}
                   style={{
-                    position: "relative",
-                    fontSize: 32,
-                    lineHeight: 1,
-                    color: "#ddd",
-                    cursor: "pointer",
+                    flex: "1 1 0",
+                    minWidth: 0,
+                    display: "flex",
+                    justifyContent: "center",
                   }}
                   onClick={() => setMyRating(String(i + 1))}
                 >
-                  ★
                   <div
                     style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      overflow: "hidden",
-                      width: `${fillAmount}%`,
-                      color: highlightColor,
-                      transition: "width 100ms ease",
+                      position: "relative",
+                      fontSize: maxRating > 5 ? "clamp(16px, 6vw, 32px)" : "clamp(22px, 9vw, 36px)",
+                      lineHeight: 1,
+                      color: "#ddd",
+                      cursor: "pointer",
                     }}
                   >
                     ★
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        overflow: "hidden",
+                        width: `${fillAmount}%`,
+                        color: highlightColor,
+                        transition: "width 100ms ease",
+                      }}
+                    >
+                      ★
+                    </div>
                   </div>
                 </div>
               );
@@ -216,14 +225,15 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
           </div>
 
           {/* Star Numbers */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 12, justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: 2, marginBottom: 12, width: "100%" }}>
             {Array.from({ length: maxRating }).map((_, i) => (
               <div
                 key={`num-${i}`}
                 style={{
+                  flex: "1 1 0",
+                  minWidth: 0,
                   fontSize: 11,
                   color: "rgba(0,0,0,0.5)",
-                  width: 32,
                   textAlign: "center",
                   lineHeight: 1,
                 }}
