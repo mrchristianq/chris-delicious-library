@@ -209,6 +209,7 @@ export function BookDetailsEditModal({
   statusOptions,
 }: BookDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -227,6 +228,14 @@ export function BookDetailsEditModal({
   const [syncBookResults, setSyncBookResults] = useState<Array<{ id: string; title: string; author: string; imageUrl: string; year: string; data: Record<string, string> }>>([]);
   const [syncEditionResults, setSyncEditionResults] = useState<Array<{ id: string; format: string; isbn: string; pages: string; imageUrl: string; releaseDate: string; publisher: string; data: Record<string, string> }>>([]);
   const [selectedBookData, setSelectedBookData] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateLayout = () => setIsMobileLayout(window.innerWidth <= 980);
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    return () => window.removeEventListener("resize", updateLayout);
+  }, []);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -676,7 +685,7 @@ export function BookDetailsEditModal({
           </div>
         ) : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(184px, 220px) minmax(0,1fr)", gap: 12, padding: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(184px, 220px) minmax(0,1fr)", gap: 12, padding: isMobileLayout ? 10 : 12 }}>
           {/* Cover panel */}
           <div style={{ border: "1px solid rgba(167,177,191,0.42)", borderRadius: 12, background: "rgba(255,255,255,0.78)", padding: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
@@ -736,7 +745,7 @@ export function BookDetailsEditModal({
 
           {/* Fields panel */}
           <div style={{ border: "1px solid rgba(167,177,191,0.42)", borderRadius: 12, background: "rgba(255,255,255,0.78)", padding: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(3, minmax(0,1fr))", gap: 8 }}>
               {BOOK_FIELDS.map((field) => (
                 <label key={field.key} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: field.multiline ? "1 / -1" : undefined }}>
                   <span style={LABEL_STYLE}>{field.label}</span>

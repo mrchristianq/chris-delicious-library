@@ -187,6 +187,7 @@ export function GameDetailsEditModal({
   formatOptions = [],
 }: GameDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -195,6 +196,14 @@ export function GameDetailsEditModal({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncDiff, setSyncDiff] = useState<DiffRow[] | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateLayout = () => setIsMobileLayout(window.innerWidth <= 980);
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    return () => window.removeEventListener("resize", updateLayout);
+  }, []);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -527,7 +536,7 @@ export function GameDetailsEditModal({
         ) : null}
 
         {/* Body */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,210px) minmax(0,1fr)", gap: 12, padding: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(180px,210px) minmax(0,1fr)", gap: 12, padding: isMobileLayout ? 10 : 12 }}>
 
           {/* Cover panel */}
           <div style={{
@@ -570,7 +579,7 @@ export function GameDetailsEditModal({
             background: "rgba(255,255,255,0.78)", padding: 12,
             display: "flex", flexDirection: "column",
           }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 8 }}>
               {GAME_FIELDS.map((field) => (
                 <label key={field.key} style={{
                   display: "flex", flexDirection: "column",
