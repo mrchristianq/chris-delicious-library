@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Pacifico } from "next/font/google";
 import "./globals.css";
+import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,6 +36,12 @@ export const metadata: Metadata = {
   },
 };
 
+// themeColor drives the macOS/Safari PWA title-bar color. Light gray to match
+// the app instead of the old dark navy.
+export const viewport: Viewport = {
+  themeColor: "#f2f3f5",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -46,6 +53,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${pacifico.variable} antialiased`}
       >
         {children}
+        <ServiceWorkerRegister />
       </body>
     </html>
   );
