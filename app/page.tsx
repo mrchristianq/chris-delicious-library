@@ -3523,7 +3523,7 @@ export default function Page() {
   const [uploadingSidebarIconKey, setUploadingSidebarIconKey] = useState<string | null>(null);
   const [uploadingStatusIconKey, setUploadingStatusIconKey] = useState<string | null>(null);
   type IconCropEditorState = {
-    iconKind: "sidebar" | "status";
+    iconKind: "sidebar" | "status" | "smartlist";
     iconKey: string;
     iconLabel: string;
     sourceUrl: string;
@@ -3536,7 +3536,7 @@ export default function Page() {
     saving: boolean;
   };
   const [iconCropEditor, setIconCropEditor] = useState<IconCropEditorState | null>(null);
-  type IconCropPickerTarget = { iconKind: "sidebar" | "status"; iconKey: string; iconLabel: string };
+  type IconCropPickerTarget = { iconKind: "sidebar" | "status" | "smartlist"; iconKey: string; iconLabel: string };
   const [iconCropPickerTarget, setIconCropPickerTarget] = useState<IconCropPickerTarget | null>(null);
   // Starts at 0 (identical on server + client, so the first render hydrates
   // cleanly). It only becomes non-zero after an in-session icon upload, which
@@ -4740,6 +4740,23 @@ export default function Page() {
         });
         saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
         bumpSidebarIconVersion();
+      } else if (state.iconKind === "smartlist") {
+        // Smart-list icons are stored directly on the smart list record. The
+        // upload goes to a fixed R2 key per list; a ?v= timestamp on the
+        // saved URL makes a re-uploaded icon refresh immediately.
+        formData.append("itemKey", `smartlist-icon-${state.iconKey}`);
+        formData.append("mediaType", "sidebar-icon");
+        formData.append("title", state.iconKey);
+        formData.append("objectKey", `icons/sidebar/smartlist-${state.iconKey}`);
+        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        const iconUrl = `${String(payload.url)}?v=${Date.now()}`;
+        persistSmartLists(
+          customSmartLists.map((list) =>
+            list.id === state.iconKey ? { ...list, icon: iconUrl } : list
+          )
+        );
       } else {
         formData.append("itemKey", `status-icon-${state.iconKey}`);
         formData.append("mediaType", "status-icon");
@@ -16834,6 +16851,14 @@ export default function Page() {
                 { key: "icons", label: "Icons", fallback: "/icon-settings.png" },
                 { key: "r2-sync", label: "Cover Sync", fallback: "/icon-statistics.png" },
               ];
+              // Built-in Smart Lists use the sidebar-icon system (keyed by
+              // their nav key), so they are managed exactly like sidebar icons.
+              const builtInSmartListCatalog: Array<{ key: string; label: string; fallback: string }> = [
+                { key: "year-this", label: builtInSmartListLabels["year-this"], fallback: "/icon-year.png" },
+                { key: "current", label: builtInSmartListLabels["current"], fallback: "/icon-current.png" },
+                { key: "completed", label: builtInSmartListLabels["completed"], fallback: "/icon-completed.png" },
+                { key: "abandoned", label: builtInSmartListLabels["abandoned"], fallback: "/icon-abandoned.png" },
+              ];
               const statusCatalog = statusIconOptions;
               const cardGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(auto-fill, minmax(140px, 1fr))" : "repeat(auto-fill, minmax(180px, 1fr))", gap: isMobileLayout ? 12 : 16 };
               return (
@@ -16984,6 +17009,105 @@ export default function Page() {
                             );
                           })}
                         </div>
+                      </section>
+
+                      <section>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Smart List Icons</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: "rgba(80,90,105,0.6)" }}>One icon per Smart List — built-in lists plus any you create.</div>
+                        </div>
+                          <div style={cardGridStyle}>
+                            {builtInSmartListCatalog.map((entry) => {
+                              const url = getSidebarIconSrc(entry.key, entry.fallback);
+                              const isUploading = uploadingSidebarIconKey === entry.key || (iconCropEditor?.iconKind === "sidebar" && iconCropEditor.iconKey === entry.key && iconCropEditor.saving);
+                              const target: IconCropPickerTarget = { iconKind: "sidebar", iconKey: entry.key, iconLabel: entry.label };
+                              return (
+                                <button
+                                  key={`builtin-smartlist-icon-card-${entry.key}`}
+                                  type="button"
+                                  onClick={() => {
+                                    if (url) {
+                                      void openIconEditorWithUrl(target, url);
+                                    } else {
+                                      beginIconCrop(target);
+                                    }
+                                  }}
+                                  disabled={isUploading}
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    padding: 14,
+                                    borderRadius: 14,
+                                    border: "1px solid rgba(150, 160, 175, 0.32)",
+                                    background: "rgba(255,255,255,0.86)",
+                                    boxShadow: "0 2px 6px rgba(40, 50, 70, 0.05)",
+                                    cursor: isUploading ? "wait" : "pointer",
+                                    opacity: isUploading ? 0.55 : 1,
+                                    transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+                                  }}
+                                  title={isUploading ? "Saving…" : `Replace ${entry.label} icon`}
+                                  aria-label={`Replace ${entry.label} icon`}
+                                >
+                                  <div style={{ width: isMobileLayout ? 56 : 72, height: isMobileLayout ? 56 : 72, borderRadius: 12, background: "rgba(232, 237, 244, 0.6)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid rgba(0,0,0,0.04)" }}>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={url} alt="" width={isMobileLayout ? 48 : 60} height={isMobileLayout ? 48 : 60} style={{ display: "block", objectFit: "contain", maxWidth: "100%", maxHeight: "100%" }} />
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1d2735", lineHeight: 1.15, textAlign: "center" }}>{entry.label}</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: sidebarIconOverrides[entry.key] ? "#2f8f5b" : "rgba(80, 90, 105, 0.7)" }}>
+                                    {sidebarIconOverrides[entry.key] ? "Custom" : "Default"}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                            {customSmartLists.map((list) => {
+                              const iconUrl = safeStr(list.icon);
+                              const hasCustom = iconUrl.includes("/icons/sidebar/smartlist-");
+                              const displayUrl = iconUrl || "/icon-other.png";
+                              const isUploading = iconCropEditor?.iconKind === "smartlist" && iconCropEditor.iconKey === list.id && iconCropEditor.saving;
+                              const target: IconCropPickerTarget = { iconKind: "smartlist", iconKey: list.id, iconLabel: list.name };
+                              return (
+                                <button
+                                  key={`smartlist-icon-card-${list.id}`}
+                                  type="button"
+                                  onClick={() => {
+                                    if (iconUrl) {
+                                      void openIconEditorWithUrl(target, iconUrl);
+                                    } else {
+                                      beginIconCrop(target);
+                                    }
+                                  }}
+                                  disabled={isUploading}
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    padding: 14,
+                                    borderRadius: 14,
+                                    border: "1px solid rgba(150, 160, 175, 0.32)",
+                                    background: "rgba(255,255,255,0.86)",
+                                    boxShadow: "0 2px 6px rgba(40, 50, 70, 0.05)",
+                                    cursor: isUploading ? "wait" : "pointer",
+                                    opacity: isUploading ? 0.55 : 1,
+                                    transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+                                  }}
+                                  title={isUploading ? "Saving…" : `Replace ${list.name} icon`}
+                                  aria-label={`Replace ${list.name} icon`}
+                                >
+                                  <div style={{ width: isMobileLayout ? 56 : 72, height: isMobileLayout ? 56 : 72, borderRadius: 12, background: "rgba(232, 237, 244, 0.6)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid rgba(0,0,0,0.04)" }}>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={displayUrl} alt="" width={isMobileLayout ? 48 : 60} height={isMobileLayout ? 48 : 60} style={{ display: "block", objectFit: "contain", maxWidth: "100%", maxHeight: "100%" }} />
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1d2735", lineHeight: 1.15, textAlign: "center" }}>{list.name}</div>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: hasCustom ? "#2f8f5b" : "rgba(80, 90, 105, 0.7)" }}>
+                                    {hasCustom ? "Custom" : "Default"}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
                       </section>
                     </div>
                   </div>
