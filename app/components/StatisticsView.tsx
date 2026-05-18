@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
+import { useFitToViewportScale } from "./detailScale";
 
 type StatsMediaType = "book" | "movie" | "tv" | "game";
 type StatsFilter = "all" | StatsMediaType;
@@ -141,6 +142,18 @@ type StatisticsViewProps = {
   onExit?: () => void;
   themeMode?: "light" | "dark" | "classic";
   mediaTabColors?: Partial<Record<StatsTab, string>>;
+  isMobileLayout?: boolean;
+};
+
+/**
+ * Optional per-item breakdown for a statistic detail popup. When present, the
+ * detail modal sorts the matching items by `getValue` (descending) and shows
+ * each item's contribution to the stat (e.g. hours per audiobook).
+ */
+type StatItemMetric = {
+  label: string;
+  getValue: (item: UnifiedStatsItem) => number;
+  formatValue: (value: number) => string;
 };
 
 type SummaryMetric = {
@@ -152,6 +165,7 @@ type SummaryMetric = {
   summary: string;
   calculation: string;
   items: UnifiedStatsItem[];
+  itemMetric?: StatItemMetric;
 };
 
 type StatisticDetail = {
@@ -161,6 +175,7 @@ type StatisticDetail = {
   summary: string;
   calculation: string;
   items: UnifiedStatsItem[];
+  itemMetric?: StatItemMetric;
 };
 
 type WrappedSlide = {
@@ -951,6 +966,10 @@ function TopRatedColumn({
 }
 
 function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
+  const itemMetric = detail.itemMetric;
+  const displayItems = itemMetric
+    ? [...detail.items].sort((a, b) => itemMetric.getValue(b) - itemMetric.getValue(a))
+    : detail.items;
   return (
     <div
       className="statDetailOverlay"
@@ -992,11 +1011,12 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
 
         <div className="statDetailItemsHeader">
           Matching Items <span>{detail.items.length}</span>
+          {itemMetric ? <span className="statDetailItemsSortNote">sorted by {itemMetric.label.toLowerCase()}</span> : null}
         </div>
 
         <div className="statDetailItemsList">
-          {detail.items.length > 0 ? (
-            detail.items.map((item, index) => {
+          {displayItems.length > 0 ? (
+            displayItems.map((item, index) => {
               const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
               const anchorLabel = item.activityDate
                 ? "Activity"
@@ -1034,6 +1054,14 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
                       <span>Rating: {formatPersonalRatingDisplay(item)}</span>
                     </div>
                   </div>
+                  {itemMetric ? (
+                    <div className="statDetailItemMetric">
+                      <div className="statDetailItemMetricValue">
+                        {itemMetric.formatValue(itemMetric.getValue(item))}
+                      </div>
+                      <div className="statDetailItemMetricLabel">{itemMetric.label}</div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })
@@ -1181,7 +1209,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
 
         .statDetailItemRow {
           display: grid;
-          grid-template-columns: 52px 92px minmax(0, 1fr);
+          grid-template-columns: 52px 92px minmax(0, 1fr) auto;
           gap: 16px;
           align-items: center;
           border: 0;
@@ -1190,6 +1218,41 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
           padding: 14px 4px;
           box-shadow: none;
           border-bottom: 1px solid rgba(164, 174, 188, 0.28);
+        }
+
+        .statDetailItemMetric {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 2px;
+          padding-right: 6px;
+          min-width: 72px;
+        }
+
+        .statDetailItemMetricValue {
+          font-size: 20px;
+          font-weight: 900;
+          color: #2f7bd7;
+          line-height: 1;
+          white-space: nowrap;
+        }
+
+        .statDetailItemMetricLabel {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          color: rgba(60, 72, 90, 0.62);
+        }
+
+        .statDetailItemsSortNote {
+          margin-left: 8px;
+          font-size: 11px;
+          font-weight: 700;
+          color: rgba(60, 72, 90, 0.6) !important;
+          text-transform: none;
+          letter-spacing: 0;
         }
 
         .statDetailItemRow:last-child {
@@ -1297,7 +1360,17 @@ export function StatisticsView({
   onExit,
   themeMode = "dark",
   mediaTabColors = {},
+  isMobileLayout = false,
 }: StatisticsViewProps) {
+  const {
+    ref: statsStageRef,
+    scale: statsStageScale,
+    naturalHeight: statsStageNaturalHeight,
+  } = useFitToViewportScale<HTMLElement>(isMobileLayout, {
+    fitMode: "width",
+    minScale: 0.35,
+    maxScale: 3,
+  });
   const currentYear = new Date().getUTCFullYear();
   const [activeTab, setActiveTab] = useState<StatsTab>("all");
   const [statsYear, setStatsYear] = useState<StatsYearFilter>(ALL_STATS_YEARS);
@@ -2127,13 +2200,6 @@ export function StatisticsView({
     const audiobookItems = yearReview.audiobookItems;
     const gamePlaytimeItems = yearReview.gamePlaytimeItems;
     const completedGamesItems = yearReview.completedGameItems;
-    const busiestMonthItems =
-      yearReview.busiestMonth && !isExcludedBusiestMonthKey(yearReview.busiestMonth.key)
-        ? yearReview.yearItems.filter((item) => {
-            const monthDate = item.activityDate || item.completionDate;
-            return monthDate ? toMonthKey(monthDate) === yearReview.busiestMonth?.key : false;
-          })
-        : [];
     const gameDeltaLabel =
       gameDelta > 0
         ? `up ${gameDelta} vs ${previousReviewYear}`
@@ -2191,6 +2257,11 @@ export function StatisticsView({
         summary: `Counts movies logged in ${selectedReviewYear} whose normalized status is exactly "watched".`,
         calculation: 'Filter year items where mediaType=movie and primaryStatusToken=="watched"; value=count and watch time=sum(runtimeMinutes).',
         items: moviesWatchedItems,
+        itemMetric: {
+          label: "Watch Time",
+          getValue: (item) => item.runtimeMinutes,
+          formatValue: (minutes) => formatMinutesAsHours(minutes),
+        },
       },
       {
         id: `YR_${selectedReviewYear}_AUDIOBOOK_TIME`,
@@ -2202,6 +2273,11 @@ export function StatisticsView({
         calculation:
           'Filter items where mediaType=book, primaryStatusToken=="completed", completionDate year==selected review year, and audiobookMinutes>0; value=sum(audiobookMinutes).',
         items: audiobookItems,
+        itemMetric: {
+          label: "Listen Time",
+          getValue: (item) => item.audiobookMinutes,
+          formatValue: (minutes) => formatMinutesAsHours(minutes),
+        },
       },
       {
         id: `YR_${selectedReviewYear}_GAME_HOURS`,
@@ -2212,6 +2288,11 @@ export function StatisticsView({
         summary: `Totals gameplay hours for games with playtime data tagged as played in ${selectedReviewYear}.`,
         calculation: "Filter games where gameplayHours>0 and playedYears includes selected review year; value=sum(gameplayHours).",
         items: gamePlaytimeItems,
+        itemMetric: {
+          label: "Playtime",
+          getValue: (item) => item.gameplayHours,
+          formatValue: (hours) => formatHours(hours),
+        },
       },
       {
         id: `YR_${selectedReviewYear}_GAMES_COMPLETED`,
@@ -2285,16 +2366,6 @@ export function StatisticsView({
         items: yearReview.yearItems,
       },
       {
-        id: `YR_${selectedReviewYear}_BUSIEST_MONTH`,
-        label: "Busiest Month",
-        value: yearReview.busiestMonth ? `${yearReview.busiestMonth.count}` : "0",
-        subLabel: yearReview.busiestMonth ? yearReview.busiestMonth.label : "no month data",
-        accent: "var(--stats-accent-3)",
-        summary: "Month with the highest number of logged items in the selected review year.",
-        calculation: "Group year items by month key from activityDate || completionDate, then choose max count.",
-        items: busiestMonthItems,
-      },
-      {
         id: `YR_${selectedReviewYear}_MOVIES_LOGGED`,
         label: "Movies Logged",
         value: `${yearReview.mediaCounts.movie}`,
@@ -2326,6 +2397,35 @@ export function StatisticsView({
       },
     ];
   }, [previousReviewYear, selectedReviewYear, yearReview]);
+
+  // Year-over-year pace: items logged in the review year vs the previous
+  // year, both counted only through today's calendar month/day so it is a
+  // fair "same point in the year" comparison.
+  const yearPace = useMemo(() => {
+    const now = new Date();
+    const cutoffMonth = now.getUTCMonth();
+    const cutoffDay = now.getUTCDate();
+    const withinCutoff = (date?: Date | null) => {
+      if (!date) return false;
+      const month = date.getUTCMonth();
+      if (month < cutoffMonth) return true;
+      if (month > cutoffMonth) return false;
+      return date.getUTCDate() <= cutoffDay;
+    };
+    const anchorOf = (item: UnifiedStatsItem) =>
+      item.activityDate || item.completionDate || item.releaseDate;
+    const thisYearItems = yearReview.yearItems.filter((item) => withinCutoff(anchorOf(item)));
+    const prevYearItems = yearReview.previousYearItems.filter((item) => withinCutoff(anchorOf(item)));
+    const delta = thisYearItems.length - prevYearItems.length;
+    const cutoffLabel = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return {
+      thisYear: thisYearItems.length,
+      prevYear: prevYearItems.length,
+      delta,
+      cutoffLabel,
+      items: thisYearItems,
+    };
+  }, [yearReview]);
 
   const wrappedSlides = useMemo<WrappedSlide[]>(() => {
     const featuredCovers = [
@@ -2622,7 +2722,13 @@ export function StatisticsView({
         calculation: "Sum gameplayHours for completed games in the current scope.",
       },
     }[filter];
-    const consumedHoursMetric = {
+    const itemConsumedMinutes = (item: UnifiedStatsItem) =>
+      item.mediaType === "game"
+        ? item.gameplayHours * 60
+        : item.mediaType === "book"
+          ? item.audiobookMinutes
+          : item.runtimeMinutes;
+    const consumedHoursMetric: SummaryMetric = {
       id: `BASE_${scopeId}_TOTAL_HOURS_CONSUMED`,
       label: durationMetricByFilter.label,
       value: formatMinutesAsHours(durationMetricByFilter.minutes),
@@ -2631,6 +2737,11 @@ export function StatisticsView({
       summary: durationMetricByFilter.summary,
       calculation: durationMetricByFilter.calculation,
       items: durationMetricByFilter.items,
+      itemMetric: {
+        label: "Time",
+        getValue: itemConsumedMinutes,
+        formatValue: (minutes: number) => formatMinutesAsHours(minutes),
+      },
     };
 
     return [
@@ -2736,7 +2847,23 @@ export function StatisticsView({
   }, [themeMode]);
 
   return (
-    <section className="statsRoot" style={statsThemeVars}>
+    <div
+      className="statsScaleParent"
+      style={
+        !isMobileLayout && statsStageNaturalHeight > 0
+          ? { height: Math.round(statsStageNaturalHeight * statsStageScale) }
+          : undefined
+      }
+    >
+    <section
+      ref={statsStageRef}
+      className={`statsRoot${isMobileLayout ? "" : " statsStage"}`}
+      style={
+        isMobileLayout
+          ? statsThemeVars
+          : ({ ...statsThemeVars, transform: `translateX(-50%) scale(${statsStageScale})` } as CSSProperties)
+      }
+    >
       <div className="statsBackgroundGlow" aria-hidden />
 
       <header className="statsHeader">
@@ -2844,7 +2971,7 @@ export function StatisticsView({
             </div>
           </div>
 
-          <div className="statsSummaryGrid">
+          <div className="statsSummaryGrid statsSummaryGridSeven">
             {yearReviewMetrics.map((metric, index) => (
               <article
                 key={`${metric.label}-${selectedReviewYear}`}
@@ -2860,6 +2987,7 @@ export function StatisticsView({
                     summary: metric.summary,
                     calculation: metric.calculation,
                     items: metric.items,
+                    itemMetric: metric.itemMetric,
                   })
                 }
                 onKeyDown={(event) =>
@@ -2871,6 +2999,7 @@ export function StatisticsView({
                       summary: metric.summary,
                       calculation: metric.calculation,
                       items: metric.items,
+                      itemMetric: metric.itemMetric,
                     })
                   )
                 }
@@ -2892,9 +3021,10 @@ export function StatisticsView({
             ))}
           </div>
 
-          <div className="statsGrid">
+          <div className="statsModuleRows">
+            <div className="statsModuleRow statsYearStoryRow">
             <article
-              className="statsCard spanTwo statsCardInteractive yearStoryCard"
+              className="statsCard statsCardInteractive yearStoryCard"
               role="button"
               tabIndex={0}
               aria-label="Open details for Year in Review storyline"
@@ -3080,6 +3210,63 @@ export function StatisticsView({
               </div>
             </article>
 
+            <article
+              className="statsCard statsCardInteractive yearPaceCard"
+              role="button"
+              tabIndex={0}
+              aria-label={`Open details for ${selectedReviewYear} pace versus ${previousReviewYear}`}
+              onClick={() =>
+                openStatisticDetail({
+                  id: `YR_${selectedReviewYear}_PACE`,
+                  title: `Pace vs ${previousReviewYear}`,
+                  value: `${yearPace.thisYear}`,
+                  summary: `Items logged in ${selectedReviewYear} through ${yearPace.cutoffLabel}, compared with ${previousReviewYear} through the same calendar date.`,
+                  calculation:
+                    "Count items whose anchor date (activityDate || completionDate || releaseDate) falls on or before today's month and day, for the review year and the previous year.",
+                  items: yearPace.items,
+                })
+              }
+              onKeyDown={(event) =>
+                handleInteractiveKeyDown(event, () =>
+                  openStatisticDetail({
+                    id: `YR_${selectedReviewYear}_PACE`,
+                    title: `Pace vs ${previousReviewYear}`,
+                    value: `${yearPace.thisYear}`,
+                    summary: `Items logged in ${selectedReviewYear} through ${yearPace.cutoffLabel}, compared with ${previousReviewYear} through the same calendar date.`,
+                    calculation:
+                      "Count items whose anchor date (activityDate || completionDate || releaseDate) falls on or before today's month and day, for the review year and the previous year.",
+                    items: yearPace.items,
+                  })
+                )
+              }
+            >
+              <div className="cardHeader">
+                <h2>Pace vs {previousReviewYear}</h2>
+                <span>through {yearPace.cutoffLabel}</span>
+              </div>
+              <div className="yearPaceBody">
+                <div className="yearPaceValue">{yearPace.thisYear}</div>
+                <div className="yearPaceMeta">
+                  <div
+                    className={`yearPaceDelta ${
+                      yearPace.delta > 0 ? "isUp" : yearPace.delta < 0 ? "isDown" : "isEven"
+                    }`}
+                  >
+                    {yearPace.delta > 0
+                      ? `▲ ${yearPace.delta} ahead`
+                      : yearPace.delta < 0
+                        ? `▼ ${Math.abs(yearPace.delta)} behind`
+                        : "Even pace"}
+                  </div>
+                  <div className="yearPaceSub">
+                    {previousReviewYear}: {yearPace.prevYear} logged by {yearPace.cutoffLabel}
+                  </div>
+                </div>
+              </div>
+            </article>
+            </div>
+
+            <div className="statsModuleRow statsModuleRowQuad">
             <article className="statsCard">
               <div className="cardHeader">
                 <h2>Top Rated Pick</h2>
@@ -3305,6 +3492,7 @@ export function StatisticsView({
                 <div className="cardEmpty">No rated items logged in {selectedReviewYear}.</div>
               )}
             </article>
+            </div>
 
             <article
               className="statsCard spanFull statsCardInteractive"
@@ -3511,7 +3699,7 @@ export function StatisticsView({
         </>
       ) : (
         <div className="statsModeDefault">
-      <div className="statsSummaryGrid">
+      <div className="statsSummaryGrid statsSummaryGridFour">
         {metrics.map((metric, index) => (
           <article
             key={metric.label}
@@ -3527,6 +3715,7 @@ export function StatisticsView({
                 summary: metric.summary,
                 calculation: metric.calculation,
                 items: metric.items,
+                itemMetric: metric.itemMetric,
               })
             }
             onKeyDown={(event) =>
@@ -3538,6 +3727,7 @@ export function StatisticsView({
                   summary: metric.summary,
                   calculation: metric.calculation,
                   items: metric.items,
+                  itemMetric: metric.itemMetric,
                 })
               )
             }
@@ -3559,8 +3749,9 @@ export function StatisticsView({
         ))}
       </div>
 
-      <div className="statsGrid">
-        <article className="statsCard spanTwo">
+      <div className="statsModuleRows">
+        <div className="statsModuleRow statsModuleRow2">
+        <article className="statsCard">
           <div className="cardHeader">
             <h2>Activity by Month</h2>
             <span>{monthlySeriesLabel}</span>
@@ -3706,7 +3897,9 @@ export function StatisticsView({
             <div className="cardEmpty">No genre metadata in this selection.</div>
           )}
         </article>
+        </div>
 
+        <div className="statsModuleRow statsModuleRow3">
         <article className="statsCard statsCardCompactMini">
           <div className="cardHeader">
             <h2>Status Pulse</h2>
@@ -3900,7 +4093,9 @@ export function StatisticsView({
             <div className="cardEmpty">No release dates in this selection.</div>
           )}
         </article>
+        </div>
 
+        <div className="statsModuleRow statsModuleRow4">
         <article className="statsCard">
           <div className="cardHeader">
             <h2>{topDimension.label}</h2>
@@ -3977,7 +4172,7 @@ export function StatisticsView({
           )}
         </article>
 
-        <article className="statsCard spanTwo">
+        <article className="statsCard">
           <div className="cardHeader">
             <h2>Highlights</h2>
             <span>{statsYearLabel}</span>
@@ -4128,6 +4323,7 @@ export function StatisticsView({
             </div>
           </div>
         </article>
+        </div>
 
         {filter !== "all" ? (
           <article className="statsCard spanFull">
@@ -4334,13 +4530,33 @@ export function StatisticsView({
           min-height: 100vh;
           margin: 0;
           border-radius: 0;
-          padding: clamp(14px, 2vw, 24px);
+          padding: clamp(14px, 2cqw, 24px);
           overflow: hidden;
           color: var(--stats-text);
           background: transparent;
           border: none;
           box-shadow: none;
           animation: statsFadeRise 480ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Desktop "locked layout" stage. The layout is authored at a fixed
+           1450px width and scaled uniformly with transform; container-type
+           makes the cqw units below resolve against this fixed width instead
+           of the live viewport, so nothing reflows on resize. */
+        .statsScaleParent {
+          position: relative;
+          width: 100%;
+          overflow: hidden;
+        }
+        .statsRoot.statsStage {
+          container-type: inline-size;
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: 1450px;
+          min-height: 0;
+          transform-origin: top center;
+          animation: none;
         }
 
         .statsBackgroundGlow {
@@ -4390,7 +4606,7 @@ export function StatisticsView({
 
         .statsTitle {
           margin: 0;
-          font-size: clamp(24px, 4vw, 34px);
+          font-size: clamp(24px, 4cqw, 34px);
           line-height: 1;
           letter-spacing: 0.02em;
           font-weight: 900;
@@ -4529,7 +4745,7 @@ export function StatisticsView({
 
         .yearReviewTitle {
           margin: 0;
-          font-size: clamp(24px, 4.1vw, 34px);
+          font-size: clamp(24px, 4.1cqw, 34px);
           line-height: 1.1;
           font-weight: 900;
           color: #c9fbdd;
@@ -4621,7 +4837,7 @@ export function StatisticsView({
         }
 
         .wrappedStoryBackdropFirst .wrappedTitle {
-          font-size: clamp(34px, 6vw, 64px);
+          font-size: clamp(34px, 6cqw, 64px);
           text-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
         }
 
@@ -4696,14 +4912,14 @@ export function StatisticsView({
 
         .wrappedTitle {
           margin: 0;
-          font-size: clamp(28px, 5vw, 52px);
+          font-size: clamp(28px, 5cqw, 52px);
           line-height: 1.06;
           color: #ffffff;
           max-width: 760px;
         }
 
         .wrappedValue {
-          font-size: clamp(20px, 3.5vw, 34px);
+          font-size: clamp(20px, 3.5cqw, 34px);
           font-weight: 900;
           color: #8baff4;
         }
@@ -4728,7 +4944,7 @@ export function StatisticsView({
         }
 
         .wrappedCoverFrame {
-          width: min(220px, 50vw);
+          width: min(220px, 50cqw);
           aspect-ratio: 2 / 3;
           margin-top: 8px;
           border-radius: 16px;
@@ -4739,7 +4955,7 @@ export function StatisticsView({
         }
 
         .wrappedCoverFrame.isSquare {
-          width: min(260px, 56vw);
+          width: min(260px, 56cqw);
           aspect-ratio: 1 / 1;
         }
 
@@ -5018,7 +5234,7 @@ export function StatisticsView({
         .yearSpotlightScoreLarge {
           margin-top: 2px;
           color: var(--stats-accent-3);
-          font-size: clamp(32px, 4vw, 52px);
+          font-size: clamp(32px, 4cqw, 52px);
           font-weight: 950;
           line-height: 0.9;
           letter-spacing: 0;
@@ -5036,7 +5252,7 @@ export function StatisticsView({
         .yearTopRatedTile {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(110px, 10.5vw, 160px) minmax(5em, auto);
+          grid-template-rows: clamp(110px, 10.5cqw, 160px) minmax(5em, auto);
           gap: 5px;
           min-width: 0;
           position: relative;
@@ -5045,7 +5261,7 @@ export function StatisticsView({
         .yearTopRatedMedia {
           position: relative;
           width: 100%;
-          height: clamp(110px, 10.5vw, 160px);
+          height: clamp(110px, 10.5cqw, 160px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
@@ -5111,8 +5327,8 @@ export function StatisticsView({
         }
 
         .yearTopRatedTile img {
-          width: 100%;
-          height: 100%;
+          width: auto;
+          height: auto;
           max-width: 100%;
           max-height: 100%;
           object-fit: contain;
@@ -5125,16 +5341,16 @@ export function StatisticsView({
         }
 
         .yearTopRatedCoverFrame img.yearTopRatedCoverAudiobook {
-          width: 100%;
-          height: 100%;
+          width: auto;
+          height: auto;
           max-width: 100%;
           max-height: 100%;
           aspect-ratio: auto;
         }
 
         .yearTopRatedCoverFrame img.yearTopRatedCoverGame {
-          width: 100%;
-          height: 100%;
+          width: auto;
+          height: auto;
           max-width: 100%;
           max-height: 100%;
         }
@@ -5295,7 +5511,7 @@ export function StatisticsView({
         .topRatedTile {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(92px, 8vw, 132px) minmax(3.6em, auto);
+          grid-template-rows: clamp(92px, 8cqw, 132px) minmax(3.6em, auto);
           gap: 4px;
           min-width: 0;
           position: relative;
@@ -5304,7 +5520,7 @@ export function StatisticsView({
         .topRatedMedia {
           position: relative;
           width: 100%;
-          height: clamp(92px, 8vw, 132px);
+          height: clamp(92px, 8cqw, 132px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
@@ -5317,15 +5533,15 @@ export function StatisticsView({
         }
 
         .topRatedMediaBook {
-          height: clamp(92px, 8vw, 132px);
+          height: clamp(92px, 8cqw, 132px);
         }
 
         .topRatedTileGame {
-          grid-template-rows: clamp(126px, 10.5vw, 178px) minmax(3.6em, auto);
+          grid-template-rows: clamp(126px, 10.5cqw, 178px) minmax(3.6em, auto);
         }
 
         .topRatedMediaGame {
-          height: clamp(126px, 10.5vw, 178px);
+          height: clamp(126px, 10.5cqw, 178px);
         }
 
         .topRatedCoverWrap {
@@ -5379,7 +5595,7 @@ export function StatisticsView({
         }
 
         .topRatedCoverWrapAudiobook {
-          width: min(100%, clamp(92px, 8vw, 132px));
+          width: min(100%, clamp(92px, 8cqw, 132px));
           height: auto;
         }
 
@@ -5553,11 +5769,11 @@ export function StatisticsView({
         }
 
         .topRatedTilePoster figcaption {
-          width: min(100%, calc(clamp(116px, 9.8vw, 164px) * 0.6667));
+          width: min(100%, calc(clamp(116px, 9.8cqw, 164px) * 0.6667));
         }
 
         .topRatedTileAudiobook figcaption {
-          width: min(100%, clamp(92px, 8vw, 132px));
+          width: min(100%, clamp(92px, 8cqw, 132px));
         }
 
         .topRatedTileGame figcaption {
@@ -5627,7 +5843,7 @@ export function StatisticsView({
         :global(.topRatedTile) {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(82px, 7vw, 118px) minmax(3.45em, auto);
+          grid-template-rows: clamp(82px, 7cqw, 118px) minmax(3.45em, auto);
           gap: 4px;
           min-width: 0;
           position: relative;
@@ -5636,7 +5852,7 @@ export function StatisticsView({
         :global(.topRatedMedia) {
           position: relative;
           width: 100%;
-          height: clamp(82px, 7vw, 118px);
+          height: clamp(82px, 7cqw, 118px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
@@ -5645,11 +5861,11 @@ export function StatisticsView({
         }
 
         :global(.topRatedTilePoster) {
-          grid-template-rows: clamp(116px, 9.8vw, 164px) minmax(3.45em, auto);
+          grid-template-rows: clamp(116px, 9.8cqw, 164px) minmax(3.45em, auto);
         }
 
         :global(.topRatedMediaPoster) {
-          height: clamp(116px, 9.8vw, 164px);
+          height: clamp(116px, 9.8cqw, 164px);
         }
 
         :global(.topRatedImageClip) {
@@ -5691,11 +5907,11 @@ export function StatisticsView({
         }
 
         :global(.topRatedTileGame) {
-          grid-template-rows: clamp(104px, 8.7vw, 148px) minmax(3.45em, auto);
+          grid-template-rows: clamp(104px, 8.7cqw, 148px) minmax(3.45em, auto);
         }
 
         :global(.topRatedMediaGame) {
-          height: clamp(104px, 8.7vw, 148px);
+          height: clamp(104px, 8.7cqw, 148px);
         }
 
         :global(.topRatedCoverWrap) {
@@ -5711,7 +5927,7 @@ export function StatisticsView({
         }
 
         :global(.topRatedCoverWrapAudiobook) {
-          width: min(100%, clamp(82px, 7vw, 118px));
+          width: min(100%, clamp(82px, 7cqw, 118px));
           height: auto;
         }
 
@@ -5852,11 +6068,11 @@ export function StatisticsView({
         }
 
         :global(.topRatedTilePoster figcaption) {
-          width: min(100%, calc(clamp(116px, 9.8vw, 164px) * 0.6667));
+          width: min(100%, calc(clamp(116px, 9.8cqw, 164px) * 0.6667));
         }
 
         :global(.topRatedTileAudiobook figcaption) {
-          width: min(100%, clamp(82px, 7vw, 118px));
+          width: min(100%, clamp(82px, 7cqw, 118px));
         }
 
         :global(.topRatedTitle) {
@@ -5883,6 +6099,17 @@ export function StatisticsView({
           grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
           gap: 10px;
           margin-bottom: 14px;
+        }
+
+        /* Everything / per-media summary metrics: a fixed 4-up row so the
+           four metric cards always line up edge-to-edge. */
+        .statsSummaryGridFour {
+          grid-template-columns: repeat(4, 1fr);
+        }
+
+        /* Year in Review summary metrics: a fixed 7-up grid. */
+        .statsSummaryGridSeven {
+          grid-template-columns: repeat(7, 1fr);
         }
 
         .metricCard {
@@ -5933,7 +6160,7 @@ export function StatisticsView({
           margin-top: 8px;
           max-width: 100%;
           overflow: hidden;
-          font-size: clamp(20px, 2.8vw, 31px);
+          font-size: clamp(20px, 2.8cqw, 31px);
           line-height: 1.02;
           font-weight: 900;
           color: #ffffff;
@@ -5941,11 +6168,11 @@ export function StatisticsView({
         }
 
         .metricValueHours {
-          font-size: clamp(19px, 2.15vw, 25px);
+          font-size: clamp(19px, 2.15cqw, 25px);
         }
 
         .metricValueCompact {
-          font-size: clamp(18px, 1.65vw, 25px);
+          font-size: clamp(18px, 1.65cqw, 25px);
           line-height: 1.02;
           max-width: 100%;
           overflow: hidden;
@@ -5969,6 +6196,93 @@ export function StatisticsView({
           grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
           gap: 12px;
           padding-bottom: 14px;
+        }
+
+        /* Default-mode module layout: explicit, full-width rows so every row
+           lines up edge-to-edge and modules within a row share the width
+           evenly. */
+        .statsModuleRows {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding-bottom: 14px;
+        }
+
+        .statsModuleRow {
+          display: grid;
+          gap: 12px;
+          align-items: stretch;
+        }
+
+        .statsModuleRow2 {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .statsModuleRow3 {
+          grid-template-columns: repeat(3, 1fr);
+        }
+
+        .statsModuleRow4 {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .statsModuleRowQuad {
+          grid-template-columns: repeat(4, 1fr);
+        }
+
+        /* Year in Review: Storyline takes the bulk of its row, the pace
+           card sits beside it. */
+        .statsYearStoryRow {
+          grid-template-columns: 3fr 1fr;
+        }
+
+        .yearPaceCard {
+          justify-content: flex-start;
+        }
+
+        .yearPaceBody {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          flex: 1;
+          justify-content: center;
+        }
+
+        .yearPaceValue {
+          font-size: 56px;
+          font-weight: 800;
+          line-height: 1;
+          color: var(--stats-text);
+        }
+
+        .yearPaceMeta {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .yearPaceDelta {
+          font-size: 14px;
+          font-weight: 800;
+        }
+
+        .yearPaceDelta.isUp {
+          color: #5fd0a0;
+        }
+
+        .yearPaceDelta.isDown {
+          color: #f08a8a;
+        }
+
+        .yearPaceDelta.isEven {
+          color: var(--stats-muted);
+        }
+
+        .yearPaceSub {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--stats-muted);
         }
 
         .statsCard {
@@ -6867,12 +7181,15 @@ export function StatisticsView({
           }
         }
 
+        /* Desktop stays in desktop layout down to 980px, so this breakpoint
+           can fire on a desktop window — exempt the locked stage from it so
+           the layout never reflows while scaling. */
         @media (max-width: 1100px) {
-          .statsCard.spanTwo {
+          .statsRoot:not(.statsStage) .statsCard.spanTwo {
             grid-column: span 1;
           }
 
-          .topRatedComparison {
+          .statsRoot:not(.statsStage) .topRatedComparison {
             grid-template-columns: minmax(0, 1fr);
           }
         }
@@ -6987,5 +7304,6 @@ export function StatisticsView({
         }
       `}</style>
     </section>
+    </div>
   );
 }

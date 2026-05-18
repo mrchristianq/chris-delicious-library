@@ -30,14 +30,27 @@ const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayout
  */
 export function useFitToViewportScale<T extends HTMLElement>(
   isMobileLayout: boolean,
-  options?: { minScale?: number; maxScale?: number; verticalSafeAreaPx?: number; horizontalSafeAreaPx?: number }
-): { ref: RefObject<T | null>; scale: number } {
+  options?: {
+    minScale?: number;
+    maxScale?: number;
+    verticalSafeAreaPx?: number;
+    horizontalSafeAreaPx?: number;
+    /**
+     * "both" (default) fits the element inside the viewport on both axes.
+     * "width" scales purely by available width, leaving vertical scrolling
+     * intact — used for tall, scrollable layouts like the Statistics page.
+     */
+    fitMode?: "both" | "width";
+  }
+): { ref: RefObject<T | null>; scale: number; naturalWidth: number; naturalHeight: number } {
   const minScale = options?.minScale ?? 0.4;
   const maxScale = options?.maxScale ?? 1;
   const safeY = options?.verticalSafeAreaPx ?? 0;
   const safeX = options?.horizontalSafeAreaPx ?? 0;
+  const fitMode = options?.fitMode ?? "both";
   const ref = useRef<T | null>(null);
   const [scale, setScale] = useState<number>(1);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
   useIsoLayoutEffect(() => {
     if (isMobileLayout || typeof window === "undefined") {
@@ -63,9 +76,16 @@ export function useFitToViewportScale<T extends HTMLElement>(
       const parentH = parent.clientHeight || (window.visualViewport?.height || window.innerHeight);
       const availW = Math.max(0, parentW - safeX);
       const availH = Math.max(0, parentH - safeY);
-      if (naturalW <= 0 || naturalH <= 0 || availW <= 0 || availH <= 0) return;
-      const next = clamp(Math.min(availW / naturalW, availH / naturalH), minScale, maxScale);
+      if (naturalW <= 0 || naturalH <= 0 || availW <= 0) return;
+      if (fitMode === "both" && availH <= 0) return;
+      const next =
+        fitMode === "width"
+          ? clamp(availW / naturalW, minScale, maxScale)
+          : clamp(Math.min(availW / naturalW, availH / naturalH), minScale, maxScale);
       setScale((prev) => (Math.abs(prev - next) < 0.005 ? prev : next));
+      setNaturalSize((prev) =>
+        prev.width === naturalW && prev.height === naturalH ? prev : { width: naturalW, height: naturalH }
+      );
     };
     recompute();
     const ro = new ResizeObserver(recompute);
@@ -79,7 +99,12 @@ export function useFitToViewportScale<T extends HTMLElement>(
       window.removeEventListener("resize", onWin);
       window.visualViewport?.removeEventListener("resize", onWin);
     };
-  }, [isMobileLayout, minScale, maxScale, safeX, safeY]);
+  }, [isMobileLayout, minScale, maxScale, safeX, safeY, fitMode]);
 
-  return { ref, scale: isMobileLayout ? 1 : scale };
+  return {
+    ref,
+    scale: isMobileLayout ? 1 : scale,
+    naturalWidth: naturalSize.width,
+    naturalHeight: naturalSize.height,
+  };
 }
