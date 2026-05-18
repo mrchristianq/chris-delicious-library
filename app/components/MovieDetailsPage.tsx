@@ -99,15 +99,16 @@ function scoreColor(pct: number): string {
   return "#22c55e";
 }
 
-function ScoreCircle({ raw, label, labelColor }: { raw: string; label: string; labelColor?: string }) {
+function ScoreCircle({ raw, label, labelColor, layout = "stacked" }: { raw: string; label: string; labelColor?: string; layout?: "stacked" | "inline" }) {
   const pct = toScorePct(raw);
   if (!pct) return null;
   const r = 22, size = 56, stroke = 3.5;
   const circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
   const color = scoreColor(pct);
+  const inline = layout === "inline";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
+    <div style={{ display: "flex", flexDirection: inline ? "row" : "column", alignItems: "center", gap: inline ? 10 : 5, flexShrink: 0 }}>
       <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={size / 2} cy={size / 2} r={r} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
@@ -123,7 +124,7 @@ function ScoreCircle({ raw, label, labelColor }: { raw: string; label: string; l
           {pct}%
         </div>
       </div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 1.2 }}>
+      <div style={{ fontSize: inline ? 14 : 10, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: inline ? "left" : "center", lineHeight: 1.2 }}>
         {label}
       </div>
     </div>
@@ -470,7 +471,7 @@ export function MovieDetailsPage({
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               {onRate ? (
                 <button type="button" onClick={() => onRate(item)} style={{
-                  borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
+                  borderRadius: 999, padding: "6px 11px", fontSize: 11, lineHeight: 1, fontWeight: 750,
                   border: `1px solid rgba(255,255,255,0.4)`, background: `${highlightColor || "#007AFF"}`,
                   color: "#fff", cursor: "pointer", whiteSpace: "nowrap",
                   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -478,7 +479,7 @@ export function MovieDetailsPage({
               ) : null}
               {onEdit ? (
                 <button type="button" onClick={() => onEdit(item)} style={{
-                  borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
+                  borderRadius: 999, padding: "6px 11px", fontSize: 11, lineHeight: 1, fontWeight: 750,
                   border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.88)",
                   color: "#111", cursor: "pointer", whiteSpace: "nowrap",
                   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -502,7 +503,7 @@ export function MovieDetailsPage({
                   }}
                   disabled={isDeleting}
                   style={{
-                    borderRadius: 999, padding: "9px 14px", fontSize: 13, lineHeight: 1, fontWeight: 750,
+                    borderRadius: 999, padding: "6px 11px", fontSize: 11, lineHeight: 1, fontWeight: 750,
                     border: "1px solid rgba(248, 113, 113, 0.55)", background: "rgba(127, 29, 29, 0.9)",
                     color: "#fee2e2", cursor: isDeleting ? "default" : "pointer", whiteSpace: "nowrap",
                     opacity: isDeleting ? 0.75 : 1,
@@ -515,18 +516,18 @@ export function MovieDetailsPage({
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               <button type="button" onClick={onBack} style={{
-                width: 38, height: 38, borderRadius: "50%",
+                width: 32, height: 32, borderRadius: "50%",
                 border: "1px solid rgba(255,255,255,0.28)", background: "rgba(0,0,0,0.45)",
                 color: "#fff", cursor: "pointer",
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
                 backdropFilter: "blur(8px)",
               }} aria-label="Back">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
               {watchStatus ? (
-                <span style={{ borderRadius: 999, padding: "9px 13px", fontSize: 13, lineHeight: 1, fontWeight: 850, ...statusColor }}>
+                <span style={{ borderRadius: 999, padding: "6px 10px", fontSize: 11, lineHeight: 1, fontWeight: 850, ...statusColor }}>
                   {watchStatus.charAt(0).toUpperCase() + watchStatus.slice(1)}
                 </span>
               ) : null}
@@ -679,9 +680,9 @@ export function MovieDetailsPage({
               {(tmdbRating || myRating) ? (
                 <>
                   <div style={{ height: 1, background: palette.surfaceBorder, margin: "12px 0" }} />
-                  <div style={{ display: "flex", gap: 20, justifyContent: "center" }}>
-                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" labelColor={palette.mutedText} /> : null}
-                    {myRating ? <ScoreCircle raw={myRating} label="My Rating" labelColor={palette.mutedText} /> : null}
+                  <div style={{ display: "flex", gap: 12, justifyContent: "space-evenly", alignItems: "center" }}>
+                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" labelColor={palette.mutedText} layout="inline" /> : null}
+                    {myRating ? <ScoreCircle raw={myRating} label="My Rating" labelColor={palette.mutedText} layout="inline" /> : null}
                   </div>
                 </>
               ) : null}
@@ -752,6 +753,17 @@ export function MovieDetailsPage({
                       const mCover = getDisplayCoverUrl(movie);
                       const isRecommendation = Boolean((movie as any).__isRecommendation);
                       const tmdbUrl = isRecommendation ? getTmdbMovieUrl(movie) : "";
+                      // The related list can be same-director OR genre-similar,
+                      // so check each item's actual director instead of
+                      // assuming every library match shares the director.
+                      const relatedDirector = safeStr((movie as any).director);
+                      const sameDirector =
+                        !isRecommendation && Boolean(director) && relatedDirector === director;
+                      const relatedTagLabel = isRecommendation
+                        ? "Not in Library"
+                        : sameDirector
+                          ? "Same Director"
+                          : "Same Genre";
                       return (
                         <div key={i}
                           onClick={() => {
@@ -814,17 +826,8 @@ export function MovieDetailsPage({
                                 onSelectRelated?.(movie);
                               }}
                               style={
-                                isRecommendation
+                                sameDirector
                                   ? {
-                                      fontSize: 8,
-                                      fontWeight: 800,
-                                      color: palette.text,
-                                      border: `1px solid ${palette.surfaceBorder}`,
-                                      borderRadius: 999,
-                                      padding: "2px 6px",
-                                      background: palette.chip,
-                                    }
-                                  : {
                                       fontSize: 8,
                                       fontWeight: 800,
                                       color: "#065f46",
@@ -833,9 +836,18 @@ export function MovieDetailsPage({
                                       padding: "2px 6px",
                                       background: "rgba(167, 243, 208, 0.82)",
                                     }
+                                  : {
+                                      fontSize: 8,
+                                      fontWeight: 800,
+                                      color: palette.text,
+                                      border: `1px solid ${palette.surfaceBorder}`,
+                                      borderRadius: 999,
+                                      padding: "2px 6px",
+                                      background: palette.chip,
+                                    }
                               }
                             >
-                              {isRecommendation ? "Not in Library" : "Same Director"}
+                              {relatedTagLabel}
                             </span>
                           </div>
                         </div>

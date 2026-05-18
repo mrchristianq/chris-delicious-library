@@ -7138,6 +7138,20 @@ export function StatisticsView({
           .highlightsGrid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+          /* Mobile Statistics: stack everything. Module rows go one-per-row;
+             the small metric cards stay two-per-row. The desktop scaling
+             stage only exists above 980px, so these never affect it. */
+          .statsModuleRow2,
+          .statsModuleRow3,
+          .statsModuleRow4,
+          .statsModuleRowQuad,
+          .statsYearStoryRow {
+            grid-template-columns: 1fr;
+          }
+          .statsSummaryGridFour,
+          .statsSummaryGridSeven {
+            grid-template-columns: repeat(2, 1fr);
+          }
         }
 
         /* .statDetail* rules live inside StatDetailModal's own

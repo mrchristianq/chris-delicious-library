@@ -17637,12 +17637,12 @@ export default function Page() {
                   background: "rgba(248, 250, 253, 0.86)",
                   boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
                   padding: 14,
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 0.82fr) minmax(0, 1.18fr)",
+                  display: "flex",
+                  flexDirection: "column",
                   gap: 12,
-                  alignItems: "stretch",
                 }}
               >
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <button
                   type="button"
                   onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
@@ -17678,6 +17678,34 @@ export default function Page() {
                     {showStatusIndicators ? "On" : "Off"}
                   </span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { if (!loading) setRefreshNonce((n) => n + 1); }}
+                  disabled={loading}
+                  aria-label="Refresh library data"
+                  style={{
+                    border: "1px solid rgba(145, 160, 182, 0.42)",
+                    borderRadius: 14,
+                    background: "rgba(255,255,255,0.68)",
+                    color: "#1f2c3f",
+                    padding: "10px 8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    justifyContent: "center",
+                    gap: 5,
+                    cursor: loading ? "wait" : "pointer",
+                    opacity: loading ? 0.7 : 1,
+                    minHeight: 74,
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>REFRESH</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 16, fontWeight: 900 }}>
+                    <span aria-hidden style={{ fontSize: 15 }}>↻</span>
+                    {loading ? "Syncing…" : "Sync"}
+                  </span>
+                </button>
+                </div>
                 <div style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 14, background: "rgba(255,255,255,0.68)", padding: "10px 9px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, minWidth: 0, minHeight: 74 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>{`${mobileCoverScaleGroup === "home" ? "HOME" : mobileCoverScaleGroup === "tv" ? "TV" : mobileCoverScaleGroup.toUpperCase()} COVER SIZE`}</span>

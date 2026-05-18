@@ -783,8 +783,8 @@ export function BookDetailsPage({
                   onClick={() => onRate(item)}
                   style={{
                     borderRadius: 999,
-                    padding: "9px 14px",
-                    fontSize: 14,
+                    padding: "6px 11px",
+                    fontSize: 11,
                     lineHeight: 1,
                     fontWeight: 750,
                     border: `1px solid rgba(255,255,255,0.3)`,
@@ -806,8 +806,8 @@ export function BookDetailsPage({
                   onClick={() => onEdit(item)}
                   style={{
                     borderRadius: 999,
-                    padding: "9px 14px",
-                    fontSize: 14,
+                    padding: "6px 11px",
+                    fontSize: 11,
                     lineHeight: 1,
                     fontWeight: 750,
                     border: `1px solid ${palette.surfaceBorder}`,
@@ -842,8 +842,8 @@ export function BookDetailsPage({
                   disabled={isDeleting}
                   style={{
                     borderRadius: 999,
-                    padding: "9px 14px",
-                    fontSize: 14,
+                    padding: "6px 11px",
+                    fontSize: 11,
                     lineHeight: 1,
                     fontWeight: 750,
                     border: "1px solid rgba(248, 113, 113, 0.55)",
@@ -867,8 +867,8 @@ export function BookDetailsPage({
                 type="button"
                 onClick={onBack}
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: 32,
+                  height: 32,
                   flex: "0 0 auto",
                   borderRadius: "50%",
                   border: `1px solid ${palette.surfaceBorder}`,
@@ -882,7 +882,7 @@ export function BookDetailsPage({
                 }}
                 aria-label="Back to library"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
@@ -894,8 +894,8 @@ export function BookDetailsPage({
                       key={`${chip}-${index}`}
                       style={{
                         borderRadius: 999,
-                        padding: "9px 13px",
-                        fontSize: 14,
+                        padding: "6px 10px",
+                        fontSize: 11,
                         lineHeight: 1,
                         fontWeight: 850,
                         background: isCompletedChip ? "rgba(34, 197, 94, 0.18)" : palette.chip,
