@@ -2524,6 +2524,10 @@ export default function Page() {
   const lastAppliedScrollYRef = useRef(0);
   const [stageTopAbs, setStageTopAbs] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // Mobile-only: drag-to-reorder on manually-sortable views (Play Next,
+  // Watchlists, etc.) is off until the user enables it from the Filter
+  // panel, so scrolling doesn't accidentally drag covers.
+  const [mobileSortEditMode, setMobileSortEditMode] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileFullLibraryOpen, setMobileFullLibraryOpen] = useState(false);
@@ -11765,6 +11769,14 @@ export default function Page() {
   ];
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics" && nav !== "cover-sync";
   const mobileSidebarShowsMediaFiltersOnly = nav === "books" || nav === "movies" || nav === "tv" || nav === "games";
+  const isManualSortView =
+    nav === "wishlist" ||
+    nav === "now-playing" ||
+    nav === "wishlist-books" ||
+    nav === "play-next" ||
+    nav === "watchlist-movies" ||
+    nav === "watchlist-tv" ||
+    Boolean(manualSortableSmartListId);
   const closeAllDetails = useCallback(() => {
     setBookDetailItem(null);
     setMovieDetailItem(null);
@@ -11797,6 +11809,10 @@ export default function Page() {
     }
     if (nav !== "home") setNav("home");
   }, [bookDetailItem, closeAllDetails, gameDetailItem, mobileFullLibraryOpen, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
+  // Reorder mode is per-visit: leaving the view always turns it back off.
+  useEffect(() => {
+    setMobileSortEditMode(false);
+  }, [nav]);
   const handleMobileHome = useCallback(() => {
     closeAllDetails();
     setMobileFullLibraryOpen(false);
@@ -12055,6 +12071,40 @@ export default function Page() {
             </button>
           </div>
           <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            {isManualSortView ? (
+              <button
+                type="button"
+                onClick={() => setMobileSortEditMode((v) => !v)}
+                aria-pressed={mobileSortEditMode}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  padding: "11px 12px",
+                  borderRadius: 12,
+                  border: mobileSortEditMode ? "1px solid rgba(91, 158, 72, 0.55)" : mobilePanelBorder,
+                  background: mobileSortEditMode ? "rgba(105, 190, 88, 0.18)" : mobilePanelCardBackground,
+                  color: mobilePanelTextColor,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em" }}>REORDER COVERS</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.7 }}>
+                    Turn on to drag-sort. Off keeps scrolling safe.
+                  </span>
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 900, color: mobileSortEditMode ? "#1f6f35" : undefined }}>
+                  <span
+                    aria-hidden
+                    style={{ width: 9, height: 9, borderRadius: "50%", background: mobileSortEditMode ? "#41b65c" : "#9aa5b1" }}
+                  />
+                  {mobileSortEditMode ? "On" : "Off"}
+                </span>
+              </button>
+            ) : null}
             {mobileSidebarShowsMediaFiltersOnly && nav === "movies" ? (
               <>
                 <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
@@ -18767,6 +18817,10 @@ export default function Page() {
                         nav === "watchlist-movies" ||
                         nav === "watchlist-tv" ||
                         Boolean(manualSortableSmartListId);
+                      // On mobile, drag-to-reorder is only live while the
+                      // user has turned on Reorder mode from the Filter panel.
+                      const wishlistDragEnabled =
+                        isWishlistCase && (!isMobileLayout || mobileSortEditMode);
                       const isWishlistPointerDragging = Boolean(
                         isWishlistCase &&
                         wishlistPointerDrag?.active &&
@@ -18817,7 +18871,7 @@ export default function Page() {
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
-                            cursor: isWishlistCase ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
+                            cursor: wishlistDragEnabled ? (isWishlistPointerDragging ? "grabbing" : "grab") : "pointer",
                             opacity: isWishlistPointerDragging ? 0.94 : 1,
                             filter: isSimpleShelfPresentation
                               ? "none"
@@ -18828,7 +18882,7 @@ export default function Page() {
                                 ? "opacity 70ms ease"
                                 : "left 118ms cubic-bezier(0.22, 0.76, 0.2, 1), opacity 90ms ease, transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1)"
                               : undefined,
-                            touchAction: isWishlistCase ? "none" : undefined,
+                            touchAction: wishlistDragEnabled ? "none" : undefined,
                             "--dragShakeDeg": `${dragShakeDeg.toFixed(2)}deg`,
                             "--dragPushX": `${dragPushX.toFixed(2)}px`,
                             "--dragPushY": `${dragPushY.toFixed(2)}px`,
@@ -18836,7 +18890,7 @@ export default function Page() {
                             outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.3)" : "none",
                           } as CSSProperties}
                           draggable={false}
-                          onPointerDown={isWishlistCase ? (event) => handleWishlistCasePointerDown(event, itemKey) : undefined}
+                          onPointerDown={wishlistDragEnabled ? (event) => handleWishlistCasePointerDown(event, itemKey) : undefined}
                           onClick={() => {
                             if (suppressCaseClickRef.current) return;
                             openSelectedItem(show);
