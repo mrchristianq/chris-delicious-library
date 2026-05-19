@@ -279,7 +279,7 @@ export function MovieDetailsPage({
   const topcastPhotoList = safeStr(item.topcastPhotos).split(",").map(s => s.trim()).filter(Boolean);
   const castMembers = topcastNames.slice(0, 5).map((name, i) => ({ name, photo: topcastPhotoList[i] || "" }));
 
-  const metaParts = [year, rawRuntime, ...genres].filter(Boolean);
+  const metaParts = [year, runtime, ...genres].filter(Boolean);
   const titleFontSize = isMobileLayout ? 22 : scaledPx(title.length > 44 ? 26 : title.length > 28 ? 32 : 38, detailScale);
 
   const descriptionText = overview || "No description available.";
@@ -356,7 +356,6 @@ export function MovieDetailsPage({
 
   const detailFacts = [
     watchDate ? { label: "WATCHED", value: watchDate } : null,
-    runtime ? { label: "RUNTIME", value: runtime } : null,
     (item.releaseDate || item.year) ? { label: "RELEASE DATE", value: formatFullDate(item.releaseDate) || year } : null,
     director ? { label: "DIRECTOR", value: director } : null,
     budget ? { label: "BUDGET", value: budget } : null,
