@@ -18924,6 +18924,13 @@ export default function Page() {
                                   borderRadius: isMobileLayout ? coverImageRadiusPx : 0,
                                   background: COVER_STAGE_BACKGROUND,
                                   boxShadow: coverSurfaceBoxShadow,
+                                  // Promote to its own compositing layer. Game
+                                  // covers (unlike movie/TV covers, which sit in
+                                  // a 3D-transformed .caseSurface) otherwise land
+                                  // in Safari's general paint path, where newly
+                                  // virtualized covers fail to paint until a
+                                  // repaint is forced — showing up as black.
+                                  transform: "translateZ(0)",
                                 }}
                               >
                                 {selectedCoverUrl ? (
