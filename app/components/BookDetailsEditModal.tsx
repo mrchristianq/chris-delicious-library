@@ -691,7 +691,7 @@ export function BookDetailsEditModal({
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
             <div style={{ marginTop: 8 }}>
               {previewUrl ? (
-                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ width: "100%", objectFit: activeMode === "custom" ? "contain" : "cover", maxHeight: 250, ...COVER_IMAGE_RADIUS_STYLE }} />
+                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 250, ...COVER_IMAGE_RADIUS_STYLE }} />
               ) : (
                 <div style={{ height: 180, borderRadius: 8, border: "1px dashed rgba(149,161,178,0.58)", display: "flex", alignItems: "center", justifyContent: "center", color: "#5f6e82", fontSize: 11 }}>
                   No cover

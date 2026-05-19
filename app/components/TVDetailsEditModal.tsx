@@ -500,7 +500,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>POSTER</div>
             {posterUrl ? (
               <img src={posterUrl} alt={safeStr(item.title) || "TV show poster"}
-                style={{ width: "100%", objectFit: "cover", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }} />
+                style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }} />
             ) : (
               <div style={{
                 height: 180, borderRadius: 8,

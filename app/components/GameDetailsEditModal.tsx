@@ -549,7 +549,7 @@ export function GameDetailsEditModal({
               <img
                 src={coverDisplayUrl}
                 alt={safeStr(item.title) || "Game cover"}
-                style={{ width: "100%", objectFit: "cover", maxHeight: 280, ...COVER_IMAGE_RADIUS_STYLE }}
+                style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }}
               />
             ) : (
               <div style={{

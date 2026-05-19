@@ -18565,7 +18565,7 @@ export default function Page() {
                   style={{
                     position: "relative",
                     height: shelfHeights[shelfIndex] || shelfRowHeight,
-                    overflow: isUpcomingView || (isMobileLayout && mobileSortEditMode) ? "visible" : "hidden",
+                    overflow: isUpcomingView ? "visible" : "hidden",
                     backgroundImage: isSimpleShelfPresentation ? "none" : `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
