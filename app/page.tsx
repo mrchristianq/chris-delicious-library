@@ -18719,7 +18719,11 @@ export default function Page() {
                       const coverVisualTopPx = 0;
                       const coverVisualWidthPx = caseWidth;
                       const coverVisualHeightPx = caseHeight;
-                      const selectedCoverUrl = getDisplayCoverUrl(show);
+                      // skipFailedFilter: shelf covers ignore the failed-URL
+                      // blacklist. Safari aborts image loads during virtualized
+                      // scrolling, which fired false onError events and
+                      // permanently blanked covers that actually load fine.
+                      const selectedCoverUrl = getDisplayCoverUrl(show, true);
                       const statusIndicator = getStatusIndicator(show);
                       const ratingBadgeLabel = formatItemPersonalRatingBadge(show);
                       const completedStatusToken = (() => {
@@ -18929,7 +18933,7 @@ export default function Page() {
                                       className="case-poster"
                                       src={macDisplayCoverUrl}
                                       alt={show.title}
-                                      loading="lazy"
+                                      decoding="async"
                                       style={{
                                         width: "100%",
                                         height: "100%",
@@ -18973,7 +18977,7 @@ export default function Page() {
                                     className="case-poster"
                                     src={selectedCoverUrl}
                                     alt={show.title}
-                                    loading="lazy"
+                                    decoding="async"
                                     style={{
                                       width: "100%",
                                       height: "100%",
@@ -19088,7 +19092,7 @@ export default function Page() {
                                       className="case-poster"
                                       src={macDisplayCoverUrl}
                                       alt={show.title}
-                                      loading="lazy"
+                                      decoding="async"
                                       style={{
                                         width: "100%",
                                         height: "100%",
@@ -19132,7 +19136,7 @@ export default function Page() {
                                       className="case-poster"
                                       src={macDisplayCoverUrl}
                                       alt={show.title}
-                                      loading="lazy"
+                                      decoding="async"
                                       style={{
                                         width: "100%",
                                         height: "100%",
@@ -19189,7 +19193,7 @@ export default function Page() {
                                         className="case-poster"
                                         src={selectedCoverUrl}
                                         alt={show.title}
-                                        loading="lazy"
+                                        decoding="async"
                                         style={{
                                           width: "100%",
                                           height: "100%",
@@ -19229,7 +19233,7 @@ export default function Page() {
                                       className="case-poster"
                                       src={selectedCoverUrl}
                                       alt={show.title}
-                                      loading="lazy"
+                                      decoding="async"
                                       style={{
                                         width: "100%",
                                         height: "100%",
