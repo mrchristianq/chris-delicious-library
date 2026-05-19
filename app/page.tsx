@@ -11660,6 +11660,18 @@ export default function Page() {
         }, 0);
         return Math.max(1, maxCoverH + upcomingFixedOffset + tvWatchlistSectionSpace + titleExtra);
       }
+      if (isMobileLayout && (nav === "play-next" || nav === "wishlist-books")) {
+        // Match Movie Watchlist spacing: a full-size row leaves the same slack
+        // above a movie cover; reuse that slack for the shorter game/book covers
+        // so the inter-row gap stays identical instead of growing.
+        if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
+        const movieSlack = Math.max(0, shelfRowHeight - Math.round(shelfRowHeight * (mediaCoverSizePct.movies / 100)));
+        const tallestCover = shelfShows.reduce((maxHeight, show) => {
+          const { caseHeight } = getItemVisualLayout(show);
+          return Math.max(maxHeight, caseHeight);
+        }, 0);
+        return Math.max(1, tallestCover + movieSlack + tvWatchlistSectionSpace + titleExtra);
+      }
       if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
       if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
@@ -11668,7 +11680,7 @@ export default function Page() {
       }, 0);
       return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + titleExtra);
     });
-  }, [coverTitlesVisible, getItemVisualLayout, isUpcomingView, mediaCoverSizePct.games, nav, shelfRowHeight, shelves]);
+  }, [coverTitlesVisible, getItemVisualLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.games, mediaCoverSizePct.movies, nav, shelfRowHeight, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -11685,7 +11697,12 @@ export default function Page() {
   const shelfRenderWindow = useMemo(() => {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
-    if (nav !== "books" && nav !== "watchlist-tv" && !isUpcomingView) {
+    const hasVariableRowHeights =
+      nav === "books" ||
+      nav === "watchlist-tv" ||
+      isUpcomingView ||
+      (isMobileLayout && (nav === "play-next" || nav === "wishlist-books"));
+    if (!hasVariableRowHeights) {
       const effectiveRowH = shelfRowHeight;
       const start = Math.max(0, Math.floor(localScroll / effectiveRowH) - 4);
       const end = Math.min(shelves.length, Math.ceil((localScroll + viewH) / effectiveRowH) + 4);
@@ -11735,7 +11752,7 @@ export default function Page() {
       padTop,
       padBottom,
     };
-  }, [isUpcomingView, nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelves.length, stageTopAbs, viewportH, windowScrollY]);
+  }, [isMobileLayout, isUpcomingView, nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelves.length, stageTopAbs, viewportH, windowScrollY]);
 
   const visibleShelves = useMemo(
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
@@ -12306,32 +12323,60 @@ export default function Page() {
                 style={{ width: "100%" }}
               />
             </div>
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>LIBRARY</div> : null}
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {mobileLibraryMenuItems.map((item) => {
-                const active = nav === item.key;
-                return (
-                  <button
-                    key={`mobile-library-${item.key}`}
-                    type="button"
-                    onClick={() => handleMobileNavSelect(item.key)}
-                    style={{
-                      ...getMobileMenuButtonStyle(active),
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
+            {!mobileSidebarShowsMediaFiltersOnly ? (
+              <>
+                <div style={mobilePanelSectionHeadingStyle}>SORT</div>
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: mobilePanelSectionLabelColor,
+                  }}
+                >
+                  SORT BY
+                  <select
+                    value={sortField}
+                    onChange={(e) => handleSortFieldChange(e.target.value)}
+                    style={mobilePanelSelectStyle}
                   >
-                    <span>{item.label}</span>
-                    {typeof item.count === "number" ? (
-                      <span style={mobilePanelCountBadgeStyle}>
-                        {item.count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div> : null}
+                    {(nav === "home" || nav === "upcoming" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
+                      <>
+                        <option value="Title">Title</option>
+                        <option value="ReleaseDate">Release Date</option>
+                        {nav === "wishlist" || nav === "play-next" || nav === "completed" ? <option value="CompletedDate">Completed Date</option> : null}
+                        <option value="MyRatingSort">My Rating</option>
+                        <option value="ExternalRatingSort">User Rating</option>
+                        {nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
+                      </>
+                    )}
+                  </select>
+                </label>
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: mobilePanelSectionLabelColor,
+                  }}
+                >
+                  ORDER
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
+                    disabled={(nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
+                    style={mobilePanelSelectStyle}
+                  >
+                    <option value="Asc">Asc</option>
+                    <option value="Desc">Desc</option>
+                  </select>
+                </label>
+              </>
+            ) : null}
             {nav === "books" ? (
               <>
                 <div style={mobilePanelSectionHeadingStyle}>BOOK FILTERS</div>
@@ -12415,101 +12460,6 @@ export default function Page() {
               </>
             ) : null}
 
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>BACKLOG</div> : null}
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {mobileBacklogMenuItems.map((item) => {
-                const active = nav === item.key;
-                return (
-                  <button
-                    key={`mobile-backlog-${item.key}`}
-                    type="button"
-                    onClick={() => handleMobileNavSelect(item.key)}
-                    style={{
-                      ...getMobileMenuButtonStyle(active),
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span>{item.label}</span>
-                    {typeof item.count === "number" ? (
-                      <span style={mobilePanelCountBadgeStyle}>
-                        {item.count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div> : null}
-
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>SMART LISTS</div> : null}
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {mobileSmartListMenuItems.map((item) => {
-                const active = nav === item.key;
-                return (
-                  <button
-                    key={`mobile-smart-${item.key}`}
-                    type="button"
-                    onClick={() => handleMobileNavSelect(item.key)}
-                    style={{
-                      ...getMobileMenuButtonStyle(active),
-                      textAlign: "left",
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-              {customSmartLists.map((smartList) => {
-                const active = nav === "smart-custom" && selectedSmartListId === smartList.id;
-                return (
-                  <button
-                    key={`mobile-custom-smart-${smartList.id}`}
-                    type="button"
-                    onClick={() => handleMobileSmartListSelect(smartList)}
-                    style={{
-                      ...getMobileMenuButtonStyle(active),
-                      textAlign: "left",
-                    }}
-                  >
-                    {smartList.name}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => {
-                  handleOpenSmartListBuilder();
-                  setMobileSidebarOpen(false);
-                  setMobileSettingsOpen(false);
-                }}
-                style={mobilePanelPrimaryButtonStyle}
-              >
-                + Add Smart List
-              </button>
-            </div> : null}
-
-            {!mobileSidebarShowsMediaFiltersOnly ? <div style={mobilePanelSectionHeadingStyle}>DISCOVER</div> : null}
-            {!mobileSidebarShowsMediaFiltersOnly ? <button
-              type="button"
-              onClick={openStatisticsView}
-              style={{
-                ...getMobileMenuButtonStyle(nav === "statistics"),
-                textAlign: "left",
-              }}
-            >
-              Statistics
-            </button> : null}
-            {!mobileSidebarShowsMediaFiltersOnly ? <button
-              type="button"
-              onClick={openRoadmapView}
-              style={{
-                ...getMobileMenuButtonStyle(nav === "roadmap"),
-                textAlign: "left",
-              }}
-            >
-              Roadmap
-            </button> : null}
           </div>
         </div>
       ) : null}
@@ -18615,7 +18565,7 @@ export default function Page() {
                   style={{
                     position: "relative",
                     height: shelfHeights[shelfIndex] || shelfRowHeight,
-                    overflow: isUpcomingView ? "visible" : "hidden",
+                    overflow: isUpcomingView || (isMobileLayout && mobileSortEditMode) ? "visible" : "hidden",
                     backgroundImage: isSimpleShelfPresentation ? "none" : `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
