@@ -5595,6 +5595,12 @@ export default function Page() {
       },
     };
 
+    // Never write an empty WatchStatus: omitting the key lets the write API
+    // preserve the existing value instead of blanking the user's watch status.
+    if (!safeStr(updates.watchStatus)) {
+      delete (payload.updates as Record<string, string>).WatchStatus;
+    }
+
     try {
       await postSheetWrite(showsWriteUrl, payload, "Failed to save show edits");
     } catch (e: any) {

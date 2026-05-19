@@ -592,7 +592,7 @@ function buildShowEditValues(item: Record<string, any>): Record<string, string> 
     lastAirDate: firstNonEmpty(item, ["lastAirDate", "LastAirDate"]),
     numberOfSeasons: firstNonEmpty(item, ["numberOfSeasons", "NumberOfSeasons"]),
     numberOfEpisodes: firstNonEmpty(item, ["numberOfEpisodes", "NumberOfEpisodes"]),
-    watchStatus: firstNonEmpty(item, ["watchStatus", "WatchStatus"]),
+    watchStatus: firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]),
     showStatus: firstNonEmpty(item, ["showStatus", "Status"]),
     networks: firstNonEmpty(item, ["networks", "Networks"]),
     streamingUS: firstNonEmpty(item, ["streamingUS", "StreamingUS"]),

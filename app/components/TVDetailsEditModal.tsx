@@ -109,7 +109,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
   const raw: Record<string, string> = {
     title:            firstNonEmpty(item, ["title", "Title"]),
     year:             firstNonEmpty(item, ["year", "Year"]),
-    watchStatus:      firstNonEmpty(item, ["watchStatus", "WatchStatus"]),
+    watchStatus:      firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]),
     showStatus:       firstNonEmpty(item, ["showStatus", "Status"]),
     dateCompleted:    firstNonEmpty(item, ["dateCompleted", "Date Completed", "CompletedDate", "completedDate"]),
     firstAirDate:     firstNonEmpty(item, ["firstAirDate", "FirstAirDate"]),
