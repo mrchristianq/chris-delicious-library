@@ -108,9 +108,10 @@ function BookScoreCircle({ value, label, color }: { value: number; label: string
   const stroke = 5;
   const circ = 2 * Math.PI * r;
   const dash = pct * circ;
+  const labelWords = label.trim().split(/\s+/);
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-      <div style={{ position: "relative", width: size, height: size }}>
+    <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={stroke} />
           <circle
@@ -129,7 +130,9 @@ function BookScoreCircle({ value, label, color }: { value: number; label: string
           {value.toFixed(1)}
         </div>
       </div>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: "rgba(255,255,255,0.62)" }}>{label}</div>
+      <div style={{ display: "flex", flexDirection: "column", fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.62)", textAlign: "left", lineHeight: 1.2 }}>
+        {labelWords.map((w, i) => <span key={i}>{w}</span>)}
+      </div>
     </div>
   );
 }
@@ -579,23 +582,25 @@ export function BookDetailsPage({
   const myRatingValue = parseBookRatingOutOfFive(myRatingLabel);
   const userRatingValue = parseBookRatingOutOfFive(userRatingLabel);
   const isAudiobook = typeLabel === "Audiobook";
-  const factDetails = [
-    !isAudiobook ? { label: "Pages", value: pagesLabel } : null,
-    isAudiobook ? { label: "Length", value: durationLabel } : null,
+  const lengthFact = isAudiobook
+    ? (durationLabel ? { label: "Length", value: durationLabel } : null)
+    : (pagesLabel ? { label: "Pages", value: pagesLabel } : null);
+  const detailFacts = [
     { label: "Format", value: typeLabel },
+    lengthFact,
     { label: "Released", value: releaseDate },
     { label: "Completed", value: showCompletedDate ? completedDateLabel : "" },
   ].filter((fact): fact is { label: string; value: string } => Boolean(fact?.value));
   const descriptionText = description || "No description yet for this title.";
   const descriptionFontSize = isMobileLayout
-    ? 15
+    ? 17
     : descriptionText.length > 1100
-      ? 12
+      ? 14
       : descriptionText.length > 850
-        ? 13
+        ? 15
         : descriptionText.length > 620
-          ? 14
-          : 15;
+          ? 16
+          : 17;
   const titleFontSize = isMobileLayout
     ? 34
     : scaledPx(
@@ -606,16 +611,16 @@ export function BookDetailsPage({
           : 56,
       detailScale
     );
-  const desktopSideColumnW = scaledPx(260, detailScale);
+  const desktopSideColumnW = scaledPx(338, detailScale);
   const desktopHeroCoverMaxW = scaledPx(210, detailScale);
   const desktopHeroCoverMaxH = scaledPx(258, detailScale);
   const desktopHeroMinCoverColW = scaledPx(155, detailScale);
   const desktopRecommendationCardW = scaledPx(104, detailScale);
   const desktopRecommendationCardH = scaledPx(132, detailScale);
   const desktopGridHeaderH = scaledPx(64, detailScale);
-  const desktopGridFeatureMinH = scaledPx(205, detailScale);
-  const desktopGridFactsMinH = scaledPx(144, detailScale);
-  const desktopGridRelatedMinH = scaledPx(320, detailScale);
+  const desktopGridFeatureMinH = scaledPx(280, detailScale);
+  const desktopGridFactsMinH = scaledPx(204, detailScale);
+  const desktopGridRelatedMinH = scaledPx(300, detailScale);
   const descriptionViewportRef = useRef<HTMLDivElement | null>(null);
   const descriptionContentRef = useRef<HTMLDivElement | null>(null);
 
@@ -670,12 +675,24 @@ export function BookDetailsPage({
       animationFrame = window.requestAnimationFrame(step);
     };
 
+    const handleWheel = (event: WheelEvent) => {
+      const maxOffset = getMaxOffset();
+      if (maxOffset <= 2) return;
+      event.preventDefault();
+      setOffset(Math.max(0, Math.min(maxOffset, offset + event.deltaY)));
+      pauseUntil = Date.now() + 20000;
+      lastTime = 0;
+      window.clearTimeout(resetTimeout);
+    };
+
     setOffset(0);
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
     animationFrame = window.requestAnimationFrame(step);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
       window.clearTimeout(resetTimeout);
+      viewport.removeEventListener("wheel", handleWheel);
       content.style.transform = "translate3d(0, 0, 0)";
     };
   }, [descriptionFontSize, descriptionText, isMobileLayout]);
@@ -948,7 +965,11 @@ export function BookDetailsPage({
                         src={coverUrl}
                         alt={title}
                         style={{
-                          width: "100%",
+                          display: "block",
+                          margin: "0 auto",
+                          width: "auto",
+                          height: "auto",
+                          maxWidth: isMobileLayout ? 210 : "100%",
                           maxHeight: isMobileLayout ? undefined : desktopHeroCoverMaxH,
                           objectFit: "contain",
                           filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
@@ -962,7 +983,11 @@ export function BookDetailsPage({
                       src={coverUrl}
                       alt={title}
                       style={{
-                        width: "100%",
+                        display: "block",
+                        margin: "0 auto",
+                        width: "auto",
+                        height: "auto",
+                        maxWidth: isMobileLayout ? 210 : "100%",
                         maxHeight: isMobileLayout ? undefined : desktopHeroCoverMaxH,
                         objectFit: "contain",
                         filter: "drop-shadow(0 5px 9px rgba(5, 9, 16, 0.34))",
@@ -1036,14 +1061,14 @@ export function BookDetailsPage({
 
           <div
             style={{
-              gridRow: isMobileLayout ? undefined : "2 / 4",
+              gridRow: isMobileLayout ? undefined : "2",
               gridColumn: isMobileLayout ? undefined : "2",
               minWidth: 0,
               minHeight: 0,
               overflow: "hidden",
               borderRadius: 20,
               padding: isMobileLayout ? "16px" : "18px",
-              background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.035)} 100%)`,
+              background: `linear-gradient(${rgba("#000000", 0.22)}, ${rgba("#000000", 0.22)}), linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.035)} 100%)`,
               border: `1px solid ${palette.surfaceBorder}`,
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
               display: "grid",
@@ -1060,43 +1085,41 @@ export function BookDetailsPage({
                 gridTemplateColumns: "1fr",
                 gap: 11,
                 alignContent: "start",
-                justifyItems: "center",
+                justifyItems: "stretch",
                 minHeight: 0,
                 paddingTop: isMobileLayout ? 0 : 10,
               }}
             >
-              {factDetails.map((fact) => (
+              {detailFacts.length > 0 ? (
                 <div
-                  key={`${fact.label}-${fact.value}`}
                   style={{
-                    minWidth: 0,
-                    width: "min(100%, 180px)",
+                    width: "100%",
                     display: "grid",
-                    gap: 5,
-                    justifyItems: "start",
-                    textAlign: "left",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px 14px",
                   }}
                 >
-                  <div style={{ fontSize: 11, lineHeight: 1, fontWeight: 800, color: palette.mutedText }}>
-                    {fact.label}
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "flex-start",
-                      gap: 8,
-                      fontSize: fact.label.includes("Rating") ? 22 : 15,
-                      lineHeight: 1.18,
-                      fontWeight: 850,
-                      color: palette.text,
-                      overflowWrap: "anywhere",
-                    }}
+                  {detailFacts.map((fact) => (
+                    <div
+                      key={`${fact.label}-${fact.value}`}
+                      style={{
+                        minWidth: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 5,
+                        textAlign: "left",
+                      }}
                     >
-                    <span>{fact.value}</span>
-                  </div>
+                      <div style={{ fontSize: 11, lineHeight: 1, fontWeight: 800, color: palette.mutedText }}>
+                        {fact.label}
+                      </div>
+                      <div style={{ fontSize: 15, lineHeight: 1.18, fontWeight: 850, color: palette.text, whiteSpace: "nowrap" }}>
+                        {fact.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : null}
               {(myRatingValue !== null || userRatingValue !== null) ? (
                 <div
                   style={{
@@ -1106,6 +1129,7 @@ export function BookDetailsPage({
                     justifyContent: "center",
                     gap: 14,
                     marginTop: 8,
+                    transform: "translateX(-20px)",
                   }}
                 >
                   {userRatingValue !== null ? (
@@ -1121,6 +1145,7 @@ export function BookDetailsPage({
 
           <div
             style={{
+              gridColumn: isMobileLayout ? undefined : "1 / -1",
               minWidth: 0,
               minHeight: 0,
               height: "100%",
@@ -1128,7 +1153,7 @@ export function BookDetailsPage({
               overflow: "hidden",
               borderRadius: 20,
               padding: isMobileLayout ? "16px 16px 18px" : "16px 18px",
-              background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.04)} 100%)`,
+              background: `linear-gradient(${rgba("#000000", 0.22)}, ${rgba("#000000", 0.22)}), linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.04)} 100%)`,
               border: `1px solid ${palette.surfaceBorder}`,
               boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
               display: "flex",
@@ -1170,7 +1195,7 @@ export function BookDetailsPage({
                 overflow: "hidden",
                 borderRadius: 20,
                 padding: isMobileLayout ? "16px 16px 18px" : "14px 18px",
-                background: `linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.04)} 100%)`,
+                background: `linear-gradient(${rgba("#000000", 0.22)}, ${rgba("#000000", 0.22)}), linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.04)} 100%)`,
                 border: `1px solid ${palette.surfaceBorder}`,
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
               }}

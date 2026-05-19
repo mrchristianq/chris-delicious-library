@@ -97,7 +97,7 @@ function scoreColor(pct: number): string {
   return "#22c55e";
 }
 
-function ScoreCircle({ raw, label, labelColor, layout = "stacked" }: { raw: string; label: string; labelColor?: string; layout?: "stacked" | "inline" }) {
+function ScoreCircle({ raw, label, labelColor, layout = "stacked" }: { raw: string; label: string; labelColor?: string; layout?: "stacked" | "inline" | "inline-stack" }) {
   const pct = toScorePct(raw);
   if (!pct) return null;
   const r = 22, size = 56, stroke = 3.5;
@@ -105,8 +105,11 @@ function ScoreCircle({ raw, label, labelColor, layout = "stacked" }: { raw: stri
   const dash = (pct / 100) * circ;
   const color = scoreColor(pct);
   const inline = layout === "inline";
+  const inlineStack = layout === "inline-stack";
+  const sideways = inline || inlineStack;
+  const labelWords = label.trim().split(/\s+/);
   return (
-    <div style={{ display: "flex", flexDirection: inline ? "row" : "column", alignItems: "center", gap: inline ? 10 : 5, flexShrink: 0 }}>
+    <div style={{ display: "flex", flexDirection: sideways ? "row" : "column", alignItems: "center", gap: sideways ? 10 : 5, flexShrink: 0 }}>
       <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={size / 2} cy={size / 2} r={r} fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
@@ -117,14 +120,20 @@ function ScoreCircle({ raw, label, labelColor, layout = "stacked" }: { raw: stri
         <div style={{
           position: "absolute", inset: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 800, color: "#fff",
+          fontSize: 13, fontWeight: 800, color: "#fff",
         }}>
           {pct}%
         </div>
       </div>
-      <div style={{ fontSize: inline ? 14 : 10, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: inline ? "left" : "center", lineHeight: 1.2 }}>
-        {label}
-      </div>
+      {inlineStack ? (
+        <div style={{ display: "flex", flexDirection: "column", fontSize: 13, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: "left", lineHeight: 1.2 }}>
+          {labelWords.map((w, i) => <span key={i}>{w}</span>)}
+        </div>
+      ) : (
+        <div style={{ fontSize: inline ? 14 : 10, fontWeight: 700, color: labelColor || "rgba(255,255,255,0.6)", textAlign: inline ? "left" : "center", lineHeight: 1.2 }}>
+          {label}
+        </div>
+      )}
     </div>
   );
 }
@@ -529,8 +538,8 @@ export function TVDetailsPage({
                 <>
                   <div style={{ height: 1, background: "rgba(255,255,255,0.10)", margin: "12px 0" }} />
                   <div style={{ display: "flex", gap: 16 }}>
-                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" /> : null}
-                    {myRating ? <ScoreCircle raw={myRating} label="My Rating" /> : null}
+                    {tmdbRating ? <ScoreCircle raw={tmdbRating} label="User Rating" layout="inline-stack" /> : null}
+                    {myRating ? <ScoreCircle raw={myRating} label="My Rating" layout="inline-stack" /> : null}
                   </div>
                 </>
               ) : null}

@@ -275,7 +275,7 @@ export function GameDetailsPage({
   const developer = safeStr(item.developer);
   const genres = splitList(item.genres || item.genre).slice(0, 3);
   const description = safeStr(item.description || item.overview);
-  const myRating = safeStr(item.myRating || item.rating);
+  const myRating = safeStr(item.myRating);
   const igdbRating = safeStr(item.igdbRating);
   const playStatus = safeStr(item.playStatus || item.gameStatus || item.status);
   const dateCompleted = formatMmDdYyyy(item.dateCompleted);
