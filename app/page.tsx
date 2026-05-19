@@ -18705,7 +18705,6 @@ export default function Page() {
                     {(() => {
                       let runningVisualX = 0;
                       return shelfShows.map((show, i) => {
-                      const isGame = show.__type === "game";
                       const isAudiobook = isAudiobookItem(show);
                       const { caseWidth, caseHeight } = getItemVisualLayout(show);
                       const x = Math.round(runningVisualX);
@@ -18768,7 +18767,6 @@ export default function Page() {
                       const macDisplayCoverUrl = (DISABLE_INSETS || isMacCoverMode) && coverTrimAsset ? coverTrimAsset.url : selectedCoverUrl;
                       const rawCoverObjectFit = coverTrimAsset ? "cover" : "contain";
                       const coverTransform = undefined;
-                      const gamePosterFit = rawCoverObjectFit;
                       const statusDotLeftPx = Math.round(
                         statusRegionLeftPx + statusRegionWidthPx - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX
                       );
@@ -18911,132 +18909,7 @@ export default function Page() {
                               outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.35)" : "none",
                             }}
                           >
-                          {isGame ? (
-                            <>
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  top: insetTop,
-                                  right: insetRight,
-                                  bottom: insetBottom,
-                                  left: insetLeft,
-                                  overflow: isSimpleShelfPresentation ? "hidden" : "hidden",
-                                  borderRadius: isMobileLayout ? coverImageRadiusPx : 0,
-                                  background: COVER_STAGE_BACKGROUND,
-                                  boxShadow: coverSurfaceBoxShadow,
-                                }}
-                              >
-                                {selectedCoverUrl ? (
-                                  DISABLE_INSETS ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      className="case-poster"
-                                      src={macDisplayCoverUrl}
-                                      alt={show.title}
-                                      decoding="async"
-                                      style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        objectFit: rawCoverObjectFit,
-                                        objectPosition: "center",
-                                        display: "block",
-                                        borderRadius: coverImageRadiusPx,
-                                        transform: undefined,
-                                        transformOrigin: "center",
-                                      }}
-                                      onLoad={(e) => {
-                                        measureCoverTrimBounds(selectedCoverUrl, e.currentTarget);
-                                      }}
-                                      onError={e => {
-                                        const itemKey = getMediaItemKey(show);
-                                        const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
-                                        if (!failedUrl) return;
-                                        const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
-                                        const nextAttempts = currentAttempts + 1;
-                                        setFailedCoverAttempts((prev) => {
-                                          const itemAttempts = prev[itemKey] || {};
-                                          return {
-                                            ...prev,
-                                            [itemKey]: {
-                                              ...itemAttempts,
-                                              [failedUrl]: nextAttempts,
-                                            },
-                                          };
-                                        });
-                                        if (nextAttempts < 2) return;
-                                        setFailedCoverUrls((prev) => {
-                                          const existing = prev[itemKey] || [];
-                                          if (existing.includes(failedUrl)) return prev;
-                                          return { ...prev, [itemKey]: [...existing, failedUrl] };
-                                        });
-                                      }}
-                                    />
-                                  ) : (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    className="case-poster"
-                                    src={selectedCoverUrl}
-                                    alt={show.title}
-                                    decoding="async"
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: gamePosterFit,
-                                      objectPosition: "center",
-                                      display: "block",
-                                      borderRadius: coverImageRadiusPx,
-                                      transform: coverTransform,
-                                      transformOrigin: "center",
-                                    }}
-                                    onError={e => {
-                                      const itemKey = getMediaItemKey(show);
-                                      const failedUrl = safeStr(e.currentTarget.currentSrc || e.currentTarget.src);
-                                      if (!failedUrl) return;
-                                      const currentAttempts = failedCoverAttempts[itemKey]?.[failedUrl] || 0;
-                                      const nextAttempts = currentAttempts + 1;
-                                      setFailedCoverAttempts((prev) => {
-                                        const itemAttempts = prev[itemKey] || {};
-                                        return {
-                                          ...prev,
-                                          [itemKey]: {
-                                            ...itemAttempts,
-                                            [failedUrl]: nextAttempts,
-                                          },
-                                        };
-                                      });
-                                      if (nextAttempts < 2) return;
-                                      setFailedCoverUrls((prev) => {
-                                        const existing = prev[itemKey] || [];
-                                        if (existing.includes(failedUrl)) return prev;
-                                        return { ...prev, [itemKey]: [...existing, failedUrl] };
-                                      });
-                                    }}
-                                  />
-                                  )
-                                ) : (
-                                  <div
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      textAlign: "center",
-                                      padding: 10,
-                                      fontSize: 11,
-                                      fontWeight: 800,
-                                      color: "rgba(0,0,0,0.65)",
-                                      background:
-                                        "linear-gradient(135deg, rgba(255,255,255,0.65), rgba(0,0,0,0.08))",
-                                    }}
-                                  >
-                                    No poster
-                                  </div>
-                                )}
-                              </div>
-                            </>
-                          ) : (
-                            <>
+                          <>
                                 <div
                                     style={{
                                       position: "absolute",
@@ -19291,7 +19164,6 @@ export default function Page() {
                                 )}
                               </div>
                             </>
-                          )}
 
                           </div>
 
