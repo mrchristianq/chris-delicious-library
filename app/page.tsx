@@ -20435,8 +20435,12 @@ export default function Page() {
           transform: translate(var(--dragPushX, 0px), var(--dragPushY, 0px)) rotate(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
         }
         .case:hover .caseSurface {
+          /* No transform-style: preserve-3d. The surface itself rotates in 3D
+             via perspective + rotateX/Y, which is the whole tilt effect; the
+             cover content is flat and just projects onto it. preserve-3d only
+             matters for nested 3D children, and it made Safari black out the
+             game cover's overflow:hidden container when the 3D layer formed. */
           transform: translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
-          transform-style: preserve-3d;
         }
         .case-reflection {
           transition: opacity 180ms ease;
