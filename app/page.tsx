@@ -783,8 +783,9 @@ function parseStoredSettingValue(value: unknown): string | number | boolean {
   const str = String(value ?? "");
   const numValue = Number(str);
   if (!Number.isNaN(numValue) && str !== "") return numValue;
-  if (str === "true") return true;
-  if (str === "false") return false;
+  const lower = str.trim().toLowerCase();
+  if (lower === "true") return true;
+  if (lower === "false") return false;
   return str;
 }
 
@@ -2131,7 +2132,7 @@ function useElementWidth<T extends HTMLElement>() {
 }
 
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
-type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync">;
+type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync" | "themes" | "icons">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
 type MovieQuickLinkKey = "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
@@ -4134,7 +4135,7 @@ export default function Page() {
   }, [mobileFullLibraryOpen, nav]);
 
   useEffect(() => {
-    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync") {
+    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync" && nav !== "themes" && nav !== "icons") {
       setLastLibraryNav(nav);
     }
   }, [nav]);
@@ -16674,7 +16675,11 @@ export default function Page() {
                 <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.96) 0%, rgba(236,240,246,0.94) 100%)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobileLayout ? "12px 14px 10px" : "20px 28px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(252,253,255,0.78)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 10 : 14, minWidth: 0 }}>
-                      <button type="button" onClick={handleExitThemes} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: isMobileLayout ? 20 : 22, padding: "0 4px", lineHeight: 1, flex: "0 0 auto" }} aria-label="Back">←</button>
+                      <button type="button" onClick={handleExitThemes} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", padding: "0 4px", lineHeight: 1, flex: "0 0 auto", display: "flex", alignItems: "center" }} aria-label="Back">
+                        <svg width={isMobileLayout ? 22 : 26} height={isMobileLayout ? 22 : 26} viewBox="0 0 24 24" fill="none" style={{ filter: "drop-shadow(0 1.5px 1px rgba(0,0,0,0.32))" }}>
+                          <path d="M20 12 H5 M11 6 L5 12 L11 18" stroke="currentColor" strokeWidth={3.6} strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
                       <img src={getSidebarIconSrc("themes", "/icon-theme.png")} alt="" width={isMobileLayout ? 26 : 32} height={isMobileLayout ? 26 : 32} style={{ display: "block", borderRadius: 8, flex: "0 0 auto" }} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: isMobileLayout ? 17 : 22, fontWeight: 750, color: "#1d2735", lineHeight: 1.1 }}>Themes</div>
@@ -16871,7 +16876,11 @@ export default function Page() {
                 <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.96) 0%, rgba(236,240,246,0.94) 100%)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobileLayout ? "12px 14px 10px" : "20px 28px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(252,253,255,0.78)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 10 : 14, minWidth: 0 }}>
-                      <button type="button" onClick={handleExitIcons} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: isMobileLayout ? 20 : 22, padding: "0 4px", lineHeight: 1, flex: "0 0 auto" }} aria-label="Back">←</button>
+                      <button type="button" onClick={handleExitIcons} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", padding: "0 4px", lineHeight: 1, flex: "0 0 auto", display: "flex", alignItems: "center" }} aria-label="Back">
+                        <svg width={isMobileLayout ? 22 : 26} height={isMobileLayout ? 22 : 26} viewBox="0 0 24 24" fill="none" style={{ filter: "drop-shadow(0 1.5px 1px rgba(0,0,0,0.32))" }}>
+                          <path d="M20 12 H5 M11 6 L5 12 L11 18" stroke="currentColor" strokeWidth={3.6} strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
                       <img src={getSidebarIconSrc("icons", "/icon-settings.png")} alt="" width={isMobileLayout ? 26 : 32} height={isMobileLayout ? 26 : 32} style={{ display: "block", borderRadius: 8, flex: "0 0 auto" }} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: isMobileLayout ? 17 : 22, fontWeight: 750, color: "#1d2735", lineHeight: 1.1 }}>Icons</div>
@@ -19262,7 +19271,7 @@ export default function Page() {
                               title={show.title}
                               style={{
                                 position: "absolute",
-                                top: caseHeight + (isUpcomingView && upcomingLabel ? 32 : 6),
+                                top: caseHeight + (isUpcomingView && upcomingLabel ? 39 : 6),
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",
