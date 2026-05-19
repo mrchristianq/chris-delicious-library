@@ -20426,10 +20426,17 @@ export default function Page() {
           overflow: hidden;
           background: #ececec;
           transition: transform 70ms ease, filter 140ms ease;
-          /* 2D transform only. A 3D transform here (perspective + rotateX/Y +
-             preserve-3d) triggered a Safari bug where covers scrolled into
-             view after first paint stayed black until a repaint was forced. */
+          /* At rest: flat 2D transform only. An always-on 3D transform here
+             (perspective + rotateX/Y) triggered a Safari bug where covers
+             scrolled into view after first paint stayed black until a repaint.
+             The 3D tilt is applied only on hover (below) — by then the cover
+             is already painted and being interacted with, so the bug can't
+             bite, and the tilt only matters on hover anyway. */
           transform: translate(var(--dragPushX, 0px), var(--dragPushY, 0px)) rotate(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
+        }
+        .case:hover .caseSurface {
+          transform: translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
+          transform-style: preserve-3d;
         }
         .case-reflection {
           transition: opacity 180ms ease;
