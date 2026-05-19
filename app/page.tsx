@@ -18924,13 +18924,6 @@ export default function Page() {
                                   borderRadius: isMobileLayout ? coverImageRadiusPx : 0,
                                   background: COVER_STAGE_BACKGROUND,
                                   boxShadow: coverSurfaceBoxShadow,
-                                  // Promote to its own compositing layer. Game
-                                  // covers (unlike movie/TV covers, which sit in
-                                  // a 3D-transformed .caseSurface) otherwise land
-                                  // in Safari's general paint path, where newly
-                                  // virtualized covers fail to paint until a
-                                  // repaint is forced — showing up as black.
-                                  transform: "translateZ(0)",
                                 }}
                               >
                                 {selectedCoverUrl ? (
@@ -20433,8 +20426,10 @@ export default function Page() {
           overflow: hidden;
           background: #ececec;
           transition: transform 70ms ease, filter 140ms ease;
-          transform: translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
-          transform-style: preserve-3d;
+          /* 2D transform only. A 3D transform here (perspective + rotateX/Y +
+             preserve-3d) triggered a Safari bug where covers scrolled into
+             view after first paint stayed black until a repaint was forced. */
+          transform: translate(var(--dragPushX, 0px), var(--dragPushY, 0px)) rotate(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1));
         }
         .case-reflection {
           transition: opacity 180ms ease;
