@@ -397,11 +397,33 @@ function updateMovieRow_(payload) {
 
   if (rowNum === -1) return createCORSResponse("Error: matching movie row not found");
 
+  var appliedColumns = [];
+  var skippedColumns = [];
+
   for (var colName in updates) {
     if (!Object.prototype.hasOwnProperty.call(updates, colName)) continue;
     var colNumber = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, colName);
-    if (!colNumber) continue;
+    if (!colNumber) {
+      skippedColumns.push(colName);
+      continue;
+    }
     sheet.getRange(rowNum, colNumber).setValue(String(updates[colName] || "").trim());
+    appliedColumns.push(colName);
+  }
+
+  var requestedWatchStatus = Object.prototype.hasOwnProperty.call(updates, "Watch Status") ||
+    Object.prototype.hasOwnProperty.call(updates, "WatchStatus") ||
+    Object.prototype.hasOwnProperty.call(updates, "Watched");
+  var appliedWatchStatus = appliedColumns.indexOf("Watch Status") !== -1 ||
+    appliedColumns.indexOf("WatchStatus") !== -1 ||
+    appliedColumns.indexOf("Watched") !== -1;
+
+  if (requestedWatchStatus && !appliedWatchStatus) {
+    return createCORSResponse("Error: movie watch status column not found. Add Watch Status, WatchStatus, or Watched column.");
+  }
+
+  if (!appliedColumns.length && Object.keys(updates).length) {
+    return createCORSResponse("Error: no matching movie columns found for updates: " + skippedColumns.join(", "));
   }
 
   return createCORSResponse("Success");

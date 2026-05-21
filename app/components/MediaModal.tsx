@@ -423,7 +423,7 @@ function buildSaveResultDialog(
           "Updated fields",
           "No field differences were detected, but the spreadsheet accepted the save request."
         ),
-        "The spreadsheet write endpoint returned success.",
+        "The spreadsheet write endpoint accepted the save request.",
       ],
     };
   }

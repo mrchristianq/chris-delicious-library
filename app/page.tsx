@@ -5732,6 +5732,8 @@ export default function Page() {
         TMDB_Rating: safeStr(updates.tmdbRating),
         TMDB_ID: safeStr(updates.tmdbId),
         "Watch Status": normalizedWatchStatus,
+        WatchStatus: normalizedWatchStatus,
+        Watched: normalizedWatchStatus,
         WatchDate: safeStr(updates.watchDate),
         Tags: safeStr(updates.tags),
         ReleaseDate: safeStr(updates.releaseDate),
@@ -6431,7 +6433,12 @@ export default function Page() {
         if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
         const updates: Record<string, string> = {};
         if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
-        if (data.watchStatus) updates["Watch Status"] = safeStr(data.watchStatus);
+        if (data.watchStatus) {
+          const watchStatus = safeStr(data.watchStatus);
+          updates["Watch Status"] = watchStatus;
+          updates.WatchStatus = watchStatus;
+          updates.Watched = watchStatus;
+        }
         if (data.watchDate) updates["WatchDate"] = safeStr(data.watchDate);
         await postSheetWrite(moviesWriteUrl, { action: "updateMovie", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save movie rating");
         setMovieDetailItem((prev: any) => ({
@@ -6531,10 +6538,11 @@ export default function Page() {
     if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
+    const watchStatus = safeStr(values.watchStatus) || "Backlog";
     const row: Record<string, string> = {
       Title: title, Year: safeStr(values.year),
       MyRating: safeStr(values.myRating), TMDB_Rating: safeStr(values.tmdbRating),
-      TMDB_ID: safeStr(values.tmdbId), "Watch Status": safeStr(values.watchStatus) || "Backlog",
+      TMDB_ID: safeStr(values.tmdbId), "Watch Status": watchStatus, WatchStatus: watchStatus, Watched: watchStatus,
       WatchDate: safeStr(values.watchDate), Tags: safeStr(values.tags),
       ReleaseDate: safeStr(values.releaseDate), Runtime: safeStr(values.runtime),
       Status: safeStr(values.status), Genres: safeStr(values.genres),
