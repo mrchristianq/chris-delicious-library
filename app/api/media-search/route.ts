@@ -45,11 +45,26 @@ type IgdbGame = {
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
 const TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280";
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
 let igdbTokenCache: { token: string; expiresAt: number } | null = null;
 
 function safeStr(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function searchJson(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: {
+      ...CORS_HEADERS,
+      ...(init?.headers || {}),
+    },
+  });
 }
 
 function normalizeTmdbMovieStatus(value: string): string {
@@ -883,6 +898,13 @@ async function lookupIgdbById(id: string): Promise<SearchResult | null> {
   return mapIgdbGameToResult(first);
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const type = safeStr(searchParams.get("type")) as SearchType;
@@ -896,23 +918,23 @@ export async function GET(req: NextRequest) {
     .filter((value) => /^\d+$/.test(value));
 
   if (!query && !lookupId && mode !== "discover") {
-    return NextResponse.json({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
+    return searchJson({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
   }
 
   if (!["book", "book-apple", "book-hardcover", "tv", "movie", "game"].includes(type)) {
-    return NextResponse.json({ ok: false, error: "Invalid media type." }, { status: 400 });
+    return searchJson({ ok: false, error: "Invalid media type." }, { status: 400 });
   }
 
   try {
     if (type === "game" && mode === "discover") {
       const results = await discoverIgdbGames(genreIds);
-      return NextResponse.json({ ok: true, results });
+      return searchJson({ ok: true, results });
     }
 
     if (lookupId) {
       if (type === "book-hardcover") {
         const editions = await lookupHardcoverEditions(lookupId, bookFormat);
-        return NextResponse.json({ ok: true, results: editions });
+        return searchJson({ ok: true, results: editions });
       }
       const lookupResult =
         type === "book"
@@ -924,10 +946,10 @@ export async function GET(req: NextRequest) {
               : await lookupIgdbById(lookupId);
 
       if (lookupResult) {
-        return NextResponse.json({ ok: true, results: [lookupResult] });
+        return searchJson({ ok: true, results: [lookupResult] });
       }
       if (!query) {
-        return NextResponse.json({ ok: true, results: [] });
+        return searchJson({ ok: true, results: [] });
       }
     }
 
@@ -944,9 +966,9 @@ export async function GET(req: NextRequest) {
                 ? await searchTmdb("movie", query)
                 : await searchIgdb(query);
 
-    return NextResponse.json({ ok: true, results });
+    return searchJson({ ok: true, results });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Search failed.";
-    return NextResponse.json({ ok: false, error: message }, { status: 502 });
+    return searchJson({ ok: false, error: message }, { status: 502 });
   }
 }

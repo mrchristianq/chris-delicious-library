@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 export type AddExtendedType = "movie" | "tv" | "game" | "book-apple" | "book-hardcover";
@@ -145,7 +146,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
     setSearched(false);
     try {
       const params = new URLSearchParams({ type: getApiType(selectedType), query: query.trim() });
-      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const res = await fetchMediaSearch(params);
       const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: SearchResult[] };
       if (!res.ok || !payload.ok) throw new Error(payload.error || "Search failed.");
       setResults(Array.isArray(payload.results) ? payload.results : []);
@@ -175,7 +176,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
             lookupId: hardcoverBookId,
             bookFormat,
           });
-          const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+          const res = await fetchMediaSearch(params);
           const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: SearchResult[] };
           if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to load editions.");
           setEditionResults(Array.isArray(payload.results) ? payload.results : []);

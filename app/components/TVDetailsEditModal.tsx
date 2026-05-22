@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type TVDetailsEditModalProps = {
@@ -255,7 +256,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew
       if (tmdbId) params.set("lookupId", tmdbId);
       if (title)  params.set("query", title);
 
-      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const res = await fetchMediaSearch(params);
       const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ data?: Record<string, string> }> };
 
       if (!res.ok || !payload.ok) throw new Error(payload.error || "TMDB fetch failed.");

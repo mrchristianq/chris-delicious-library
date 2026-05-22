@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import Papa from "papaparse";
 import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddExtendedType } from "./components/AddItemModal";
+import { fetchMediaSearch } from "./lib/mediaSearchClient";
 import { StatisticsView } from "./components/StatisticsView";
 import { RoadmapView } from "./components/RoadmapView";
 import { BookDetailsPage } from "./components/BookDetailsPage";
@@ -9070,7 +9071,7 @@ export default function Page() {
           ? await nativeDiscoverIgdbGames(preferredGenreIds)
           : isStaticSiteBuild
             ? []
-            : await fetch(`/api/media-search?type=game&mode=discover&genreIds=${encodeURIComponent(preferredGenreIds.join(","))}`, { cache: "no-store" })
+            : await fetchMediaSearch(new URLSearchParams({ type: "game", mode: "discover", genreIds: preferredGenreIds.join(",") }))
                 .then((res) => res.json())
                 .then((payload) => (Array.isArray(payload?.results) ? payload.results : []));
         if (cancelled) return;

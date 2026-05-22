@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 import { openExternalUrl } from "../native/externalLinks";
@@ -100,7 +101,7 @@ async function resolveTopIgdbGameUrl(item: Record<string, unknown>, fallbackUrl:
 
   try {
     const query = [title, year].filter(Boolean).join(" ");
-    const res = await fetch(`/api/media-search?type=game&query=${encodeURIComponent(query)}`, { cache: "no-store" });
+    const res = await fetchMediaSearch(new URLSearchParams({ type: "game", query }));
     const payload = await res.json().catch(() => ({}));
     const first = Array.isArray(payload?.results) ? payload.results[0] : null;
     const directUrl = safeStr(first?.data?.externalUrl);

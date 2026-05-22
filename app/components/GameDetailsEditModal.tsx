@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type GameDetailsEditModalProps = {
@@ -297,7 +298,7 @@ export function GameDetailsEditModal({
       if (igdbId) params.set("lookupId", igdbId);
       else if (title) params.set("query", title);
 
-      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const res = await fetchMediaSearch(params);
       const payload = await res.json().catch(() => ({})) as {
         ok?: boolean;
         error?: string;

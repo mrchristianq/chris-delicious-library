@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type BookDetailsEditModalProps = {
@@ -346,7 +347,7 @@ export function BookDetailsEditModal({
       const type = source === "apple" ? "book-apple" : "book-hardcover";
       const params = new URLSearchParams({ type, query: title });
       if (values.type) params.set("bookFormat", values.type);
-      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const res = await fetchMediaSearch(params);
       const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ id?: string; title?: string; subtitle?: string; year?: string; imageUrl?: string; data?: Record<string, string> }> };
 
       if (!res.ok || !payload.ok) throw new Error(payload.error || "Sync failed.");
@@ -386,7 +387,7 @@ export function BookDetailsEditModal({
     try {
       const params = new URLSearchParams({ type: "book-hardcover", lookupId: bookId });
       if (values.type) params.set("bookFormat", values.type);
-      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const res = await fetchMediaSearch(params);
       const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ id?: string; title?: string; subtitle?: string; imageUrl?: string; year?: string; data?: Record<string, string> }> };
 
       if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to fetch editions.");

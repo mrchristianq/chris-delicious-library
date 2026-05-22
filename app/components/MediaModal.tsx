@@ -1,4 +1,6 @@
 import React from "react";
+import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { isNativeRuntime } from "../native/bridge";
 
 interface MediaModalProps {
   item: Record<string, any> | null;
@@ -1334,7 +1336,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       setResyncError("Unable to resync: missing metadata identifier and title.");
       return;
     }
-    if (isStaticSiteBuild) {
+    if (isStaticSiteBuild && !isNativeRuntime()) {
       setResyncError(STATIC_SITE_RESYNC_MESSAGE);
       return;
     }
@@ -1344,7 +1346,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
       const params = new URLSearchParams({ type: itemType });
       if (lookupId) params.set("lookupId", lookupId);
       if (fallbackQuery) params.set("query", fallbackQuery);
-      const res = await fetch(`/api/media-search?${params.toString()}`, { cache: "no-store" });
+      const res = await fetchMediaSearch(params);
       const payload = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
