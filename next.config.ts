@@ -19,6 +19,9 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    turbopackMinify: false,
+  },
 };
 
 export default nextConfig;

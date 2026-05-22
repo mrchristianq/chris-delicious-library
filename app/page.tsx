@@ -6990,11 +6990,11 @@ export default function Page() {
       loadCsvSnapshot();
     }
 
-    const fetchCsv = async (url: string) => {
+    async function fetchCsv(url: string) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
       return await res.text();
-    };
+    }
 
     function loadCsvSnapshot() {
       Promise.allSettled([

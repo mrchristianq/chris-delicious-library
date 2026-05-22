@@ -670,13 +670,14 @@ function buildGameEditValues(item: Record<string, any>): Record<string, string> 
 }
 
 type RatingScale = "five" | "ten";
+const IS_STATIC_SITE_BUILD = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
 
 function normalizeRatingValue(value: string, scale: RatingScale): number | null {
   const parsed = Number.parseFloat(value);
   if (Number.isNaN(parsed)) return null;
 
   if (scale === "ten") {
-    let normalized = parsed;
+    var normalized = parsed;
     if (value.includes("%") || normalized > 10) {
       normalized = normalized / 10;
     }
@@ -684,7 +685,7 @@ function normalizeRatingValue(value: string, scale: RatingScale): number | null 
     return Math.max(0, Math.min(10, normalized));
   }
 
-  let normalized = parsed;
+  var normalized = parsed;
   if (value.includes("%")) {
     normalized = normalized / 20;
   } else if (normalized > 5) {
@@ -726,28 +727,30 @@ function renderGameUserRating(value: string) {
   return renderRating(value, "ten");
 }
 
+function buildGameInfoRows(item: Record<string, any>): InfoRow[] {
+  var statusRaw = firstNonEmpty(item, ["status", "Status", "gameStatus", "playStatus"]);
+  var completedRaw = firstNonEmpty(item, ["completed", "Completed"]);
+  var completedDate = firstNonEmpty(item, ["dateCompleted", "Date Completed", "completedDate"]);
+  var completedChecked = isTruthyValue(completedRaw) || Boolean(completedDate) || statusRaw.toLowerCase() === "completed";
+  return [
+    { label: "Release Date", value: firstNonEmpty(item, ["releaseDate", "Release Date"]) || DASH },
+    { label: "Platforms", value: firstNonEmpty(item, ["platforms", "Platforms"]) || DASH },
+    { label: "Ownership", value: firstNonEmpty(item, ["ownership", "Ownership"]) || DASH },
+    { label: "Year Played", value: firstNonEmpty(item, ["yearPlayed", "Year Played"]) || DASH },
+    { label: "Hours Played", value: firstNonEmpty(item, ["hoursPlayed", "playtime"]) || DASH },
+    { label: "Developer", value: firstNonEmpty(item, ["developer", "studio"]) || DASH },
+    { label: "IGDB ID", value: firstNonEmpty(item, ["igdbId", "IGDB_ID"]) || DASH },
+    { label: "Date Added", value: firstNonEmpty(item, ["dateAdded", "addedDate"]) || DASH },
+    {
+      label: "Completion Status",
+      value: renderTwoStateToggle(completedChecked, "Completed", "Not Completed"),
+    },
+    { label: "Date Completed", value: completedDate || DASH },
+  ];
+}
+
 function buildInfoRows(item: Record<string, any>, itemType: "game" | "book" | "tv" | "movie"): InfoRow[] {
-  if (itemType === "game") {
-    const statusRaw = firstNonEmpty(item, ["status", "Status", "gameStatus", "playStatus"]);
-    const completedRaw = firstNonEmpty(item, ["completed", "Completed"]);
-    const completedDate = firstNonEmpty(item, ["dateCompleted", "Date Completed", "completedDate"]);
-    const completedChecked = isTruthyValue(completedRaw) || Boolean(completedDate) || statusRaw.toLowerCase() === "completed";
-    return [
-      { label: "Release Date", value: firstNonEmpty(item, ["releaseDate", "Release Date"]) || DASH },
-      { label: "Platforms", value: firstNonEmpty(item, ["platforms", "Platforms"]) || DASH },
-      { label: "Ownership", value: firstNonEmpty(item, ["ownership", "Ownership"]) || DASH },
-      { label: "Year Played", value: firstNonEmpty(item, ["yearPlayed", "Year Played"]) || DASH },
-      { label: "Hours Played", value: firstNonEmpty(item, ["hoursPlayed", "playtime"]) || DASH },
-      { label: "Developer", value: firstNonEmpty(item, ["developer", "studio"]) || DASH },
-      { label: "IGDB ID", value: firstNonEmpty(item, ["igdbId", "IGDB_ID"]) || DASH },
-      { label: "Date Added", value: firstNonEmpty(item, ["dateAdded", "addedDate"]) || DASH },
-      {
-        label: "Completion Status",
-        value: renderTwoStateToggle(completedChecked, "Completed", "Not Completed"),
-      },
-      { label: "Date Completed", value: completedDate || DASH },
-    ];
-  }
+  if (itemType === "game") return buildGameInfoRows(item);
 
   if (itemType === "book") {
     return [
@@ -815,7 +818,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
   popupCoverMode,
   onPopupCoverModeChange,
 }) => {
-  const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
+  const isStaticSiteBuild = IS_STATIC_SITE_BUILD;
   const [posterIndex, setPosterIndex] = React.useState(0);
   const [isEditingBook, setIsEditingBook] = React.useState(false);
   const [isSavingBook, setIsSavingBook] = React.useState(false);
