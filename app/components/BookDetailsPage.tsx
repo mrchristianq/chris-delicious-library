@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
+import { handleExternalLinkClick, openExternalUrl } from "../native/externalLinks";
 
 type BookDetailsPageProps = {
   item: Record<string, unknown>;
@@ -15,6 +16,7 @@ type BookDetailsPageProps = {
   onRate?: (item: Record<string, unknown>) => void;
   onSelectRelated: (item: Record<string, unknown>) => void;
   recommendedBooks?: Record<string, unknown>[];
+  suppressRemoteRelatedCovers?: boolean;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   isAudiobookItem: (item: Record<string, unknown>) => boolean;
   onPaletteChange?: (palette: { start: string; end: string } | null) => void;
@@ -49,6 +51,10 @@ function safeStr(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function isRemoteHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
 function splitList(value: unknown): string[] {
   return safeStr(value)
     .split(/[,\|/]/g)
@@ -66,6 +72,18 @@ function formatLongDate(value: unknown): string {
     day: "numeric",
     year: "numeric",
   }).format(parsed);
+}
+
+function getGoodreadsBookUrl(book: Record<string, unknown>): string {
+  const directUrl = safeStr((book as any).goodreadsUrl || (book as any).GoodreadsUrl || (book as any).GoodreadsURL);
+  if (directUrl) return directUrl;
+
+  const isbn = safeStr((book as any).isbn13 || (book as any).ISBN13 || (book as any).isbn || (book as any).ISBN);
+  const title = safeStr((book as any).title || (book as any).Title);
+  const author = safeStr((book as any).author || (book as any).Author || (book as any).authors || (book as any).Authors);
+  const query = isbn || [title, author].filter(Boolean).join(" ");
+  if (!query) return "";
+  return `https://www.goodreads.com/search?q=${encodeURIComponent(query)}`;
 }
 
 function getHardcoverBookUrl(book: Record<string, unknown>): string {
@@ -430,12 +448,14 @@ export function BookDetailsPage({
   onRate,
   onSelectRelated,
   recommendedBooks,
+  suppressRemoteRelatedCovers = false,
   getDisplayCoverUrl,
   isAudiobookItem,
   onPaletteChange,
   highlightColor,
 }: BookDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
   const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
@@ -952,13 +972,14 @@ export function BookDetailsPage({
                 }}
               >
                 {(() => {
-                  const externalHref = getHardcoverBookUrl(item);
+                  const externalHref = getGoodreadsBookUrl(item);
                   return externalHref ? (
                     <a
                       href={externalHref}
                       target="_blank"
                       rel="noopener noreferrer"
-                      title="Open on Hardcover"
+                      title="Open on Goodreads"
+                      onClick={(event) => handleExternalLinkClick(event, externalHref)}
                       style={{ display: "block", lineHeight: 0 }}
                     >
                       <img
@@ -1241,7 +1262,8 @@ export function BookDetailsPage({
                   return (isMobileLayout ? displayBooksModule.items : displayBooksModule.items.slice(0, 6)).map((book) => {
                   const isRecommendation = Boolean((book as any).__isRecommendation);
                   const fallbackCover = safeStr((book as any).posterUrl || (book as any).imageUrl || (book as any).ImageURL);
-                  const coverSrc = getDisplayCoverUrl(book) || fallbackCover;
+                  const coverSrcRaw = getDisplayCoverUrl(book) || fallbackCover;
+                  const coverSrc = ((suppressRemoteRelatedCovers && isRemoteHttpUrl(coverSrcRaw)) || failedRelatedCoverUrls.has(coverSrcRaw)) ? "" : coverSrcRaw;
                   const hardcoverUrl = getHardcoverBookUrl(book);
                   const hardcoverId = safeStr((book as any).hardcoverId || (book as any).HardcoverID || (book as any).id);
                   const titleAuthorKey = `${normalizeBookTitle((book as any).title)}|||${normalizeBookAuthor((book as any).author || (book as any).Author)}`;
@@ -1274,9 +1296,7 @@ export function BookDetailsPage({
                         if (!showNotInLibrary || !hardcoverUrl) return;
                         event.preventDefault();
                         event.stopPropagation();
-                        if (typeof window !== "undefined") {
-                          window.open(hardcoverUrl, "_blank", "noopener,noreferrer");
-                        }
+                        void openExternalUrl(hardcoverUrl);
                       }}
                       style={{
                         borderRadius: 6,
@@ -1293,6 +1313,14 @@ export function BookDetailsPage({
                         <img
                           src={coverSrc}
                           alt={safeStr(book.title)}
+                          onError={() => {
+                            setFailedRelatedCoverUrls((prev) => {
+                              if (prev.has(coverSrc)) return prev;
+                              const next = new Set(prev);
+                              next.add(coverSrc);
+                              return next;
+                            });
+                          }}
                           style={{
                             width: "auto",
                             maxWidth: "100%",

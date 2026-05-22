@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
+import { openExternalUrl } from "../native/externalLinks";
+import { isNativeRuntime, nativeResolveIgdbUrl } from "../native/bridge";
 
 type GameDetailsPageProps = {
   item: Record<string, unknown>;
@@ -18,6 +20,7 @@ type GameDetailsPageProps = {
   relatedGames?: Record<string, unknown>[];
   relatedGamesLabel?: string;
   recommendedGames?: Record<string, unknown>[];
+  suppressRemoteRelatedCovers?: boolean;
   onSelectRelatedGame?: (game: Record<string, unknown>) => void;
   highlightColor?: string;
 };
@@ -44,12 +47,10 @@ const FALLBACK_PALETTE: PaletteState = {
 
 function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math.round(v))); }
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
-function slugifyForIgdb(value: string): string {
-  return safeStr(value)
-    .toLowerCase()
-    .replace(/['']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function isRemoteHttpUrl(value: string): boolean { return /^https?:\/\//i.test(value); }
+function getIgdbLuckySearchUrl(title: string, year: string): string {
+  const query = ["site:igdb.com/games", title, year].filter(Boolean).join(" ");
+  return `https://www.google.com/search?btnI=I&q=${encodeURIComponent(query)}`;
 }
 function getIgdbGameUrl(item: Record<string, unknown>): string {
   // Recommendation cards from the API already supply an externalUrl.
@@ -58,9 +59,59 @@ function getIgdbGameUrl(item: Record<string, unknown>): string {
   const slug = safeStr((item as Record<string, unknown>).igdbSlug || (item as Record<string, unknown>).slug);
   if (slug) return `https://www.igdb.com/games/${encodeURIComponent(slug)}`;
   const title = safeStr((item as Record<string, unknown>).title);
-  const guessed = slugifyForIgdb(title);
-  if (guessed) return `https://www.igdb.com/games/${guessed}`;
+  const year = formatYear(
+    (item as Record<string, unknown>).releaseDate ||
+      (item as Record<string, unknown>).ReleaseDate ||
+      (item as Record<string, unknown>).year ||
+      (item as Record<string, unknown>).Year
+  );
+  if (title) return getIgdbLuckySearchUrl(title, year);
   return "";
+}
+function getIgdbGameSearchParts(item: Record<string, unknown>): { title: string; year: string } {
+  const title = safeStr((item as Record<string, unknown>).title);
+  const year = formatYear(
+    (item as Record<string, unknown>).releaseDate ||
+      (item as Record<string, unknown>).ReleaseDate ||
+      (item as Record<string, unknown>).year ||
+      (item as Record<string, unknown>).Year
+  );
+  return { title, year };
+}
+async function resolveTopIgdbGameUrl(item: Record<string, unknown>, fallbackUrl: string): Promise<string> {
+  const provided = safeStr((item as Record<string, unknown>).externalUrl);
+  if (provided) return provided;
+
+  const slug = safeStr((item as Record<string, unknown>).igdbSlug || (item as Record<string, unknown>).slug);
+  if (slug) return `https://www.igdb.com/games/${encodeURIComponent(slug)}`;
+
+  const { title, year } = getIgdbGameSearchParts(item);
+  if (!title) return fallbackUrl;
+  const directFallbackUrl = getIgdbLuckySearchUrl(title, year);
+
+  if (isNativeRuntime()) {
+    try {
+      return (await nativeResolveIgdbUrl(title, year)) || directFallbackUrl;
+    } catch (error) {
+      console.warn("Native IGDB resolve failed:", error);
+      return directFallbackUrl;
+    }
+  }
+
+  try {
+    const query = [title, year].filter(Boolean).join(" ");
+    const res = await fetch(`/api/media-search?type=game&query=${encodeURIComponent(query)}`, { cache: "no-store" });
+    const payload = await res.json().catch(() => ({}));
+    const first = Array.isArray(payload?.results) ? payload.results[0] : null;
+    const directUrl = safeStr(first?.data?.externalUrl);
+    const resolvedSlug = safeStr(first?.data?.igdbSlug);
+    if (directUrl) return directUrl;
+    if (resolvedSlug) return `https://www.igdb.com/games/${encodeURIComponent(resolvedSlug)}`;
+  } catch (error) {
+    console.warn("IGDB resolve failed:", error);
+  }
+
+  return directFallbackUrl;
 }
 function normalizeGameTitle(v: unknown): string {
   return safeStr(v).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
@@ -241,8 +292,10 @@ export function GameDetailsPage({
   item, isMobileLayout, usePageBackground = false,
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
   relatedGames, recommendedGames, onSelectRelatedGame, highlightColor,
+  suppressRemoteRelatedCovers = false,
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
   const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
@@ -626,7 +679,17 @@ export function GameDetailsPage({
                   }} />
                 );
                 return externalHref ? (
-                  <a href={externalHref} target="_blank" rel="noopener noreferrer" title="Open on IGDB" style={{ display: "block", lineHeight: 0, flexShrink: 0 }}>
+                  <a
+                    href={externalHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open on IGDB"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void resolveTopIgdbGameUrl(item, externalHref).then((url) => openExternalUrl(url));
+                    }}
+                    style={{ display: "block", lineHeight: 0, flexShrink: 0 }}
+                  >
                     {img}
                   </a>
                 ) : img;
@@ -742,7 +805,8 @@ export function GameDetailsPage({
                     safeStr(gameRec.posterUrl) ||
                     safeStr((gameRec as { ImageURL?: string }).ImageURL) ||
                     safeStr((gameRec as { PosterURL?: string }).PosterURL);
-                  const gCover = getDisplayCoverUrl(game) || directRecCover;
+                  const gCoverRaw = getDisplayCoverUrl(game) || directRecCover;
+                  const gCover = ((suppressRemoteRelatedCovers && isRemoteHttpUrl(gCoverRaw)) || failedRelatedCoverUrls.has(gCoverRaw)) ? "" : gCoverRaw;
                   const isRecommendation = Boolean((game as Record<string, unknown>).__isRecommendation);
                   const igdbUrl = isRecommendation ? safeStr((game as Record<string, unknown>).externalUrl) : "";
                   const relatedDeveloper = safeStr((game as Record<string, unknown>).developer).toLowerCase();
@@ -785,9 +849,7 @@ export function GameDetailsPage({
                           if (!isRecommendation || !igdbUrl) return;
                           event.preventDefault();
                           event.stopPropagation();
-                          if (typeof window !== "undefined") {
-                            window.open(igdbUrl, "_blank", "noopener,noreferrer");
-                          }
+                          void openExternalUrl(igdbUrl);
                         }}
                         style={{
                           width: RELATED_ITEM_W,
@@ -801,7 +863,14 @@ export function GameDetailsPage({
                         }}
                       >
                         {gCover ? (
-                          <img src={gCover} alt={gTitle} style={{
+                          <img src={gCover} alt={gTitle} onError={() => {
+                            setFailedRelatedCoverUrls((prev) => {
+                              if (prev.has(gCover)) return prev;
+                              const next = new Set(prev);
+                              next.add(gCover);
+                              return next;
+                            });
+                          }} style={{
                             width: "100%",
                             maxHeight: "100%",
                             objectFit: "cover",

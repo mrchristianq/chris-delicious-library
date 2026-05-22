@@ -32,6 +32,7 @@ type GoogleBooksVolume = {
 type IgdbGame = {
   id?: number;
   name?: string;
+  slug?: string;
   first_release_date?: number;
   rating?: number;
   summary?: string;
@@ -761,6 +762,8 @@ function mapIgdbGameToResult(item: IgdbGame): SearchResult {
       platform: platforms[0] || "",
       platforms: platforms.join(", "),
       igdbId: item.id != null ? String(item.id) : "",
+      igdbSlug: safeStr(item.slug),
+      externalUrl: safeStr(item.slug) ? `https://www.igdb.com/games/${encodeURIComponent(safeStr(item.slug))}` : "",
       igdbRating: item.rating != null ? String(item.rating) : "",
       genres: genres.join(", "),
       developer: developers[0] || "",
@@ -778,7 +781,7 @@ async function searchIgdb(query: string): Promise<SearchResult[]> {
   }
   const token = await getIgdbAccessToken();
 
-  const body = `search \"${query.replace(/\"/g, "") }\"; fields id,name,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name; limit 8;`;
+  const body = `search \"${query.replace(/\"/g, "") }\"; fields id,name,slug,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name; limit 8;`;
 
   const res = await fetch("https://api.igdb.com/v4/games", {
     method: "POST",
@@ -800,6 +803,51 @@ async function searchIgdb(query: string): Promise<SearchResult[]> {
   return payload.map((item) => mapIgdbGameToResult(item));
 }
 
+async function discoverIgdbGames(genreIds: string[] = []): Promise<SearchResult[]> {
+  const clientId = pickEnv(["IGDB_CLIENT_ID", "TWITCH_CLIENT_ID"]);
+  if (!clientId) {
+    throw new Error("IGDB client id is not configured (IGDB_CLIENT_ID or TWITCH_CLIENT_ID).");
+  }
+  const token = await getIgdbAccessToken();
+  const now = Math.floor(Date.now() / 1000);
+  const recentFloor = now - 365 * 24 * 60 * 60;
+  const upcomingCeiling = now + 365 * 24 * 60 * 60;
+  const fields = "fields id,name,slug,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name;";
+  const genreFilter = genreIds.length ? ` & genres = (${genreIds.join(",")})` : "";
+  const bodies = [
+    `${fields} where cover != null & first_release_date >= ${now} & first_release_date <= ${upcomingCeiling}${genreFilter}; sort hypes desc; limit 18;`,
+    `${fields} where cover != null & first_release_date <= ${now} & first_release_date >= ${recentFloor}${genreFilter}; sort total_rating_count desc; limit 18;`,
+    `${fields} where cover != null & first_release_date <= ${now}${genreFilter}; sort rating desc; limit 18;`,
+  ];
+
+  const responses = await Promise.all(
+    bodies.map(async (body) => {
+      const res = await fetch("https://api.igdb.com/v4/games", {
+        method: "POST",
+        headers: {
+          "Client-ID": clientId,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "text/plain",
+        },
+        body,
+        cache: "no-store",
+      });
+      const payload = (await res.json().catch(() => [])) as IgdbGame[];
+      if (!res.ok || !Array.isArray(payload)) {
+        throw new Error("IGDB discovery failed.");
+      }
+      return payload;
+    })
+  );
+
+  const byId = new Map<string, IgdbGame>();
+  responses.flat().forEach((item) => {
+    const key = String(item.id || safeStr(item.name));
+    if (key && !byId.has(key)) byId.set(key, item);
+  });
+  return Array.from(byId.values()).slice(0, 20).map((item) => mapIgdbGameToResult(item));
+}
+
 async function lookupIgdbById(id: string): Promise<SearchResult | null> {
   const normalizedId = safeStr(id);
   if (!normalizedId || !/^\d+$/.test(normalizedId)) return null;
@@ -811,7 +859,7 @@ async function lookupIgdbById(id: string): Promise<SearchResult | null> {
   const token = await getIgdbAccessToken();
   const body =
     `where id = ${normalizedId}; ` +
-    "fields id,name,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name; " +
+    "fields id,name,slug,first_release_date,rating,summary,cover.url,screenshots.url,genres.name,platforms.name,involved_companies.company.name; " +
     "limit 1;";
 
   const res = await fetch("https://api.igdb.com/v4/games", {
@@ -841,8 +889,13 @@ export async function GET(req: NextRequest) {
   const query = safeStr(searchParams.get("query"));
   const lookupId = safeStr(searchParams.get("lookupId"));
   const bookFormat = safeStr(searchParams.get("bookFormat"));
+  const mode = safeStr(searchParams.get("mode"));
+  const genreIds = safeStr(searchParams.get("genreIds"))
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => /^\d+$/.test(value));
 
-  if (!query && !lookupId) {
+  if (!query && !lookupId && mode !== "discover") {
     return NextResponse.json({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
   }
 
@@ -851,6 +904,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    if (type === "game" && mode === "discover") {
+      const results = await discoverIgdbGames(genreIds);
+      return NextResponse.json({ ok: true, results });
+    }
+
     if (lookupId) {
       if (type === "book-hardcover") {
         const editions = await lookupHardcoverEditions(lookupId, bookFormat);

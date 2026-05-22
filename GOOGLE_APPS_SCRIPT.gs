@@ -108,9 +108,11 @@ function doPost(e) {
     
     // Check if headers exist, if not create them
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["Category", "Key", "Value", "Description"]);
+      sheet.appendRow(["Category", "Key", "Value", "Description", "LastModifiedAt", "ClientUpdatedAt"]);
       SpreadsheetApp.flush(); // Flush to ensure header is written
     }
+    ensureHeaderColumn_(sheet, "LastModifiedAt");
+    ensureHeaderColumn_(sheet, "ClientUpdatedAt");
     
     // Get all current data efficiently
     const lastRow = sheet.getLastRow();
@@ -130,6 +132,7 @@ function doPost(e) {
           sheet.getRange(rowNum, 2).setValue(key);         // Column B: Key
           sheet.getRange(rowNum, 3).setValue(value);       // Column C: Value
           sheet.getRange(rowNum, 4).setValue(description); // Column D: Description
+          stampTimestampColumns_(sheet, rowNum, payload);
           found = true;
           break;
         }
@@ -138,7 +141,9 @@ function doPost(e) {
     
     // If not found, append new row
     if (!found) {
+      const rowNum = sheet.getLastRow() + 1;
       sheet.appendRow([category, key, value, description]);
+      stampTimestampColumns_(sheet, rowNum, payload);
     }
     
     return createCORSResponse("Success");
@@ -181,6 +186,30 @@ function resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, requestedHeader
   var normalizedRequestedHeader = normalizeHeaderKey_(requestedHeader);
   if (!normalizedRequestedHeader) return 0;
   return normalizedHeaderIndex[normalizedRequestedHeader] || 0;
+}
+
+function ensureHeaderColumn_(sheet, headerName) {
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || "").trim();
+  });
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i] === headerName) return i + 1;
+  }
+  const nextCol = lastCol + 1;
+  sheet.getRange(1, nextCol).setValue(headerName);
+  return nextCol;
+}
+
+function stampTimestampColumns_(sheet, rowNum, payload) {
+  const now = new Date().toISOString();
+  const clientUpdatedAt = String((payload && payload.clientUpdatedAt) || "").trim();
+  const lastModifiedCol = ensureHeaderColumn_(sheet, "LastModifiedAt");
+  const clientUpdatedCol = ensureHeaderColumn_(sheet, "ClientUpdatedAt");
+  sheet.getRange(rowNum, lastModifiedCol).setValue(now);
+  if (clientUpdatedAt) {
+    sheet.getRange(rowNum, clientUpdatedCol).setValue(clientUpdatedAt);
+  }
 }
 
 function updateBookRow_(payload) {
@@ -289,6 +318,7 @@ function updateBookRow_(payload) {
     if (!colNumber) continue;
     sheet.getRange(rowNum, colNumber).setValue(String(updates[colName] || "").trim());
   }
+  stampTimestampColumns_(sheet, rowNum, payload);
 
   return createCORSResponse("Success");
 }
@@ -346,6 +376,7 @@ function updateShowRow_(payload) {
     if (!colNumber) continue;
     sheet.getRange(rowNum, colNumber).setValue(String(updates[colName] || "").trim());
   }
+  stampTimestampColumns_(sheet, rowNum, payload);
 
   return createCORSResponse("Success");
 }
@@ -426,6 +457,10 @@ function updateMovieRow_(payload) {
     return createCORSResponse("Error: no matching movie columns found for updates: " + skippedColumns.join(", "));
   }
 
+  if (appliedColumns.length) {
+    stampTimestampColumns_(sheet, rowNum, payload);
+  }
+
   return createCORSResponse("Success");
 }
 
@@ -501,6 +536,7 @@ function updateGameRow_(payload) {
     if (!colNumber) continue;
     sheet.getRange(rowNum, colNumber).setValue(String(normalizedUpdates[colName] || "").trim());
   }
+  stampTimestampColumns_(sheet, rowNum, payload);
 
   return createCORSResponse("Success");
 }
@@ -734,7 +770,18 @@ function appendRowByHeaders_(sheetName, values) {
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
     return String(h || "").trim();
   });
+  if (headers.indexOf("LastModifiedAt") === -1) {
+    sheet.getRange(1, headers.length + 1).setValue("LastModifiedAt");
+    headers.push("LastModifiedAt");
+  }
+  if (headers.indexOf("ClientUpdatedAt") === -1) {
+    sheet.getRange(1, headers.length + 1).setValue("ClientUpdatedAt");
+    headers.push("ClientUpdatedAt");
+  }
+  const now = new Date().toISOString();
   const row = headers.map(function(header) {
+    if (header === "LastModifiedAt") return now;
+    if (header === "ClientUpdatedAt") return String((values && values.ClientUpdatedAt) || "").trim();
     return String((values && values[header]) || "").trim();
   });
 

@@ -416,14 +416,14 @@ function buildSaveResultDialog(
     return {
       tone,
       title: "Save successful",
-      message: `"${itemTitle}" was saved to the spreadsheet.`,
+      message: `"${itemTitle}" was saved.`,
       details: [
         summarizeChangedFieldLabels(
           changedFieldLabels,
           "Updated fields",
-          "No field differences were detected, but the spreadsheet accepted the save request."
+          "No field differences were detected, but the save request was accepted."
         ),
-        "The spreadsheet write endpoint accepted the save request.",
+        "In the native Mac app, offline changes are saved locally first and sync when the app is online.",
       ],
     };
   }
@@ -1134,7 +1134,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setIsSavingBook(true);
     try {
       await onSaveBookEdits(item, bookEditValues);
-      setBookSaveSuccess("Saved to Google Sheet.");
+      setBookSaveSuccess("Saved.");
       setSaveResultDialog(buildSaveResultDialog("book", item, bookEditValues, "success"));
       scheduleSaveNoticeClear(setBookSaveSuccess);
       setIsEditingBook(false);
@@ -1154,7 +1154,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setIsSavingShow(true);
     try {
       await onSaveShowEdits(item, showEditValues);
-      setShowSaveSuccess("Saved to Google Sheet.");
+      setShowSaveSuccess("Saved.");
       setSaveResultDialog(buildSaveResultDialog("tv", item, showEditValues, "success"));
       scheduleSaveNoticeClear(setShowSaveSuccess);
       setIsEditingShow(false);
@@ -1174,7 +1174,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setIsSavingMovie(true);
     try {
       await onSaveMovieEdits(item, movieEditValues);
-      setMovieSaveSuccess("Saved to Google Sheet.");
+      setMovieSaveSuccess("Saved.");
       setSaveResultDialog(buildSaveResultDialog("movie", item, movieEditValues, "success"));
       scheduleSaveNoticeClear(setMovieSaveSuccess);
       setIsEditingMovie(false);
@@ -1194,7 +1194,7 @@ export const MediaModal: React.FC<MediaModalProps> = ({
     setIsSavingGame(true);
     try {
       await onSaveGameEdits(item, gameEditValues);
-      setGameSaveSuccess("Saved to Google Sheet.");
+      setGameSaveSuccess("Saved.");
       setSaveResultDialog(buildSaveResultDialog("game", item, gameEditValues, "success"));
       scheduleSaveNoticeClear(setGameSaveSuccess);
       setIsEditingGame(false);

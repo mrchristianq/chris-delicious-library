@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { isNativeRuntime, nativeReadRoadmap, nativeSaveRoadmap } from "../native/bridge";
 
 const STORAGE_KEY = "cdlRoadmapItems";
 
@@ -57,6 +58,10 @@ function localSave(items: RoadmapItem[]): void {
 }
 
 async function serverLoad(): Promise<RoadmapItem[]> {
+  if (isNativeRuntime()) {
+    return normalizeRoadmapItems((await nativeReadRoadmap()) as RoadmapItem[]);
+  }
+
   const res = await fetch("/api/roadmap", { cache: "no-store" });
   if (!res.ok) throw new Error("load failed");
   const data = await res.json();
@@ -64,6 +69,11 @@ async function serverLoad(): Promise<RoadmapItem[]> {
 }
 
 async function serverSave(items: RoadmapItem[]): Promise<void> {
+  if (isNativeRuntime()) {
+    await nativeSaveRoadmap(items);
+    return;
+  }
+
   const res = await fetch("/api/roadmap", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

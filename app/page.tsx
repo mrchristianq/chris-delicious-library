@@ -22,9 +22,39 @@ import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
 import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
 import { RateItModal } from "./components/RateItModal";
 import { COVER_IMAGE_RADIUS_STYLE } from "./components/coverStyles";
+import {
+  isNativeRuntime,
+  nativeCacheIcons,
+  nativeQueueSheetWrite,
+  nativeCacheRemoteMedia,
+  nativeDiscoverIgdbGames,
+  nativeReadCacheStatus,
+  nativeReadSnapshot,
+  nativeSeedSnapshot,
+  nativeSaveAssetBytes,
+  nativeSyncNow,
+} from "./native/bridge";
+import { BUNDLED_ICON_DATA_URLS } from "./native/bundledIcons";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
+type NativeCacheStatusView = {
+  cachedCovers: number;
+  totalCovers: number;
+  cachedBackdrops: number;
+  totalBackdrops: number;
+  cachedCastPhotos: number;
+  totalCastPhotos: number;
+  cachedAssets: number;
+};
+
+function nativeArtworkCacheCounts(status: NativeCacheStatusView | null): { cached: number; total: number } {
+  if (!status) return { cached: 0, total: 0 };
+  return {
+    cached: status.cachedCovers + status.cachedBackdrops + status.cachedCastPhotos,
+    total: status.totalCovers + status.totalBackdrops + status.totalCastPhotos,
+  };
+}
 type MediaType = "book" | "movie" | "tv" | "game";
 type CoverScaleSettings = { x: number; y: number };
 type CoverOffsetSettings = { x: number; y: number };
@@ -390,6 +420,7 @@ const WATCHLIST_TV_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-tv";
 const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
 const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
+const NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY = "cdlNativeSidebarIconCache";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 // Static cache-bust tag baked into every sidebar-icon URL. The icon URLs used
 // to be a fixed "?v=0", so a browser that cached a stale icon for that exact
@@ -397,6 +428,7 @@ const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
 // client, so no hydration mismatch); bump it if a stale icon ever sticks.
 const SIDEBAR_ICON_CACHE_BUST = "2026-05-r1";
 const STATUS_ICON_OVERRIDES_LOCAL_KEY = "cdlStatusIconOverrides";
+const NATIVE_STATUS_ICON_CACHE_LOCAL_KEY = "cdlNativeStatusIconCache";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
 const MOBILE_ONLY_COVER_SCALE_LOCAL_KEY = "cdlMobileCoverScalePct";
 const MOBILE_COVER_SCALE_BY_GROUP_LOCAL_KEY = "cdlMobileCoverScaleByGroup";
@@ -777,6 +809,33 @@ const SHOW_HEADER_DEBUG_CONTROLS = false;
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
+}
+
+function bundledIconSrc(src: string): string {
+  const value = safeStr(src);
+  if (!value) return "";
+  if (/^(?:https?:|data:|blob:|asset:|tauri:)/i.test(value)) return value;
+  return BUNDLED_ICON_DATA_URLS[value] || BUNDLED_ICON_DATA_URLS[value.replace(/^\/+/, "")] || value;
+}
+
+function readLocalRecord(key: string): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, string>;
+  } catch {}
+  return {};
+}
+
+function writeLocalRecord(key: string, value: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+function isBrowserLikelyOnline(): boolean {
+  return typeof navigator === "undefined" || navigator.onLine !== false;
 }
 
 function parseStoredSettingValue(value: unknown): string | number | boolean {
@@ -2138,7 +2197,7 @@ type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
 type MovieQuickLinkKey = "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
 type TvQuickLinkKey = "library" | "backlog" | "watching" | "watched" | "abandoned" | "upcoming";
 type TvViewMode = TvQuickLinkKey | "custom";
-type GameQuickLinkKey = "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
+type GameQuickLinkKey = "home" | "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
 type GameViewMode = GameQuickLinkKey | "custom";
 type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "upcoming";
 type BuiltInSmartListKey = "year-this" | "current" | "completed" | "abandoned";
@@ -2174,24 +2233,26 @@ function getPersistedStandardSortViewLabel(nav: "home" | "books" | "movies" | "t
 }
 
 export default function Page() {
+  const isNativeApp = isNativeRuntime();
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
   const booksCsvUrl = process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL;
   const moviesCsvUrl = process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
   const gamesCsvUrl = process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
   const settingsCsvUrl = process.env.NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL;
-  const settingsWriteUrl = process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL;
-  const booksWriteUrl = process.env.NEXT_PUBLIC_BOOKS_WRITE_URL;
+  const settingsWriteUrl = process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL || (isNativeApp ? "native://settings" : "");
+  const booksWriteUrl = process.env.NEXT_PUBLIC_BOOKS_WRITE_URL || (isNativeApp ? "native://books" : "");
   const showsWriteUrl =
     process.env.NEXT_PUBLIC_SHOWS_WRITE_URL ||
-    process.env.NEXT_PUBLIC_TV_WRITE_URL;
-  const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL;
-  const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL;
+    process.env.NEXT_PUBLIC_TV_WRITE_URL ||
+    (isNativeApp ? "native://shows" : "");
+  const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL || (isNativeApp ? "native://movies" : "");
+  const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL || (isNativeApp ? "native://games" : "");
   const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
   const localhostSettingsReadOnlyDefault = process.env.NEXT_PUBLIC_LOCALHOST_SETTINGS_READ_ONLY !== "false";
   const isLocalhostRuntime =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname === "::1");
-  const isReadOnlySettingsMode = localhostSettingsReadOnlyDefault && isLocalhostRuntime;
+  const isReadOnlySettingsMode = !isNativeApp && localhostSettingsReadOnlyDefault && isLocalhostRuntime;
   const canWriteSettings = Boolean(settingsWriteUrl) && !isReadOnlySettingsMode;
   const writeConfigChecks = useMemo(
     () => [
@@ -2286,8 +2347,12 @@ export default function Page() {
   const [syncState, setSyncState] = useState<"idle" | "saving" | "ok" | "error">("idle");
   const [, setSyncMsg] = useState<string>("");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [nativeCacheStatus, setNativeCacheStatus] = useState<NativeCacheStatusView | null>(null);
+  const [nativeCacheRunning, setNativeCacheRunning] = useState(false);
   const [settingSyncConflicts, setSettingSyncConflicts] = useState<string[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const nativeForceRemoteRefreshRef = useRef(false);
+  const nativeSyncAfterRemoteRefreshRef = useRef(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [coverSyncQuery, setCoverSyncQuery] = useState("");
@@ -2407,7 +2472,7 @@ export default function Page() {
       setTagFilter(null);
     }
     if (section === "games") {
-      setGameViewMode("library");
+      setGameViewMode("home");
       setGamePlatformFilter(null);
       setGameStatusFilter(null);
       setGameOwnershipFilter(null);
@@ -2480,7 +2545,7 @@ export default function Page() {
   const [gameFormatFilter, setGameFormatFilter] = useState<string | null>(null);
   const [gameYearPlayedFilter, setGameYearPlayedFilter] = useState<string | null>(null);
   const [gameGenreFilter, setGameGenreFilter] = useState<string | null>(null);
-  const [gameViewMode, setGameViewMode] = useState<GameViewMode>("library");
+  const [gameViewMode, setGameViewMode] = useState<GameViewMode>("home");
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
   const [bookUpcomingFilter, setBookUpcomingFilter] = useState<boolean>(false);
   const [movieUpcomingFilter, setMovieUpcomingFilter] = useState<boolean>(false);
@@ -2542,7 +2607,7 @@ export default function Page() {
     setMovieWatchFilter(null);
     setMovieGenreFilter(null);
     setMovieTagFilter(null);
-    setGameViewMode("library");
+    setGameViewMode("home");
     setReadingStatusFilter(null);
     setFormatFilter(null);
     setSeriesFilter(null);
@@ -3522,6 +3587,8 @@ export default function Page() {
     } catch {}
     return {};
   });
+  const [nativeSidebarIconCache, setNativeSidebarIconCache] = useState<Record<string, string>>(() => readLocalRecord(NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY));
+  const [nativeStatusIconCache, setNativeStatusIconCache] = useState<Record<string, string>>(() => readLocalRecord(NATIVE_STATUS_ICON_CACHE_LOCAL_KEY));
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
@@ -3675,8 +3742,26 @@ export default function Page() {
     const failed = skipFailedFilter ? new Set<string>() : new Set(failedCoverUrls[itemKey] || []);
     const mediaType = getMediaType(item);
     const baseCover = getDisplayCover(item, mediaType);
+    const nativeCover = safeStr(item?.nativeCoverUrl || item?.NativeCoverUrl);
+    const shouldPreferNativeArtwork = isNativeApp && typeof navigator !== "undefined" && navigator.onLine === false;
     const overrideUrl = safeStr(coverOverrides[itemKey]);
-    const candidates = [overrideUrl, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean);
+    const candidates = shouldPreferNativeArtwork
+      ? [overrideUrl, nativeCover, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean)
+      : [overrideUrl, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean);
+    const uniqueCandidates = Array.from(new Set(candidates));
+    return uniqueCandidates.find((url) => !failed.has(url)) || "";
+  };
+
+  const getNativeDetailCoverUrl = (item: any, skipFailedFilter?: boolean) => {
+    const itemKey = getMediaItemKey(item);
+    const failed = skipFailedFilter ? new Set<string>() : new Set(failedCoverUrls[itemKey] || []);
+    const mediaType = getMediaType(item);
+    const baseCover = getDisplayCover(item, mediaType);
+    const nativeCover = safeStr(item?.nativeCoverUrl || item?.NativeCoverUrl);
+    const overrideUrl = safeStr(coverOverrides[itemKey]);
+    const candidates = isNativeApp
+      ? [overrideUrl, nativeCover, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean)
+      : [overrideUrl, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
@@ -3684,6 +3769,18 @@ export default function Page() {
   const getDisplayBackdropUrl = (item: any) => {
     const mediaType = getMediaType(item);
     if (mediaType !== "movie" && mediaType !== "tv" && mediaType !== "game") return "";
+    const nativeBackdrop = safeStr(item?.nativeBackdropUrl || item?.NativeBackdropUrl);
+    if (isNativeApp && typeof navigator !== "undefined" && navigator.onLine === false && nativeBackdrop) {
+      return nativeBackdrop;
+    }
+    return getDisplayBackdrop(item, mediaType);
+  };
+
+  const getNativeDetailBackdropUrl = (item: any) => {
+    const mediaType = getMediaType(item);
+    if (mediaType !== "movie" && mediaType !== "tv" && mediaType !== "game") return "";
+    const nativeBackdrop = safeStr(item?.nativeBackdropUrl || item?.NativeBackdropUrl);
+    if (isNativeApp && nativeBackdrop) return nativeBackdrop;
     return getDisplayBackdrop(item, mediaType);
   };
 
@@ -4346,6 +4443,65 @@ export default function Page() {
     }
   }, [isReadOnlySettingsMode, settingsRows]);
 
+  useEffect(() => {
+    if (!isNativeApp || !isBrowserLikelyOnline()) return;
+
+    const icons = [
+      ...Object.entries(sidebarIconOverrides).map(([iconKey, remoteUrl]) => ({
+        iconType: "sidebar" as const,
+        iconKey,
+        remoteUrl: safeStr(remoteUrl),
+      })),
+      ...Object.entries(statusIconOverrides).map(([iconKey, remoteUrl]) => ({
+        iconType: "status" as const,
+        iconKey,
+        remoteUrl: safeStr(remoteUrl),
+      })),
+    ].filter((icon) => /^https?:\/\//i.test(icon.remoteUrl));
+
+    if (!icons.length) return;
+
+    let cancelled = false;
+    nativeCacheIcons(icons)
+      .then((results) => {
+        if (cancelled) return;
+
+        const sidebarNext: Record<string, string> = {};
+        const statusNext: Record<string, string> = {};
+
+        results.forEach((result) => {
+          const url = safeStr(result.url);
+          const iconKey = safeStr(result.iconKey);
+          if (!url || !iconKey) return;
+          if (result.iconType === "sidebar") sidebarNext[iconKey] = url;
+          if (result.iconType === "status") statusNext[iconKey] = url;
+        });
+
+        if (Object.keys(sidebarNext).length) {
+          setNativeSidebarIconCache((prev) => {
+            const next = { ...prev, ...sidebarNext };
+            writeLocalRecord(NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY, next);
+            return next;
+          });
+        }
+
+        if (Object.keys(statusNext).length) {
+          setNativeStatusIconCache((prev) => {
+            const next = { ...prev, ...statusNext };
+            writeLocalRecord(NATIVE_STATUS_ICON_CACHE_LOCAL_KEY, next);
+            return next;
+          });
+        }
+      })
+      .catch((error) => {
+        console.warn("Native icon cache refresh failed:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativeApp, sidebarIconOverrides, statusIconOverrides]);
+
   // NOTE: A legacy "migrate sidebar icons to R2" effect used to live here. It
   // re-uploaded the sheet's sidebarIcon:* URLs to icons/sidebar/{key} whenever
   // its localStorage flag was missing (e.g. on a fresh clone) — which clobbered
@@ -4391,6 +4547,13 @@ export default function Page() {
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "");
     if (!safeIconKey) return fallbackSrc;
+    const overrideSrc = safeStr(sidebarIconOverrides[safeIconKey]);
+    const cachedNativeSrc = safeStr(nativeSidebarIconCache[safeIconKey]);
+    if (isNativeApp || isStaticSiteBuild) {
+      if (isNativeApp && isBrowserLikelyOnline() && overrideSrc) return overrideSrc;
+      return cachedNativeSrc || bundledIconSrc(fallbackSrc);
+    }
+    if (overrideSrc) return overrideSrc;
     // v carries a static cache-bust tag (so the URL is never the old "v=0"
     // that pinned stale icons) plus, after an in-session upload, a timestamp
     // suffix so the changed icon reloads right away.
@@ -4432,14 +4595,7 @@ export default function Page() {
       formData.append("title", iconKey);
       formData.append("objectKey", `icons/sidebar/${iconKey}`);
 
-      const res = await fetch("/api/upload-cover", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || !payload?.url) {
-        throw new Error(payload?.error || `Upload failed (${res.status})`);
-      }
+      await uploadCoverFormData(formData);
 
       bumpSidebarIconVersion();
 
@@ -4462,7 +4618,20 @@ export default function Page() {
     }
   };
 
-  const getStatusIconSrc = (statusKey: string): string => safeStr(statusIconOverrides[statusKey]);
+  const getStatusIconSrc = (statusKey: string): string => {
+    const safeStatusKey = safeStr(statusKey);
+    if (!safeStatusKey) return "";
+
+    const overrideSrc = safeStr(statusIconOverrides[safeStatusKey]);
+    const cachedNativeSrc = safeStr(nativeStatusIconCache[safeStatusKey]);
+
+    if (isNativeApp || isStaticSiteBuild) {
+      if (isNativeApp && isBrowserLikelyOnline() && overrideSrc) return overrideSrc;
+      return cachedNativeSrc;
+    }
+
+    return overrideSrc;
+  };
 
   const openStatusIconFilePicker = (event: ReactMouseEvent<HTMLElement>, statusKey: string) => {
     event.preventDefault();
@@ -4488,6 +4657,7 @@ export default function Page() {
     setUploadingStatusIconKey(statusKey);
     try {
       let iconUrl = "";
+      let iconSyncUrl = "";
       let uploadedToCloud = false;
 
       try {
@@ -4496,16 +4666,14 @@ export default function Page() {
         formData.append("itemKey", `status-icon-${statusKey}`);
         formData.append("mediaType", "status-icon");
         formData.append("title", statusKey);
-        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.url) {
-          throw new Error(payload?.error || `Upload failed (${res.status})`);
-        }
+        const payload = await uploadCoverFormData(formData);
         iconUrl = String(payload.url);
+        iconSyncUrl = safeStr(payload.remoteUrl) || iconUrl;
         uploadedToCloud = true;
       } catch (uploadError) {
         console.warn("Status icon upload failed, using local fallback:", uploadError);
         iconUrl = await fileToDataUrl(file);
+        iconSyncUrl = iconUrl;
       }
 
       setStatusIconOverrides((prev) => {
@@ -4521,7 +4689,7 @@ export default function Page() {
       if (uploadedToCloud) {
         saveSetting(
           `${STATUS_ICON_SETTING_PREFIX}${statusKey}`,
-          iconUrl,
+          iconSyncUrl,
           "Status Icons",
           `Custom status icon for ${statusKey}`
         );
@@ -4732,10 +4900,9 @@ export default function Page() {
         formData.append("mediaType", "sidebar-icon");
         formData.append("title", state.iconKey);
         formData.append("objectKey", `icons/sidebar/${state.iconKey}`);
-        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        const payload = await uploadCoverFormData(formData);
         const iconUrl = String(payload.url);
+        const iconSyncUrl = safeStr(payload.remoteUrl) || iconUrl;
         // Persist the override so the Custom badge is correct and the sheet
         // record stays current (no stale URL for any future re-sync to replay).
         setSidebarIconOverrides((prev) => {
@@ -4743,7 +4910,7 @@ export default function Page() {
           try { localStorage.setItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next)); } catch {}
           return next;
         });
-        saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
+        saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
         bumpSidebarIconVersion();
       } else if (state.iconKind === "smartlist") {
         // Smart-list icons are stored directly on the smart list record. The
@@ -4753,29 +4920,27 @@ export default function Page() {
         formData.append("mediaType", "sidebar-icon");
         formData.append("title", state.iconKey);
         formData.append("objectKey", `icons/sidebar/smartlist-${state.iconKey}`);
-        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        const payload = await uploadCoverFormData(formData);
         const iconUrl = `${String(payload.url)}?v=${Date.now()}`;
+        const iconSyncUrl = `${safeStr(payload.remoteUrl) || String(payload.url)}?v=${Date.now()}`;
         persistSmartLists(
           customSmartLists.map((list) =>
-            list.id === state.iconKey ? { ...list, icon: iconUrl } : list
+            list.id === state.iconKey ? { ...list, icon: isNativeApp ? iconSyncUrl : iconUrl } : list
           )
         );
       } else {
         formData.append("itemKey", `status-icon-${state.iconKey}`);
         formData.append("mediaType", "status-icon");
         formData.append("title", state.iconKey);
-        const res = await fetch("/api/upload-cover", { method: "POST", body: formData });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.url) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        const payload = await uploadCoverFormData(formData);
         const iconUrl = String(payload.url);
+        const iconSyncUrl = safeStr(payload.remoteUrl) || iconUrl;
         setStatusIconOverrides((prev) => {
           const next = { ...prev, [state.iconKey]: iconUrl };
           try { localStorage.setItem(STATUS_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next)); } catch {}
           return next;
         });
-        saveSetting(`${STATUS_ICON_SETTING_PREFIX}${state.iconKey}`, iconUrl, "Status Icons", `Custom status icon for ${state.iconKey}`);
+        saveSetting(`${STATUS_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl, "Status Icons", `Custom status icon for ${state.iconKey}`);
       }
       setSyncState("ok");
       setSyncMsg("Icon saved");
@@ -4873,17 +5038,10 @@ export default function Page() {
       formData.append("mediaType", mediaType);
       formData.append("title", safeStr(item?.title));
 
-      const res = await fetch("/api/upload-cover", {
-        method: "POST",
-        body: formData,
-      });
-
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || !payload?.url) {
-        throw new Error(payload?.error || `Upload failed (${res.status})`);
-      }
+      const payload = await uploadCoverFormData(formData);
 
       const uploadedUrl = String(payload.url);
+      const syncedCoverUrl = safeStr(payload.remoteUrl) || uploadedUrl;
       console.log(`[Cover Upload] Got uploaded URL: ${uploadedUrl}`);
 
       setCoverOverrides((prev) => {
@@ -4900,7 +5058,7 @@ export default function Page() {
       if (settingsWriteUrl) {
         saveSettingToSheet(
           `coverOverride:${itemKey}`,
-          uploadedUrl,
+          syncedCoverUrl,
           "Cover Overrides",
           `${mediaType} cover override for ${safeStr(item?.title)}`
         );
@@ -4913,19 +5071,19 @@ export default function Page() {
         postSheetWrite(moviesWriteUrl, {
           action: "updateMovie",
           match: { tmdbId: safeStr(item?.tmdbId), title },
-          updates: { R2CoverUrl: uploadedUrl, r2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+          updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save movie R2 cover").catch(() => {});
       } else if (mediaType === "tv" && showsWriteUrl) {
         postSheetWrite(showsWriteUrl, {
           action: "updateShow",
           match: { tmdbId: safeStr(item?.tmdbId), title },
-          updates: { R2CoverUrl: uploadedUrl, r2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+          updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save TV show R2 cover").catch(() => {});
       } else if (mediaType === "game" && gamesWriteUrl) {
         postSheetWrite(gamesWriteUrl, {
           action: "updateGame",
           match: { igdbId: safeStr(item?.igdbId || item?.IGDB_ID), title },
-          updates: { R2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+          updates: { R2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save game R2 cover").catch(() => {});
       } else if (mediaType === "book" && booksWriteUrl) {
         postSheetWrite(booksWriteUrl, {
@@ -4938,7 +5096,7 @@ export default function Page() {
             googleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
             openLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
           },
-          updates: { R2CoverUrl: uploadedUrl, r2CoverUrl: uploadedUrl, R2CoverUrl_Date: replacementDate },
+          updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save book R2 cover").catch(() => {});
       }
 
@@ -5012,17 +5170,9 @@ export default function Page() {
     formData.append("mediaType", "book");
     formData.append("title", safeStr(item?.title));
 
-    const res = await fetch("/api/upload-cover", {
-      method: "POST",
-      body: formData,
-    });
+    const payload = await uploadCoverFormData(formData);
 
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || !payload?.url) {
-      throw new Error(payload?.error || `Backup upload failed (${res.status})`);
-    }
-
-    return String(payload.url);
+    return safeStr(payload.remoteUrl) || String(payload.url);
   };
 
   const uploadCoverToR2 = async (
@@ -5042,15 +5192,8 @@ export default function Page() {
     formData.append("imageType", imageType);
     formData.append("title", safeStr(item?.title));
 
-    const res = await fetch("/api/upload-cover", {
-      method: "POST",
-      body: formData,
-    });
-
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || !payload?.url) {
-      throw new Error(payload?.error || `Upload failed (${res.status})`);
-    }
+    const payload = await uploadCoverFormData(formData);
+    const syncedUrl = safeStr(payload.remoteUrl) || String(payload.url);
 
     // Update the sheet with the R2 URL
     const fieldName = payload.fieldName || (imageType === "backdrop" ? "R2BackdropUrl" : "R2CoverUrl");
@@ -5099,14 +5242,14 @@ export default function Page() {
         const syncedAtField = imageType === "backdrop" ? "R2BackdropUrl_Date" : "R2CoverUrl_Date";
         const syncedAtValue = new Date().toISOString();
         const updates: Record<string, string> = {
-          [fieldName]: payload.url,
+          [fieldName]: syncedUrl,
           [syncedAtField]: syncedAtValue,
         };
         if (lowerCamelFieldName && lowerCamelFieldName !== fieldName) {
-          updates[lowerCamelFieldName] = payload.url;
+          updates[lowerCamelFieldName] = syncedUrl;
         }
 
-        console.log(`[R2] Writing ${fieldName} to sheet for "${title}" (${mediaType}):`, payload.url);
+        console.log(`[R2] Writing ${fieldName} to sheet for "${title}" (${mediaType}):`, syncedUrl);
         await postSheetWrite(writeUrl, {
           action,
           match: { ...bookMatch, ...gameMatch, title },
@@ -5131,7 +5274,7 @@ export default function Page() {
       }
     }
 
-    return payload.url;
+    return syncedUrl;
   };
 
   // One-off automatic R2 sync for a single newly added/edited item.
@@ -5314,6 +5457,11 @@ export default function Page() {
   };
 
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+    if (isNativeApp) {
+      await nativeQueueSheetWrite({ url, payload, fallbackMessage });
+      return;
+    }
+
     if (isStaticSiteBuild) {
       throw new Error(STATIC_SITE_WRITE_MESSAGE);
     }
@@ -5332,7 +5480,70 @@ export default function Page() {
         fallbackMessage;
       throw new Error(errorMessage);
     }
-  }, [isStaticSiteBuild]);
+  }, [isNativeApp, isStaticSiteBuild]);
+
+  const uploadCoverFormData = useCallback(async (formData: FormData): Promise<Record<string, any>> => {
+    if (!isNativeApp) {
+      const res = await fetch("/api/upload-cover", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.url) {
+        throw new Error(payload?.error || `Upload failed (${res.status})`);
+      }
+      return payload;
+    }
+
+    const fileValue = formData.get("file");
+    const sourceUrl = safeStr(formData.get("sourceUrl"));
+    const mediaType = safeStr(formData.get("mediaType")) || "media";
+    const itemKey = safeStr(formData.get("itemKey")) || safeStr(formData.get("title")) || "item";
+    const title = safeStr(formData.get("title"));
+    const objectKey = safeStr(formData.get("objectKey"));
+    const imageType = safeStr(formData.get("imageType"));
+    const kind = imageType === "backdrop" ? "backdrop" : mediaType.includes("icon") ? "icon" : "cover";
+    let file: File | null = fileValue instanceof File ? fileValue : null;
+
+    if (!file && sourceUrl) {
+      const response = await fetch(sourceUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch source image (${response.status})`);
+      }
+      const blob = await response.blob();
+      file = new File([blob], `${itemKey}.${blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg"}`, {
+        type: blob.type || "image/jpeg",
+      });
+    }
+
+    if (!file) {
+      throw new Error("No file or source URL received");
+    }
+
+    const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+    const assetKey = objectKey || `${mediaType}/${itemKey}/${kind}`;
+    const saved = await nativeSaveAssetBytes({
+      bytes,
+      filename: file.name,
+      contentType: file.type,
+      mediaType,
+      itemKey,
+      title,
+      objectKey,
+      kind,
+      assetKey,
+    });
+
+    return {
+      ok: true,
+      key: assetKey,
+      url: saved.url,
+      remoteUrl: saved.remoteUrl,
+      remoteObjectKey: saved.remoteObjectKey,
+      localPath: saved.localPath,
+      pendingSync: saved.pendingSync,
+    };
+  }, [isNativeApp]);
 
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
     if (!booksWriteUrl) {
@@ -5963,6 +6174,21 @@ export default function Page() {
       CustomImageURL: safeStr(updates.customImageUrl),
     };
 
+    const normalizedNextGameStatus = normalizeStatus(safeStr(updates.status));
+    const statusControlsQueueFlag = Boolean(normalizedNextGameStatus);
+    if (statusControlsQueueFlag) {
+      if (normalizedNextGameStatus === "queued" || normalizedNextGameStatus === "replay" || normalizedNextGameStatus === "backlog") {
+        candidateUpdates.Backlog = "Yes";
+        candidateUpdates.Completed = "No";
+      } else if (normalizedNextGameStatus === "completed") {
+        candidateUpdates.Backlog = "No";
+        candidateUpdates.Completed = "Yes";
+      } else {
+        candidateUpdates.Backlog = "No";
+        candidateUpdates.Completed = "No";
+      }
+    }
+
     const changedUpdates: Record<string, string> = {};
     Object.entries(candidateUpdates).forEach(([columnName, nextValueRaw]) => {
       const prevValue = getFirstGameValue(item, existingKeysByColumn[columnName] || [columnName]);
@@ -5982,41 +6208,50 @@ export default function Page() {
       return;
     }
 
-    const buildGameNextItem = (prev: any) => ({
-      ...prev,
-      title: safeStr(updates.title) || prev.title,
-      cover: safeStr(updates.cover),
-      platform: safeStr(updates.platform),
-      status: safeStr(updates.status),
-      name: safeStr(updates.name),
-      releaseDate: safeStr(updates.releaseDate),
-      releaseDateAlt: safeStr(updates.releaseDateAlt),
-      platforms: safeStr(updates.platforms),
-      coverUrl: safeStr(updates.coverUrl),
-      rating: safeStr(updates.rating),
-      igdbRating: safeStr(updates.igdbRating),
-      myRating: safeStr(updates.myRating),
-      ownership: safeStr(updates.ownership),
-      format: safeStr(updates.format),
-      backlog: safeStr(updates.backlog),
-      completed: safeStr(updates.completed),
-      dateCompleted: safeStr(updates.dateCompleted),
-      yearPlayed: safeStr(updates.yearPlayed),
-      dateAdded: safeStr(updates.dateAdded),
-      description: safeStr(updates.description),
-      genres: safeStr(updates.genres),
-      hoursPlayed: safeStr(updates.hoursPlayed),
-      coverCachedAt: safeStr(updates.coverCachedAt),
-      developer: safeStr(updates.developer),
-      screenshotsUrl: safeStr(updates.screenshotsUrl),
-      wishlistOrder: safeStr(updates.wishlistOrder),
-      queuedOrder: safeStr(updates.queuedOrder),
-      igdbId: safeStr(updates.igdbId),
-      igdbIdOverride: safeStr(updates.igdbIdOverride),
-      localCoverUrl: safeStr(updates.localCoverUrl),
-      gameStatus: safeStr(updates.status),
-      playStatus: safeStr(updates.status),
-    });
+    const buildGameNextItem = (prev: any) => {
+      const nextBacklog = Object.prototype.hasOwnProperty.call(candidateUpdates, "Backlog")
+        ? candidateUpdates.Backlog
+        : safeStr(updates.backlog);
+      const nextCompleted = Object.prototype.hasOwnProperty.call(candidateUpdates, "Completed")
+        ? candidateUpdates.Completed
+        : safeStr(updates.completed);
+
+      return {
+        ...prev,
+        title: safeStr(updates.title) || prev.title,
+        cover: safeStr(updates.cover),
+        platform: safeStr(updates.platform),
+        status: safeStr(updates.status),
+        name: safeStr(updates.name),
+        releaseDate: safeStr(updates.releaseDate),
+        releaseDateAlt: safeStr(updates.releaseDateAlt),
+        platforms: safeStr(updates.platforms),
+        coverUrl: safeStr(updates.coverUrl),
+        rating: safeStr(updates.rating),
+        igdbRating: safeStr(updates.igdbRating),
+        myRating: safeStr(updates.myRating),
+        ownership: safeStr(updates.ownership),
+        format: safeStr(updates.format),
+        backlog: nextBacklog,
+        completed: nextCompleted,
+        dateCompleted: safeStr(updates.dateCompleted),
+        yearPlayed: safeStr(updates.yearPlayed),
+        dateAdded: safeStr(updates.dateAdded),
+        description: safeStr(updates.description),
+        genres: safeStr(updates.genres),
+        hoursPlayed: safeStr(updates.hoursPlayed),
+        coverCachedAt: safeStr(updates.coverCachedAt),
+        developer: safeStr(updates.developer),
+        screenshotsUrl: safeStr(updates.screenshotsUrl),
+        wishlistOrder: safeStr(updates.wishlistOrder),
+        queuedOrder: safeStr(updates.queuedOrder),
+        igdbId: safeStr(updates.igdbId),
+        igdbIdOverride: safeStr(updates.igdbIdOverride),
+        localCoverUrl: safeStr(updates.localCoverUrl),
+        gameStatus: safeStr(updates.status),
+        playStatus: safeStr(updates.status),
+      };
+    };
 
     const payload = {
       action: "updateGame",
@@ -6084,8 +6319,12 @@ export default function Page() {
           "My Rating": safeStr(updates.myRating),
           Ownership: safeStr(updates.ownership),
           Format: safeStr(updates.format),
-          Backlog: normalizeGameYesNo(safeStr(updates.backlog)),
-          Completed: normalizeGameYesNo(safeStr(updates.completed)),
+          Backlog: Object.prototype.hasOwnProperty.call(candidateUpdates, "Backlog")
+            ? candidateUpdates.Backlog
+            : normalizeGameYesNo(safeStr(updates.backlog)),
+          Completed: Object.prototype.hasOwnProperty.call(candidateUpdates, "Completed")
+            ? candidateUpdates.Completed
+            : normalizeGameYesNo(safeStr(updates.completed)),
           "Completed Date": safeStr(updates.dateCompleted),
           "Date Completed": safeStr(updates.dateCompleted),
           "Year Played": safeStr(updates.yearPlayed),
@@ -6650,6 +6889,53 @@ export default function Page() {
   useEffect(() => {
     // Need at least one CSV URL to proceed
     if (!tvCsvUrl && !booksCsvUrl && !moviesCsvUrl && !gamesCsvUrl) {
+      if (isNativeApp) {
+        let cancelled = false;
+        setLoading(true);
+        setSyncState("saving");
+        setSyncMsg("Loading local library...");
+        setError(null);
+
+        nativeReadSnapshot()
+          .then((snapshot) => {
+            if (cancelled) return;
+            const hasRows =
+              snapshot.tvRows.length ||
+              snapshot.bookRows.length ||
+              snapshot.movieRows.length ||
+              snapshot.gameRows.length ||
+              snapshot.settingsRows.length;
+            if (!hasRows) {
+              setError("Native library has not been seeded yet. Connect to the internet once so the Mac app can copy your Google Sheets into local storage.");
+              setSyncState("error");
+              setSyncMsg("Native seed required");
+              setLoading(false);
+              return;
+            }
+
+            setTvRows(snapshot.tvRows);
+            setBookRows(snapshot.bookRows);
+            setMovieRows(snapshot.movieRows);
+            setGameRows(snapshot.gameRows);
+            setSettingsRows(snapshot.settingsRows);
+            setSyncState(snapshot.pendingCount ? "saving" : "ok");
+            setSyncMsg(snapshot.pendingCount ? `${snapshot.pendingCount} change${snapshot.pendingCount === 1 ? "" : "s"} pending` : "Synced locally");
+            setLastSyncAt(snapshot.lastSyncAt || Date.now());
+            setLoading(false);
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            setError(e?.message || "Failed to load native library");
+            setSyncState("error");
+            setSyncMsg("Native load failed");
+            setLoading(false);
+          });
+
+        return () => {
+          cancelled = true;
+        };
+      }
+
       setError(
         `No CSV URL(s) found in env.\n\nCreate / update .env.local in project root and add at least one of:\n${ENV_KEY}=PASTE_YOUR_TV_PUBLISHED_CSV_URL_HERE\n${BOOKS_ENV_KEY}=PASTE_YOUR_BOOKS_PUBLISHED_CSV_URL_HERE\n${MOVIES_ENV_KEY}=PASTE_YOUR_MOVIES_PUBLISHED_CSV_URL_HERE\n${GAMES_ENV_KEY}=PASTE_YOUR_GAMES_PUBLISHED_CSV_URL_HERE\n\nThen stop + restart dev server.`
       );
@@ -6660,9 +6946,49 @@ export default function Page() {
 
     let cancelled = false;
     setLoading(true);
-    setSyncState("saving");
-    setSyncMsg("Syncing…");
     setError(null);
+
+    if (isNativeApp) {
+      setSyncState("saving");
+      setSyncMsg("Loading local library...");
+      nativeReadSnapshot()
+        .then((snapshot) => {
+          if (cancelled) return false;
+          const hasRows =
+            snapshot.tvRows.length ||
+            snapshot.bookRows.length ||
+            snapshot.movieRows.length ||
+              snapshot.gameRows.length ||
+              snapshot.settingsRows.length;
+          if (!hasRows) return false;
+          if (nativeForceRemoteRefreshRef.current) {
+            nativeForceRemoteRefreshRef.current = false;
+            return false;
+          }
+
+          setTvRows(snapshot.tvRows);
+          setBookRows(snapshot.bookRows);
+          setMovieRows(snapshot.movieRows);
+          setGameRows(snapshot.gameRows);
+          setSettingsRows(snapshot.settingsRows);
+          setSyncState(snapshot.pendingCount ? "saving" : "ok");
+          setSyncMsg(snapshot.pendingCount ? `${snapshot.pendingCount} change${snapshot.pendingCount === 1 ? "" : "s"} pending` : "Synced locally");
+          setLastSyncAt(snapshot.lastSyncAt || Date.now());
+          setLoading(false);
+          return true;
+        })
+        .catch(() => false)
+        .then((handled) => {
+          if (handled || cancelled) return;
+          setSyncState("saving");
+          setSyncMsg("Pulling remote library...");
+          loadCsvSnapshot();
+        });
+    } else {
+      setSyncState("saving");
+      setSyncMsg("Syncing…");
+      loadCsvSnapshot();
+    }
 
     const fetchCsv = async (url: string) => {
       const res = await fetch(url, { cache: "no-store" });
@@ -6670,22 +6996,29 @@ export default function Page() {
       return await res.text();
     };
 
-    Promise.allSettled([
-      tvCsvUrl ? fetchCsv(tvCsvUrl) : Promise.resolve(null),
-      booksCsvUrl ? fetchCsv(booksCsvUrl) : Promise.resolve(null),
-      moviesCsvUrl ? fetchCsv(moviesCsvUrl) : Promise.resolve(null),
-      gamesCsvUrl ? fetchCsv(gamesCsvUrl) : Promise.resolve(null),
-      settingsCsvUrl ? fetchCsv(settingsCsvUrl) : Promise.resolve(null),
-    ])
+    function loadCsvSnapshot() {
+      Promise.allSettled([
+        tvCsvUrl ? fetchCsv(tvCsvUrl) : Promise.resolve(null),
+        booksCsvUrl ? fetchCsv(booksCsvUrl) : Promise.resolve(null),
+        moviesCsvUrl ? fetchCsv(moviesCsvUrl) : Promise.resolve(null),
+        gamesCsvUrl ? fetchCsv(gamesCsvUrl) : Promise.resolve(null),
+        settingsCsvUrl ? fetchCsv(settingsCsvUrl) : Promise.resolve(null),
+      ])
       .then((results) => {
         console.log("[CSV LOAD] Starting CSV parsing...");
         if (cancelled) return;
 
         const [tvRes, booksRes, moviesRes, gamesRes, settingsRes] = results;
+        let nextTvRows: Row[] = [];
+        let nextBookRows: Row[] = [];
+        let nextMovieRows: Row[] = [];
+        let nextGameRows: Row[] = [];
+        let nextSettingsRows: Row[] = [];
 
         if (tvRes && tvRes.status === "fulfilled" && typeof tvRes.value === "string") {
           const parsed = Papa.parse<Row>(tvRes.value, { header: true, skipEmptyLines: true });
           const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+          nextTvRows = data;
           setTvRows(data);
         } else if (tvRes && tvRes.status === "rejected") {
           setError(`TV CSV: ${tvRes.reason?.message || String(tvRes.reason)}`);
@@ -6718,6 +7051,7 @@ export default function Page() {
             }
           }
 
+          nextBookRows = data;
           setBookRows(data);
         } else if (booksRes && booksRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Books CSV: ${booksRes.reason?.message || String(booksRes.reason)}`);
@@ -6726,6 +7060,7 @@ export default function Page() {
         if (moviesRes && moviesRes.status === "fulfilled" && typeof moviesRes.value === "string") {
           const parsed = Papa.parse<Row>(moviesRes.value, { header: true, skipEmptyLines: true });
           const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+          nextMovieRows = data;
           setMovieRows(data);
         } else if (moviesRes && moviesRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Movies CSV: ${moviesRes.reason?.message || String(moviesRes.reason)}`);
@@ -6759,6 +7094,7 @@ export default function Page() {
             }
           }
 
+          nextGameRows = data;
           setGameRows(data);
         } else if (gamesRes && gamesRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Games CSV: ${gamesRes.reason?.message || String(gamesRes.reason)}`);
@@ -6767,15 +7103,59 @@ export default function Page() {
         if (settingsRes && settingsRes.status === "fulfilled" && typeof settingsRes.value === "string") {
           const parsed = Papa.parse<Row>(settingsRes.value, { header: true, skipEmptyLines: true });
           const data = (parsed.data || []).map((r) => r as Row);
+          nextSettingsRows = data;
           setSettingsRows(data);
         } else if (settingsRes && settingsRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Settings CSV: ${settingsRes.reason?.message || String(settingsRes.reason)}`);
         }
 
-        setSyncState("ok");
-        setSyncMsg("Synced");
-        setLastSyncAt(Date.now());
-        setLoading(false);
+        if (isNativeApp) {
+          nativeSeedSnapshot({
+            tvRows: nextTvRows,
+            bookRows: nextBookRows,
+            movieRows: nextMovieRows,
+            gameRows: nextGameRows,
+            settingsRows: nextSettingsRows,
+          })
+            .then(() => {
+              if (!nativeSyncAfterRemoteRefreshRef.current) {
+                setSyncState("ok");
+                setSyncMsg("Seeded local library");
+                setLastSyncAt(Date.now());
+                setLoading(false);
+                return;
+              }
+
+              nativeSyncAfterRemoteRefreshRef.current = false;
+              setSyncState("saving");
+              setSyncMsg("Syncing queued changes...");
+              return nativeSyncNow().then((result) => {
+                setSyncState(result.pending ? "saving" : "ok");
+                setSyncMsg(
+                  result.pending
+                    ? `${result.pending} change${result.pending === 1 ? "" : "s"} pending`
+                    : result.skipped
+                      ? `Skipped ${result.skipped} stale change${result.skipped === 1 ? "" : "s"}`
+                      : result.pushed
+                        ? `Pushed ${result.pushed} change${result.pushed === 1 ? "" : "s"}`
+                        : "Synced locally"
+                );
+                setLastSyncAt(Date.now());
+                setLoading(false);
+              });
+            })
+            .catch((e) => {
+              console.warn("Failed to seed or sync native snapshot:", e);
+              setSyncState("error");
+              setSyncMsg(e?.message || "Native sync failed");
+              setLoading(false);
+            });
+        } else {
+          setSyncState("ok");
+          setSyncMsg("Synced");
+          setLastSyncAt(Date.now());
+          setLoading(false);
+        }
       })
       .catch((e) => {
         if (cancelled) return;
@@ -6784,11 +7164,12 @@ export default function Page() {
         setSyncMsg(e?.message || "Sync failed");
         setLoading(false);
       });
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [tvCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce]);
+  }, [tvCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp]);
 
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
@@ -6804,6 +7185,105 @@ export default function Page() {
       return "—";
     }
   }
+
+  const refreshNativeCacheStatus = useCallback(async () => {
+    if (!isNativeApp) return;
+    try {
+      setNativeCacheStatus(await nativeReadCacheStatus());
+    } catch {
+      setNativeCacheStatus(null);
+    }
+  }, [isNativeApp]);
+
+  const cacheNativeArtworkBatch = useCallback(async () => {
+    if (!isNativeApp || nativeCacheRunning) return;
+    setNativeCacheRunning(true);
+    setSyncState("saving");
+    setSyncMsg("Caching artwork...");
+    try {
+      let totalCached = 0;
+      for (let i = 0; i < 10; i += 1) {
+        const result = await nativeCacheRemoteMedia(50);
+        totalCached += result.cached;
+        await refreshNativeCacheStatus();
+        if (result.cached <= 0) break;
+      }
+      setSyncState("ok");
+      setSyncMsg(
+        totalCached > 0
+          ? `Cached ${totalCached} artwork file${totalCached === 1 ? "" : "s"}`
+          : "Artwork cache is current"
+      );
+      setLastSyncAt(Date.now());
+    } catch (e: any) {
+      setSyncState("error");
+      setSyncMsg(e?.message || "Artwork cache failed");
+    } finally {
+      setNativeCacheRunning(false);
+    }
+  }, [isNativeApp, nativeCacheRunning, refreshNativeCacheStatus]);
+
+  useEffect(() => {
+    void refreshNativeCacheStatus();
+  }, [
+    refreshNativeCacheStatus,
+    tvRows.length,
+    bookRows.length,
+    movieRows.length,
+    gameRows.length,
+    lastSyncAt,
+  ]);
+
+  const refreshLibraryData = useCallback(async () => {
+    if (isNativeApp) {
+      setSyncState("saving");
+      setSyncMsg("Pulling remote library...");
+      nativeForceRemoteRefreshRef.current = true;
+      nativeSyncAfterRemoteRefreshRef.current = true;
+      setRefreshNonce((n) => n + 1);
+      return;
+    }
+    setRefreshNonce((n) => n + 1);
+  }, [isNativeApp]);
+
+  const syncNativePendingChanges = useCallback(async (reason: "startup" | "online") => {
+    if (!isNativeApp) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+    setSyncState("saving");
+    setSyncMsg(reason === "online" ? "Back online. Syncing queued changes..." : "Syncing queued changes...");
+    try {
+      const result = await nativeSyncNow();
+      if (result.pushed || result.skipped) {
+        nativeForceRemoteRefreshRef.current = true;
+        setRefreshNonce((n) => n + 1);
+      }
+      setSyncState(result.pending ? "saving" : "ok");
+      setSyncMsg(
+        result.pending
+          ? `${result.pending} change${result.pending === 1 ? "" : "s"} pending`
+          : result.skipped
+            ? `Skipped ${result.skipped} stale change${result.skipped === 1 ? "" : "s"}`
+            : result.pushed
+              ? `Pushed ${result.pushed} change${result.pushed === 1 ? "" : "s"}`
+              : "Synced locally"
+      );
+      setLastSyncAt(Date.now());
+    } catch (e: any) {
+      setSyncState("error");
+      setSyncMsg(e?.message || "Native sync failed");
+    }
+  }, [isNativeApp]);
+
+  useEffect(() => {
+    if (!isNativeApp || typeof window === "undefined") return;
+    void syncNativePendingChanges("startup");
+    const handleOnline = () => {
+      void syncNativePendingChanges("online");
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [isNativeApp, syncNativePendingChanges]);
 
   // Settings helper functions
   // CORE SETTING FUNCTIONS - These provide automatic persistence for ALL settings
@@ -8397,6 +8877,28 @@ export default function Page() {
   const [movieRecommendations, setMovieRecommendations] = useState<Record<string, unknown>[]>([]);
   const [tvRecommendations, setTvRecommendations] = useState<Record<string, unknown>[]>([]);
   const [gameRecommendations, setGameRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [gamesHomeRemoteRecommendations, setGamesHomeRemoteRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() => (
+    typeof navigator === "undefined" ? true : navigator.onLine !== false
+  ));
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    const updateOnlineState = () => setIsBrowserOnline(navigator.onLine !== false);
+    updateOnlineState();
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+    };
+  }, []);
+
+  const shouldUseOnlineRecommendations =
+    !isNativeApp &&
+    !isStaticSiteBuild &&
+    isBrowserOnline;
+  const suppressRemoteRelatedCovers = !isBrowserOnline;
 
   const loadRecommendations = useCallback(
     async (
@@ -8405,6 +8907,11 @@ export default function Page() {
       onSuccess: (items: Record<string, unknown>[]) => void
     ) => {
       if (!currentItem) {
+        onSuccess([]);
+        return;
+      }
+
+      if (!shouldUseOnlineRecommendations) {
         onSuccess([]);
         return;
       }
@@ -8461,7 +8968,7 @@ export default function Page() {
         onSuccess([]);
       }
     },
-    [allBooks, allGames, allMovies, allShows]
+    [allBooks, allGames, allMovies, allShows, shouldUseOnlineRecommendations]
   );
 
   useEffect(() => {
@@ -8479,6 +8986,115 @@ export default function Page() {
   useEffect(() => {
     void loadRecommendations("game", gameDetailItem, setGameRecommendations);
   }, [gameDetailItem, loadRecommendations]);
+
+  useEffect(() => {
+    if (!isBrowserOnline) {
+      setGamesHomeRemoteRecommendations([]);
+      return;
+    }
+
+    const igdbGenreIdByToken: Record<string, number> = {
+      pointandclick: 2,
+      fighting: 4,
+      shooter: 5,
+      music: 7,
+      platform: 8,
+      platformer: 8,
+      puzzle: 9,
+      racing: 10,
+      realtime: 11,
+      rts: 11,
+      strategy: 15,
+      roleplayingrpg: 12,
+      roleplaying: 12,
+      rpg: 12,
+      simulator: 13,
+      simulation: 13,
+      sport: 14,
+      sports: 14,
+      turnbasedstrategy: 16,
+      tactical: 24,
+      hackandslash: 25,
+      beatemup: 25,
+      quiztrivia: 26,
+      adventure: 31,
+      indie: 32,
+      arcade: 33,
+      visualnovel: 34,
+      cardboardgame: 35,
+      moba: 36,
+    };
+    const normalizeGenreToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const genreScores = new Map<number, number>();
+    allGames.forEach((game) => {
+      if (normalizeOwnership(game.ownership) === "wishlist") return;
+      const rating = Number.parseFloat(safeStr(game.myRating || game.rating || game.igdbRating).replace(/[^0-9.]/g, ""));
+      const score = (Number.isFinite(rating) && rating > 0 ? rating : 5) + (isGameCompletedStatus(game) ? 3 : 0);
+      safeStr(game.genres)
+        .split(/[,|;/]+/g)
+        .map((genre) => igdbGenreIdByToken[normalizeGenreToken(genre)])
+        .filter((id): id is number => Boolean(id))
+        .forEach((id) => genreScores.set(id, (genreScores.get(id) || 0) + score));
+    });
+    const preferredGenreIds = Array.from(genreScores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([id]) => id);
+    const libraryIgdbIds = new Set(
+      allGames.map((game) => safeStr(game.igdbId || game.igdbIdOverride)).filter(Boolean)
+    );
+    const libraryTitles = new Set(
+      allGames.map((game) => safeStr(game.title).toLowerCase()).filter(Boolean)
+    );
+    let cancelled = false;
+
+    const normalizeRecommendation = (entry: Record<string, unknown>): Record<string, unknown> => {
+      const data = (entry.data && typeof entry.data === "object" ? entry.data : entry) as Record<string, unknown>;
+      return {
+        ...data,
+        title: safeStr(data.title || entry.title),
+        year: safeStr(data.year || entry.year),
+        releaseDate: safeStr(data.releaseDate),
+        posterUrl: safeStr(data.posterUrl || data.coverUrl || data.imageUrl || entry.imageUrl),
+        imageUrl: safeStr(data.imageUrl || data.coverUrl || data.posterUrl || entry.imageUrl),
+        coverUrl: safeStr(data.coverUrl || data.posterUrl || data.imageUrl || entry.imageUrl),
+        igdbId: safeStr(data.igdbId || data.IGDB_ID || entry.id),
+        igdbRating: safeStr(data.igdbRating || data.rating),
+        __isRecommendation: true,
+      };
+    };
+
+    const loadGamesHomeRemoteRecommendations = async () => {
+      try {
+        const rawItems = isNativeApp
+          ? await nativeDiscoverIgdbGames(preferredGenreIds)
+          : isStaticSiteBuild
+            ? []
+            : await fetch(`/api/media-search?type=game&mode=discover&genreIds=${encodeURIComponent(preferredGenreIds.join(","))}`, { cache: "no-store" })
+                .then((res) => res.json())
+                .then((payload) => (Array.isArray(payload?.results) ? payload.results : []));
+        if (cancelled) return;
+        const next = rawItems
+          .map((entry: Record<string, unknown>) => normalizeRecommendation(entry))
+          .filter((game: Record<string, unknown>) => {
+            const title = safeStr(game.title).toLowerCase();
+            const igdbId = safeStr(game.igdbId || game.IGDB_ID || game.id).replace(/^game:/, "");
+            if (!title) return false;
+            if (igdbId && libraryIgdbIds.has(igdbId)) return false;
+            return !libraryTitles.has(title);
+          })
+          .slice(0, isMobileLayout ? 8 : 14);
+        setGamesHomeRemoteRecommendations(next);
+      } catch {
+        if (!cancelled) setGamesHomeRemoteRecommendations([]);
+      }
+    };
+
+    void loadGamesHomeRemoteRecommendations();
+    return () => {
+      cancelled = true;
+    };
+  }, [allGames, isBrowserOnline, isMobileLayout, isNativeApp, isStaticSiteBuild]);
 
   const indexedBooks = useMemo(
     () =>
@@ -10047,6 +10663,9 @@ export default function Page() {
       const hasGameFilters = Boolean(
         gamePlatformFilter || gameStatusFilter || gameOwnershipFilter || gameFormatFilter || gameYearPlayedFilter || gameGenreFilter
       );
+      if (gameViewMode === "home" && !hasGameFilters && !q) {
+        return [];
+      }
       let filtered = indexedGames;
       if (gameViewMode === "backlog") {
         filtered = indexedGames.filter((g) => isGameBacklogHeaderMatch(g.item));
@@ -11974,6 +12593,400 @@ export default function Page() {
   const sidebarDetailGradientActive = sidebarFloatOverPageBackground;
   const sidebarDetailShellBackground = sidebarShellBackground;
   const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
+  const gamesHomeData = useMemo(() => {
+    const today = todayMidnight();
+    const getReleaseDate = (game: Game) => pickBestReleaseDate(game.releaseDate, game.releaseDateAlt);
+    const getReleaseTime = (game: Game) => parseReleaseDateForComparison(getReleaseDate(game))?.getTime() ?? 0;
+    const gameStatus = (game: Game) => normalizeStatus(game.status || game.playStatus || game.gameStatus);
+    const isOwnedReleasedGame = (game: Game) =>
+      !hasWishlistOwnership(game.ownership) && !isNotYetReleased(getReleaseDate(game));
+    const inProgress = allGames
+      .filter((game) => {
+        const status = gameStatus(game);
+        return NOW_PLAYING_GAME_STATUS_VALUES.has(status) || status === "playing" || status === "in progress" || status === "currently playing";
+      })
+      .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
+      .slice(0, isMobileLayout ? 4 : 6);
+    const inProgressKeys = new Set(inProgress.map((game) => getMediaItemKey({ ...game, __type: "game" })));
+    const newReleases = allGames
+      .filter((game) => {
+        const release = parseReleaseDateForComparison(getReleaseDate(game));
+        return Boolean(release) && release!.getTime() <= today.getTime() && !hasWishlistOwnership(game.ownership);
+      })
+      .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const upcoming = allGames
+      .filter((game) => isUpcomingRelease(getReleaseDate(game)))
+      .sort((a, b) => getReleaseTime(a) - getReleaseTime(b))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const ratingValue = (game: Game) => {
+      const raw = safeStr(game.myRating || game.rating || game.igdbRating);
+      const parsed = Number.parseFloat(raw.replace(/[^0-9.]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const recommended = allGames
+      .filter((game) => {
+        const key = getMediaItemKey({ ...game, __type: "game" });
+        return isOwnedReleasedGame(game) && !inProgressKeys.has(key);
+      })
+      .sort((a, b) => {
+        const ratingDiff = ratingValue(b) - ratingValue(a);
+        if (ratingDiff !== 0) return ratingDiff;
+        return getReleaseTime(b) - getReleaseTime(a);
+      })
+      .slice(0, isMobileLayout ? 8 : 14);
+    const currentYear = String(new Date().getFullYear());
+    const platforms = new Set<string>();
+    let hours = 0;
+    let ratingTotal = 0;
+    let ratingCount = 0;
+    let completedThisYear = 0;
+    let trophies = 0;
+
+    allGames.forEach((game) => {
+      safeStr(game.platform || game.platforms)
+        .split(/[,|;/]+/g)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .forEach((value) => platforms.add(value));
+      const hourValue = Number.parseFloat(safeStr(game.hoursPlayed).replace(/[^0-9.]/g, ""));
+      if (Number.isFinite(hourValue)) hours += hourValue;
+      const rating = ratingValue(game);
+      if (rating > 0) {
+        ratingTotal += rating;
+        ratingCount += 1;
+      }
+      if (isGameCompletedStatus(game) && (safeStr(game.yearPlayed) === currentYear || getYearToken(game.dateCompleted) === currentYear)) {
+        completedThisYear += 1;
+      }
+      if (isGameCompletedStatus(game)) trophies += 1;
+    });
+
+    return {
+      inProgress,
+      newReleases,
+      upcoming,
+      recommended,
+      stats: {
+        games: allGames.filter((game) => !hasWishlistOwnership(game.ownership)).length,
+        hours: Math.round(hours),
+        rating: ratingCount ? Math.round((ratingTotal / ratingCount) * 10) / 10 : 0,
+        platforms: platforms.size,
+        completedThisYear,
+        trophies,
+      },
+    };
+  }, [allGames, hasWishlistOwnership, isMobileLayout, normalizeStatus]);
+
+  const formatGamesHomeDate = (game: Game, mode: "past" | "future") => {
+    const release = parseReleaseDateForComparison(pickBestReleaseDate(game.releaseDate, game.releaseDateAlt));
+    if (!release) return "";
+    const diffDays = Math.round((release.getTime() - todayMidnight().getTime()) / 86400000);
+    const absoluteDays = Math.abs(diffDays);
+    if (mode === "future") {
+      if (diffDays <= 0) return "today";
+      if (absoluteDays < 7) return `in ${absoluteDays} day${absoluteDays === 1 ? "" : "s"}`;
+      if (absoluteDays < 45) {
+        const weeks = Math.max(1, Math.round(absoluteDays / 7));
+        return `in ${weeks} week${weeks === 1 ? "" : "s"}`;
+      }
+      const months = Math.max(1, Math.round(absoluteDays / 30));
+      return `in ${months} month${months === 1 ? "" : "s"}`;
+    }
+    if (diffDays === 0) return "today";
+    if (absoluteDays < 7) return `${absoluteDays} day${absoluteDays === 1 ? "" : "s"} ago`;
+    if (absoluteDays < 45) {
+      const weeks = Math.max(1, Math.round(absoluteDays / 7));
+      return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+    }
+    const months = Math.max(1, Math.round(absoluteDays / 30));
+    return `${months} month${months === 1 ? "" : "s"} ago`;
+  };
+
+  const gamesHomeTextColor = simpleSidebarIsLight ? "rgba(28, 36, 48, 0.94)" : "rgba(246, 248, 252, 0.95)";
+  const gamesHomeMutedColor = simpleSidebarIsLight ? "rgba(72, 83, 99, 0.72)" : "rgba(225, 230, 239, 0.72)";
+  const gamesHomePanelBg = simpleSidebarIsLight ? "rgba(255,255,255,0.68)" : "rgba(255,255,255,0.08)";
+  const gamesHomePanelBorder = simpleSidebarIsLight ? "1px solid rgba(130, 142, 160, 0.28)" : "1px solid rgba(255,255,255,0.12)";
+  const gamesHomeAccentColor = activeSidebarHighlightColors.games || DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games;
+  const gamesHomeCardWidth = isMobileLayout ? 116 : 132;
+  const gamesHomeLargeCardWidth = isMobileLayout ? 136 : 176;
+  const gamesHomeRecommendedItems =
+    isBrowserOnline && gamesHomeRemoteRecommendations.length > 0
+      ? gamesHomeRemoteRecommendations
+      : (gamesHomeData.recommended as Array<Record<string, unknown>>);
+  const gamesHomeRecommendedIsRemote = isBrowserOnline && gamesHomeRemoteRecommendations.length > 0;
+  const renderGamesHomeCard = (game: any, variant: "large" | "standard", meta?: string, showAdd?: boolean) => {
+    const item = { ...game, __type: "game" } as Game & { __type: "game" };
+    const width = variant === "large" ? gamesHomeLargeCardWidth : gamesHomeCardWidth;
+    const height = Math.round(width * 1.36);
+    const title = safeStr(game.title || game.name);
+    const coverUrl =
+      getDisplayCoverUrl(item, true) ||
+      safeStr(game.posterUrl || game.coverUrl || game.imageUrl || game.metadataCoverUrl);
+    const isRecommendation = Boolean(game.__isRecommendation);
+    const statusIndicator = isRecommendation ? null : getStatusIndicator(item);
+    const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
+    const statusIconLeft = Math.max(
+      4,
+      Math.min(width - statusDotPixelSize - 4, width - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX)
+    );
+    const statusIconTop = Math.max(
+      4,
+      Math.min(height - statusDotPixelSize - 4, height - STATUS_DOT_NUDGE_UP_PX - statusDotPixelSize + statusIconOffsetY)
+    );
+    return (
+      <button
+        key={`games-home-card-${variant}-${getMediaItemKey(item)}`}
+        type="button"
+        onClick={() => {
+          if (isRecommendation) {
+            openAddFlowFromGameRecommendation(game);
+            return;
+          }
+          openSelectedItem(item);
+        }}
+        style={{
+          width,
+          flex: `0 0 ${width}px`,
+          border: 0,
+          padding: 0,
+          background: "transparent",
+          color: gamesHomeTextColor,
+          cursor: "pointer",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width,
+            height,
+            borderRadius: variant === "large" ? 18 : 12,
+            overflow: "hidden",
+            background: simpleSidebarIsLight ? "rgba(213, 220, 231, 0.62)" : "rgba(255,255,255,0.1)",
+            boxShadow: simpleSidebarIsLight ? "0 10px 22px rgba(24, 32, 44, 0.16)" : "0 12px 24px rgba(0,0,0,0.32)",
+          }}
+        >
+          {coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", padding: 10, fontSize: 12, fontWeight: 900, color: gamesHomeMutedColor }}>
+              {title}
+            </div>
+          )}
+          {showAdd ? (
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: 6,
+                bottom: 6,
+                width: 22,
+                height: 22,
+                borderRadius: 7,
+                display: "grid",
+                placeItems: "center",
+                background: "rgba(0,0,0,0.58)",
+                color: "#fff",
+                fontSize: 18,
+                lineHeight: 1,
+                fontWeight: 800,
+              }}
+            >
+              +
+            </span>
+          ) : null}
+          {showStatusIndicators && statusIndicator ? (
+            <span
+              aria-label={`Status: ${statusIndicator.label}`}
+              title={statusIndicator.label}
+              style={{
+                position: "absolute",
+                left: statusIconLeft,
+                top: statusIconTop,
+                width: statusDotPixelSize,
+                height: statusDotPixelSize,
+                borderRadius: "50%",
+                border: statusIconSrc ? "none" : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
+                background: statusIconSrc ? "transparent" : statusIndicator.color,
+                boxShadow: statusIconSrc
+                  ? "0 2px 6px rgba(0,0,0,0.35)"
+                  : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
+                zIndex: 4,
+                pointerEvents: "none",
+              }}
+            >
+              {statusIconSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={statusIconSrc}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: 2,
+                    top: 2,
+                    width: "40%",
+                    height: "40%",
+                    borderRadius: "50%",
+                    background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
+                  }}
+                />
+              )}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ marginTop: 9, fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+          {title}
+        </div>
+        {meta ? (
+          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>
+            {meta}
+          </div>
+        ) : null}
+      </button>
+    );
+  };
+  const renderGamesHomeRow = (title: string, games: any[], variant: "large" | "standard", metaMode?: "past" | "future", showAdd?: boolean) => (
+    <section key={`games-home-section-${title}`} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+        <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>
+          {title}
+        </h2>
+      </div>
+      {games.length ? (
+        <div style={{ display: "flex", gap: variant === "large" ? 18 : 16, overflowX: "auto", padding: "0 2px 8px 0", scrollbarWidth: "none" }}>
+          {games.map((game) => renderGamesHomeCard(game, variant, metaMode ? formatGamesHomeDate(game as Game, metaMode) : undefined, showAdd))}
+        </div>
+      ) : (
+        <div style={{ minHeight: 72, display: "flex", alignItems: "center", color: gamesHomeMutedColor, fontSize: 13, fontWeight: 800 }}>
+          No games to show here yet.
+        </div>
+      )}
+    </section>
+  );
+  const gamesHomeContent =
+    nav === "games" && gameViewMode === "home" ? (
+      <div ref={stageRef} style={{ width: "100%" }}>
+        <div
+          style={{
+            position: "sticky",
+            top: topSafeInset,
+            zIndex: 2000,
+            minHeight: 45,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 4,
+            padding: "6px 10px",
+            background: isSimpleHeaderTheme ? stickyHeaderSimpleBackground : stickyHeaderDarkBackground,
+            backdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none",
+            WebkitBackdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none",
+          }}
+        >
+          {([
+            ["home", "Home"],
+            ["library", "Library"],
+            ["upcoming", "Upcoming"],
+            ["backlog", "Backlog"],
+            ["completed", "Completed"],
+            ["abandoned", "Abandoned"],
+            ["wishlist", "Wishlist"],
+          ] as Array<[GameQuickLinkKey, string]>).map(([key, label]) => {
+            const active = activeGameQuickLink === key;
+            return (
+              <button
+                key={`game-home-quick-link-${key}`}
+                type="button"
+                onClick={() => activateGameQuickLink(key)}
+                aria-pressed={active}
+                style={{
+                  height: isMobileLayout ? 28 : 26,
+                  minWidth: 0,
+                  padding: isMobileLayout ? "0 10px" : "0 12px",
+                  borderRadius: 999,
+                  border: active ? `1px solid ${sidebarAccentPalette.games.border}` : "1px solid transparent",
+                  background: active ? sidebarAccentPalette.games.background : "transparent",
+                  color: active ? sidebarAccentPalette.games.text : gamesHomeMutedColor,
+                  boxShadow: active ? "0 2px 7px rgba(35, 119, 220, 0.22)" : "none",
+                  cursor: "pointer",
+                  fontSize: isMobileLayout ? 11 : 12,
+                  fontWeight: 800,
+                  lineHeight: 1,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            minHeight: `calc(100vh - ${topSafeInset + 45}px)`,
+            background: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+            padding: isMobileLayout ? "14px 12px 28px" : "18px 0 34px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: isMobileLayout ? 22 : 26,
+            overflow: "hidden",
+          }}
+        >
+          {renderGamesHomeRow("In Progress", gamesHomeData.inProgress, "large")}
+          {renderGamesHomeRow("New Releases", gamesHomeData.newReleases, "standard", "past")}
+          {renderGamesHomeRow("Upcoming", gamesHomeData.upcoming, "standard", "future")}
+          <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+              <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>
+                Statistics
+              </h2>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(360px, 470px) minmax(320px, 480px)", gap: 10, paddingRight: isMobileLayout ? 0 : 14 }}>
+              <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                {[
+                  ["Games", gamesHomeData.stats.games],
+                  ["Hours", gamesHomeData.stats.hours],
+                  ["Rating", gamesHomeData.stats.rating || "-"],
+                  ["Platforms", gamesHomeData.stats.platforms],
+                  ["Completed", gamesHomeData.stats.trophies],
+                  ["This Year", gamesHomeData.stats.completedThisYear],
+                ].map(([label, value]) => (
+                  <div key={`games-home-stat-${label}`} style={{ borderRadius: 9, background: simpleSidebarIsLight ? "rgba(96, 106, 122, 0.12)" : "rgba(255,255,255,0.1)", padding: "9px 8px", textAlign: "center", minHeight: 48 }}>
+                    <div style={{ fontSize: 22, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{value}</div>
+                    <div style={{ marginTop: 3, fontSize: 10, lineHeight: 1, fontWeight: 900, color: gamesHomeMutedColor, textTransform: "uppercase" }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 16, display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", minHeight: 112 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 950, color: gamesHomeAccentColor }}>Completed Games</div>
+                  <div style={{ marginTop: 24, display: "flex", alignItems: "baseline", gap: 7, color: gamesHomeTextColor }}>
+                    <span style={{ fontSize: 34, lineHeight: 1, fontWeight: 950 }}>{gamesHomeData.stats.completedThisYear}</span>
+                    <span style={{ fontSize: 16, fontWeight: 900, color: gamesHomeMutedColor }}>this year</span>
+                  </div>
+                </div>
+                <div aria-hidden style={{ display: "flex", alignItems: "end", gap: 7, height: 58 }}>
+                  {[34, 48, 58].map((height, index) => (
+                    <span key={`games-home-bar-${index}`} style={{ width: 8, height, borderRadius: 999, background: gamesHomeAccentColor }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+          {renderGamesHomeRow("Recommended", gamesHomeRecommendedItems, "standard", undefined, gamesHomeRecommendedIsRemote)}
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div
@@ -13584,7 +14597,7 @@ export default function Page() {
 
                 <button
                   onClick={() => {
-                    setGameViewMode("library");
+                    setGameViewMode("home");
                     setGamePlatformFilter(null);
                     setGameStatusFilter(null);
                     setGameOwnershipFilter(null);
@@ -15414,9 +16427,10 @@ export default function Page() {
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  justifyContent: "flex-start",
+                  gap: 7,
                   padding: "10px 12px",
                   borderRadius: 9,
                   background: isElectricBlueSidebarTheme
@@ -15472,31 +16486,92 @@ export default function Page() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setRefreshNonce((n) => n + 1)}
-                  style={{
-                    border: isElectricBlueSidebarTheme ? "1px solid rgba(151, 196, 255, 0.62)" : "1px solid rgba(0,0,0,0.18)",
-                    background: isElectricBlueSidebarTheme ? "rgba(18, 43, 82, 0.9)" : "rgba(255,255,255,0.85)",
-                    color: isElectricBlueSidebarTheme ? "rgba(224, 239, 255, 0.98)" : "#754738",
-                    borderRadius: 999,
-                    padding: "5px 6px",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    flex: "0 0 auto",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: 28,
-                    minHeight: 28,
-                  }}
-                  title="Re-sync (re-fetch CSV)"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 2v6h-6M3 22v-6h6M3 12c0-4.418 3.582-8 8-8 3.5 0 6.456 2.272 7.619 5.362M21 12c0 4.418-3.582 8-8 8-3.5 0-6.456-2.272-7.619-5.362" />
-                  </svg>
-                </button>
+                <div style={{ display: "flex", gap: 6, width: "100%" }}>
+                  <button
+                    onClick={() => {
+                      void refreshLibraryData();
+                    }}
+                    style={{
+                      border: isElectricBlueSidebarTheme ? "1px solid rgba(151, 196, 255, 0.62)" : "1px solid rgba(0,0,0,0.18)",
+                      background: isElectricBlueSidebarTheme ? "rgba(18, 43, 82, 0.9)" : "rgba(255,255,255,0.85)",
+                      color: isElectricBlueSidebarTheme ? "rgba(224, 239, 255, 0.98)" : "#754738",
+                      borderRadius: 999,
+                      padding: "5px 6px",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      flex: "1 1 0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 0,
+                      minHeight: 28,
+                    }}
+                    title="Re-sync (re-fetch CSV)"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 2v6h-6M3 22v-6h6M3 12c0-4.418 3.582-8 8-8 3.5 0 6.456 2.272 7.619 5.362M21 12c0 4.418-3.582 8-8 8-3.5 0-6.456-2.272-7.619-5.362" />
+                    </svg>
+                  </button>
+                  {isNativeApp ? (
+                    <button
+                      disabled={nativeCacheRunning}
+                      onClick={() => {
+                        void cacheNativeArtworkBatch();
+                      }}
+                      style={{
+                        border: isElectricBlueSidebarTheme ? "1px solid rgba(151, 196, 255, 0.62)" : "1px solid rgba(0,0,0,0.18)",
+                        background: isElectricBlueSidebarTheme ? "rgba(18, 43, 82, 0.9)" : "rgba(255,255,255,0.85)",
+                        color: isElectricBlueSidebarTheme ? "rgba(224, 239, 255, 0.98)" : "#754738",
+                        borderRadius: 999,
+                        padding: "5px 8px",
+                        cursor: nativeCacheRunning ? "default" : "pointer",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        flex: "1 1 0",
+                        minWidth: 0,
+                        minHeight: 28,
+                        opacity: nativeCacheRunning ? 0.65 : 1,
+                      }}
+                      title="Cache the next artwork batches for offline use"
+                    >
+                      {nativeCacheRunning ? "Caching" : "Cache"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
+              {isNativeApp && nativeCacheStatus ? (
+                <button
+                  type="button"
+                  disabled={nativeCacheRunning}
+                  onClick={() => {
+                    void cacheNativeArtworkBatch();
+                  }}
+                  title={`Click to cache the next batch. Covers ${nativeCacheStatus.cachedCovers}/${nativeCacheStatus.totalCovers} • Backdrops ${nativeCacheStatus.cachedBackdrops}/${nativeCacheStatus.totalBackdrops} • Cast photos ${nativeCacheStatus.cachedCastPhotos}/${nativeCacheStatus.totalCastPhotos}`}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "0 4px",
+                    color: isDarkSidebarTheme ? "rgba(223, 236, 255, 0.68)" : "rgba(0,0,0,0.48)",
+                    fontSize: 9,
+                    fontWeight: 650,
+                    lineHeight: 1.25,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    textAlign: "center",
+                    cursor: nativeCacheRunning ? "default" : "pointer",
+                    opacity: nativeCacheRunning ? 0.72 : 1,
+                  }}
+                >
+                  {(() => {
+                    const counts = nativeArtworkCacheCounts(nativeCacheStatus);
+                    return `Cache ${counts.cached}/${counts.total} artwork • ${nativeCacheStatus.cachedAssets} files`;
+                  })()}
+                </button>
+              ) : null}
               </div>
             </div>
             )}
@@ -17187,7 +18262,9 @@ export default function Page() {
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => setRefreshNonce((n) => n + 1)}
+                    onClick={() => {
+                      void refreshLibraryData();
+                    }}
                     disabled={loading || backdropMigration.active}
                     style={{
                       border: "1px solid rgba(121,131,145,0.44)",
@@ -17417,8 +18494,9 @@ export default function Page() {
                 }
                 openBookDetailItem(book);
               }}
-              recommendedBooks={bookRecommendations}
-              getDisplayCoverUrl={getDisplayCoverUrl}
+              recommendedBooks={shouldUseOnlineRecommendations ? bookRecommendations : []}
+              suppressRemoteRelatedCovers={suppressRemoteRelatedCovers}
+              getDisplayCoverUrl={getNativeDetailCoverUrl}
               isAudiobookItem={isAudiobookItem}
               onPaletteChange={handleBookDetailPaletteChange}
               highlightColor={sidebarHighlightColorsLight.books}
@@ -17436,12 +18514,13 @@ export default function Page() {
                 setMovieDetailItem(null);
               }}
               onRate={(item) => handleOpenRateIt(item, "movie", sidebarHighlightColorsLight.movies)}
-              getDisplayCoverUrl={getDisplayCoverUrl}
-              getDisplayBackdropUrl={getDisplayBackdropUrl}
+              getDisplayCoverUrl={getNativeDetailCoverUrl}
+              getDisplayBackdropUrl={getNativeDetailBackdropUrl}
               onPaletteChange={handleMovieDetailPaletteChange}
               relatedMovies={movieRelated.movies}
               relatedMoviesLabel={movieRelated.label}
-              recommendedMovies={movieRecommendations}
+              recommendedMovies={shouldUseOnlineRecommendations ? movieRecommendations : []}
+              suppressRemoteRelatedCovers={suppressRemoteRelatedCovers}
               onSelectRelated={(m) => {
                 if (Boolean((m as any)?.__isRecommendation)) {
                   openAddFlowFromMovieRecommendation(m);
@@ -17464,12 +18543,13 @@ export default function Page() {
                 setTvDetailItem(null);
               }}
               onRate={(item) => handleOpenRateIt(item, "tv", sidebarHighlightColorsLight.tv)}
-              getDisplayCoverUrl={getDisplayCoverUrl}
-              getDisplayBackdropUrl={getDisplayBackdropUrl}
+              getDisplayCoverUrl={getNativeDetailCoverUrl}
+              getDisplayBackdropUrl={getNativeDetailBackdropUrl}
               onPaletteChange={handleTvDetailPaletteChange}
               relatedShows={tvRelated.shows}
               relatedShowsLabel={tvRelated.label}
-              recommendedShows={tvRecommendations}
+              recommendedShows={shouldUseOnlineRecommendations ? tvRecommendations : []}
+              suppressRemoteRelatedCovers={suppressRemoteRelatedCovers}
               onSelectRelated={(s) => {
                 if (Boolean((s as any)?.__isRecommendation)) {
                   openAddFlowFromTvRecommendation(s);
@@ -17492,12 +18572,13 @@ export default function Page() {
                 setGameDetailItem(null);
               }}
               onRate={(item) => handleOpenRateIt(item, "game", sidebarHighlightColorsLight.games)}
-              getDisplayCoverUrl={getDisplayCoverUrl}
-              getDisplayBackdropUrl={getDisplayBackdropUrl}
+              getDisplayCoverUrl={getNativeDetailCoverUrl}
+              getDisplayBackdropUrl={getNativeDetailBackdropUrl}
               onPaletteChange={handleGameDetailPaletteChange}
               relatedGames={gameRelated.games}
               relatedGamesLabel={gameRelated.label}
-              recommendedGames={gameRecommendations}
+              recommendedGames={shouldUseOnlineRecommendations ? gameRecommendations : []}
+              suppressRemoteRelatedCovers={suppressRemoteRelatedCovers}
               onSelectRelatedGame={(g) => {
                 if (Boolean((g as any)?.__isRecommendation)) {
                   openAddFlowFromGameRecommendation(g);
@@ -17507,6 +18588,8 @@ export default function Page() {
               }}
               highlightColor={sidebarHighlightColorsLight.games}
             />
+          ) : gamesHomeContent ? (
+            gamesHomeContent
           ) : mobileLandingVisible ? (
             <div style={{ padding: "58px 14px 0", display: "flex", flexDirection: "column", gap: 14 }}>
               {mobileLandingCards.map((card) => (
@@ -17703,7 +18786,7 @@ export default function Page() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { if (!loading) setRefreshNonce((n) => n + 1); }}
+                  onClick={() => { if (!loading) void refreshLibraryData(); }}
                   disabled={loading}
                   aria-label="Refresh library data"
                   style={{
@@ -17881,10 +18964,10 @@ export default function Page() {
                       {isMobileLayout && nav === "games" ? (
                         <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
-                            ["started", "Started"],
                             ["completed", "Completed"],
                             ["abandoned", "Abandoned"],
                           ] as Array<[GameQuickLinkKey, string]>).map(([key, label]) => {
@@ -18021,6 +19104,7 @@ export default function Page() {
                           }}
                         >
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],

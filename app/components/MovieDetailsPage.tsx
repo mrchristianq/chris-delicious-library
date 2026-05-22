@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
+import { handleExternalLinkClick, openExternalUrl } from "../native/externalLinks";
 
 type MovieDetailsPageProps = {
   item: Record<string, unknown>;
@@ -18,6 +19,7 @@ type MovieDetailsPageProps = {
   relatedMovies?: Record<string, unknown>[];
   relatedMoviesLabel?: string;
   recommendedMovies?: Record<string, unknown>[];
+  suppressRemoteRelatedCovers?: boolean;
   onSelectRelated?: (item: Record<string, unknown>) => void;
   highlightColor?: string;
 };
@@ -44,7 +46,12 @@ const FALLBACK_PALETTE: PaletteState = {
 
 function clampChannel(v: number): number { return Math.max(0, Math.min(255, Math.round(v))); }
 function safeStr(v: unknown): string { return String(v ?? "").trim(); }
+function isRemoteHttpUrl(value: string): boolean { return /^https?:\/\//i.test(value); }
 function splitList(v: unknown): string[] { return safeStr(v).split(/[,|/]/g).map(p => p.trim()).filter(Boolean); }
+function upgradeTmdbProfileImageSize(url: string, size: string = "h632"): string {
+  if (!url || !/image\.tmdb\.org\/t\/p\//.test(url)) return url;
+  return url.replace(/\/t\/p\/(w\d+|h\d+|original)\//, `/t/p/${size}/`);
+}
 function formatYear(v: unknown): string { const r = safeStr(v); const m = r.match(/\b((?:19|20)\d{2})\b/); return m ? m[1] : r; }
 function formatFullDate(v: unknown): string {
   const s = safeStr(v);
@@ -243,8 +250,11 @@ export function MovieDetailsPage({
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
   relatedMovies, relatedMoviesLabel, onSelectRelated, highlightColor,
   recommendedMovies,
+  suppressRemoteRelatedCovers = false,
 }: MovieDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
+  const [failedCastPhotoUrls, setFailedCastPhotoUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
   const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
   const coverUrl = getDisplayCoverUrl(item);
@@ -285,8 +295,14 @@ export function MovieDetailsPage({
   const budget = safeStr(item.budget);
   const revenue = safeStr(item.revenue);
   const topcastNames = splitList(item.topcast);
-  const topcastPhotoList = safeStr(item.topcastPhotos).split(",").map(s => s.trim()).filter(Boolean);
-  const castMembers = topcastNames.slice(0, 5).map((name, i) => ({ name, photo: topcastPhotoList[i] || "" }));
+  const topcastPhotoList = safeStr(item.nativeTopcastPhotos || item.NativeTopcastPhotos || item.topcastPhotos).split(",").map(s => s.trim()).filter(Boolean);
+  const castMembers = topcastNames.slice(0, 5).map((name, i) => {
+    const photo = upgradeTmdbProfileImageSize(topcastPhotoList[i] || "");
+    return {
+      name,
+      photo: ((suppressRemoteRelatedCovers && isRemoteHttpUrl(photo)) || failedCastPhotoUrls.has(photo)) ? "" : photo,
+    };
+  });
 
   const metaParts = [year, runtime, ...genres].filter(Boolean);
   const titleFontSize = isMobileLayout ? 22 : scaledPx(title.length > 44 ? 26 : title.length > 28 ? 32 : 38, detailScale);
@@ -298,9 +314,12 @@ export function MovieDetailsPage({
   const descContent = useRef<HTMLDivElement>(null);
   const castRowRef = useRef<HTMLDivElement>(null);
   const relatedRowRef = useRef<HTMLDivElement>(null);
-  const CAST_ITEM_W = isMobileLayout ? 68 : scaledPx(82, detailScale);
+  const DETAIL_PORTRAIT_W = isMobileLayout ? 80 : scaledPx(92, detailScale);
+  const DETAIL_PORTRAIT_H = Math.round(DETAIL_PORTRAIT_W * 1.5);
+  const CAST_ITEM_W = DETAIL_PORTRAIT_W;
+  const CAST_IMAGE_H = DETAIL_PORTRAIT_H;
   const CAST_GAP = isMobileLayout ? 14 : scaledPx(20, detailScale);
-  const RELATED_ITEM_W = isMobileLayout ? 80 : scaledPx(80, detailScale);
+  const RELATED_ITEM_W = DETAIL_PORTRAIT_W;
   const RELATED_GAP = isMobileLayout ? 10 : scaledPx(10, detailScale);
   const fittedCast = useFitCount(castRowRef, CAST_ITEM_W, CAST_GAP);
   const fittedRelated = useFitCount(relatedRowRef, RELATED_ITEM_W, RELATED_GAP);
@@ -607,7 +626,7 @@ export function MovieDetailsPage({
                   }} />
                 );
                 return externalHref ? (
-                  <a href={externalHref} target="_blank" rel="noopener noreferrer" title="Open on TMDB" style={{ display: "block", lineHeight: 0, flexShrink: 0 }}>
+                  <a href={externalHref} target="_blank" rel="noopener noreferrer" title="Open on TMDB" onClick={(event) => handleExternalLinkClick(event, externalHref)} style={{ display: "block", lineHeight: 0, flexShrink: 0 }}>
                     {img}
                   </a>
                 ) : img;
@@ -710,23 +729,32 @@ export function MovieDetailsPage({
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "flex-start",
                 }}>
                   {sectionLabel("CAST")}
                   <div ref={castRowRef} style={{ display: "flex", gap: CAST_GAP, justifyContent: "flex-start", overflow: "hidden" }}>
                     {visibleCast.map((member, i) => (
-                      <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
+                      <a key={i} href={`https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`} target="_blank" rel="noopener noreferrer" onClick={(event) => handleExternalLinkClick(event, `https://www.themoviedb.org/search/person?query=${encodeURIComponent(member.name)}`)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, width: CAST_ITEM_W, textDecoration: "none", cursor: "pointer" }}>
                         {member.photo ? (
-                          <img src={member.photo} alt={member.name} style={{
-                            width: CAST_ITEM_W, height: CAST_ITEM_W,
-                            borderRadius: "50%", objectFit: "cover",
+                          <img src={member.photo} alt={member.name} onError={() => {
+                            setFailedCastPhotoUrls((prev) => {
+                              if (prev.has(member.photo)) return prev;
+                              const next = new Set(prev);
+                              next.add(member.photo);
+                              return next;
+                            });
+                          }} style={{
+                            width: CAST_ITEM_W, height: CAST_IMAGE_H,
+                            borderRadius: 8, objectFit: "cover",
+                            boxSizing: "border-box",
                             border: `2px solid ${palette.surfaceBorder}`,
                             background: palette.surface,
                           }} />
                         ) : (
                           <div style={{
-                            width: CAST_ITEM_W, height: CAST_ITEM_W,
-                            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                            width: CAST_ITEM_W, height: CAST_IMAGE_H,
+                            borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                            boxSizing: "border-box",
                             background: palette.chip, border: `2px solid ${palette.surfaceBorder}`,
                             fontSize: 20, fontWeight: 700, color: palette.mutedText,
                           }}>
@@ -758,7 +786,8 @@ export function MovieDetailsPage({
                     {visibleRelated.map((movie, i) => {
                       const mTitle = safeStr(movie.title);
                       const mYear = formatYear(movie.releaseDate || movie.year);
-                      const mCover = getDisplayCoverUrl(movie);
+                      const mCoverRaw = getDisplayCoverUrl(movie);
+                      const mCover = ((suppressRemoteRelatedCovers && isRemoteHttpUrl(mCoverRaw)) || failedRelatedCoverUrls.has(mCoverRaw)) ? "" : mCoverRaw;
                       const isRecommendation = Boolean((movie as any).__isRecommendation);
                       const tmdbUrl = isRecommendation ? getTmdbMovieUrl(movie) : "";
                       // The related list can be same-director OR genre-similar,
@@ -776,9 +805,7 @@ export function MovieDetailsPage({
                         <div key={i}
                           onClick={() => {
                             if (isRecommendation && tmdbUrl) {
-                              if (typeof window !== "undefined") {
-                                window.open(tmdbUrl, "_blank", "noopener,noreferrer");
-                              }
+                              void openExternalUrl(tmdbUrl);
                               return;
                             }
                             onSelectRelated?.(movie);
@@ -791,7 +818,7 @@ export function MovieDetailsPage({
                         >
                           <div style={{
                             width: RELATED_ITEM_W,
-                            height: Math.round(RELATED_ITEM_W * 1.5),
+                            height: DETAIL_PORTRAIT_H,
                             display: "flex",
                             alignItems: "flex-end",
                             justifyContent: "flex-start",
@@ -799,18 +826,28 @@ export function MovieDetailsPage({
                             borderRadius: 6,
                           }}>
                             {mCover ? (
-                              <img src={mCover} alt={mTitle} style={{
+                              <img src={mCover} alt={mTitle} onError={() => {
+                                setFailedRelatedCoverUrls((prev) => {
+                                  if (prev.has(mCover)) return prev;
+                                  const next = new Set(prev);
+                                  next.add(mCover);
+                                  return next;
+                                });
+                              }} style={{
                                 width: "100%",
+                                height: "100%",
                                 maxHeight: "100%",
                                 objectFit: "cover",
                                 objectPosition: "center bottom",
                                 display: "block",
+                                boxSizing: "border-box",
                                 border: `1px solid ${palette.surfaceBorder}`,
                                 ...COVER_IMAGE_RADIUS_STYLE,
                               }} />
                             ) : (
                               <div style={{
                                 width: "100%", height: "100%", borderRadius: 6,
+                                boxSizing: "border-box",
                                 background: palette.chip, border: `1px solid ${palette.surfaceBorder}`,
                                 display: "flex", alignItems: "center", justifyContent: "center",
                                 padding: "0 5px", textAlign: "center",

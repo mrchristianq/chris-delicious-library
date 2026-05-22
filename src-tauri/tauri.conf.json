@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Chris' Delicious Library",
+  "version": "8.8.0",
+  "identifier": "com.chrisdelicious.library",
+  "build": {
+    "beforeDevCommand": "NEXT_PUBLIC_NATIVE_APP=true npm run dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm run build:native-renderer",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Chris' Delicious Library",
+        "width": 1440,
+        "height": 940,
+        "minWidth": 1024,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "macOSPrivateApi": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "icon": [
+      "icons/icon.icns"
+    ],
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "signingIdentity": null
+    }
+  }
+}
