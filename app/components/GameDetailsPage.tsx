@@ -336,8 +336,14 @@ export function GameDetailsPage({
   const releaseDate = formatMmDdYyyy(item.releaseDate || item.releaseDateAlt);
   const yearPlayed = safeStr(item.yearPlayed);
   const hoursPlayed = safeStr(item.hoursPlayed);
+  const timeToBeat = safeStr(item.timeToBeat || item.TimeToBeat || item["Time To Beat"]);
   const ownership = safeStr(item.ownership);
   const tags = splitList(item.tag || item.tags);
+  const gameAccentColor = safeStr(highlightColor) || "#60a5fa";
+  const timeToBeatHours = Number.parseFloat(timeToBeat.replace(/[^0-9.]/g, ""));
+  const timeToBeatLabel = Number.isFinite(timeToBeatHours) && timeToBeatHours > 0
+    ? `${Math.ceil(timeToBeatHours)} Hours`
+    : "";
 
   const metaParts = [year, platformDisplay, developer, ...genres].filter(Boolean);
   const titleFontSize = isMobileLayout ? 22 : scaledPx(title.length > 44 ? 26 : title.length > 28 ? 32 : 38, detailScale);
@@ -426,11 +432,12 @@ export function GameDetailsPage({
   const detailFacts = [
     (releaseDate || year) ? { label: "RELEASED", value: releaseDate || year, half: true } : null,
     completedLabel ? { label: "COMPLETED", value: completedLabel, half: true } : null,
+    timeToBeatLabel ? { label: "TIME TO BEAT", value: timeToBeatLabel, half: true, accent: true } : null,
     platformDisplay ? { label: "PLATFORM", value: platformDisplay, half: true } : null,
     ownership ? { label: "OWNERSHIP", value: ownership, half: true } : null,
     developer ? { label: "DEVELOPER", value: developer } : null,
     ...tags.map(t => ({ label: "TAG", value: t })),
-  ].filter(Boolean) as { label: string; value: string; half?: boolean }[];
+  ].filter(Boolean) as { label: string; value: string; half?: boolean; accent?: boolean }[];
 
   const ratingFacts = [
     igdbRating ? { label: "IGDB Rating", value: igdbRating } : null,
@@ -613,7 +620,7 @@ export function GameDetailsPage({
                 {detailFacts.map((f, i) => (
                   <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.half ? undefined : "1 / -1" }}>
                     <div style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.5)", letterSpacing: "0.06em" }}>{f.label}</div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.25 }}>{f.label === "PLATFORM" ? renderPlatformValue(f.value, 22) : f.value}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: f.accent ? gameAccentColor : "#fff", lineHeight: 1.25 }}>{f.label === "PLATFORM" ? renderPlatformValue(f.value, 22) : f.value}</div>
                   </div>
                 ))}
               </div>
@@ -759,7 +766,7 @@ export function GameDetailsPage({
                 {detailFacts.map((f, i) => (
                   <div key={`${f.label}-${i}`} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     <div style={{ fontSize: 9, fontWeight: 800, color: palette.mutedText, letterSpacing: "0.06em" }}>{f.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: palette.text, lineHeight: 1.2 }}>{f.label === "PLATFORM" ? renderPlatformValue(f.value, 22) : f.value}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: f.accent ? gameAccentColor : palette.text, lineHeight: 1.2 }}>{f.label === "PLATFORM" ? renderPlatformValue(f.value, 22) : f.value}</div>
                   </div>
                 ))}
               </div>

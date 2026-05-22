@@ -275,6 +275,7 @@ type Game = {
   description?: string;
   genres?: string;
   hoursPlayed?: string;
+  timeToBeat?: string;
   coverCachedAt?: string;
   developer?: string;
   screenshotsUrl?: string;
@@ -2141,6 +2142,7 @@ function rowToGame(r: Row): Game | null {
     description: safeStr(r["Description"]) || undefined,
     genres: safeStr(r["Genres"]) || undefined,
     hoursPlayed: safeStr(r["Hours Played"]) || undefined,
+    timeToBeat: safeStr(r["TimeToBeat"]) || safeStr(r["Time To Beat"]) || undefined,
     coverCachedAt: safeStr(r["CoverCachedAt"]) || undefined,
     developer: safeStr(r["Developer"]) || undefined,
     screenshotsUrl: safeStr(r["ScreenshotsURL"]) || undefined,
