@@ -87,6 +87,9 @@ function doPost(e) {
     if (action === "addGame") {
       return addGameRow_(payload);
     }
+    if (action === "appendChangeLogRows") {
+      return appendChangeLogRows_(payload);
+    }
 
     // Default mode: settings key/value write
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -942,6 +945,62 @@ function isFalsyGameCheckboxValue_(normalized) {
     normalized === "not completed" ||
     normalized === "not backlog"
   );
+}
+
+function appendChangeLogRows_(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("ChangeLog");
+  if (!sheet) {
+    sheet = ss.insertSheet("ChangeLog");
+  }
+
+  const headers = ["Timestamp", "Source", "Sheet", "Title", "Row", "Field", "Old Value", "New Value", "User", "Function"];
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  } else {
+    const lastCol = Math.max(sheet.getLastColumn(), headers.length);
+    const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+      return String(h || "").trim();
+    });
+    const missing = headers.some(function(header, idx) {
+      return String(currentHeaders[idx] || "").trim() !== header;
+    });
+    if (missing) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    }
+  }
+
+  const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+  if (rows.length) {
+    const normalizedRows = rows.map(function(row) {
+      const record = row || {};
+      return [
+        String(record["Timestamp"] || new Date().toISOString()).trim(),
+        String(record["Source"] || "CDL App").trim(),
+        String(record["Sheet"] || "").trim(),
+        String(record["Title"] || "").trim(),
+        String(record["Row"] || "").trim(),
+        String(record["Field"] || "").trim(),
+        String(record["Old Value"] || "").trim(),
+        String(record["New Value"] || "").trim(),
+        String(record["User"] || "app").trim(),
+        String(record["Function"] || "").trim(),
+      ];
+    });
+
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, normalizedRows.length, headers.length).setValues(normalizedRows);
+  }
+
+  const maxDataRows = 2000;
+  const lastRow = sheet.getLastRow();
+  const dataRowCount = Math.max(0, lastRow - 1);
+  if (dataRowCount > maxDataRows) {
+    const overflow = dataRowCount - maxDataRows;
+    sheet.deleteRows(2, overflow);
+  }
+
+  return createCORSResponse("Success");
 }
 
 // Add CORS headers to the response

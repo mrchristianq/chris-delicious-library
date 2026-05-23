@@ -1448,7 +1448,8 @@ function normalizeOwnership(value?: string): string {
 function normalizeShowWatchStatusForSheet(value?: string): string {
   const raw = safeStr(value);
   if (!raw) return "";
-  if (normalizeStatusToken(raw) === "currently watching") return "Watching";
+  const normalized = normalizeStatusToken(raw);
+  if (normalized === "currently watching" || normalized === "watching") return "Started";
   return raw;
 }
 
@@ -5485,6 +5486,129 @@ export default function Page() {
     }
   }, [isNativeApp, isStaticSiteBuild]);
 
+  const normalizeSheetFieldKey = useCallback((value: string) => safeStr(value).toLowerCase().replace(/[^a-z0-9]+/g, ""), []);
+
+  const getRowValueByField = useCallback(
+    (row: Row, fieldName: string): string => {
+      const direct = safeStr(row[fieldName]);
+      if (direct) return direct;
+      const wanted = normalizeSheetFieldKey(fieldName);
+      for (const [key, value] of Object.entries(row)) {
+        if (normalizeSheetFieldKey(key) === wanted) return safeStr(value);
+      }
+      return "";
+    },
+    [normalizeSheetFieldKey]
+  );
+
+  const buildChangeLogRowsForSave = useCallback(
+    (params: {
+      sourceSheet: "Books" | "Movies" | "Shows" | "Games";
+      title: string;
+      row: string;
+      functionName: string;
+      oldValues: Record<string, string>;
+      newValues: Record<string, string>;
+    }) => {
+      const rows: Array<Record<string, string>> = [];
+      for (const [field, nextValueRaw] of Object.entries(params.newValues)) {
+        const nextValue = safeStr(nextValueRaw);
+        const oldValue = safeStr(params.oldValues[field]);
+        if (oldValue === nextValue) continue;
+        rows.push({
+          Timestamp: new Date().toISOString(),
+          Source: "CDL App",
+          Sheet: params.sourceSheet,
+          Title: params.title,
+          Row: params.row,
+          Field: field,
+          "Old Value": oldValue,
+          "New Value": nextValue,
+          User: "app",
+          Function: params.functionName,
+        });
+      }
+      return rows;
+    },
+    []
+  );
+
+  const appendChangeLogRowsBestEffort = useCallback(
+    async (url: string, rows: Array<Record<string, string>>) => {
+      if (!rows.length) return false;
+      try {
+        await postSheetWrite(url, { action: "appendChangeLogRows", rows }, "Failed to append ChangeLog rows");
+        return true;
+      } catch (error) {
+        console.warn("[Save] ChangeLog append failed (non-blocking):", error);
+        return false;
+      }
+    },
+    [postSheetWrite]
+  );
+
+  const verifySavedFieldsFromCsv = useCallback(
+    async (params: {
+      sheetName: "Books" | "Movies" | "Shows" | "Games";
+      csvUrl?: string;
+      match: { idField?: string; idValue?: string; fallbackIdValue?: string; title?: string; fallbackTitle?: string };
+      verifyFields: Record<string, string>;
+    }) => {
+      if (!params.csvUrl || !Object.keys(params.verifyFields).length) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+      let lastError: Error | null = null;
+      const maxAttempts = 12;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const csvText = await fetch(params.csvUrl, { cache: "no-store" }).then((res) => res.text());
+          const parsed = Papa.parse<Row>(csvText, { header: true, skipEmptyLines: true });
+          const rows = (parsed.data || []).map((r) => r as Row);
+          const row = rows.find((candidate) => {
+            const idValue = safeStr(candidate[safeStr(params.match.idField || "")]);
+            const titleValue = safeStr(candidate.Title);
+            return (
+              (params.match.idField && params.match.idValue && idValue === params.match.idValue) ||
+              (params.match.idField && params.match.fallbackIdValue && idValue === params.match.fallbackIdValue) ||
+              (params.match.title && titleValue.toLowerCase() === params.match.title.toLowerCase()) ||
+              (params.match.fallbackTitle && titleValue.toLowerCase() === params.match.fallbackTitle.toLowerCase())
+            );
+          });
+
+          if (!row) {
+            throw new Error(`${params.sheetName} row could not be verified after save.`);
+          }
+
+          const availableFieldKeys = new Set(
+            Object.keys(row).map((key) => normalizeSheetFieldKey(key)).filter(Boolean)
+          );
+          for (const [field, expectedRaw] of Object.entries(params.verifyFields)) {
+            const normalizedField = normalizeSheetFieldKey(field);
+            if (!availableFieldKeys.has(normalizedField)) {
+              console.warn(`[Save] ${params.sheetName} readback skipped for missing CSV field:`, field);
+              continue;
+            }
+            const expected = safeStr(expectedRaw);
+            const actual = getRowValueByField(row, field);
+            if (expected !== actual) {
+              throw new Error(
+                `${params.sheetName} ${field} readback mismatch ("${actual || "blank"}" vs "${expected || "blank"}").`
+              );
+            }
+          }
+          return;
+        } catch (error: any) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (attempt === maxAttempts - 1) break;
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+
+      if (lastError) throw lastError;
+    },
+    [getRowValueByField]
+  );
+
   const uploadCoverFormData = useCallback(async (formData: FormData): Promise<Record<string, any>> => {
     if (!isNativeApp) {
       const res = await fetch("/api/upload-cover", {
@@ -5611,11 +5735,75 @@ export default function Page() {
       },
     };
 
+    const bookFieldChanges: Record<string, string> = {
+      Title: safeStr(finalUpdates.title),
+      Status: safeStr(finalUpdates.status),
+      CompletedDate: safeStr(finalUpdates.completedDate),
+      isbn: safeStr(finalUpdates.isbn),
+      ReleaseDate: safeStr(finalUpdates.releaseDate),
+      CustomURL: safeStr(finalUpdates.customImageUrl),
+      "My Rating": safeStr(finalUpdates.myRating),
+      genre: safeStr(finalUpdates.genre),
+      tags: safeStr(finalUpdates.tags),
+      OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
+      GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
+    };
+    const bookOldValues: Record<string, string> = {
+      Title: safeStr(item?.title || item?.Title),
+      Status: safeStr(item?.status || item?.Status),
+      CompletedDate: safeStr(item?.completedDate || item?.CompletedDate || item?.["Completed Date"] || item?.["Date Completed"]),
+      isbn: safeStr(item?.isbn || item?.ISBN),
+      ReleaseDate: safeStr(item?.releaseDate || item?.ReleaseDate),
+      CustomURL: safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL),
+      "My Rating": safeStr(item?.myRating || item?.["My Rating"]),
+      genre: safeStr(item?.genre || item?.categories),
+      tags: safeStr(item?.tags || item?.Tag),
+      OpenLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
+      GoogleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
+    };
+    const bookChangeLogRows = buildChangeLogRowsForSave({
+      sourceSheet: "Books",
+      title: safeStr(finalUpdates.title) || safeStr(item?.title),
+      row: "",
+      functionName: "handleSaveBookEdits",
+      oldValues: bookOldValues,
+      newValues: bookFieldChanges,
+    });
+    const bookVerifyFields = Object.fromEntries(bookChangeLogRows.map((row) => [row.Field, row["New Value"]]));
+
     try {
       await postSheetWrite(booksWriteUrl, payload, "Failed to save book edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save book edits");
     }
+
+    const bookChangeLogOk = await appendChangeLogRowsBestEffort(booksWriteUrl, bookChangeLogRows);
+    const bookReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    if (bookReadbackOnline) {
+      try {
+        await verifySavedFieldsFromCsv({
+          sheetName: "Books",
+          csvUrl: booksCsvUrl,
+          match: {
+            idField: "GoogleBooksVolumeId",
+            idValue: matchGoogleBooksVolumeId,
+            fallbackIdValue: fallbackGoogleBooksVolumeId,
+            title: matchTitle,
+            fallbackTitle,
+          },
+          verifyFields: bookVerifyFields,
+        });
+      } catch (verifyError: any) {
+        throw new Error(`Google Sheet did not confirm the book update. ${verifyError?.message || "Verification failed."}`);
+      }
+    }
+    console.log("[Save] Books", {
+      title: safeStr(finalUpdates.title) || safeStr(item?.title),
+      row: "",
+      fieldsChanged: Object.keys(bookVerifyFields),
+      changeLogAppendSucceeded: bookChangeLogOk,
+      readbackSucceeded: bookReadbackOnline ? true : "skipped-offline",
+    });
 
     setModalItem((prev: any) => {
       if (!prev) return prev;
@@ -5809,6 +5997,39 @@ export default function Page() {
         CustomImageURL: safeStr(updates.customImageUrl),
       },
     };
+    const showFieldChanges: Record<string, string> = {
+      Title: safeStr(updates.title),
+      Year: safeStr(updates.year),
+      TMDB_ID: safeStr(updates.tmdbId),
+      WatchStatus: safeStr((payload.updates as Record<string, string>).WatchStatus || ""),
+      Status: safeStr(updates.showStatus),
+      "My Rating": safeStr(updates.myRating),
+      "Date Completed": safeStr(updates.dateCompleted),
+      PosterURL: safeStr(updates.posterUrl),
+      BackdropURL: safeStr(updates.backdropUrl),
+      Tags: safeStr(updates.tags),
+    };
+    const showOldValues: Record<string, string> = {
+      Title: safeStr(item?.title || item?.Title),
+      Year: safeStr(item?.year || item?.Year),
+      TMDB_ID: safeStr(item?.tmdbId || item?.TMDB_ID),
+      WatchStatus: safeStr(item?.watchStatus || item?.WatchStatus || item?.Watched),
+      Status: safeStr(item?.showStatus || item?.status || item?.Status),
+      "My Rating": safeStr(item?.myRating || item?.MyRating || item?.["My Rating"]),
+      "Date Completed": safeStr(item?.dateCompleted || item?.CompletedDate || item?.["Date Completed"]),
+      PosterURL: safeStr(item?.posterUrl || item?.PosterURL),
+      BackdropURL: safeStr(item?.backdropUrl || item?.BackdropURL),
+      Tags: safeStr(item?.tags || item?.Tag),
+    };
+    const showChangeLogRows = buildChangeLogRowsForSave({
+      sourceSheet: "Shows",
+      title: safeStr(updates.title) || safeStr(item?.title),
+      row: "",
+      functionName: "handleSaveShowEdits",
+      oldValues: showOldValues,
+      newValues: showFieldChanges,
+    });
+    const showVerifyFields = Object.fromEntries(showChangeLogRows.map((row) => [row.Field, row["New Value"]]));
 
     // Never write an empty WatchStatus: omitting the key lets the write API
     // preserve the existing value instead of blanking the user's watch status.
@@ -5821,6 +6042,34 @@ export default function Page() {
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save show edits");
     }
+
+    const showChangeLogOk = await appendChangeLogRowsBestEffort(showsWriteUrl, showChangeLogRows);
+    const showReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    if (showReadbackOnline) {
+      try {
+        await verifySavedFieldsFromCsv({
+          sheetName: "Shows",
+          csvUrl: tvCsvUrl,
+          match: {
+            idField: "TMDB_ID",
+            idValue: matchTmdbId,
+            fallbackIdValue: fallbackTmdbId,
+            title: matchTitle,
+            fallbackTitle,
+          },
+          verifyFields: showVerifyFields,
+        });
+      } catch (verifyError: any) {
+        throw new Error(`Google Sheet did not confirm the show update. ${verifyError?.message || "Verification failed."}`);
+      }
+    }
+    console.log("[Save] Shows", {
+      title: safeStr(updates.title) || safeStr(item?.title),
+      row: "",
+      fieldsChanged: Object.keys(showVerifyFields),
+      changeLogAppendSucceeded: showChangeLogOk,
+      readbackSucceeded: showReadbackOnline ? true : "skipped-offline",
+    });
 
     const buildShowNextItem = (prev: any) => ({
       ...prev,
@@ -5962,12 +6211,77 @@ export default function Page() {
         CustomImageURL: safeStr(updates.customImageUrl),
       },
     };
+    const movieFieldChanges: Record<string, string> = {
+      Title: safeStr(updates.title),
+      Year: safeStr(updates.year),
+      TMDB_ID: safeStr(updates.tmdbId),
+      "Watch Status": normalizedWatchStatus,
+      WatchDate: safeStr(updates.watchDate),
+      Tags: safeStr(updates.tags),
+      Status: safeStr(updates.status),
+      "My Rating": safeStr(updates.myRating),
+      PosterURL: safeStr(updates.posterUrl),
+      BackdropURL: safeStr(updates.backdropUrl),
+    };
+    const movieOldValues: Record<string, string> = {
+      Title: safeStr(item?.title || item?.Title),
+      Year: safeStr(item?.year || item?.Year),
+      TMDB_ID: safeStr(item?.tmdbId || item?.TMDB_ID),
+      "Watch Status": safeStr(item?.watchStatus || item?.watched || item?.["Watch Status"] || item?.WatchStatus),
+      WatchDate: safeStr(item?.watchDate || item?.WatchDate),
+      Tags: safeStr(item?.tags || item?.Tag),
+      Status: safeStr(item?.status || item?.movieStatus || item?.Status),
+      "My Rating": safeStr(item?.myRating || item?.MyRating || item?.["My Rating"]),
+      PosterURL: safeStr(item?.posterUrl || item?.PosterURL),
+      BackdropURL: safeStr(item?.backdropUrl || item?.BackdropURL),
+    };
+    const movieChangeLogRows = buildChangeLogRowsForSave({
+      sourceSheet: "Movies",
+      title: safeStr(updates.title) || safeStr(item?.title),
+      row: "",
+      functionName: "handleSaveMovieEdits",
+      oldValues: movieOldValues,
+      newValues: movieFieldChanges,
+    });
+    const movieVerifyFields = Object.fromEntries(
+      movieChangeLogRows
+        .filter((row) => normalizeSheetFieldKey(row.Field) === normalizeSheetFieldKey("Watch Status"))
+        .map((row) => [row.Field, row["New Value"]])
+    );
 
     try {
       await postSheetWrite(moviesWriteUrl, payload, "Failed to save movie edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save movie edits");
     }
+
+    const movieChangeLogOk = await appendChangeLogRowsBestEffort(moviesWriteUrl, movieChangeLogRows);
+    const movieReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    if (movieReadbackOnline) {
+      try {
+        await verifySavedFieldsFromCsv({
+          sheetName: "Movies",
+          csvUrl: moviesCsvUrl,
+          match: {
+            idField: "TMDB_ID",
+            idValue: matchTmdbId,
+            fallbackIdValue: fallbackTmdbId,
+            title: matchTitle,
+            fallbackTitle,
+          },
+          verifyFields: movieVerifyFields,
+        });
+      } catch (verifyError: any) {
+        throw new Error(`Google Sheet did not confirm the movie update. ${verifyError?.message || "Verification failed."}`);
+      }
+    }
+    console.log("[Save] Movies", {
+      title: safeStr(updates.title) || safeStr(item?.title),
+      row: "",
+      fieldsChanged: Object.keys(movieVerifyFields),
+      changeLogAppendSucceeded: movieChangeLogOk,
+      readbackSucceeded: movieReadbackOnline ? true : "skipped-offline",
+    });
 
     const buildMovieNextItem = (prev: any) => ({
       ...prev,
@@ -6264,12 +6578,52 @@ export default function Page() {
       },
       updates: changedUpdates,
     };
+    const gameOldValues: Record<string, string> = {};
+    Object.keys(changedUpdates).forEach((field) => {
+      gameOldValues[field] = getFirstGameValue(item, existingKeysByColumn[field] || [field]);
+    });
+    const gameChangeLogRows = buildChangeLogRowsForSave({
+      sourceSheet: "Games",
+      title: safeStr(updates.title) || safeStr(item?.title),
+      row: "",
+      functionName: "handleSaveGameEdits",
+      oldValues: gameOldValues,
+      newValues: changedUpdates,
+    });
+    const gameVerifyFields = Object.fromEntries(gameChangeLogRows.map((row) => [row.Field, row["New Value"]]));
 
     try {
       await postSheetWrite(gamesWriteUrl, payload, "Failed to save game edits");
     } catch (e: any) {
       throw new Error(e?.message || "Failed to save game edits");
     }
+    const gameChangeLogOk = await appendChangeLogRowsBestEffort(gamesWriteUrl, gameChangeLogRows);
+    const gameReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    if (gameReadbackOnline) {
+      try {
+        await verifySavedFieldsFromCsv({
+          sheetName: "Games",
+          csvUrl: gamesCsvUrl,
+          match: {
+            idField: "IGDB_ID",
+            idValue: matchIgdbId,
+            fallbackIdValue: fallbackIgdbId,
+            title: matchTitle,
+            fallbackTitle,
+          },
+          verifyFields: gameVerifyFields,
+        });
+      } catch (verifyError: any) {
+        throw new Error(`Google Sheet did not confirm the game update. ${verifyError?.message || "Verification failed."}`);
+      }
+    }
+    console.log("[Save] Games", {
+      title: safeStr(updates.title) || safeStr(item?.title),
+      row: "",
+      fieldsChanged: Object.keys(gameVerifyFields),
+      changeLogAppendSucceeded: gameChangeLogOk,
+      readbackSucceeded: gameReadbackOnline ? true : "skipped-offline",
+    });
 
     // Backup game screenshot (backdrop) to R2 if it exists
     const screenshotUrl = safeStr(updates.screenshotsUrl || item?.ScreenshotsURL || item?.screenshotsUrl);

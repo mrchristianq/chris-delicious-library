@@ -140,15 +140,26 @@ export async function POST(req: NextRequest) {
     let responseText = "";
     let upstreamStatus = 500;
     try {
+      const normalizedPayloadRecord =
+        normalizedPayload && typeof normalizedPayload === "object"
+          ? (normalizedPayload as Record<string, unknown>)
+          : null;
+      console.log("[sheets-write] Forwarding write to:", url);
+      console.log("[sheets-write] Payload action:", normalizedPayloadRecord?.action);
+      console.log("[sheets-write] Payload match:", normalizedPayloadRecord?.match);
+      console.log("[sheets-write] Payload updates:", normalizedPayloadRecord?.updates);
+
       const upstream = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(normalizedPayload ?? {}),
         cache: "no-store",
         signal: controller.signal,
       });
       upstreamStatus = upstream.status;
       responseText = (await upstream.text()).trim();
+      console.log("[sheets-write] Apps Script response status:", upstream.status);
+      console.log("[sheets-write] Apps Script response body:", responseText);
     } finally {
       clearTimeout(timeoutId);
     }
