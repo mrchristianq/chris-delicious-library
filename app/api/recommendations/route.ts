@@ -4,7 +4,7 @@ type MediaType = "movie" | "tv" | "game" | "book";
 
 type RecommendationCard = {
   id: string;
-  source: "tmdb" | "igdb" | "hardcover";
+  source: "tmdb" | "igdb" | "hardcover" | "nyt";
   mediaType: MediaType;
   title: string;
   year?: string;
@@ -20,7 +20,7 @@ type RecommendationCard = {
   isbn13?: string;
   inLibrary: boolean;
   __isRecommendation: true;
-  __recommendationSource: "tmdb" | "igdb" | "hardcover";
+  __recommendationSource: "tmdb" | "igdb" | "hardcover" | "nyt";
 };
 
 type RequestBody = {
@@ -724,6 +724,94 @@ async function fetchHardcoverRecommendations(
     .filter(Boolean) as RecommendationCard[];
 }
 
+async function fetchNytBestSellersRecommendations(
+  inLibraryIsbn13Set: Set<string>,
+  inLibraryTitleAuthorSet: Set<string>,
+  inLibraryCanonicalTitleSet: Set<string>
+): Promise<RecommendationCard[]> {
+  const apiKey = pickEnv(["NYT_BOOKS_API_KEY", "NEW_YORK_TIMES_API_KEY", "NYT_API_KEY"]);
+  if (!apiKey) return [];
+
+  const listNames = ["hardcover-fiction"];
+  const cards: RecommendationCard[] = [];
+  const seen = new Set<string>();
+
+  for (const listName of listNames) {
+    try {
+      const res = await fetch(
+        `https://api.nytimes.com/svc/books/v3/lists/current/${encodeURIComponent(listName)}.json?api-key=${encodeURIComponent(apiKey)}`,
+        { cache: "no-store" }
+      );
+      const payload = (await res.json().catch(() => ({}))) as {
+        results?: {
+          books?: Array<{
+            title?: string;
+            author?: string;
+            description?: string;
+            publisher?: string;
+            book_uri?: string;
+            book_review_link?: string;
+            amazon_product_url?: string;
+            buy_links?: Array<{ name?: string; url?: string }>;
+            rank?: number;
+            weeks_on_list?: number;
+            primary_isbn13?: string;
+            book_image?: string;
+          }>;
+          published_date?: string;
+        };
+      };
+      if (!res.ok || !Array.isArray(payload.results?.books)) continue;
+
+      const publishedDate = safeStr(payload.results?.published_date);
+      for (const row of payload.results.books) {
+        const title = safeStr(row.title);
+        const author = safeStr(row.author);
+        const isbn13 = safeStr(row.primary_isbn13);
+        if (!title) continue;
+        if (isbn13 && inLibraryIsbn13Set.has(isbn13)) continue;
+        const pairKey = `${normalizeCompareText(title)}|||${normalizeCompareText(author)}`;
+        if (pairKey !== "|||" && inLibraryTitleAuthorSet.has(pairKey)) continue;
+        if (inLibraryCanonicalTitleSet.has(canonicalizeBookTitle(title))) continue;
+
+        const id = safeStr(isbn13) || `nyt:${normalizeCompareText(title)}:${normalizeCompareText(author)}`;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+
+        const buyLinks = Array.isArray(row.buy_links) ? row.buy_links : [];
+        const preferredBuyLink =
+          safeStr(buyLinks.find((link) => normalizeCompareText(link?.name) === "amazon")?.url) ||
+          safeStr(buyLinks[0]?.url);
+        const resolvedExternalUrl =
+          normalizeHttps(safeStr(row.book_review_link)) ||
+          normalizeHttps(preferredBuyLink) ||
+          normalizeHttps(safeStr(row.book_uri || row.amazon_product_url));
+
+        cards.push({
+          id,
+          source: "nyt",
+          mediaType: "book",
+          title,
+          author,
+          subtitle: safeStr(row.publisher),
+          releaseDate: publishedDate,
+          imageUrl: normalizeHttps(safeStr(row.book_image)),
+          externalUrl: resolvedExternalUrl,
+          overview: safeStr(row.description),
+          isbn13,
+          inLibrary: false,
+          __isRecommendation: true,
+          __recommendationSource: "nyt",
+        });
+      }
+    } catch {
+      // Best-effort source; ignore list-level failures.
+    }
+  }
+
+  return cards;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as RequestBody;
@@ -758,7 +846,7 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    if (!filteredIds.length) {
+    if (!filteredIds.length && mediaType !== "book") {
       return NextResponse.json({ ok: true, recommendations: [] as RecommendationCard[] });
     }
 
@@ -809,18 +897,25 @@ export async function POST(req: NextRequest) {
           .map((title) => canonicalizeBookTitle(title))
           .filter(Boolean)
       );
+      const nytBestSellers = await fetchNytBestSellersRecommendations(
+        inLibraryIsbn13Set,
+        inLibraryTitleAuthorSet,
+        inLibraryCanonicalTitleSet
+      );
       const currentHardcoverId = safeStr((item as Record<string, unknown>).hardcoverId || (item as Record<string, unknown>).HardcoverID);
       const sameAuthorFirst = await fetchHardcoverSameAuthorRecommendations(currentHardcoverId, inLibrarySet, hiddenIds);
       try {
-        const byIds = await fetchHardcoverRecommendations(
-          filteredIds,
-          inLibrarySet,
-          inLibraryIsbn13Set,
-          inLibraryTitleAuthorSet,
-          inLibraryCanonicalTitleSet
-        );
+        const byIds = filteredIds.length
+          ? await fetchHardcoverRecommendations(
+              filteredIds,
+              inLibrarySet,
+              inLibraryIsbn13Set,
+              inLibraryTitleAuthorSet,
+              inLibraryCanonicalTitleSet
+            )
+          : [];
         const seen = new Set<string>();
-        recommendations = [...sameAuthorFirst, ...byIds].filter((card) => {
+        recommendations = [...nytBestSellers, ...sameAuthorFirst, ...byIds].filter((card) => {
           if (!card || seen.has(card.id)) return false;
           const pairKey = `${normalizeCompareText(card.title)}|||${normalizeCompareText(card.author)}`;
           if (pairKey !== "|||" && inLibraryTitleAuthorSet.has(pairKey)) return false;
@@ -830,7 +925,7 @@ export async function POST(req: NextRequest) {
         });
       } catch {
         const titles = parseCsvTitles(item.RecommendedTitles ?? item.recommendedTitles);
-        recommendations = filteredIds
+        const hardcoverFallback = filteredIds
           .map((id, idx): RecommendationCard | null => {
             const cleanId = safeStr(id);
             if (!cleanId || inLibrarySet.has(cleanId)) return null;
@@ -847,6 +942,7 @@ export async function POST(req: NextRequest) {
             };
           })
           .filter(Boolean) as RecommendationCard[];
+        recommendations = [...nytBestSellers, ...hardcoverFallback];
       }
       // Secondary ISBN filtering when available from cached titles list is handled client-side in v1.
     }

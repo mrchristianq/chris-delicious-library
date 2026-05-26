@@ -319,6 +319,183 @@ async function searchTmdb(type: "tv" | "movie", query: string): Promise<SearchRe
   });
 }
 
+async function discoverTmdbMovies(genreIds: string[] = []): Promise<SearchResult[]> {
+  const bearerToken = pickEnv(["TMDB_BEARER_TOKEN", "TMDB_API_READ_ACCESS_TOKEN"]);
+  const apiKey = pickEnv(["TMDB_API_KEY"]);
+  if (!bearerToken && !apiKey) {
+    throw new Error("TMDB credentials are not configured (TMDB_BEARER_TOKEN or TMDB_API_KEY).");
+  }
+
+  const now = new Date();
+  const start = now.toISOString().slice(0, 10);
+  const inSixMonths = new Date(now);
+  inSixMonths.setMonth(inSixMonths.getMonth() + 6);
+  const end = inSixMonths.toISOString().slice(0, 10);
+
+  const buildUrl = (kind: "upcoming" | "discover") => {
+    const params = new URLSearchParams({
+      language: "en-US",
+      page: "1",
+      include_adult: "false",
+    });
+    if (!bearerToken) params.set("api_key", apiKey);
+
+    if (kind === "upcoming") {
+      return `https://api.themoviedb.org/3/movie/upcoming?${params.toString()}`;
+    }
+
+    params.set("sort_by", "popularity.desc");
+    params.set("primary_release_date.gte", start);
+    params.set("primary_release_date.lte", end);
+    if (genreIds.length) params.set("with_genres", genreIds.join(","));
+    return `https://api.themoviedb.org/3/discover/movie?${params.toString()}`;
+  };
+
+  const fetchList = async (kind: "upcoming" | "discover") => {
+    const res = await fetch(buildUrl(kind), {
+      method: "GET",
+      headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : undefined,
+      cache: "no-store",
+    });
+    const payload = (await res.json().catch(() => ({}))) as {
+      results?: Array<{
+        id?: number;
+        title?: string;
+        release_date?: string;
+        poster_path?: string;
+        backdrop_path?: string;
+        vote_average?: number;
+        overview?: string;
+      }>;
+    };
+    if (!res.ok) return [];
+    return Array.isArray(payload.results) ? payload.results : [];
+  };
+
+  const upcoming = await fetchList("upcoming");
+  const discover = await fetchList("discover");
+  const merged = [...upcoming, ...discover];
+  const seen = new Set<string>();
+  const deduped = merged.filter((item) => {
+    const id = String(item.id || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  return deduped.slice(0, 24).map((item) => {
+    const tmdbId = String(item.id || "");
+    const title = safeStr(item.title);
+    const posterPath = safeStr(item.poster_path);
+    const backdropPath = safeStr(item.backdrop_path);
+    const imageUrl = posterPath ? `${TMDB_IMAGE_BASE}${posterPath}` : "";
+    const backdropUrl = backdropPath ? `${TMDB_BACKDROP_BASE}${backdropPath}` : "";
+    const releaseDate = safeStr(item.release_date);
+    return {
+      id: `movie:${tmdbId || title}`,
+      title: title || "Untitled",
+      year: releaseDate.slice(0, 4),
+      imageUrl,
+      data: {
+        title: title || "Untitled",
+        releaseDate,
+        year: releaseDate.slice(0, 4),
+        imageUrl,
+        posterUrl: imageUrl,
+        backdropUrl,
+        tmdbId,
+        tmdbRating: item.vote_average != null ? String(item.vote_average) : "",
+        overview: safeStr(item.overview),
+      },
+    };
+  });
+}
+
+async function discoverTmdbTvShows(genreIds: string[] = []): Promise<SearchResult[]> {
+  const bearerToken = pickEnv(["TMDB_BEARER_TOKEN", "TMDB_API_READ_ACCESS_TOKEN"]);
+  const apiKey = pickEnv(["TMDB_API_KEY"]);
+  if (!bearerToken && !apiKey) {
+    throw new Error("TMDB credentials are not configured (TMDB_BEARER_TOKEN or TMDB_API_KEY).");
+  }
+
+  const buildUrl = (kind: "on_the_air" | "discover") => {
+    const params = new URLSearchParams({
+      language: "en-US",
+      page: "1",
+      include_adult: "false",
+    });
+    if (!bearerToken) params.set("api_key", apiKey);
+
+    if (kind === "on_the_air") {
+      return `https://api.themoviedb.org/3/tv/on_the_air?${params.toString()}`;
+    }
+
+    params.set("sort_by", "popularity.desc");
+    if (genreIds.length) params.set("with_genres", genreIds.join(","));
+    return `https://api.themoviedb.org/3/discover/tv?${params.toString()}`;
+  };
+
+  const fetchList = async (kind: "on_the_air" | "discover") => {
+    const res = await fetch(buildUrl(kind), {
+      method: "GET",
+      headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : undefined,
+      cache: "no-store",
+    });
+    const payload = (await res.json().catch(() => ({}))) as {
+      results?: Array<{
+        id?: number;
+        name?: string;
+        first_air_date?: string;
+        poster_path?: string;
+        backdrop_path?: string;
+        vote_average?: number;
+        overview?: string;
+      }>;
+    };
+    if (!res.ok) return [];
+    return Array.isArray(payload.results) ? payload.results : [];
+  };
+
+  const onTheAir = await fetchList("on_the_air");
+  const discover = await fetchList("discover");
+  const merged = [...onTheAir, ...discover];
+  const seen = new Set<string>();
+  const deduped = merged.filter((item) => {
+    const id = String(item.id || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  return deduped.slice(0, 24).map((item) => {
+    const tmdbId = String(item.id || "");
+    const title = safeStr(item.name);
+    const posterPath = safeStr(item.poster_path);
+    const backdropPath = safeStr(item.backdrop_path);
+    const imageUrl = posterPath ? `${TMDB_IMAGE_BASE}${posterPath}` : "";
+    const backdropUrl = backdropPath ? `${TMDB_BACKDROP_BASE}${backdropPath}` : "";
+    const firstAirDate = safeStr(item.first_air_date);
+    return {
+      id: `tv:${tmdbId || title}`,
+      title: title || "Untitled",
+      year: firstAirDate.slice(0, 4),
+      imageUrl,
+      data: {
+        title: title || "Untitled",
+        firstAirDate,
+        releaseDate: firstAirDate,
+        year: firstAirDate.slice(0, 4),
+        imageUrl,
+        posterUrl: imageUrl,
+        backdropUrl,
+        tmdbId,
+        tmdbRating: item.vote_average != null ? String(item.vote_average) : "",
+        overview: safeStr(item.overview),
+      },
+    };
+  });
+}
+
 async function lookupTmdbById(type: "tv" | "movie", id: string): Promise<SearchResult | null> {
   const tmdbId = safeStr(id);
   if (!tmdbId) return null;
@@ -926,8 +1103,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    if (type === "game" && mode === "discover") {
+    if (mode === "discover" && type === "game") {
       const results = await discoverIgdbGames(genreIds);
+      return searchJson({ ok: true, results });
+    }
+
+    if (mode === "discover" && type === "movie") {
+      const results = await discoverTmdbMovies(genreIds);
+      return searchJson({ ok: true, results });
+    }
+
+    if (mode === "discover" && type === "tv") {
+      const results = await discoverTmdbTvShows(genreIds);
       return searchJson({ ok: true, results });
     }
 

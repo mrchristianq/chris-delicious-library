@@ -813,6 +813,46 @@ function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
 }
 
+function getLocalDateKey(date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getLocalWeekKey(date = new Date()): string {
+  const local = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = local.getDay();
+  const diffToMonday = (day + 6) % 7;
+  local.setDate(local.getDate() - diffToMonday);
+  return getLocalDateKey(local);
+}
+
+function hashSeed(input: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededShuffle<T>(items: T[], seedInput: string): T[] {
+  const arr = [...items];
+  let state = hashSeed(seedInput) || 1;
+  const rand = () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return ((state >>> 0) % 10000) / 10000;
+  };
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function bundledIconSrc(src: string): string {
   const value = safeStr(src);
   if (!value) return "";
@@ -2199,9 +2239,9 @@ function useElementWidth<T extends HTMLElement>() {
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
 type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync" | "themes" | "icons">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
-type BookQuickLinkKey = "wishlist" | "library" | "completed" | "upcoming";
-type MovieQuickLinkKey = "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
-type TvQuickLinkKey = "library" | "backlog" | "watching" | "watched" | "abandoned" | "upcoming";
+type BookQuickLinkKey = "home" | "wishlist" | "library" | "completed" | "upcoming";
+type MovieQuickLinkKey = "home" | "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
+type TvQuickLinkKey = "home" | "library" | "backlog" | "watching" | "watched" | "abandoned" | "upcoming";
 type TvViewMode = TvQuickLinkKey | "custom";
 type GameQuickLinkKey = "home" | "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
 type GameViewMode = GameQuickLinkKey | "custom";
@@ -2560,6 +2600,9 @@ export default function Page() {
   const [wishlistFilter, setWishlistFilter] = useState<boolean>(false);
   const [bookUpcomingFilter, setBookUpcomingFilter] = useState<boolean>(false);
   const [movieUpcomingFilter, setMovieUpcomingFilter] = useState<boolean>(false);
+  const [movieHomeMode, setMovieHomeMode] = useState<boolean>(false);
+  const [tvHomeMode, setTvHomeMode] = useState<boolean>(false);
+  const [bookHomeMode, setBookHomeMode] = useState<boolean>(false);
   const [tvViewMode, setTvViewMode] = useState<TvViewMode>("library");
   const isUpcomingView =
     nav === "upcoming" ||
@@ -3672,7 +3715,7 @@ export default function Page() {
   const debugHeaderReadoutRef = useRef<HTMLDivElement | null>(null);
   const debugHeaderOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const caseTiltRafRef = useRef<number | null>(null);
-  const caseTiltPendingRef = useRef<{ el: HTMLDivElement; tiltY: number; tiltX: number } | null>(null);
+  const caseTiltPendingRef = useRef<{ el: HTMLElement; tiltY: number; tiltX: number } | null>(null);
 
   useEffect(() => {
     setBookDetailItem(null);
@@ -3989,7 +4032,7 @@ export default function Page() {
   }, []);
 
   const handleCaseMouseMove = useCallback(
-    (e: ReactMouseEvent<HTMLDivElement>) => {
+    (e: ReactMouseEvent<HTMLElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
       const xRel = (e.clientX - rect.left) / rect.width - 0.5;
       const yRel = (e.clientY - rect.top) / rect.height - 0.5;
@@ -4004,7 +4047,7 @@ export default function Page() {
     [flushCaseTilt]
   );
 
-  const handleCaseMouseLeave = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+  const handleCaseMouseLeave = useCallback((e: ReactMouseEvent<HTMLElement>) => {
     const el = e.currentTarget;
     if (caseTiltPendingRef.current?.el === el) {
       caseTiltPendingRef.current = null;
@@ -8616,6 +8659,8 @@ export default function Page() {
       sortFieldSettingKey = READ_NEXT_SORT_FIELD_SETTING_KEY;
       sortOrderSettingKey = READ_NEXT_SORT_ORDER_SETTING_KEY;
       manualSettingKey = READ_NEXT_MANUAL_ORDER_SETTING_KEY;
+      fallbackSortField = MANUAL_SORT_FIELD;
+      fallbackSortOrder = "Asc";
     } else if (nav === "play-next") {
       sortFieldSettingKey = PLAY_NEXT_SORT_FIELD_SETTING_KEY;
       sortOrderSettingKey = PLAY_NEXT_SORT_ORDER_SETTING_KEY;
@@ -9324,6 +9369,11 @@ export default function Page() {
   const [tvRecommendations, setTvRecommendations] = useState<Record<string, unknown>[]>([]);
   const [gameRecommendations, setGameRecommendations] = useState<Record<string, unknown>[]>([]);
   const [gamesHomeRemoteRecommendations, setGamesHomeRemoteRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [moviesHomeRemoteRecommendations, setMoviesHomeRemoteRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [tvHomeRemoteRecommendations, setTvHomeRemoteRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [booksHomeRemoteRecommendations, setBooksHomeRemoteRecommendations] = useState<Record<string, unknown>[]>([]);
+  const [recommendationDayKey, setRecommendationDayKey] = useState<string>(() => getLocalDateKey());
+  const [booksRecommendationWeekKey, setBooksRecommendationWeekKey] = useState<string>(() => getLocalWeekKey());
   const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() => (
     typeof navigator === "undefined" ? true : navigator.onLine !== false
   ));
@@ -9520,7 +9570,7 @@ export default function Page() {
                 .then((res) => res.json())
                 .then((payload) => (Array.isArray(payload?.results) ? payload.results : []));
         if (cancelled) return;
-        const next = rawItems
+        const candidates: Record<string, unknown>[] = rawItems
           .map((entry: Record<string, unknown>) => normalizeRecommendation(entry))
           .filter((game: Record<string, unknown>) => {
             const title = safeStr(game.title).toLowerCase();
@@ -9528,7 +9578,8 @@ export default function Page() {
             if (!title) return false;
             if (igdbId && libraryIgdbIds.has(igdbId)) return false;
             return !libraryTitles.has(title);
-          })
+          });
+        const next = seededShuffle<Record<string, unknown>>(candidates, `games-${recommendationDayKey}`)
           .slice(0, isMobileLayout ? 8 : 14);
         setGamesHomeRemoteRecommendations(next);
       } catch {
@@ -9540,7 +9591,322 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [allGames, isBrowserOnline, isMobileLayout, isNativeApp, isStaticSiteBuild]);
+  }, [allGames, isBrowserOnline, isMobileLayout, isNativeApp, isStaticSiteBuild, recommendationDayKey]);
+
+  useEffect(() => {
+    if (!isBrowserOnline) {
+      setBooksHomeRemoteRecommendations([]);
+      return;
+    }
+
+    const seedCandidates = allBooks
+      .filter((book) => normalizeOwnership(book.ownership) !== "wishlist")
+      .sort((a, b) => {
+        const aRating = Number.parseFloat(safeStr(a.myRating).replace(/[^0-9.]/g, ""));
+        const bRating = Number.parseFloat(safeStr(b.myRating).replace(/[^0-9.]/g, ""));
+        const aScore = Number.isFinite(aRating) && aRating > 0 ? aRating : 0;
+        const bScore = Number.isFinite(bRating) && bRating > 0 ? bRating : 0;
+        if (bScore !== aScore) return bScore - aScore;
+        const aDate = parseReleaseDateForComparison(safeStr(a.releaseDate))?.getTime() ?? 0;
+        const bDate = parseReleaseDateForComparison(safeStr(b.releaseDate))?.getTime() ?? 0;
+        return bDate - aDate;
+      })
+      .slice(0, 6);
+
+    const libraryTitleAuthorSet = new Set(
+      allBooks
+        .map((book) => `${safeStr(book.title).toLowerCase()}|||${safeStr((book as any).author || (book as any).Author).toLowerCase()}`)
+        .filter((value) => value !== "|||")
+    );
+    const libraryCanonicalTitleSet = new Set(
+      allBooks
+        .map((book) => safeStr(book.title).toLowerCase().replace(/[\u2018\u2019']/g, "").replace(/[^a-z0-9]+/g, " ").trim())
+        .filter(Boolean)
+    );
+
+    let cancelled = false;
+
+    const loadBooksHomeRemoteRecommendations = async () => {
+      const collected: Record<string, unknown>[] = [];
+      const seen = new Set<string>();
+      const maxCount = isMobileLayout ? 8 : 14;
+
+      for (const seed of seedCandidates) {
+        if (collected.length >= maxCount) break;
+        try {
+          const res = await fetch("/api/recommendations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mediaType: "book",
+              item: seed,
+              libraryIds: {
+                bookHardcoverIds: allBooks.map((b) => safeStr((b as any).hardcoverId || (b as any).HardcoverID)).filter(Boolean),
+                bookIsbn13s: allBooks.map((b) => safeStr(b.isbn13 || (b as any).ISBN13)).filter(Boolean),
+                bookTitleAuthorPairs: allBooks.map((b) => `${safeStr(b.title)}|||${safeStr((b as any).author || (b as any).Author)}`).filter(Boolean),
+              },
+            }),
+          });
+          const payload = (await res.json().catch(() => ({}))) as {
+            ok?: boolean;
+            recommendations?: Array<Record<string, unknown>>;
+          };
+          if (!res.ok || !payload.ok || !Array.isArray(payload.recommendations)) {
+            continue;
+          }
+          for (const item of payload.recommendations) {
+            const title = safeStr(item.title);
+            if (!title) continue;
+            const author = safeStr(item.author);
+            const titleAuthorKey = `${title.toLowerCase()}|||${author.toLowerCase()}`;
+            const canonicalTitle = title.toLowerCase().replace(/[\u2018\u2019']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+            if (libraryTitleAuthorSet.has(titleAuthorKey) || libraryCanonicalTitleSet.has(canonicalTitle)) continue;
+            const idKey = safeStr(item.id || item.hardcoverId || item.isbn13 || titleAuthorKey).toLowerCase();
+            if (!idKey || seen.has(idKey)) continue;
+            seen.add(idKey);
+            collected.push({
+              ...item,
+              title,
+              author,
+              subtitle: safeStr(item.subtitle),
+              releaseDate: safeStr(item.releaseDate),
+              year: safeStr(item.year),
+              posterUrl: safeStr(item.imageUrl || item.posterUrl),
+              imageUrl: safeStr(item.imageUrl || item.posterUrl),
+              __isRecommendation: true,
+            });
+            if (collected.length >= maxCount) break;
+          }
+        } catch {
+          // Keep trying other seeds.
+        }
+      }
+
+      if (cancelled) return;
+      const shuffled = seededShuffle<Record<string, unknown>>(collected, `books-${booksRecommendationWeekKey}`).slice(0, maxCount);
+      setBooksHomeRemoteRecommendations(shuffled);
+    };
+
+    void loadBooksHomeRemoteRecommendations();
+    return () => {
+      cancelled = true;
+    };
+  }, [allBooks, booksRecommendationWeekKey, isBrowserOnline, isMobileLayout]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const next = getLocalDateKey();
+      setRecommendationDayKey((prev) => (prev === next ? prev : next));
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const next = getLocalWeekKey();
+      setBooksRecommendationWeekKey((prev) => (prev === next ? prev : next));
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isBrowserOnline) {
+      setMoviesHomeRemoteRecommendations([]);
+      return;
+    }
+
+    const tmdbGenreIdByToken: Record<string, number> = {
+      action: 28,
+      adventure: 12,
+      animation: 16,
+      comedy: 35,
+      crime: 80,
+      documentary: 99,
+      drama: 18,
+      family: 10751,
+      fantasy: 14,
+      history: 36,
+      horror: 27,
+      music: 10402,
+      mystery: 9648,
+      romance: 10749,
+      scifi: 878,
+      sciencefiction: 878,
+      tvmovie: 10770,
+      thriller: 53,
+      war: 10752,
+      western: 37,
+    };
+    const normalizeGenreToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const genreScores = new Map<number, number>();
+    allMovies.forEach((movie) => {
+      const rating = Number.parseFloat(safeStr(movie.myRating).replace(/[^0-9.]/g, ""));
+      const score = Number.isFinite(rating) && rating > 0 ? rating : 5;
+      safeStr(movie.genres || (movie as any).genre)
+        .split(/[,|;/]+/g)
+        .map((genre) => tmdbGenreIdByToken[normalizeGenreToken(genre)])
+        .filter((id): id is number => Boolean(id))
+        .forEach((id) => genreScores.set(id, (genreScores.get(id) || 0) + score));
+    });
+    const preferredGenreIds = Array.from(genreScores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([id]) => id);
+
+    const libraryTmdbIds = new Set(allMovies.map((movie) => safeStr(movie.tmdbId)).filter(Boolean));
+    const libraryTitles = new Set(allMovies.map((movie) => safeStr(movie.title).toLowerCase()).filter(Boolean));
+    let cancelled = false;
+
+    const normalizeRecommendation = (entry: Record<string, unknown>): Record<string, unknown> => {
+      const data = (entry.data && typeof entry.data === "object" ? entry.data : entry) as Record<string, unknown>;
+      return {
+        ...data,
+        title: safeStr(data.title || entry.title),
+        year: safeStr(data.year || entry.year),
+        releaseDate: safeStr(data.releaseDate || entry.releaseDate),
+        posterUrl: safeStr(data.posterUrl || data.imageUrl || entry.imageUrl || entry.posterUrl),
+        imageUrl: safeStr(data.imageUrl || data.posterUrl || entry.imageUrl || entry.posterUrl),
+        coverUrl: safeStr(data.coverUrl || data.posterUrl || data.imageUrl || entry.imageUrl),
+        tmdbId: safeStr(data.tmdbId || data.TMDB_ID || entry.tmdbId || entry.id),
+        tmdbRating: safeStr(data.tmdbRating || data.rating || entry.rating),
+        __isRecommendation: true,
+      };
+    };
+
+    const loadMoviesHomeRemoteRecommendations = async () => {
+      try {
+        const rawItems = isStaticSiteBuild
+          ? []
+          : await fetchMediaSearch(
+              new URLSearchParams({
+                type: "movie",
+                mode: "discover",
+                genreIds: preferredGenreIds.join(","),
+              })
+            )
+              .then((res) => res.json())
+              .then((payload) => (Array.isArray(payload?.results) ? payload.results : []));
+        if (cancelled) return;
+        const candidates: Record<string, unknown>[] = rawItems
+          .map((entry: Record<string, unknown>) => normalizeRecommendation(entry))
+          .filter((movie: Record<string, unknown>) => {
+            const title = safeStr(movie.title).toLowerCase();
+            const tmdbId = safeStr(movie.tmdbId || movie.TMDB_ID || movie.id).replace(/^movie:/, "");
+            if (!title) return false;
+            if (tmdbId && libraryTmdbIds.has(tmdbId)) return false;
+            return !libraryTitles.has(title);
+          });
+        const next = seededShuffle<Record<string, unknown>>(candidates, `movies-${recommendationDayKey}`)
+          .slice(0, isMobileLayout ? 8 : 14);
+        setMoviesHomeRemoteRecommendations(next);
+      } catch {
+        if (!cancelled) setMoviesHomeRemoteRecommendations([]);
+      }
+    };
+
+    void loadMoviesHomeRemoteRecommendations();
+    return () => {
+      cancelled = true;
+    };
+  }, [allMovies, isBrowserOnline, isMobileLayout, isStaticSiteBuild, recommendationDayKey]);
+
+  useEffect(() => {
+    if (!isBrowserOnline) {
+      setTvHomeRemoteRecommendations([]);
+      return;
+    }
+
+    const tmdbGenreIdByToken: Record<string, number> = {
+      actionadventure: 10759,
+      animation: 16,
+      comedy: 35,
+      crime: 80,
+      documentary: 99,
+      drama: 18,
+      family: 10751,
+      kids: 10762,
+      mystery: 9648,
+      news: 10763,
+      reality: 10764,
+      scifi: 10765,
+      sciencefiction: 10765,
+      fantasy: 10765,
+      soap: 10766,
+      talk: 10767,
+      warpolitics: 10768,
+      western: 37,
+    };
+    const normalizeGenreToken = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const genreScores = new Map<number, number>();
+    allShows.forEach((show) => {
+      const rating = Number.parseFloat(safeStr(show.myRating || show.tmdbRating).replace(/[^0-9.]/g, ""));
+      const score = Number.isFinite(rating) && rating > 0 ? rating : 5;
+      safeStr(show.genres)
+        .split(/[,|;/]+/g)
+        .map((genre) => tmdbGenreIdByToken[normalizeGenreToken(genre)])
+        .filter((id): id is number => Boolean(id))
+        .forEach((id) => genreScores.set(id, (genreScores.get(id) || 0) + score));
+    });
+    const preferredGenreIds = Array.from(genreScores.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([id]) => id);
+
+    const libraryTmdbIds = new Set(allShows.map((show) => safeStr(show.tmdbId)).filter(Boolean));
+    const libraryTitles = new Set(allShows.map((show) => safeStr(show.title).toLowerCase()).filter(Boolean));
+    let cancelled = false;
+
+    const normalizeRecommendation = (entry: Record<string, unknown>): Record<string, unknown> => {
+      const data = (entry.data && typeof entry.data === "object" ? entry.data : entry) as Record<string, unknown>;
+      return {
+        ...data,
+        title: safeStr(data.title || entry.title),
+        firstAirDate: safeStr(data.firstAirDate || data.releaseDate || entry.releaseDate),
+        releaseDate: safeStr(data.releaseDate || data.firstAirDate || entry.releaseDate),
+        posterUrl: safeStr(data.posterUrl || data.imageUrl || entry.posterUrl || entry.imageUrl),
+        imageUrl: safeStr(data.imageUrl || data.posterUrl || entry.imageUrl || entry.posterUrl),
+        tmdbId: safeStr(data.tmdbId || data.TMDB_ID || entry.tmdbId || entry.id),
+        tmdbRating: safeStr(data.tmdbRating || data.rating || entry.rating),
+        __isRecommendation: true,
+      };
+    };
+
+    const loadTvHomeRemoteRecommendations = async () => {
+      try {
+        const rawItems = isStaticSiteBuild
+          ? []
+          : await fetchMediaSearch(
+              new URLSearchParams({
+                type: "tv",
+                mode: "discover",
+                genreIds: preferredGenreIds.join(","),
+              })
+            )
+              .then((res) => res.json())
+              .then((payload) => (Array.isArray(payload?.results) ? payload.results : []));
+        if (cancelled) return;
+        const candidates: Record<string, unknown>[] = rawItems
+          .map((entry: Record<string, unknown>) => normalizeRecommendation(entry))
+          .filter((show: Record<string, unknown>) => {
+            const title = safeStr(show.title).toLowerCase();
+            const tmdbId = safeStr(show.tmdbId || show.TMDB_ID || show.id).replace(/^tv:/, "");
+            if (!title) return false;
+            if (tmdbId && libraryTmdbIds.has(tmdbId)) return false;
+            return !libraryTitles.has(title);
+          });
+        const next = seededShuffle<Record<string, unknown>>(candidates, `tv-${recommendationDayKey}`)
+          .slice(0, isMobileLayout ? 8 : 14);
+        setTvHomeRemoteRecommendations(next);
+      } catch {
+        if (!cancelled) setTvHomeRemoteRecommendations([]);
+      }
+    };
+
+    void loadTvHomeRemoteRecommendations();
+    return () => {
+      cancelled = true;
+    };
+  }, [allShows, isBrowserOnline, isMobileLayout, isStaticSiteBuild, recommendationDayKey]);
 
   const indexedBooks = useMemo(
     () =>
@@ -9678,8 +10044,7 @@ export default function Page() {
   }, [wishlistBookItems]);
 
   const readNextFallbackOrderKeys = useMemo(() => {
-    const sorted = [...wishlistBookItems].sort((a, b) => safeStr(a.title).localeCompare(safeStr(b.title)));
-    return sorted.map((item) => getMediaItemKey(item));
+    return wishlistBookItems.map((item) => getMediaItemKey(item));
   }, [wishlistBookItems]);
 
   const resolvedReadNextManualOrderKeys = useMemo(() => {
@@ -11639,17 +12004,21 @@ export default function Page() {
   );
 
   const activeBookQuickLink: BookQuickLinkKey =
-    nav === "books" && bookUpcomingFilter
-      ? "upcoming"
-      : nav === "books" && wishlistFilter
-        ? "wishlist"
-        : nav === "books" && normalizeStatus(readingStatusFilter || undefined) === "completed"
-          ? "completed"
-          : "library";
+    nav === "books" && bookHomeMode
+      ? "home"
+      : nav === "books" && bookUpcomingFilter
+        ? "upcoming"
+        : nav === "books" && wishlistFilter
+          ? "wishlist"
+          : nav === "books" && normalizeStatus(readingStatusFilter || undefined) === "completed"
+            ? "completed"
+            : "library";
 
   const activeMovieQuickLink: MovieQuickLinkKey | null =
     nav === "movies"
-      ? movieUpcomingFilter
+      ? movieHomeMode
+        ? "home"
+        : movieUpcomingFilter
         ? "upcoming"
         : movieWatchFilter === "Watched"
           ? "watched"
@@ -11663,8 +12032,12 @@ export default function Page() {
       : null;
 
   const activeTvQuickLink: TvQuickLinkKey | null =
-    nav === "tv" && tvViewMode !== "custom"
-      ? tvViewMode
+    nav === "tv"
+      ? tvHomeMode
+        ? "home"
+        : tvViewMode !== "custom"
+          ? tvViewMode
+          : null
       : null;
 
   const activeGameQuickLink: GameQuickLinkKey | null =
@@ -11675,6 +12048,7 @@ export default function Page() {
   const activateBookQuickLink = useCallback((nextView: BookQuickLinkKey) => {
     setNav("books");
     setOpenSection("books");
+    setBookHomeMode(nextView === "home");
     setBookUpcomingFilter(nextView === "upcoming");
     setWishlistFilter(nextView === "wishlist");
     setReadingStatusFilter(nextView === "completed" ? "Completed" : null);
@@ -11688,9 +12062,10 @@ export default function Page() {
   const activateMovieQuickLink = useCallback((nextView: MovieQuickLinkKey) => {
     setNav("movies");
     setOpenSection("movies");
+    setMovieHomeMode(nextView === "home");
     setMovieUpcomingFilter(nextView === "upcoming");
     setMovieWatchFilter(
-      nextView === "library" || nextView === "upcoming"
+      nextView === "home" || nextView === "library" || nextView === "upcoming"
         ? null
         : nextView === "watched"
           ? "Watched"
@@ -11709,7 +12084,8 @@ export default function Page() {
   const activateTvQuickLink = useCallback((nextView: TvQuickLinkKey) => {
     setNav("tv");
     setOpenSection("tv");
-    setTvViewMode(nextView);
+    setTvHomeMode(nextView === "home");
+    setTvViewMode(nextView === "home" ? "library" : nextView);
     setWatchFilter(null);
     setShowFilter(null);
     setTagFilter(null);
@@ -13133,6 +13509,297 @@ export default function Page() {
     };
   }, [allGames, hasWishlistOwnership, isMobileLayout, normalizeStatus]);
 
+  const moviesHomeData = useMemo(() => {
+    const today = todayMidnight();
+    const parseMovieDate = (movie: Movie) => parseReleaseDateForComparison(safeStr(movie.releaseDate));
+    const movieTime = (movie: Movie) => parseMovieDate(movie)?.getTime() ?? 0;
+    const watchlist = resolvedWatchlistMovieManualOrderKeys
+      .map((key) => watchlistMovieItemsByKey.get(key))
+      .filter(Boolean)
+      .slice(0, isMobileLayout ? 8 : 10) as Array<Movie & { __type: "movie" }>;
+    const newReleases = allMovies
+      .filter((movie) => {
+        const release = parseMovieDate(movie);
+        return Boolean(release) && release!.getTime() <= today.getTime();
+      })
+      .sort((a, b) => movieTime(b) - movieTime(a))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const upcoming = allMovies
+      .filter((movie) => isUpcomingRelease(movie.releaseDate))
+      .sort((a, b) => movieTime(a) - movieTime(b))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const ratingValue = (movie: Movie) => {
+      const raw = safeStr(movie.myRating);
+      const parsed = Number.parseFloat(raw.replace(/[^0-9.]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const libraryTmdbIds = new Set(allMovies.map((movie) => safeStr(movie.tmdbId)).filter(Boolean));
+    const libraryTitles = new Set(allMovies.map((movie) => safeStr(movie.title).toLowerCase()).filter(Boolean));
+    const recommended = (isBrowserOnline ? moviesHomeRemoteRecommendations : [])
+      .map((entry) => {
+        const data = (entry?.data && typeof entry.data === "object" ? entry.data : entry) as Record<string, unknown>;
+        return {
+          ...data,
+          title: safeStr(data.title || entry.title),
+          releaseDate: safeStr(data.releaseDate || entry.releaseDate),
+          posterUrl: safeStr(data.posterUrl || data.imageUrl || entry.posterUrl || entry.imageUrl),
+          imageUrl: safeStr(data.imageUrl || data.posterUrl || entry.imageUrl || entry.posterUrl),
+          tmdbId: safeStr(data.tmdbId || data.TMDB_ID || entry.tmdbId || entry.id),
+          tmdbRating: safeStr(data.tmdbRating || data.rating || entry.rating),
+          __isRecommendation: true,
+        };
+      })
+      .filter((entry) => {
+        const title = safeStr(entry.title).toLowerCase();
+        const tmdbId = safeStr(entry.tmdbId).replace(/^movie:/, "");
+        if (!title) return false;
+        if (tmdbId && libraryTmdbIds.has(tmdbId)) return false;
+        return !libraryTitles.has(title);
+      })
+      .slice(0, isMobileLayout ? 8 : 14);
+
+    let watchedCount = 0;
+    let startedCount = 0;
+    let ratingTotal = 0;
+    let ratingCount = 0;
+
+    allMovies.forEach((movie) => {
+      if (isMovieWatched(movie)) watchedCount += 1;
+      if (normalizeStatus(movie.watchStatus || movie.watched) === "started") startedCount += 1;
+      const rating = ratingValue(movie);
+      if (rating > 0) {
+        ratingTotal += rating;
+        ratingCount += 1;
+      }
+    });
+
+    return {
+      watchlist,
+      newReleases,
+      upcoming,
+      recommended,
+      stats: {
+        movies: allMovies.length,
+        watched: watchedCount,
+        started: startedCount,
+        avgRating: ratingCount ? Math.round((ratingTotal / ratingCount) * 10) / 10 : 0,
+      },
+    };
+  }, [
+    allMovies,
+    isBrowserOnline,
+    isMobileLayout,
+    moviesHomeRemoteRecommendations,
+    normalizeStatus,
+    resolvedWatchlistMovieManualOrderKeys,
+    watchlistMovieItemsByKey,
+  ]);
+
+  const tvHomeData = useMemo(() => {
+    const today = todayMidnight();
+    const parseShowDate = (show: Show) =>
+      parseReleaseDateForComparison(safeStr(show.firstAirDate || (show as any).releaseDate));
+    const showTime = (show: Show) => parseShowDate(show)?.getTime() ?? 0;
+    const watchlist = resolvedWatchlistTvManualOrderKeys
+      .map((key) => watchlistTvItemsByKey.get(key))
+      .filter(Boolean)
+      .slice(0, isMobileLayout ? 8 : 10) as Array<Show & { __type: "tv" }>;
+    const newReleases = allShows
+      .filter((show) => {
+        const release = parseShowDate(show);
+        return Boolean(release) && release!.getTime() <= today.getTime();
+      })
+      .sort((a, b) => showTime(b) - showTime(a))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const upcoming = allShows
+      .filter((show) => isUpcomingRelease(safeStr(show.firstAirDate)))
+      .sort((a, b) => showTime(a) - showTime(b))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const libraryTmdbIds = new Set(allShows.map((show) => safeStr(show.tmdbId)).filter(Boolean));
+    const libraryTitles = new Set(allShows.map((show) => safeStr(show.title).toLowerCase()).filter(Boolean));
+    const recommended = (isBrowserOnline ? tvHomeRemoteRecommendations : [])
+      .map((entry) => {
+        const data = (entry?.data && typeof entry.data === "object" ? entry.data : entry) as Record<string, unknown>;
+        return {
+          ...data,
+          title: safeStr(data.title || entry.title),
+          firstAirDate: safeStr(data.firstAirDate || data.releaseDate || entry.releaseDate),
+          releaseDate: safeStr(data.releaseDate || data.firstAirDate || entry.releaseDate),
+          posterUrl: safeStr(data.posterUrl || data.imageUrl || entry.posterUrl || entry.imageUrl),
+          imageUrl: safeStr(data.imageUrl || data.posterUrl || entry.imageUrl || entry.posterUrl),
+          tmdbId: safeStr(data.tmdbId || data.TMDB_ID || entry.tmdbId || entry.id),
+          tmdbRating: safeStr(data.tmdbRating || data.rating || entry.rating),
+          __isRecommendation: true,
+        };
+      })
+      .filter((entry) => {
+        const title = safeStr(entry.title).toLowerCase();
+        const tmdbId = safeStr(entry.tmdbId).replace(/^tv:/, "");
+        if (!title) return false;
+        if (tmdbId && libraryTmdbIds.has(tmdbId)) return false;
+        return !libraryTitles.has(title);
+      })
+      .slice(0, isMobileLayout ? 8 : 14);
+
+    let watchedCount = 0;
+    let watchingCount = 0;
+    let ratingTotal = 0;
+    let ratingCount = 0;
+    allShows.forEach((show) => {
+      if (isTvWatchedStatus(show)) watchedCount += 1;
+      if (normalizeStatus(show.watchStatus || show.watched || show.showStatus) === "started") watchingCount += 1;
+      const rating = Number.parseFloat(safeStr(show.myRating || show.tmdbRating).replace(/[^0-9.]/g, ""));
+      if (Number.isFinite(rating) && rating > 0) {
+        ratingTotal += rating;
+        ratingCount += 1;
+      }
+    });
+
+    return {
+      watchlist,
+      newReleases,
+      upcoming,
+      recommended,
+      stats: {
+        shows: allShows.length,
+        watched: watchedCount,
+        watching: watchingCount,
+        avgRating: ratingCount ? Math.round((ratingTotal / ratingCount) * 10) / 10 : 0,
+      },
+    };
+  }, [
+    allShows,
+    isBrowserOnline,
+    isMobileLayout,
+    normalizeStatus,
+    resolvedWatchlistTvManualOrderKeys,
+    tvHomeRemoteRecommendations,
+    watchlistTvItemsByKey,
+  ]);
+
+  const booksHomeData = useMemo(() => {
+    const currentYear = todayMidnight().getFullYear();
+    const isCurrentYearOrUpcomingBook = (entry: { releaseDate?: string; year?: string }) => {
+      const release = parseReleaseDateForComparison(safeStr(entry.releaseDate));
+      if (release) return release.getFullYear() >= currentYear;
+      const yearNum = Number.parseInt(safeStr(entry.year), 10);
+      if (Number.isFinite(yearNum) && yearNum > 0) return yearNum >= currentYear;
+      return false;
+    };
+    const readNextSortFieldRaw = safeStr(getSetting(READ_NEXT_SORT_FIELD_SETTING_KEY, MANUAL_SORT_FIELD));
+    const readNextSortField = readNextSortFieldRaw || MANUAL_SORT_FIELD;
+    const readNextSortOrderRaw = safeStr(getSetting(READ_NEXT_SORT_ORDER_SETTING_KEY, "Asc"));
+    const readNextSortOrder: "Asc" | "Desc" = readNextSortOrderRaw === "Desc" ? "Desc" : "Asc";
+    const persistedReadNextManualRaw = safeStr(getSetting(READ_NEXT_MANUAL_ORDER_SETTING_KEY, ""));
+    const persistedReadNextManualKeys = (() => {
+      if (!persistedReadNextManualRaw) return [] as string[];
+      try {
+        const parsed = JSON.parse(persistedReadNextManualRaw);
+        if (!Array.isArray(parsed)) return [] as string[];
+        return parsed.map((entry) => safeStr(entry)).filter(Boolean);
+      } catch {
+        return [] as string[];
+      }
+    })();
+    const readNextManualBaseKeys = persistedReadNextManualKeys.length
+      ? persistedReadNextManualKeys
+      : resolvedReadNextManualOrderKeys;
+    const readNextOrdered =
+      readNextSortField === MANUAL_SORT_FIELD
+        ? readNextManualBaseKeys
+            .map((key) => wishlistBookItemsByKey.get(key))
+            .filter(Boolean)
+        : (applySorting(wishlistBookItems, readNextSortField, readNextSortOrder) as Array<Book & { __type: "book" }>);
+    const readNext = readNextOrdered.slice(0, isMobileLayout ? 8 : 10) as Array<Book & { __type: "book" }>;
+    const parseBookDate = (book: Book) => parseReleaseDateForComparison(safeStr(book.releaseDate));
+    const bookTime = (book: Book) => parseBookDate(book)?.getTime() ?? 0;
+    const newReleases = allBooks
+      .filter((book) => {
+        const release = parseBookDate(book);
+        return Boolean(release) && release!.getTime() <= todayMidnight().getTime();
+      })
+      .sort((a, b) => bookTime(b) - bookTime(a))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const upcoming = allBooks
+      .filter((book) => isUpcomingRelease(book.releaseDate))
+      .sort((a, b) => bookTime(a) - bookTime(b))
+      .slice(0, isMobileLayout ? 8 : 14);
+    const readNextKeys = new Set(readNext.map((item) => getMediaItemKey(item)));
+    const localRecommended = allBooks
+      .filter((book) => {
+        const status = normalizeStatus(book.status);
+        const item = { ...book, __type: "book" } as Book & { __type: "book" };
+        return status !== "completed" && !readNextKeys.has(getMediaItemKey(item)) && isCurrentYearOrUpcomingBook(book);
+      })
+      .sort((a, b) => {
+        const aRating = Number.parseFloat(safeStr(a.myRating).replace(/[^0-9.]/g, ""));
+        const bRating = Number.parseFloat(safeStr(b.myRating).replace(/[^0-9.]/g, ""));
+        const aScore = Number.isFinite(aRating) ? aRating : 0;
+        const bScore = Number.isFinite(bRating) ? bRating : 0;
+        if (bScore !== aScore) return bScore - aScore;
+        return bookTime(b) - bookTime(a);
+      })
+      .slice(0, isMobileLayout ? 8 : 14);
+    const remoteRecommendedAll = (isBrowserOnline ? booksHomeRemoteRecommendations : [])
+      .map((entry) => {
+        const data = (entry?.data && typeof entry.data === "object" ? entry.data : entry) as Record<string, unknown>;
+        return {
+          ...data,
+          title: safeStr(data.title || entry.title),
+          subtitle: safeStr(data.subtitle || entry.subtitle),
+          author: safeStr(data.author || entry.author),
+          releaseDate: safeStr(data.releaseDate || entry.releaseDate),
+          posterUrl: safeStr(data.posterUrl || data.imageUrl || entry.posterUrl || entry.imageUrl),
+          imageUrl: safeStr(data.imageUrl || data.posterUrl || entry.imageUrl || entry.posterUrl),
+          externalUrl: safeStr(data.externalUrl || entry.externalUrl),
+          __recommendationSource: safeStr(data.__recommendationSource || entry.__recommendationSource).toLowerCase(),
+          __isRecommendation: true,
+        } as Book;
+      })
+      .filter((entry) => Boolean(safeStr(entry.title)));
+    const remoteRecommendedFresh = remoteRecommendedAll.filter((entry) => isCurrentYearOrUpcomingBook(entry));
+    const recommended = remoteRecommendedFresh.length > 0 ? remoteRecommendedFresh : remoteRecommendedAll;
+
+    let completedCount = 0;
+    let readingCount = 0;
+    let ratingTotal = 0;
+    let ratingCount = 0;
+    allBooks.forEach((book) => {
+      const status = normalizeStatus(book.status);
+      if (status === "completed") completedCount += 1;
+      if (status === "reading" || status === "started") readingCount += 1;
+      const rating = Number.parseFloat(safeStr(book.myRating).replace(/[^0-9.]/g, ""));
+      if (Number.isFinite(rating) && rating > 0) {
+        ratingTotal += rating;
+        ratingCount += 1;
+      }
+    });
+
+    return {
+      readNext,
+      newReleases,
+      upcoming,
+      recommended,
+      stats: {
+        books: allBooks.length,
+        completed: completedCount,
+        reading: readingCount,
+        avgRating: ratingCount ? Math.round((ratingTotal / ratingCount) * 10) / 10 : 0,
+      },
+    };
+  }, [
+    allBooks,
+    applySorting,
+    booksHomeRemoteRecommendations,
+    getSetting,
+    isBrowserOnline,
+    isMobileLayout,
+    normalizeStatus,
+    resolvedReadNextManualOrderKeys,
+    wishlistBookItems,
+    wishlistBookItemsByKey,
+  ]);
+
   const formatGamesHomeDate = (game: Game, mode: "past" | "future") => {
     const release = parseReleaseDateForComparison(pickBestReleaseDate(game.releaseDate, game.releaseDateAlt));
     if (!release) return "";
@@ -13170,8 +13837,14 @@ export default function Page() {
       ? gamesHomeRemoteRecommendations
       : (gamesHomeData.recommended as Array<Record<string, unknown>>);
   const gamesHomeRecommendedIsRemote = isBrowserOnline && gamesHomeRemoteRecommendations.length > 0;
+  const [gamesHomeHoveredKey, setGamesHomeHoveredKey] = useState<string | null>(null);
+  const [moviesHomeHoveredKey, setMoviesHomeHoveredKey] = useState<string | null>(null);
+  const [tvHomeHoveredKey, setTvHomeHoveredKey] = useState<string | null>(null);
+  const [bookHomeHoveredKey, setBookHomeHoveredKey] = useState<string | null>(null);
   const renderGamesHomeCard = (game: any, variant: "large" | "standard", meta?: string, showAdd?: boolean) => {
     const item = { ...game, __type: "game" } as Game & { __type: "game" };
+    const cardKey = `games-home-card-${variant}-${getMediaItemKey(item)}`;
+    const isHovered = gamesHomeHoveredKey === cardKey;
     const width = variant === "large" ? gamesHomeLargeCardWidth : gamesHomeCardWidth;
     const height = Math.round(width * 1.36);
     const title = safeStr(game.title || game.name);
@@ -13191,8 +13864,21 @@ export default function Page() {
     );
     return (
       <button
-        key={`games-home-card-${variant}-${getMediaItemKey(item)}`}
+        key={cardKey}
         type="button"
+        className="gamesHomeGlossButton"
+        onMouseMove={handleCaseMouseMove}
+        onMouseLeave={(event) => {
+          handleCaseMouseLeave(event);
+          setGamesHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onMouseEnter={() => setGamesHomeHoveredKey(cardKey)}
+        onFocus={() => setGamesHomeHoveredKey(cardKey)}
+        onBlur={(event) => {
+          event.currentTarget.style.setProperty("--tiltY", "0deg");
+          event.currentTarget.style.setProperty("--tiltX", "0deg");
+          setGamesHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
         onClick={() => {
           if (isRecommendation) {
             openAddFlowFromGameRecommendation(game);
@@ -13203,15 +13889,23 @@ export default function Page() {
         style={{
           width,
           flex: `0 0 ${width}px`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
           border: 0,
           padding: 0,
           background: "transparent",
           color: gamesHomeTextColor,
           cursor: "pointer",
           textAlign: "center",
+          transform: isHovered
+            ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
+            : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
+          transition: "transform 140ms ease",
         }}
       >
         <div
+          className="glossyTileHighlight glossyTileHighlight--compact gamesHomeGlossSurface"
           style={{
             position: "relative",
             width,
@@ -13219,97 +13913,133 @@ export default function Page() {
             borderRadius: variant === "large" ? 18 : 12,
             overflow: "hidden",
             background: simpleSidebarIsLight ? "rgba(213, 220, 231, 0.62)" : "rgba(255,255,255,0.1)",
-            boxShadow: simpleSidebarIsLight ? "0 10px 22px rgba(24, 32, 44, 0.16)" : "0 12px 24px rgba(0,0,0,0.32)",
+            boxShadow: isHovered
+              ? "0 18px 34px rgba(12, 24, 44, 0.26), 0 0 0 1px rgba(255,255,255,0.18)"
+              : simpleSidebarIsLight
+                ? "0 10px 22px rgba(24, 32, 44, 0.16)"
+                : "0 12px 24px rgba(0,0,0,0.32)",
+            transition: "box-shadow 140ms ease",
           }}
         >
-          {coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          ) : (
-            <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", padding: 10, fontSize: 12, fontWeight: 900, color: gamesHomeMutedColor }}>
-              {title}
-            </div>
-          )}
-          {showAdd ? (
-            <span
-              aria-hidden
-              style={{
-                position: "absolute",
-                left: 6,
-                bottom: 6,
-                width: 22,
-                height: 22,
-                borderRadius: 7,
-                display: "grid",
-                placeItems: "center",
-                background: "rgba(0,0,0,0.58)",
-                color: "#fff",
-                fontSize: 18,
-                lineHeight: 1,
-                fontWeight: 800,
-              }}
-            >
-              +
-            </span>
-          ) : null}
-          {showStatusIndicators && statusIndicator ? (
-            <span
-              aria-label={`Status: ${statusIndicator.label}`}
-              title={statusIndicator.label}
-              style={{
-                position: "absolute",
-                left: statusIconLeft,
-                top: statusIconTop,
-                width: statusDotPixelSize,
-                height: statusDotPixelSize,
-                borderRadius: "50%",
-                border: statusIconSrc ? "none" : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
-                background: statusIconSrc ? "transparent" : statusIndicator.color,
-                boxShadow: statusIconSrc
-                  ? "0 2px 6px rgba(0,0,0,0.35)"
-                  : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
-                zIndex: 4,
-                pointerEvents: "none",
-              }}
-            >
-              {statusIconSrc ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={statusIconSrc}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    left: 2,
-                    top: 2,
-                    width: "40%",
-                    height: "40%",
-                    borderRadius: "50%",
-                    background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
-                  }}
-                />
-              )}
-            </span>
-          ) : null}
-        </div>
-        <div style={{ marginTop: 9, fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-          {title}
-        </div>
-        {meta ? (
-          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>
-            {meta}
+          <div className="glossyTileHighlightInner">
+            {coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            ) : (
+              <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", padding: 10, fontSize: 12, fontWeight: 900, color: gamesHomeMutedColor }}>
+                {title}
+              </div>
+            )}
+            {showAdd ? (
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: 6,
+                  bottom: 6,
+                  width: 22,
+                  height: 22,
+                  borderRadius: 7,
+                  display: "grid",
+                  placeItems: "center",
+                  background: "rgba(0,0,0,0.58)",
+                  color: "#fff",
+                  fontSize: 18,
+                  lineHeight: 1,
+                  fontWeight: 800,
+                }}
+              >
+                +
+              </span>
+            ) : null}
+            {showStatusIndicators && statusIndicator ? (
+              <span
+                aria-label={`Status: ${statusIndicator.label}`}
+                title={statusIndicator.label}
+                style={{
+                  position: "absolute",
+                  left: statusIconLeft,
+                  top: statusIconTop,
+                  width: statusDotPixelSize,
+                  height: statusDotPixelSize,
+                  borderRadius: "50%",
+                  border: statusIconSrc ? "none" : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
+                  background: statusIconSrc ? "transparent" : statusIndicator.color,
+                  boxShadow: statusIconSrc
+                    ? "0 2px 6px rgba(0,0,0,0.35)"
+                    : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
+                  zIndex: 4,
+                  pointerEvents: "none",
+                }}
+              >
+                {statusIconSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={statusIconSrc}
+                    alt=""
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 2,
+                      top: 2,
+                      width: "40%",
+                      height: "40%",
+                      borderRadius: "50%",
+                      background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.25), rgba(255,255,255,0.02) 75%)",
+                    }}
+                  />
+                )}
+              </span>
+            ) : null}
           </div>
-        ) : null}
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: isHovered ? 1 : 0,
+              transition: "opacity 140ms ease",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.1) 30%, rgba(22,133,132,0.13) 63%, rgba(0,0,0,0.08) 100%)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -1px 0 rgba(0,0,0,0.2)",
+              zIndex: 12,
+            }}
+          />
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              height: "42%",
+              borderRadius: "inherit",
+              pointerEvents: "none",
+              opacity: isHovered ? 1 : 0,
+              transition: "opacity 140ms ease",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.1) 55%, rgba(255,255,255,0) 100%)",
+              zIndex: 13,
+            }}
+          />
+        </div>
+        <div style={{ marginTop: 9, height: variant === "large" ? 42 : 36, display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "hidden" }}>
+          <div style={{ fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+            {title}
+          </div>
+          <div style={{ marginTop: 3, minHeight: 12, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>
+            {meta || ""}
+          </div>
+        </div>
       </button>
     );
   };
@@ -13451,6 +14181,642 @@ export default function Page() {
             </div>
           </section>
           {renderGamesHomeRow("Recommended", gamesHomeRecommendedItems, "standard", undefined, gamesHomeRecommendedIsRemote)}
+        </div>
+      </div>
+    ) : null;
+
+  const moviesHomeAccentColor = activeSidebarHighlightColors.movies || DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies;
+  const renderMoviesHomeCard = (movie: Movie | Record<string, unknown>, variant: "large" | "standard", meta?: string) => {
+    const isRecommendation = Boolean((movie as Record<string, unknown>).__isRecommendation);
+    const item = { ...(movie as Record<string, unknown>), __type: "movie" } as Movie & { __type: "movie" };
+    const cardKey = `movies-home-card-${variant}-${getMediaItemKey(item)}`;
+    const isHovered = moviesHomeHoveredKey === cardKey;
+    const width = variant === "large" ? gamesHomeLargeCardWidth : gamesHomeCardWidth;
+    const height = Math.round(width * 1.46);
+    const title = safeStr(movie.title);
+    const coverUrl = getDisplayCoverUrl(item, true) || safeStr(movie.posterUrl);
+    const statusIndicator = getStatusIndicator(item);
+    const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
+    const statusIconLeft = Math.max(4, Math.min(width - statusDotPixelSize - 4, width - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX));
+    const statusIconTop = Math.max(4, Math.min(height - statusDotPixelSize - 4, height - STATUS_DOT_NUDGE_UP_PX - statusDotPixelSize + statusIconOffsetY));
+    return (
+      <button
+        key={cardKey}
+        type="button"
+        onMouseMove={handleCaseMouseMove}
+        onMouseEnter={() => setMoviesHomeHoveredKey(cardKey)}
+        onMouseLeave={(event) => {
+          handleCaseMouseLeave(event);
+          setMoviesHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onFocus={() => setMoviesHomeHoveredKey(cardKey)}
+        onBlur={(event) => {
+          event.currentTarget.style.setProperty("--tiltY", "0deg");
+          event.currentTarget.style.setProperty("--tiltX", "0deg");
+          setMoviesHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onClick={() => {
+          if (isRecommendation) {
+            openAddFlowFromMovieRecommendation(movie as Record<string, unknown>);
+            return;
+          }
+          openSelectedItem(item);
+        }}
+        style={{
+          width,
+          flex: `0 0 ${width}px`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+          border: 0,
+          padding: 0,
+          background: "transparent",
+          color: gamesHomeTextColor,
+          cursor: "pointer",
+          textAlign: "center",
+          transform: isHovered
+            ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
+            : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
+          transition: "transform 140ms ease",
+        }}
+      >
+        <div style={{ position: "relative", width, height, borderRadius: variant === "large" ? 18 : 12, overflow: "hidden", background: simpleSidebarIsLight ? "rgba(213, 220, 231, 0.62)" : "rgba(255,255,255,0.1)", boxShadow: isHovered ? "0 18px 34px rgba(12, 24, 44, 0.26), 0 0 0 1px rgba(255,255,255,0.18)" : simpleSidebarIsLight ? "0 10px 22px rgba(24, 32, 44, 0.16)" : "0 12px 24px rgba(0,0,0,0.32)", transition: "box-shadow 140ms ease" }}>
+          {coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", display: "block" }} />
+          ) : (
+            <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", padding: 10, fontSize: 12, fontWeight: 900, color: gamesHomeMutedColor }}>{title}</div>
+          )}
+          {showStatusIndicators && statusIndicator ? (
+            <span
+              aria-label={`Status: ${statusIndicator.label}`}
+              title={statusIndicator.label}
+              style={{
+                position: "absolute",
+                left: statusIconLeft,
+                top: statusIconTop,
+                width: statusDotPixelSize,
+                height: statusDotPixelSize,
+                borderRadius: "50%",
+                border: statusIconSrc ? "none" : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`,
+                background: statusIconSrc ? "transparent" : statusIndicator.color,
+                boxShadow: statusIconSrc ? "0 2px 6px rgba(0,0,0,0.35)" : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)",
+                zIndex: 4,
+                pointerEvents: "none",
+              }}
+            >
+              {statusIconSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", display: "block" }} />
+              ) : null}
+            </span>
+          ) : null}
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: isHovered ? 1 : 0,
+              transition: "opacity 140ms ease",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.1) 30%, rgba(22,133,132,0.13) 63%, rgba(0,0,0,0.08) 100%)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -1px 0 rgba(0,0,0,0.2)",
+              zIndex: 12,
+            }}
+          />
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              height: "42%",
+              borderRadius: "inherit",
+              pointerEvents: "none",
+              opacity: isHovered ? 1 : 0,
+              transition: "opacity 140ms ease",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.1) 55%, rgba(255,255,255,0) 100%)",
+              zIndex: 13,
+            }}
+          />
+        </div>
+        <div style={{ marginTop: 9, minHeight: variant === "large" ? 42 : 36, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+          <div style={{ fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{title}</div>
+          <div style={{ marginTop: 3, minHeight: 12, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>{meta || ""}</div>
+        </div>
+      </button>
+    );
+  };
+
+  const formatMoviesHomeDate = (movie: Movie, mode: "past" | "future") => {
+    const release = parseReleaseDateForComparison(safeStr(movie.releaseDate));
+    if (!release) return "";
+    const diffDays = Math.round((release.getTime() - todayMidnight().getTime()) / 86400000);
+    const absoluteDays = Math.abs(diffDays);
+    if (mode === "future") {
+      if (diffDays <= 0) return "today";
+      if (absoluteDays < 7) return `in ${absoluteDays} day${absoluteDays === 1 ? "" : "s"}`;
+      if (absoluteDays < 45) {
+        const weeks = Math.max(1, Math.round(absoluteDays / 7));
+        return `in ${weeks} week${weeks === 1 ? "" : "s"}`;
+      }
+      const months = Math.max(1, Math.round(absoluteDays / 30));
+      return `in ${months} month${months === 1 ? "" : "s"}`;
+    }
+    if (diffDays === 0) return "today";
+    if (absoluteDays < 7) return `${absoluteDays} day${absoluteDays === 1 ? "" : "s"} ago`;
+    if (absoluteDays < 45) {
+      const weeks = Math.max(1, Math.round(absoluteDays / 7));
+      return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+    }
+    const months = Math.max(1, Math.round(absoluteDays / 30));
+    return `${months} month${months === 1 ? "" : "s"} ago`;
+  };
+
+  const renderMoviesHomeRow = (title: string, movies: Array<Movie | Record<string, unknown>>, variant: "large" | "standard", metaMode?: "past" | "future") => (
+    <section key={`movies-home-section-${title}`} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+        <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{title}</h2>
+      </div>
+      {movies.length ? (
+        <div style={{ display: "flex", gap: variant === "large" ? 18 : 16, overflowX: "auto", padding: "0 2px 8px 0", scrollbarWidth: "none" }}>
+          {movies.map((movie) => renderMoviesHomeCard(movie, variant, metaMode && !Boolean((movie as Record<string, unknown>).__isRecommendation) ? formatMoviesHomeDate(movie as Movie, metaMode) : undefined))}
+        </div>
+      ) : (
+        <div style={{ minHeight: 72, display: "flex", alignItems: "center", color: gamesHomeMutedColor, fontSize: 13, fontWeight: 800 }}>No movies to show here yet.</div>
+      )}
+    </section>
+  );
+
+  const moviesHomeContent =
+    nav === "movies" && movieHomeMode ? (
+      <div ref={stageRef} style={{ width: "100%" }}>
+        <div
+          style={{
+            position: "sticky",
+            top: topSafeInset,
+            zIndex: 2000,
+            minHeight: 45,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 4,
+            padding: "6px 10px",
+            background: isSimpleHeaderTheme ? stickyHeaderSimpleBackground : stickyHeaderDarkBackground,
+            backdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none",
+            WebkitBackdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none",
+          }}
+        >
+          {([
+            ["home", "Home"],
+            ["library", "Library"],
+            ["upcoming", "Upcoming"],
+            ["backlog", "Backlog"],
+            ["started", "Started"],
+            ["watched", "Watched"],
+            ["abandoned", "Abandoned"],
+          ] as Array<[MovieQuickLinkKey, string]>).map(([key, label]) => {
+            const active = activeMovieQuickLink === key;
+            return (
+              <button
+                key={`movie-home-quick-link-${key}`}
+                type="button"
+                onClick={() => activateMovieQuickLink(key)}
+                aria-pressed={active}
+                style={{
+                  height: isMobileLayout ? 28 : 26,
+                  minWidth: 0,
+                  padding: isMobileLayout ? "0 10px" : "0 12px",
+                  borderRadius: 999,
+                  border: active ? `1px solid ${sidebarAccentPalette.movies.border}` : "1px solid transparent",
+                  background: active ? sidebarAccentPalette.movies.background : "transparent",
+                  color: active ? sidebarAccentPalette.movies.text : gamesHomeMutedColor,
+                  boxShadow: active ? "0 2px 7px rgba(92, 127, 196, 0.22)" : "none",
+                  cursor: "pointer",
+                  fontSize: isMobileLayout ? 11 : 12,
+                  fontWeight: 800,
+                  lineHeight: 1,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            minHeight: `calc(100vh - ${topSafeInset + 45}px)`,
+            background: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent",
+            padding: isMobileLayout ? "14px 12px 28px" : "18px 0 34px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: isMobileLayout ? 22 : 26,
+            overflow: "hidden",
+          }}
+        >
+          {renderMoviesHomeRow("Watchlist", moviesHomeData.watchlist as Movie[], "large")}
+          {renderMoviesHomeRow("New Releases", moviesHomeData.newReleases as Movie[], "standard", "past")}
+          {renderMoviesHomeRow("Upcoming", moviesHomeData.upcoming as Movie[], "standard", "future")}
+          <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+              <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>Statistics</h2>
+            </div>
+            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 0 : 14 }}>
+              {[
+                ["Movies", moviesHomeData.stats.movies],
+                ["Watched", moviesHomeData.stats.watched],
+                ["Started", moviesHomeData.stats.started],
+                ["Average Rating", moviesHomeData.stats.avgRating || "-"],
+              ].map(([label, value]) => (
+                <div key={`movies-home-stat-${label}`} style={{ borderRadius: 9, background: simpleSidebarIsLight ? "rgba(96, 106, 122, 0.12)" : "rgba(255,255,255,0.1)", padding: "9px 8px", textAlign: "center", minHeight: 48 }}>
+                  <div style={{ fontSize: 22, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{value}</div>
+                  <div style={{ marginTop: 3, fontSize: 10, lineHeight: 1, fontWeight: 900, color: gamesHomeMutedColor, textTransform: "uppercase" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+          {renderMoviesHomeRow("Recommended", moviesHomeData.recommended as Movie[], "standard")}
+        </div>
+      </div>
+    ) : null;
+
+  const tvHomeAccentColor = activeSidebarHighlightColors.tv || DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv;
+  const renderTvHomeCard = (show: Show | Record<string, unknown>, variant: "large" | "standard", meta?: string) => {
+    const isRecommendation = Boolean((show as Record<string, unknown>).__isRecommendation);
+    const item = { ...(show as Record<string, unknown>), __type: "tv" } as Show & { __type: "tv" };
+    const cardKey = `tv-home-card-${variant}-${getMediaItemKey(item)}`;
+    const isHovered = tvHomeHoveredKey === cardKey;
+    const width = variant === "large" ? gamesHomeLargeCardWidth : gamesHomeCardWidth;
+    const height = Math.round(width * 1.46);
+    const title = safeStr((show as Record<string, unknown>).title);
+    const coverUrl = getDisplayCoverUrl(item, true) || safeStr((show as Record<string, unknown>).posterUrl);
+    const statusIndicator = getStatusIndicator(item);
+    const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
+    const statusIconLeft = Math.max(4, Math.min(width - statusDotPixelSize - 4, width - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX));
+    const statusIconTop = Math.max(4, Math.min(height - statusDotPixelSize - 4, height - STATUS_DOT_NUDGE_UP_PX - statusDotPixelSize + statusIconOffsetY));
+    return (
+      <button
+        key={cardKey}
+        type="button"
+        onMouseMove={handleCaseMouseMove}
+        onMouseEnter={() => setTvHomeHoveredKey(cardKey)}
+        onMouseLeave={(event) => {
+          handleCaseMouseLeave(event);
+          setTvHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onFocus={() => setTvHomeHoveredKey(cardKey)}
+        onBlur={(event) => {
+          event.currentTarget.style.setProperty("--tiltY", "0deg");
+          event.currentTarget.style.setProperty("--tiltX", "0deg");
+          setTvHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onClick={() => {
+          if (isRecommendation) {
+            openAddFlowFromTvRecommendation(show as Record<string, unknown>);
+            return;
+          }
+          openSelectedItem(item);
+        }}
+        style={{
+          width,
+          flex: `0 0 ${width}px`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+          border: 0,
+          padding: 0,
+          background: "transparent",
+          color: gamesHomeTextColor,
+          cursor: "pointer",
+          textAlign: "center",
+          transform: isHovered
+            ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
+            : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
+          transition: "transform 140ms ease",
+        }}
+      >
+        <div style={{ position: "relative", width, height, borderRadius: variant === "large" ? 18 : 12, overflow: "hidden", background: simpleSidebarIsLight ? "rgba(213, 220, 231, 0.62)" : "rgba(255,255,255,0.1)", boxShadow: isHovered ? "0 18px 34px rgba(12, 24, 44, 0.26), 0 0 0 1px rgba(255,255,255,0.18)" : simpleSidebarIsLight ? "0 10px 22px rgba(24, 32, 44, 0.16)" : "0 12px 24px rgba(0,0,0,0.32)", transition: "box-shadow 140ms ease" }}>
+          {coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", display: "block" }} />
+          ) : (
+            <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", padding: 10, fontSize: 12, fontWeight: 900, color: gamesHomeMutedColor }}>{title}</div>
+          )}
+          {showStatusIndicators && statusIndicator ? (
+            <span aria-label={`Status: ${statusIndicator.label}`} title={statusIndicator.label} style={{ position: "absolute", left: statusIconLeft, top: statusIconTop, width: statusDotPixelSize, height: statusDotPixelSize, borderRadius: "50%", border: statusIconSrc ? "none" : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`, background: statusIconSrc ? "transparent" : statusIndicator.color, boxShadow: statusIconSrc ? "0 2px 6px rgba(0,0,0,0.35)" : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)", zIndex: 4, pointerEvents: "none" }}>
+              {statusIconSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", display: "block" }} />
+              ) : null}
+            </span>
+          ) : null}
+          <span aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: isHovered ? 1 : 0, transition: "opacity 140ms ease", background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.1) 30%, rgba(22,133,132,0.13) 63%, rgba(0,0,0,0.08) 100%)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -1px 0 rgba(0,0,0,0.2)", zIndex: 12 }} />
+          <span aria-hidden style={{ position: "absolute", left: 0, right: 0, top: 0, height: "42%", borderRadius: "inherit", pointerEvents: "none", opacity: isHovered ? 1 : 0, transition: "opacity 140ms ease", background: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.1) 55%, rgba(255,255,255,0) 100%)", zIndex: 13 }} />
+        </div>
+        <div style={{ marginTop: 9, minHeight: variant === "large" ? 42 : 36, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+          <div style={{ fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{title}</div>
+          <div style={{ marginTop: 3, minHeight: 12, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>{meta || ""}</div>
+        </div>
+      </button>
+    );
+  };
+
+  const formatTvHomeDate = (show: Show, mode: "past" | "future") => {
+    const release = parseReleaseDateForComparison(safeStr(show.firstAirDate || (show as any).releaseDate));
+    if (!release) return "";
+    const diffDays = Math.round((release.getTime() - todayMidnight().getTime()) / 86400000);
+    const absoluteDays = Math.abs(diffDays);
+    if (mode === "future") {
+      if (diffDays <= 0) return "today";
+      if (absoluteDays < 7) return `in ${absoluteDays} day${absoluteDays === 1 ? "" : "s"}`;
+      if (absoluteDays < 45) return `in ${Math.max(1, Math.round(absoluteDays / 7))} weeks`;
+      return `in ${Math.max(1, Math.round(absoluteDays / 30))} months`;
+    }
+    if (diffDays === 0) return "today";
+    if (absoluteDays < 7) return `${absoluteDays} day${absoluteDays === 1 ? "" : "s"} ago`;
+    if (absoluteDays < 45) return `${Math.max(1, Math.round(absoluteDays / 7))} weeks ago`;
+    return `${Math.max(1, Math.round(absoluteDays / 30))} months ago`;
+  };
+
+  const renderTvHomeRow = (title: string, shows: Array<Show | Record<string, unknown>>, variant: "large" | "standard", metaMode?: "past" | "future") => (
+    <section key={`tv-home-section-${title}`} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+        <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{title}</h2>
+      </div>
+      {shows.length ? (
+        <div style={{ display: "flex", gap: variant === "large" ? 18 : 16, overflowX: "auto", padding: "0 2px 8px 0", scrollbarWidth: "none" }}>
+          {shows.map((show) => renderTvHomeCard(show, variant, metaMode && !Boolean((show as Record<string, unknown>).__isRecommendation) ? formatTvHomeDate(show as Show, metaMode) : undefined))}
+        </div>
+      ) : (
+        <div style={{ minHeight: 72, display: "flex", alignItems: "center", color: gamesHomeMutedColor, fontSize: 13, fontWeight: 800 }}>No TV shows to show here yet.</div>
+      )}
+    </section>
+  );
+
+  const tvHomeContent =
+    nav === "tv" && tvHomeMode ? (
+      <div ref={stageRef} style={{ width: "100%" }}>
+        <div style={{ position: "sticky", top: topSafeInset, zIndex: 2000, minHeight: 45, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, padding: "6px 10px", background: isSimpleHeaderTheme ? stickyHeaderSimpleBackground : stickyHeaderDarkBackground, backdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none", WebkitBackdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none" }}>
+          {([
+            ["home", "Home"],
+            ["library", "Library"],
+            ["upcoming", "Upcoming"],
+            ["backlog", "Backlog"],
+            ["watching", "Watching"],
+            ["watched", "Watched"],
+            ["abandoned", "Abandoned"],
+          ] as Array<[TvQuickLinkKey, string]>).map(([key, label]) => {
+            const active = activeTvQuickLink === key;
+            return (
+              <button key={`tv-home-quick-link-${key}`} type="button" onClick={() => activateTvQuickLink(key)} aria-pressed={active} style={{ height: isMobileLayout ? 28 : 26, minWidth: 0, padding: isMobileLayout ? "0 10px" : "0 12px", borderRadius: 999, border: active ? `1px solid ${sidebarAccentPalette.tv.border}` : "1px solid transparent", background: active ? sidebarAccentPalette.tv.background : "transparent", color: active ? sidebarAccentPalette.tv.text : gamesHomeMutedColor, boxShadow: active ? "0 2px 7px rgba(223, 121, 24, 0.22)" : "none", cursor: "pointer", fontSize: isMobileLayout ? 11 : 12, fontWeight: 800, lineHeight: 1 }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ minHeight: `calc(100vh - ${topSafeInset + 45}px)`, background: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent", padding: isMobileLayout ? "14px 12px 28px" : "18px 0 34px 14px", display: "flex", flexDirection: "column", gap: isMobileLayout ? 22 : 26, overflow: "hidden" }}>
+          {renderTvHomeRow("Watchlist", tvHomeData.watchlist as Show[], "large")}
+          {renderTvHomeRow("New Releases", tvHomeData.newReleases as Show[], "standard", "past")}
+          {renderTvHomeRow("Upcoming", tvHomeData.upcoming as Show[], "standard", "future")}
+          <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+              <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>Statistics</h2>
+            </div>
+            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 0 : 14 }}>
+              {[
+                ["Shows", tvHomeData.stats.shows],
+                ["Watched", tvHomeData.stats.watched],
+                ["Watching", tvHomeData.stats.watching],
+                ["Average Rating", tvHomeData.stats.avgRating || "-"],
+              ].map(([label, value]) => (
+                <div key={`tv-home-stat-${label}`} style={{ borderRadius: 9, background: simpleSidebarIsLight ? "rgba(96, 106, 122, 0.12)" : "rgba(255,255,255,0.1)", padding: "9px 8px", textAlign: "center", minHeight: 48 }}>
+                  <div style={{ fontSize: 22, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{value}</div>
+                  <div style={{ marginTop: 3, fontSize: 10, lineHeight: 1, fontWeight: 900, color: gamesHomeMutedColor, textTransform: "uppercase" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+          {renderTvHomeRow("Recommended", tvHomeData.recommended as Show[], "standard")}
+        </div>
+      </div>
+    ) : null;
+
+  const booksHomeAccentColor = activeSidebarHighlightColors.books || DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books;
+  const renderBooksHomeCard = (book: Book, variant: "large" | "standard", meta?: string) => {
+    const item = { ...book, __type: "book" } as Book & { __type: "book" };
+    const cardKey = `book-home-card-${variant}-${getMediaItemKey(item)}`;
+    const isHovered = bookHomeHoveredKey === cardKey;
+    const isAudiobook = isAudiobookItem(item);
+    const width = variant === "large" ? gamesHomeLargeCardWidth : gamesHomeCardWidth;
+    const height = isAudiobook ? width : Math.round(width * 1.46);
+    const title = safeStr(book.title);
+    const coverUrl = getDisplayCoverUrl(item, true) || safeStr((book as any).posterUrl);
+    const isRecommendation = Boolean((book as Record<string, unknown>).__isRecommendation);
+    const recommendationUrl = safeStr((book as Record<string, unknown>).externalUrl);
+    const statusIndicator = getStatusIndicator(item);
+    const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
+    const statusIconLeft = Math.max(4, Math.min(width - statusDotPixelSize - 4, width - STATUS_DOT_NUDGE_LEFT_PX - statusDotPixelSize + statusIconOffsetX));
+    const statusIconTop = Math.max(4, Math.min(height - statusDotPixelSize - 4, height - STATUS_DOT_NUDGE_UP_PX - statusDotPixelSize + statusIconOffsetY));
+    return (
+      <button
+        key={cardKey}
+        type="button"
+        onMouseMove={handleCaseMouseMove}
+        onMouseEnter={() => setBookHomeHoveredKey(cardKey)}
+        onMouseLeave={(event) => {
+          handleCaseMouseLeave(event);
+          setBookHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onFocus={() => setBookHomeHoveredKey(cardKey)}
+        onBlur={(event) => {
+          event.currentTarget.style.setProperty("--tiltY", "0deg");
+          event.currentTarget.style.setProperty("--tiltX", "0deg");
+          setBookHomeHoveredKey((prev) => (prev === cardKey ? null : prev));
+        }}
+        onClick={() => {
+          if (
+            isRecommendation &&
+            recommendationUrl
+          ) {
+            if (typeof window !== "undefined") {
+              const url = /^https?:\/\//i.test(recommendationUrl)
+                ? recommendationUrl
+                : recommendationUrl.startsWith("//")
+                  ? `https:${recommendationUrl}`
+                  : `https://${recommendationUrl.replace(/^\/+/, "")}`;
+              window.open(url, "_blank", "noopener,noreferrer");
+            }
+            return;
+          }
+          openSelectedItem(item);
+        }}
+        style={{
+          width,
+          flex: `0 0 ${width}px`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+          border: 0,
+          padding: 0,
+          background: "transparent",
+          color: gamesHomeTextColor,
+          cursor: "pointer",
+          textAlign: "center",
+          transform: isHovered
+            ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
+            : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
+          transition: "transform 140ms ease",
+        }}
+      >
+        <div style={{ position: "relative", width, height, borderRadius: variant === "large" ? 18 : 12, overflow: "hidden", background: simpleSidebarIsLight ? "rgba(213, 220, 231, 0.62)" : "rgba(255,255,255,0.1)", boxShadow: isHovered ? "0 18px 34px rgba(12, 24, 44, 0.26), 0 0 0 1px rgba(255,255,255,0.18)" : simpleSidebarIsLight ? "0 10px 22px rgba(24, 32, 44, 0.16)" : "0 12px 24px rgba(0,0,0,0.32)", transition: "box-shadow 140ms ease" }}>
+          {coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center bottom", borderRadius: "inherit", display: "block" }} />
+          ) : (
+            <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", padding: 10, fontSize: 12, fontWeight: 900, color: gamesHomeMutedColor }}>{title}</div>
+          )}
+          {showStatusIndicators && statusIndicator ? (
+            <span aria-label={`Status: ${statusIndicator.label}`} title={statusIndicator.label} style={{ position: "absolute", left: statusIconLeft, top: statusIconTop, width: statusDotPixelSize, height: statusDotPixelSize, borderRadius: "50%", border: statusIconSrc ? "none" : `2px solid color-mix(in srgb, ${statusIndicator.color} 78%, black)`, background: statusIconSrc ? "transparent" : statusIndicator.color, boxShadow: statusIconSrc ? "0 2px 6px rgba(0,0,0,0.35)" : "inset 0 1px 1px rgba(255,255,255,0.18), 0 2px 6px rgba(0,0,0,0.35)", zIndex: 4, pointerEvents: "none" }}>
+              {statusIconSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", display: "block" }} />
+              ) : null}
+            </span>
+          ) : null}
+          <span aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: isHovered ? 1 : 0, transition: "opacity 140ms ease", background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.1) 30%, rgba(22,133,132,0.13) 63%, rgba(0,0,0,0.08) 100%)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -1px 0 rgba(0,0,0,0.2)", zIndex: 12 }} />
+          <span aria-hidden style={{ position: "absolute", left: 0, right: 0, top: 0, height: "42%", borderRadius: "inherit", pointerEvents: "none", opacity: isHovered ? 1 : 0, transition: "opacity 140ms ease", background: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.1) 55%, rgba(255,255,255,0) 100%)", zIndex: 13 }} />
+        </div>
+        <div style={{ marginTop: 9, minHeight: variant === "large" ? 42 : 36, display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+          <div style={{ fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{title}</div>
+          <div style={{ marginTop: 3, minHeight: 12, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>{meta || ""}</div>
+        </div>
+      </button>
+    );
+  };
+
+  const formatBooksHomeDate = (book: Book, mode: "past" | "future") => {
+    const release = parseReleaseDateForComparison(safeStr(book.releaseDate));
+    if (!release) return "";
+    const diffDays = Math.round((release.getTime() - todayMidnight().getTime()) / 86400000);
+    const absoluteDays = Math.abs(diffDays);
+    if (mode === "future") {
+      if (diffDays <= 0) return "today";
+      if (absoluteDays < 7) return `in ${absoluteDays} day${absoluteDays === 1 ? "" : "s"}`;
+      if (absoluteDays < 45) return `in ${Math.max(1, Math.round(absoluteDays / 7))} weeks`;
+      return `in ${Math.max(1, Math.round(absoluteDays / 30))} months`;
+    }
+    if (diffDays === 0) return "today";
+    if (absoluteDays < 7) return `${absoluteDays} day${absoluteDays === 1 ? "" : "s"} ago`;
+    if (absoluteDays < 45) return `${Math.max(1, Math.round(absoluteDays / 7))} weeks ago`;
+    return `${Math.max(1, Math.round(absoluteDays / 30))} months ago`;
+  };
+
+  const BOOKS_BESTSELLERS_URL = "https://www.nytimes.com/books/best-sellers/";
+  const renderBooksHomeRow = (title: string, books: Book[], variant: "large" | "standard", metaMode?: "past" | "future") => (
+    <section key={`books-home-section-${title}`} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingRight: 8 }}>
+        <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{title}</h2>
+        {title === "Recommended" ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.open(BOOKS_BESTSELLERS_URL, "_blank", "noopener,noreferrer");
+              }
+            }}
+            style={{
+              height: isMobileLayout ? 26 : 24,
+              padding: isMobileLayout ? "0 10px" : "0 9px",
+              borderRadius: 999,
+              border: `1px solid ${sidebarAccentPalette.books.border}`,
+              background: sidebarAccentPalette.books.background,
+              color: sidebarAccentPalette.books.text,
+              fontSize: isMobileLayout ? 11 : 10,
+              fontWeight: 900,
+              cursor: "pointer",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Best Sellers
+          </button>
+        ) : null}
+      </div>
+      {books.length ? (
+        <div style={{ display: "flex", alignItems: "flex-end", gap: variant === "large" ? 18 : 16, overflowX: "auto", padding: "0 2px 8px 0", scrollbarWidth: "none" }}>
+          {books.map((book) => renderBooksHomeCard(book, variant, metaMode ? formatBooksHomeDate(book, metaMode) : undefined))}
+        </div>
+      ) : (
+        <div style={{ minHeight: 72, display: "flex", alignItems: "center", color: gamesHomeMutedColor, fontSize: 13, fontWeight: 800 }}>No books to show here yet.</div>
+      )}
+    </section>
+  );
+
+  const booksHomeContent =
+    nav === "books" && bookHomeMode ? (
+      <div ref={stageRef} style={{ width: "100%" }}>
+        <div style={{ position: "sticky", top: topSafeInset, zIndex: 2000, minHeight: 45, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, padding: "6px 10px", background: isSimpleHeaderTheme ? stickyHeaderSimpleBackground : stickyHeaderDarkBackground, backdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none", WebkitBackdropFilter: stickyHeaderBlurPx > 0 ? `blur(${stickyHeaderBlurPx.toFixed(2)}px)` : "none" }}>
+          {([
+            ["home", "Home"],
+            ["library", "Library"],
+            ["upcoming", "Upcoming"],
+            ["completed", "Completed"],
+            ["wishlist", "Wishlist"],
+          ] as Array<[BookQuickLinkKey, string]>).map(([key, label]) => {
+            const active = activeBookQuickLink === key;
+            return (
+              <button key={`book-home-quick-link-${key}`} type="button" onClick={() => activateBookQuickLink(key)} aria-pressed={active} style={{ height: isMobileLayout ? 28 : 26, minWidth: 0, padding: isMobileLayout ? "0 10px" : "0 12px", borderRadius: 999, border: active ? `1px solid ${sidebarAccentPalette.books.border}` : "1px solid transparent", background: active ? sidebarAccentPalette.books.background : "transparent", color: active ? sidebarAccentPalette.books.text : gamesHomeMutedColor, boxShadow: active ? "0 2px 7px rgba(76, 154, 71, 0.22)" : "none", cursor: "pointer", fontSize: isMobileLayout ? 11 : 12, fontWeight: 800, lineHeight: 1 }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ minHeight: `calc(100vh - ${topSafeInset + 45}px)`, background: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent", padding: isMobileLayout ? "14px 12px 28px" : "18px 0 34px 14px", display: "flex", flexDirection: "column", gap: isMobileLayout ? 22 : 26, overflow: "hidden" }}>
+          {renderBooksHomeRow("Read Next", booksHomeData.readNext as Book[], "large")}
+          {renderBooksHomeRow("New Releases", booksHomeData.newReleases as Book[], "standard", "past")}
+          {renderBooksHomeRow("Upcoming", booksHomeData.upcoming as Book[], "standard", "future")}
+          <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+              <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>Statistics</h2>
+            </div>
+            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 0 : 14 }}>
+              {[
+                ["Books", booksHomeData.stats.books],
+                ["Completed", booksHomeData.stats.completed],
+                ["Reading", booksHomeData.stats.reading],
+                ["Average Rating", booksHomeData.stats.avgRating || "-"],
+              ].map(([label, value]) => (
+                <div key={`books-home-stat-${label}`} style={{ borderRadius: 9, background: simpleSidebarIsLight ? "rgba(96, 106, 122, 0.12)" : "rgba(255,255,255,0.1)", padding: "9px 8px", textAlign: "center", minHeight: 48 }}>
+                  {label === "Average Rating" && Number.isFinite(Number(value)) ? (
+                    <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <div style={{ display: "inline-block", position: "relative", fontSize: 14, lineHeight: 1, letterSpacing: 0 }}>
+                        <span style={{ color: "rgba(120, 130, 145, 0.65)" }}>★★★★★</span>
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            width: `${Math.max(0, Math.min(100, (Number(value) / 5) * 100))}%`,
+                            color: booksHomeAccentColor,
+                          }}
+                        >
+                          ★★★★★
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 22, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{value}</div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 22, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>{value}</div>
+                  )}
+                  <div style={{ marginTop: 3, fontSize: 10, lineHeight: 1, fontWeight: 900, color: gamesHomeMutedColor, textTransform: "uppercase" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+          {renderBooksHomeRow("New York Times Bestsellers", booksHomeData.recommended as Book[], "standard")}
         </div>
       </div>
     ) : null;
@@ -13627,7 +14993,10 @@ export default function Page() {
                       <button
                         key={`mobile-movie-status-${status}`}
                         type="button"
-                        onClick={() => setMovieWatchFilter(active ? null : status)}
+                        onClick={() => {
+                          setMovieHomeMode(false);
+                          setMovieWatchFilter(active ? null : status);
+                        }}
                         style={{
                           border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
                           background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
@@ -14588,7 +15957,16 @@ export default function Page() {
                   </span>
                 </button>
                 <button
-                  onClick={() => openMediaSidebar("books")}
+                  onClick={() => {
+                    setBookHomeMode(true);
+                    setBookUpcomingFilter(false);
+                    setWishlistFilter(false);
+                    setReadingStatusFilter(null);
+                    setFormatFilter(null);
+                    setSeriesFilter(null);
+                    setGenreFilter(null);
+                    openMediaSidebar("books");
+                  }}
                   className={`sideItem ${nav === "books" ? "active" : ""}`}
                   style={{ ...sidebarPrimaryItemRowStyle, ...getLibraryItemActiveStyle("books", nav === "books") }}
                 >
@@ -14636,7 +16014,10 @@ export default function Page() {
                         return (
                           <button
                             key={`reading-${status}`}
-                            onClick={() => setReadingStatusFilter(active ? null : status)}
+                            onClick={() => {
+                              setBookHomeMode(false);
+                              setReadingStatusFilter(active ? null : status);
+                            }}
                             className={`sideSubItem ${active ? "active" : ""}`}
                             style={sidebarSubItemRowStyle}
                           >
@@ -14661,9 +16042,12 @@ export default function Page() {
                       {bookFormats.map((format) => {
                         const active = formatFilter === format;
                         return (
-                          <button
-                            key={`format-${format}`}
-                            onClick={() => setFormatFilter(active ? null : format)}
+                            <button
+                              key={`format-${format}`}
+                              onClick={() => {
+                                setBookHomeMode(false);
+                                setFormatFilter(active ? null : format);
+                              }}
                             className={`sideSubItem ${active ? "active" : ""}`}
                             style={sidebarSubItemRowStyle}
                           >
@@ -14692,9 +16076,12 @@ export default function Page() {
                         {bookSeries.map((series) => {
                           const active = seriesFilter === series;
                           return (
-                          <button
-                            key={`series-${series}`}
-                            onClick={() => setSeriesFilter(active ? null : series)}
+                            <button
+                              key={`series-${series}`}
+                              onClick={() => {
+                                setBookHomeMode(false);
+                                setSeriesFilter(active ? null : series);
+                              }}
                             className={`sideSubItem ${active ? "active" : ""}`}
                             style={sidebarSubItemRowStyle}
                           >
@@ -14724,9 +16111,12 @@ export default function Page() {
                         {bookGenres.map((genre) => {
                           const active = genreFilter === genre;
                           return (
-                          <button
-                            key={`genre-${genre}`}
-                            onClick={() => setGenreFilter(active ? null : genre)}
+                            <button
+                              key={`genre-${genre}`}
+                              onClick={() => {
+                                setBookHomeMode(false);
+                                setGenreFilter(active ? null : genre);
+                              }}
                             className={`sideSubItem ${active ? "active" : ""}`}
                             style={sidebarSubItemRowStyle}
                           >
@@ -14749,8 +16139,11 @@ export default function Page() {
 
                 <button
                   onClick={() => {
+                    setMovieHomeMode(true);
+                    setMovieUpcomingFilter(false);
                     setMovieWatchFilter(null);
                     setMovieGenreFilter(null);
+                    setMovieTagFilter(null);
                     openMediaSidebar("movies");
                   }}
                   className={`sideItem ${nav === "movies" ? "active" : ""}`}
@@ -14805,7 +16198,10 @@ export default function Page() {
                           return (
                             <button
                               key={`movie-status-${option}`}
-                              onClick={() => setMovieUpcomingFilter(option === "Upcoming")}
+                              onClick={() => {
+                                setMovieHomeMode(false);
+                                setMovieUpcomingFilter(option === "Upcoming");
+                              }}
                               className={`sideSubItem ${active ? "active" : ""}`}
                               style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "1px 6px" }}
                             >
@@ -14888,6 +16284,7 @@ export default function Page() {
 
                 <button
                   onClick={() => {
+                    setTvHomeMode(true);
                     setTvViewMode("library");
                     setWatchFilter(null);
                     setShowFilter(null);
@@ -14947,6 +16344,7 @@ export default function Page() {
                               key={`watch-${status}`}
                               onClick={() => {
                                 const nextWatchFilter = active ? null : status;
+                                setTvHomeMode(false);
                                 setTvViewMode(!nextWatchFilter && !showFilter && !tagFilter ? "library" : "custom");
                                 setWatchFilter(nextWatchFilter);
                               }}
@@ -14990,6 +16388,7 @@ export default function Page() {
                               key={`show-${status}`}
                               onClick={() => {
                                 const nextShowFilter = active ? null : status;
+                                setTvHomeMode(false);
                                 setTvViewMode(!watchFilter && !nextShowFilter && !tagFilter ? "library" : "custom");
                                 setShowFilter(nextShowFilter);
                               }}
@@ -15033,6 +16432,7 @@ export default function Page() {
                               key={`tag-${tag}`}
                               onClick={() => {
                                 const nextTagFilter = active ? null : tag;
+                                setTvHomeMode(false);
                                 setTvViewMode(!watchFilter && !showFilter && !nextTagFilter ? "library" : "custom");
                                 setTagFilter(nextTagFilter);
                               }}
@@ -19080,6 +20480,12 @@ export default function Page() {
               }}
               highlightColor={sidebarHighlightColorsLight.games}
             />
+          ) : booksHomeContent ? (
+            booksHomeContent
+          ) : moviesHomeContent ? (
+            moviesHomeContent
+          ) : tvHomeContent ? (
+            tvHomeContent
           ) : gamesHomeContent ? (
             gamesHomeContent
           ) : mobileLandingVisible ? (
@@ -19356,6 +20762,7 @@ export default function Page() {
                       {isMobileLayout && nav === "books" ? (
                         <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["completed", "Completed"],
@@ -19388,6 +20795,7 @@ export default function Page() {
                       {isMobileLayout && nav === "movies" ? (
                         <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
@@ -19422,6 +20830,7 @@ export default function Page() {
                       {isMobileLayout && nav === "tv" ? (
                         <div style={{ position: "absolute", left: 8, right: 8, top: 8, zIndex: 1402, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
@@ -19649,6 +21058,7 @@ export default function Page() {
                           }}
                         >
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
@@ -19701,6 +21111,7 @@ export default function Page() {
                           }}
                         >
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["backlog", "Backlog"],
@@ -19753,6 +21164,7 @@ export default function Page() {
                           }}
                         >
                           {([
+                            ["home", "Home"],
                             ["library", "Library"],
                             ["upcoming", "Upcoming"],
                             ["completed", "Completed"],
@@ -20450,7 +21862,7 @@ export default function Page() {
                           onMouseLeave={handleCaseMouseLeave}
                           >
                           <div
-                            className="caseSurface"
+                            className="caseSurface glossyTileHighlight glossyTileHighlight--cover glossyTileHighlightInner"
                             style={{
                               borderRadius: coverImageRadiusPx,
                               background: "transparent",
@@ -21840,6 +23252,90 @@ export default function Page() {
         .case {
           position: relative;
           filter: drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34));
+        }
+        .glossyTileHighlight {
+          position: relative;
+          border-radius: inherit;
+          transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+          overflow: hidden;
+        }
+        .glossyTileHighlight::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 140ms ease;
+          background: linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.1) 30%, rgba(22,133,132,0.13) 63%, rgba(0,0,0,0.08) 100%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -1px 0 rgba(0,0,0,0.2);
+          z-index: 12;
+        }
+        .glossyTileHighlight::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 0;
+          height: 42%;
+          border-radius: inherit;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 140ms ease;
+          background: linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.1) 55%, rgba(255,255,255,0) 100%);
+          z-index: 13;
+        }
+        .glossyTileHighlight:hover,
+        .glossyTileHighlight:focus-within {
+          transform: translateY(-2px);
+        }
+        .glossyTileHighlight:hover::before,
+        .glossyTileHighlight:hover::after,
+        .glossyTileHighlight:focus-within::before,
+        .glossyTileHighlight:focus-within::after {
+          opacity: 1;
+        }
+        .glossyTileHighlightInner {
+          position: relative;
+          z-index: 1;
+        }
+        .glossyTileHighlight--compact {
+          border-radius: 12px;
+        }
+        .gamesHomeGlossButton:hover .glossyTileHighlight,
+        .gamesHomeGlossButton:focus-visible .glossyTileHighlight {
+          transform: none;
+        }
+        .gamesHomeGlossButton:hover .glossyTileHighlight::before,
+        .gamesHomeGlossButton:hover .glossyTileHighlight::after,
+        .gamesHomeGlossButton:focus-visible .glossyTileHighlight::before,
+        .gamesHomeGlossButton:focus-visible .glossyTileHighlight::after {
+          opacity: 1;
+        }
+        .gamesHomeGlossButton {
+          transition: transform 140ms ease;
+          transform: translateY(0);
+        }
+        .gamesHomeGlossButton:hover,
+        .gamesHomeGlossButton:focus-visible {
+          transform: translateY(-5px);
+        }
+        .gamesHomeGlossButton:hover .gamesHomeGlossSurface,
+        .gamesHomeGlossButton:focus-visible .gamesHomeGlossSurface {
+          box-shadow: 0 18px 34px rgba(12, 24, 44, 0.26), 0 0 0 1px rgba(255,255,255,0.18) !important;
+        }
+        .gamesHomeGlossButton:hover .gamesHomeGlossSurface::before,
+        .gamesHomeGlossButton:hover .gamesHomeGlossSurface::after,
+        .gamesHomeGlossButton:focus-visible .gamesHomeGlossSurface::before,
+        .gamesHomeGlossButton:focus-visible .gamesHomeGlossSurface::after {
+          opacity: 1 !important;
+        }
+        .glossyTileHighlight--cover {
+          border-radius: inherit;
+        }
+        .case .glossyTileHighlight:hover,
+        .case .glossyTileHighlight:focus-within {
+          transform: none;
         }
         .caseSurface {
           position: absolute;
