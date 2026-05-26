@@ -63,7 +63,7 @@ function formatDateForInput(dateStr: string): string {
   return "";
 }
 
-const WATCH_STATUS_OPTIONS = ["Watched", "Watching", "Backlog", "Pending Digital Release", "Abandoned"] as const;
+const WATCH_STATUS_OPTIONS = ["Watched", "Started", "Backlog", "Pending Digital Release", "Abandoned"] as const;
 const GAME_STATUS_OPTIONS = ["Backlog", "Playing", "Completed", "On Hold"] as const;
 
 export function RateItModal({ open, onClose, onSave, item, mediaType, highlightColor = "#007AFF" }: RateItModalProps) {

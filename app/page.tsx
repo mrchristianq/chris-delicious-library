@@ -1735,11 +1735,13 @@ const TV_WATCHLIST_SECTION_HEADER_SPACE = 42;
 
 const TV_WATCHLIST_SECTION_ORDER: TvWatchlistSectionKey[] = ["watching", "watchNext", "paused", "pendingReturn", "notStarted"];
 const TV_WATCHLIST_ACTIVE_STATUSES = new Set([
+  "started",
   "watching",
   "currently watching",
   "in progress",
 ]);
 const TV_HEADER_WATCHING_STATUSES = new Set([
+  "started",
   "watching",
   "currently watching",
   "in progress",
@@ -1751,7 +1753,7 @@ const TV_WATCHLIST_PENDING_RETURN_STATUSES = new Set(["pending return"]);
 const TV_WATCHLIST_NOT_STARTED_STATUSES = new Set(["backlog", "wishlist"]);
 const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
   watching: {
-    label: "Watching",
+    label: "Started",
     headerColor: STATUS_COLOR_YELLOW,
     badgeBackground: "rgba(117, 90, 34, 0.88)",
     badgeBorder: "rgba(241, 213, 141, 0.82)",
@@ -2243,6 +2245,7 @@ export default function Page() {
   const moviesCsvUrl = process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
   const gamesCsvUrl = process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
   const settingsCsvUrl = process.env.NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL;
+  const changelogCsvUrl = process.env.NEXT_PUBLIC_CHANGELOG_SHEET_CSV_URL;
   const settingsWriteUrl = process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL || (isNativeApp ? "native://settings" : "");
   const booksWriteUrl = process.env.NEXT_PUBLIC_BOOKS_WRITE_URL || (isNativeApp ? "native://books" : "");
   const showsWriteUrl =
@@ -2363,6 +2366,10 @@ export default function Page() {
   const [coverSyncMediaFilter, setCoverSyncMediaFilter] = useState<"all" | "movie" | "tv" | "game" | "book">("all");
   const [coverSyncStateFilter, setCoverSyncStateFilter] = useState<"all" | "unsynced" | "synced" | "missing-cover" | "missing-backdrop">("unsynced");
   const [coverSyncSortKey, setCoverSyncSortKey] = useState<"title" | "media" | "status" | "coverDate" | "backdropDate">("status");
+  const [showChangelogPanel, setShowChangelogPanel] = useState(false);
+  const [changelogRows, setChangelogRows] = useState<Row[]>([]);
+  const [changelogLoading, setChangelogLoading] = useState(false);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
   const [coverSyncSortDir, setCoverSyncSortDir] = useState<"asc" | "desc">("asc");
   const [backdropMigration, setBackdropMigration] = useState<{
     active: boolean;
@@ -7603,6 +7610,88 @@ export default function Page() {
     setRefreshNonce((n) => n + 1);
   }, [isNativeApp]);
 
+  const loadChangeLogRows = useCallback(async () => {
+    if (!changelogCsvUrl) {
+      setChangelogError("ChangeLog CSV URL is not configured.");
+      setChangelogRows([]);
+      return;
+    }
+
+    setChangelogLoading(true);
+    setChangelogError(null);
+    try {
+      const csvText = await fetch(changelogCsvUrl, { cache: "no-store" }).then((res) => {
+        if (!res.ok) throw new Error(`Failed to load ChangeLog (${res.status})`);
+        return res.text();
+      });
+      const parsed = Papa.parse<Row>(csvText, { header: true, skipEmptyLines: true });
+      const rows = (parsed.data || []).map((r) => {
+        const raw = (r || {}) as Row;
+        const cleaned: Row = {};
+        let unnamedValue = "";
+        for (const [key, value] of Object.entries(raw)) {
+          const normalizedKey = key.trim();
+          const text = safeStr(value);
+          if (!normalizedKey) {
+            if (text && !unnamedValue) unnamedValue = text;
+            continue;
+          }
+          cleaned[normalizedKey] = text;
+        }
+        if (!safeStr(cleaned["Function"]) && unnamedValue) {
+          cleaned["Function"] = unnamedValue;
+        }
+        // Handle legacy/shifted ChangeLog schema:
+        // Headers: Timestamp | Source | Sheet | Row | Field | Old Value | New Value | User | Function | (blank)
+        // Values:  ts        | src    | sheet | <title> | <row#> | <field> | <old> | <new> | <user> | <function>
+        const rowAsTitle = safeStr(cleaned["Row"]);
+        const fieldAsRowNumber = safeStr(cleaned["Field"]);
+        if (rowAsTitle && /^\d+$/.test(fieldAsRowNumber)) {
+          const shiftedField = safeStr(cleaned["Old Value"]);
+          const shiftedOld = safeStr(cleaned["New Value"]);
+          const shiftedNew = safeStr(cleaned["User"]);
+          const shiftedUser = safeStr(cleaned["Function"]);
+          const shiftedFunction = unnamedValue || safeStr(cleaned[""]);
+
+          cleaned["Title"] = rowAsTitle;
+          cleaned["Row"] = fieldAsRowNumber;
+          cleaned["Field"] = shiftedField;
+          cleaned["Old Value"] = shiftedOld;
+          cleaned["New Value"] = shiftedNew;
+          cleaned["User"] = shiftedUser;
+          cleaned["Function"] = shiftedFunction;
+        }
+        return cleaned;
+      });
+      rows.sort((a, b) => safeStr(b["Timestamp"]).localeCompare(safeStr(a["Timestamp"])));
+      setChangelogRows(rows.slice(0, 300));
+    } catch (error: any) {
+      setChangelogRows([]);
+      setChangelogError(error?.message || "Failed to load ChangeLog.");
+    } finally {
+      setChangelogLoading(false);
+    }
+  }, [changelogCsvUrl]);
+
+  const getChangeLogFieldValue = useCallback((row: Row, targetField: string): string => {
+    const direct = safeStr(row[targetField]);
+    if (direct) return direct;
+    if (targetField === "Title") {
+      const legacyRowValue = safeStr(row["Row"]);
+      if (legacyRowValue) return legacyRowValue;
+    }
+    const wanted = normalizeSheetFieldKey(targetField);
+    for (const [key, value] of Object.entries(row)) {
+      if (normalizeSheetFieldKey(key) === wanted) return safeStr(value);
+    }
+    if (targetField === "Title") {
+      for (const [key, value] of Object.entries(row)) {
+        if (normalizeSheetFieldKey(key) === normalizeSheetFieldKey("Row")) return safeStr(value);
+      }
+    }
+    return "";
+  }, [normalizeSheetFieldKey]);
+
   const syncNativePendingChanges = useCallback(async (reason: "startup" | "online") => {
     if (!isNativeApp) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
@@ -10223,7 +10312,7 @@ export default function Page() {
 
   const watchStatuses = useMemo(
     () => [
-      "Currently Watching",
+      "Started",
       "Completed",
       "Backlog",
       "Abandoned",
@@ -12999,6 +13088,7 @@ export default function Page() {
     let ratingCount = 0;
     let completedThisYear = 0;
     let trophies = 0;
+    const completedByMonth = Array.from({ length: 12 }, () => 0);
 
     allGames.forEach((game) => {
       safeStr(game.platform || game.platforms)
@@ -13015,6 +13105,13 @@ export default function Page() {
       }
       if (isGameCompletedStatus(game) && (safeStr(game.yearPlayed) === currentYear || getYearToken(game.dateCompleted) === currentYear)) {
         completedThisYear += 1;
+        const completedDate = parseReleaseDateForComparison(safeStr(game.dateCompleted));
+        if (completedDate && String(completedDate.getFullYear()) === currentYear) {
+          completedByMonth[completedDate.getMonth()] += 1;
+        } else {
+          // Keep year-only completions visible in the current month bucket.
+          completedByMonth[new Date().getMonth()] += 1;
+        }
       }
       if (isGameCompletedStatus(game)) trophies += 1;
     });
@@ -13030,6 +13127,7 @@ export default function Page() {
         rating: ratingCount ? Math.round((ratingTotal / ratingCount) * 10) / 10 : 0,
         platforms: platforms.size,
         completedThisYear,
+        completedByMonth,
         trophies,
       },
     };
@@ -13332,10 +13430,22 @@ export default function Page() {
                     <span style={{ fontSize: 16, fontWeight: 900, color: gamesHomeMutedColor }}>this year</span>
                   </div>
                 </div>
-                <div aria-hidden style={{ display: "flex", alignItems: "end", gap: 7, height: 58 }}>
-                  {[34, 48, 58].map((height, index) => (
-                    <span key={`games-home-bar-${index}`} style={{ width: 8, height, borderRadius: 999, background: gamesHomeAccentColor }} />
-                  ))}
+                <div aria-hidden style={{ display: "flex", alignItems: "end", gap: 6, height: 58 }}>
+                  {(() => {
+                    const monthLabels = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+                    const monthlyValues = gamesHomeData.stats.completedByMonth || Array.from({ length: 12 }, () => 0);
+                    const peak = Math.max(1, ...monthlyValues);
+                    return monthLabels.map((label, index) => {
+                      const value = monthlyValues[index] || 0;
+                      const height = value > 0 ? Math.max(8, Math.round((value / peak) * 40)) : 4;
+                      return (
+                        <div key={`games-home-month-bar-${label}-${index}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                          <span style={{ width: 7, height, borderRadius: 999, background: gamesHomeAccentColor, opacity: value > 0 ? 1 : 0.26 }} />
+                          <span style={{ fontSize: 9, lineHeight: 1, fontWeight: 900, color: gamesHomeMutedColor }}>{label}</span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>
@@ -15901,7 +16011,7 @@ export default function Page() {
                         style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                       />
                     </span>
-                    <span style={discoverLabelStyle}>Cover Sync</span>
+                    <span style={discoverLabelStyle}>Activity Log</span>
                   </span>
                 </button>
 
@@ -18300,7 +18410,7 @@ export default function Page() {
                 { key: "roadmap", label: "Roadmap", fallback: "/icon-year.png" },
                 { key: "themes", label: "Themes", fallback: "/icon-theme.png" },
                 { key: "icons", label: "Icons", fallback: "/icon-settings.png" },
-                { key: "r2-sync", label: "Cover Sync", fallback: "/icon-statistics.png" },
+                { key: "r2-sync", label: "Activity Log", fallback: "/icon-statistics.png" },
               ];
               // Built-in Smart Lists use the sidebar-icon system (keyed by
               // their nav key), so they are managed exactly like sidebar icons.
@@ -18574,49 +18684,28 @@ export default function Page() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid rgba(152, 162, 171, 0.2)", background: "rgba(252,253,255,0.76)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <button type="button" onClick={handleExitCoverSync} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", fontSize: 20, padding: "0 4px", lineHeight: 1 }}>←</button>
-                  <div style={{ fontSize: 18, fontWeight: 750, color: "#1d2735" }}>Cover Sync Status</div>
+                  <div style={{ fontSize: 18, fontWeight: 750, color: "#1d2735" }}>Activity Log</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button
                     type="button"
-                    onClick={runBackdropMigrationToW1280}
-                    disabled={backdropMigration.active || loading}
+                    onClick={() => {
+                      setShowChangelogPanel(true);
+                      void loadChangeLogRows();
+                    }}
                     style={{
-                      border: "1px solid rgba(74, 126, 212, 0.55)",
+                      border: "1px solid rgba(74, 126, 212, 0.45)",
                       borderRadius: 9,
                       padding: "7px 12px",
-                      background: backdropMigration.active
-                        ? "rgba(74, 126, 212, 0.18)"
-                        : "linear-gradient(180deg, rgba(110, 156, 232, 1) 0%, rgba(74, 126, 212, 1) 100%)",
-                      color: backdropMigration.active ? "#274a82" : "#fff",
+                      background: "linear-gradient(180deg, rgba(110, 156, 232, 0.95) 0%, rgba(74, 126, 212, 0.98) 100%)",
+                      color: "#ffffff",
                       fontSize: 12,
                       fontWeight: 700,
-                      cursor: backdropMigration.active ? "default" : "pointer",
-                      opacity: loading ? 0.68 : 1,
-                      boxShadow: backdropMigration.active ? "none" : "0 4px 10px rgba(74, 126, 212, 0.25)",
+                      cursor: "pointer",
                     }}
-                    title="Re-download every TMDB backdrop at w1280 and overwrite the R2 copy"
                   >
-                    {backdropMigration.active ? `Migrating… ${backdropMigration.completed}/${backdropMigration.total}` : "Migrate Backdrops to HD"}
+                    View Changelog
                   </button>
-                  {backdropMigration.active ? (
-                    <button
-                      type="button"
-                      onClick={cancelBackdropMigration}
-                      style={{
-                        border: "1px solid rgba(195, 80, 80, 0.45)",
-                        borderRadius: 9,
-                        padding: "7px 10px",
-                        background: "rgba(195, 80, 80, 0.08)",
-                        color: "#a4382f",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -18640,22 +18729,68 @@ export default function Page() {
                 </div>
               </div>
 
-              {backdropMigration.active || backdropMigration.completed > 0 || backdropMigration.failed > 0 ? (
-                <div style={{ padding: "8px 24px", borderBottom: "1px solid rgba(152, 162, 171, 0.15)", color: "#4e5a66", fontSize: 12, fontWeight: 600, background: "rgba(74, 126, 212, 0.06)", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontWeight: 800, color: "#274a82" }}>Backdrop HD migration:</span>
-                  <span>{backdropMigration.completed} / {backdropMigration.total} uploaded</span>
-                  {backdropMigration.failed > 0 ? <span style={{ color: "#a4382f", fontWeight: 700 }}>· {backdropMigration.failed} failed</span> : null}
-                  {backdropMigration.active && backdropMigration.currentTitle ? (
-                    <span style={{ color: "#6a7484", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      · {backdropMigration.currentTitle}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-
               <div style={{ padding: "10px 24px", borderBottom: "1px solid rgba(152, 162, 171, 0.15)", color: "#4e5a66", fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.5)" }}>
                 Bulk sync is now handled from the Google Sheet menu.
               </div>
+
+              {showChangelogPanel ? (
+                <div style={{ padding: "12px 24px", borderBottom: "1px solid rgba(152, 162, 171, 0.15)", background: "rgba(249, 251, 255, 0.96)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#29466f" }}>ChangeLog (latest 300 rows)</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => void loadChangeLogRows()}
+                        style={{ border: "1px solid rgba(121,131,145,0.44)", borderRadius: 8, padding: "5px 9px", background: "#fff", color: "#2f3c4d", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowChangelogPanel(false)}
+                        style={{ border: "1px solid rgba(149,161,178,0.5)", borderRadius: 8, padding: "5px 9px", background: "rgba(255,255,255,0.86)", color: "#243244", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                  {changelogLoading ? (
+                    <div style={{ fontSize: 12, color: "#4e5a66" }}>Loading ChangeLog…</div>
+                  ) : changelogError ? (
+                    <div style={{ fontSize: 12, color: "#a4382f" }}>{changelogError}</div>
+                  ) : (
+                    <div style={{ maxHeight: 220, overflow: "auto", border: "1px solid rgba(152, 162, 171, 0.2)", borderRadius: 8, background: "#fff" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                        <thead>
+                          <tr style={{ background: "rgba(245,246,248,0.94)", color: "#445262", textAlign: "left" }}>
+                            {["Timestamp", "Source", "Sheet", "Title", "Row", "Field", "Old Value", "New Value", "User", "Function"].map((header) => (
+                              <th key={header} style={{ padding: "6px 8px", borderBottom: "1px solid rgba(152, 162, 171, 0.18)", fontWeight: 800, whiteSpace: "nowrap" }}>
+                                {header}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {changelogRows.map((row, index) => (
+                            <tr key={`${safeStr(row["Timestamp"])}-${index}`} style={{ color: "#2f3c4d" }}>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Timestamp")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Source")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Sheet")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Title")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Row")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Field")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Old Value")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "New Value")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "User")}</td>
+                              <td style={{ padding: "6px 8px", borderBottom: "1px solid rgba(232, 236, 241, 0.9)", whiteSpace: "nowrap" }}>{getChangeLogFieldValue(row, "Function")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
                 {(() => {
@@ -19070,7 +19205,7 @@ export default function Page() {
                     },
                     {
                       key: "cover-sync",
-                      label: "Cover Sync",
+                      label: "Activity Log",
                       icon: getSidebarIconSrc("r2-sync", "/icon-statistics.png"),
                       action: () => {
                         setMobileSidebarOpen(false);

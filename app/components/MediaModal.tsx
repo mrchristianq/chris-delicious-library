@@ -79,7 +79,7 @@ const BOOK_TYPE_OPTIONS = ["Physical", "eBook", "Audiobook", "Graphic Novel"];
 const STATIC_SITE_RESYNC_MESSAGE =
   "Metadata resync isn't available on the GitHub Pages version of the library.";
 const SHOW_WATCH_STATUS_OPTIONS = [
-  "Watching",
+  "Started",
   "Completed",
   "Backlog",
   "Abandoned",

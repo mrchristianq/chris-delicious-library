@@ -24,7 +24,7 @@ function normalizeShowWatchStatus(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
   const normalized = raw.toLowerCase().replace(/\s+/g, " ");
-  if (normalized === "currently watching") return "Watching";
+  if (normalized === "currently watching" || normalized === "watching") return "Started";
   return raw;
 }
 

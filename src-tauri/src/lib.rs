@@ -392,12 +392,23 @@ fn timestamp_is_newer(left: &str, right: &str) -> bool {
         return false;
     }
 
-    match (
-        DateTime::parse_from_rfc3339(left),
-        DateTime::parse_from_rfc3339(right),
-    ) {
-        (Ok(left_time), Ok(right_time)) => left_time > right_time,
-        _ => left > right,
+    let parse_timestamp = |value: &str| -> Option<DateTime<Utc>> {
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(value) {
+            return Some(parsed.with_timezone(&Utc));
+        }
+        if let Ok(parsed) = DateTime::parse_from_str(value, "%m/%d/%Y %I:%M:%S %p %:z") {
+            return Some(parsed.with_timezone(&Utc));
+        }
+        if let Ok(parsed) = DateTime::parse_from_str(value, "%m/%d/%Y %H:%M:%S %:z") {
+            return Some(parsed.with_timezone(&Utc));
+        }
+        None
+    };
+
+    match (parse_timestamp(left), parse_timestamp(right)) {
+        (Some(left_time), Some(right_time)) => left_time > right_time,
+        // If either timestamp can't be parsed, do not skip the queued write.
+        _ => false,
     }
 }
 

@@ -62,6 +62,23 @@ function firstNonEmpty(item: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+function isLocalUrl(url: string): boolean {
+  const normalized = safeStr(url);
+  return (
+    normalized.startsWith("/") ||
+    normalized.startsWith("data:") ||
+    normalized.startsWith("blob:") ||
+    normalized.startsWith("asset:") ||
+    normalized.startsWith("tauri:")
+  );
+}
+
+function proxied(url: string): string {
+  const normalized = safeStr(url);
+  if (!normalized) return "";
+  return isLocalUrl(normalized) ? normalized : `/api/cover-proxy?src=${encodeURIComponent(normalized)}`;
+}
+
 function normalizeDateInputValue(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -266,6 +283,7 @@ export function GameDetailsEditModal({
   ];
 
   const coverDisplayUrl = values.localCoverUrl || values.coverUrl || safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl);
+  const coverDisplaySrc = proxied(coverDisplayUrl);
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
   const handleSave = async () => {
@@ -383,11 +401,12 @@ export function GameDetailsEditModal({
       >
         {/* Title bar */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+          flexWrap: "wrap",
           padding: "10px 14px", borderBottom: "1px solid rgba(167,177,191,0.42)",
           gap: 12,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", marginLeft: "auto" }}>
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
             <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
@@ -411,10 +430,10 @@ export function GameDetailsEditModal({
               onClick={handleSyncFromIGDB}
               style={{
                 border: "1px solid rgba(0,113,227,0.4)", borderRadius: 8,
-                padding: "6px 12px",
+                padding: "5px 10px",
                 background: "rgba(0,113,227,0.09)",
                 color: "#0071e3", cursor: isSyncing || isSaving ? "default" : "pointer",
-                fontSize: 12, fontWeight: 650,
+                fontSize: 11, fontWeight: 650,
                 opacity: isSyncing || isSaving ? 0.6 : 1,
                 transition: "opacity 120ms",
               }}
@@ -423,9 +442,9 @@ export function GameDetailsEditModal({
             </button>
             <button type="button" disabled={isSaving} onClick={handleSave} style={{
               border: "1px solid rgba(27,83,217,0.5)", borderRadius: 8,
-              padding: "6px 12px",
+              padding: "5px 10px",
               background: "linear-gradient(180deg,rgba(86,150,255,0.95) 0%,rgba(45,109,237,0.98) 100%)",
-              color: "#f6f9ff", fontSize: 12, fontWeight: 750,
+              color: "#f6f9ff", fontSize: 11, fontWeight: 750,
               cursor: isSaving ? "default" : "pointer",
             }}>
               {isSaving ? "Saving…" : isNew ? "Add to Library" : "Save Changes"}
@@ -436,8 +455,8 @@ export function GameDetailsEditModal({
               disabled={isSaving}
               style={{
                 border: "1px solid rgba(149,161,178,0.5)", borderRadius: 8,
-                padding: "6px 12px", background: "rgba(255,255,255,0.86)",
-                color: "#243244", cursor: "pointer", fontSize: 12, fontWeight: 650,
+                padding: "5px 10px", background: "rgba(255,255,255,0.86)",
+                color: "#243244", cursor: "pointer", fontSize: 11, fontWeight: 650,
               }}
             >
               Close
@@ -546,9 +565,9 @@ export function GameDetailsEditModal({
             display: "flex", flexDirection: "column", gap: 8,
           }}>
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
-            {coverDisplayUrl ? (
+            {coverDisplaySrc ? (
               <img
-                src={coverDisplayUrl}
+                src={coverDisplaySrc}
                 alt={safeStr(item.title) || "Game cover"}
                 style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }}
               />

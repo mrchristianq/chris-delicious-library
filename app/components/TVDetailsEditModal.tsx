@@ -31,7 +31,7 @@ type DiffRow = {
 };
 
 const WATCH_STATUS_OPTIONS = [
-  "Watching", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return",
+  "Started", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return",
 ] as const;
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"] as const;
 
