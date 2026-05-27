@@ -257,7 +257,6 @@ type Game = {
   status?: string;
   name?: string;
   releaseDate?: string;
-  releaseDateAlt?: string;
   platforms?: string;
   coverUrl?: string;
   rating?: string;
@@ -340,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0";
+const APP_VERSION = "10.0.20";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -421,6 +420,9 @@ const WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-mov
 const WATCHLIST_TV_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-tv";
 const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
+const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder):/;
+const isLocalFirstViewSettingKey = (key: string) =>
+  LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN.test(safeStr(key));
 const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY = "cdlNativeSidebarIconCache";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
@@ -519,7 +521,28 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
 };
 const VERSION_HISTORY = [
   {
-    version: "10.0",
+    version: "10.0.20",
+    date: "2026-05-27",
+    notes: [
+      "Made manual view-order settings local-first so Movie/TV Watchlist drag order survives force reload before sheet sync catches up.",
+    ],
+  },
+  {
+    version: "10.0.19",
+    date: "2026-05-27",
+    notes: [
+      "Stabilized Movie and TV Watchlist drag persistence by resolving legacy/alternate key formats before saving manual order.",
+    ],
+  },
+  {
+    version: "10.0.18",
+    date: "2026-05-27",
+    notes: [
+      "Fixed Movie/TV Watchlist drag ordering persistence so navigation no longer reverts moved items after a drop.",
+    ],
+  },
+  {
+    version: "10.0.8",
     date: "2026-05-18",
     notes: [
       "Locked the desktop Statistics layout: pages now scale uniformly with the window instead of reflowing, with each Everything-page section arranged into consistent full-width rows.",
@@ -1611,7 +1634,15 @@ function getMediaItemKey(item: any): string {
     );
     return `${type}:${normalizedTitle}:${normalizedPlatform || "default"}`;
   }
-  return `${type}:${normalizedTitle}`;
+  if (type === "movie" || type === "tv") {
+    const tmdbId = safeStr(item?.tmdbId || item?.TMDB_ID);
+    if (tmdbId) return `${type}:tmdb:${tmdbId}`;
+    const dateToken = normalizeTitleKey(
+      safeStr(item?.releaseDate || item?.ReleaseDate || item?.firstAirDate || item?.FirstAirDate || item?.year || item?.Year)
+    );
+    return `${type}:${normalizedTitle}:${dateToken || "unknown"}`;
+  }
+  return `${type}:${normalizedTitle}:unknown`;
 }
 
 // Like getMediaItemKey but uses an explicitly-known mediaType instead of
@@ -1629,7 +1660,15 @@ function buildTypedItemKey(item: any, mediaType: "book" | "movie" | "tv" | "game
     );
     return `game:${normalizedTitle}:${normalizedPlatform || "default"}`;
   }
-  return `${mediaType}:${normalizedTitle}`;
+  if (mediaType === "movie" || mediaType === "tv") {
+    const tmdbId = safeStr(item?.tmdbId || item?.TMDB_ID);
+    if (tmdbId) return `${mediaType}:tmdb:${tmdbId}`;
+    const dateToken = normalizeTitleKey(
+      safeStr(item?.releaseDate || item?.ReleaseDate || item?.firstAirDate || item?.FirstAirDate || item?.year || item?.Year)
+    );
+    return `${mediaType}:${normalizedTitle}:${dateToken || "unknown"}`;
+  }
+  return `${mediaType}:${normalizedTitle}:unknown`;
 }
 
 function getLegacyMediaItemKey(item: any): string {
@@ -2167,7 +2206,6 @@ function rowToGame(r: Row): Game | null {
     status: safeStr(r["Status"]) || undefined,
     name: safeStr(r["Name"]) || undefined,
     releaseDate: safeStr(r["ReleaseDate"]) || undefined,
-    releaseDateAlt: safeStr(r["Release Date"]) || undefined,
     platforms: safeStr(r["Platforms"]) || undefined,
     coverUrl: safeStr(r["CoverURL"]) || undefined,
     rating: safeStr(r["Rating"]) || undefined,
@@ -2491,6 +2529,7 @@ export default function Page() {
   }, []);
 
   const openMediaSidebar = (section: "books" | "movies" | "tv" | "games") => {
+    const shouldOpenSectionHome = isMobileLayout && (section === "books" || section === "movies" || section === "tv");
     setMovieDetailItem(null);
     setTvDetailItem(null);
     setGameDetailItem(null);
@@ -2501,6 +2540,7 @@ export default function Page() {
       return;
     }
     if (section === "books") {
+      setBookHomeMode(shouldOpenSectionHome);
       setWishlistFilter(false);
       setReadingStatusFilter(null);
       setFormatFilter(null);
@@ -2510,6 +2550,7 @@ export default function Page() {
       setSortOrder("Desc");
     }
     if (section === "movies") {
+      setMovieHomeMode(shouldOpenSectionHome);
       setMovieWatchFilter(null);
       setMovieGenreFilter(null);
       setMovieTagFilter(null);
@@ -2517,6 +2558,7 @@ export default function Page() {
       setSortOrder("Desc");
     }
     if (section === "tv") {
+      setTvHomeMode(shouldOpenSectionHome);
       setTvViewMode("library");
       setWatchFilter(null);
       setShowFilter(null);
@@ -3471,6 +3513,7 @@ export default function Page() {
   const SHELF_SIDE_PADDING = 10;
   const UPCOMING_LABEL_SPACE = -3;
   const COVER_TITLE_LABEL_SPACE = 28;
+  const COMPLETED_DATE_LABEL_SPACE = 18;
   const RAW_COVER_STANDARD_GAP = 10;
   const LIP_FROM_BOTTOM = 5;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
@@ -4273,6 +4316,43 @@ export default function Page() {
 
   const handleMobileNavSelect = useCallback((nextNav: NavKey) => {
     setMobileFullLibraryOpen(false);
+    if (nextNav === "books") {
+      setBookHomeMode(true);
+      setBookUpcomingFilter(false);
+      setWishlistFilter(false);
+      setReadingStatusFilter(null);
+      setFormatFilter(null);
+      setSeriesFilter(null);
+      setGenreFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    } else if (nextNav === "movies") {
+      setMovieHomeMode(true);
+      setMovieUpcomingFilter(false);
+      setMovieWatchFilter(null);
+      setMovieGenreFilter(null);
+      setMovieTagFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    } else if (nextNav === "tv") {
+      setTvHomeMode(true);
+      setTvViewMode("library");
+      setWatchFilter(null);
+      setShowFilter(null);
+      setTagFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    } else if (nextNav === "games") {
+      setGameViewMode("home");
+      setGamePlatformFilter(null);
+      setGameStatusFilter(null);
+      setGameOwnershipFilter(null);
+      setGameFormatFilter(null);
+      setGameYearPlayedFilter(null);
+      setGameGenreFilter(null);
+      setSortField("ReleaseDate");
+      setSortOrder("Desc");
+    }
     setNav(nextNav);
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
@@ -5607,8 +5687,44 @@ export default function Page() {
       if (!params.csvUrl || !Object.keys(params.verifyFields).length) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
+      const normalizeComparableValue = (fieldName: string, value: string): string => {
+        const trimmed = safeStr(value);
+        if (!trimmed) return "";
+        const normalizedField = normalizeSheetFieldKey(fieldName);
+
+        if (
+          normalizedField === "watchstatus" ||
+          normalizedField === "watched" ||
+          normalizedField === "status"
+        ) {
+          const lowered = trimmed.toLowerCase().replace(/\s+/g, " ");
+          if (lowered === "watching" || lowered === "currently watching") return "started";
+          return lowered;
+        }
+
+        if (normalizedField === "releasedate" || normalizedField === "watchdate" || normalizedField === "completeddate") {
+          const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (isoDateMatch) return isoDateMatch[0];
+          const parsedDate = new Date(trimmed);
+          if (!Number.isNaN(parsedDate.getTime())) {
+            const yyyy = parsedDate.getFullYear();
+            const mm = String(parsedDate.getMonth() + 1).padStart(2, "0");
+            const dd = String(parsedDate.getDate()).padStart(2, "0");
+            return `${yyyy}-${mm}-${dd}`;
+          }
+        }
+
+        const numberLike = /^-?\d+(\.\d+)?$/.test(trimmed);
+        if (numberLike) {
+          const numeric = Number(trimmed);
+          if (!Number.isNaN(numeric)) return numeric.toFixed(6);
+        }
+
+        return trimmed;
+      };
+
       let lastError: Error | null = null;
-      const maxAttempts = 12;
+      const maxAttempts = 4;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           const csvText = await fetch(params.csvUrl, { cache: "no-store" }).then((res) => res.text());
@@ -5640,7 +5756,9 @@ export default function Page() {
             }
             const expected = safeStr(expectedRaw);
             const actual = getRowValueByField(row, field);
-            if (expected !== actual) {
+            const comparableExpected = normalizeComparableValue(field, expected);
+            const comparableActual = normalizeComparableValue(field, actual);
+            if (comparableExpected !== comparableActual) {
               throw new Error(
                 `${params.sheetName} ${field} readback mismatch ("${actual || "blank"}" vs "${expected || "blank"}").`
               );
@@ -5650,7 +5768,7 @@ export default function Page() {
         } catch (error: any) {
           lastError = error instanceof Error ? error : new Error(String(error));
           if (attempt === maxAttempts - 1) break;
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 700));
         }
       }
 
@@ -5828,7 +5946,7 @@ export default function Page() {
     }
 
     const bookChangeLogOk = await appendChangeLogRowsBestEffort(booksWriteUrl, bookChangeLogRows);
-    const bookReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    const bookReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
     if (bookReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -6094,7 +6212,7 @@ export default function Page() {
     }
 
     const showChangeLogOk = await appendChangeLogRowsBestEffort(showsWriteUrl, showChangeLogRows);
-    const showReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    const showReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
     if (showReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -6306,7 +6424,7 @@ export default function Page() {
     }
 
     const movieChangeLogOk = await appendChangeLogRowsBestEffort(moviesWriteUrl, movieChangeLogRows);
-    const movieReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    const movieReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
     if (movieReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -6478,7 +6596,7 @@ export default function Page() {
       Status: ["status", "Status", "gameStatus", "playStatus"],
       Name: ["name", "Name"],
       ReleaseDate: ["releaseDate", "ReleaseDate"],
-      "Release Date": ["releaseDateAlt", "Release Date", "releaseDate", "ReleaseDate"],
+      "Release Date": ["Release Date", "releaseDate", "ReleaseDate"],
       Platforms: ["platforms", "Platforms"],
       CoverURL: ["coverUrl", "CoverURL"],
       Rating: ["rating", "Rating"],
@@ -6512,7 +6630,7 @@ export default function Page() {
       Status: safeStr(updates.status),
       Name: safeStr(updates.name),
       ReleaseDate: safeStr(updates.releaseDate),
-      "Release Date": safeStr(updates.releaseDateAlt),
+      "Release Date": safeStr(updates.releaseDate),
       Platforms: safeStr(updates.platforms),
       CoverURL: safeStr(updates.coverUrl),
       Rating: safeStr(updates.rating),
@@ -6591,7 +6709,6 @@ export default function Page() {
         status: safeStr(updates.status),
         name: safeStr(updates.name),
         releaseDate: safeStr(updates.releaseDate),
-        releaseDateAlt: safeStr(updates.releaseDateAlt),
         platforms: safeStr(updates.platforms),
         coverUrl: safeStr(updates.coverUrl),
         rating: safeStr(updates.rating),
@@ -6648,7 +6765,7 @@ export default function Page() {
       throw new Error(e?.message || "Failed to save game edits");
     }
     const gameChangeLogOk = await appendChangeLogRowsBestEffort(gamesWriteUrl, gameChangeLogRows);
-    const gameReadbackOnline = !isNativeApp || isBrowserLikelyOnline();
+    const gameReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
     if (gameReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -6718,7 +6835,7 @@ export default function Page() {
           Status: safeStr(updates.status),
           Name: safeStr(updates.name) || updatedTitle || rowTitle,
           ReleaseDate: safeStr(updates.releaseDate),
-          "Release Date": safeStr(updates.releaseDateAlt),
+          "Release Date": safeStr(updates.releaseDate),
           Platforms: safeStr(updates.platforms),
           CoverURL: safeStr(updates.coverUrl),
           Rating: safeStr(updates.rating),
@@ -7263,13 +7380,12 @@ export default function Page() {
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
     const dateAdded = safeStr(values.dateAdded) || new Date().toISOString().slice(0, 10);
-    const releaseDatePrimary = safeStr(values.releaseDate) || safeStr(values.releaseDateAlt);
-    const releaseDateAlt = safeStr(values.releaseDateAlt) || releaseDatePrimary;
+    const releaseDatePrimary = safeStr(values.releaseDate);
     const row: Record<string, string> = {
       Title: title, Cover: safeStr(values.cover),
       Platform: safeStr(values.platform), Status: safeStr(values.status),
       Name: safeStr(values.name) || title, ReleaseDate: releaseDatePrimary,
-      "Release Date": releaseDateAlt, Platforms: safeStr(values.platforms),
+      "Release Date": releaseDatePrimary, Platforms: safeStr(values.platforms),
       CoverURL: safeStr(values.coverUrl), Rating: safeStr(values.rating),
       "IGDB Rating": safeStr(values.igdbRating), "My Rating": safeStr(values.myRating),
       Ownership: safeStr(values.ownership), Format: safeStr(values.format),
@@ -7790,6 +7906,26 @@ export default function Page() {
   //   - Even if Google Sheet is down, data is protected in localStorage
   //
   const getSetting = useCallback((key: string, defaultValue: any) => {
+    const readLocalSettingValue = () => {
+      try {
+        if (settingsCacheRef.current === null) {
+          settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+        }
+        const settingsCache = settingsCacheRef.current;
+        if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
+          return parseStoredSettingValue(settingsCache[key]);
+        }
+      } catch (e) {
+        console.warn("Failed to read from localStorage:", e);
+      }
+      return undefined;
+    };
+
+    if (isLocalFirstViewSettingKey(key)) {
+      const localValue = readLocalSettingValue();
+      if (localValue !== undefined) return localValue;
+    }
+
     // Prefer sheet value first for cross-device consistency.
     const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
     if (setting) {
@@ -7798,17 +7934,8 @@ export default function Page() {
     }
 
     // Fallback to local cache only if the key is not present in sheet.
-    try {
-      if (settingsCacheRef.current === null) {
-        settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
-      }
-      const settingsCache = settingsCacheRef.current;
-      if (settingsCache && settingsCache[key] !== undefined && settingsCache[key] !== "") {
-        return parseStoredSettingValue(settingsCache[key]);
-      }
-    } catch (e) {
-      console.warn("Failed to read from localStorage:", e);
-    }
+    const localValue = readLocalSettingValue();
+    if (localValue !== undefined) return localValue;
     
     return defaultValue;
   }, [settingsRows]);
@@ -7978,6 +8105,9 @@ export default function Page() {
       // Update in-memory cache
       if (settingsCacheRef.current) {
         settingsCacheRef.current[key] = String(value);
+        if (isLocalFirstViewSettingKey(key)) {
+          localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+        }
         // Batch localStorage writes so rapid nudge/slider updates stay responsive.
         if (settingsPersistTimerRef.current) {
           clearTimeout(settingsPersistTimerRef.current);
@@ -8695,6 +8825,21 @@ export default function Page() {
 
     if (!manualSettingKey) return;
 
+    const existingManualOrderKeys =
+      nav === "watchlist-movies"
+        ? watchlistMoviesManualOrderKeys
+        : nav === "watchlist-tv"
+          ? watchlistTvManualOrderKeys
+          : nav === "now-playing"
+            ? nowPlayingManualOrderKeys
+            : nav === "play-next"
+              ? playNextManualOrderKeys
+              : nav === "wishlist-books"
+                ? readNextManualOrderKeys
+                : wishlistManualOrderKeys;
+
+    if (existingManualOrderKeys.length > 0) return;
+
     const savedManualOrderRaw = safeStr(getSetting(manualSettingKey, ""));
 
     if (!savedManualOrderRaw) return;
@@ -8733,7 +8878,16 @@ export default function Page() {
               : "wishlist";
       console.warn(`Failed to parse ${label} manual order setting:`, error);
     }
-  }, [getSetting, nav]);
+  }, [
+    getSetting,
+    nav,
+    nowPlayingManualOrderKeys,
+    playNextManualOrderKeys,
+    readNextManualOrderKeys,
+    watchlistMoviesManualOrderKeys,
+    watchlistTvManualOrderKeys,
+    wishlistManualOrderKeys,
+  ]);
 
   useEffect(() => {
     if (!isPersistedStandardSortView(nav)) return;
@@ -9989,7 +10143,7 @@ export default function Page() {
         ownershipValue: safeStr(game.ownership),
         yearPlayedValue: safeStr(game.yearPlayed),
         completedYear: getYearToken(game.dateCompleted) || getYearToken(game.yearPlayed),
-        releaseYear: getYearToken(game.releaseDate) || getYearToken(game.releaseDateAlt),
+        releaseYear: getYearToken(game.releaseDate),
         tagTokens: Array.from(new Set(parseGameTagValues(game).map((tag) => normalizeTagToken(tag)).filter(Boolean))),
         platformValues: safeStr(game.platform)
           .split(",")
@@ -10250,6 +10404,34 @@ export default function Page() {
     });
     return map;
   }, [watchlistMovieItems]);
+  const watchlistMovieLegacyKeyToKey = useMemo(() => {
+    const map = new Map<string, string>();
+    watchlistMovieItems.forEach((item) => {
+      const legacyKey = getLegacyMediaItemKey(item);
+      const currentKey = getMediaItemKey(item);
+      if (legacyKey && currentKey) map.set(legacyKey, currentKey);
+    });
+    return map;
+  }, [watchlistMovieItems]);
+  const watchlistMovieAliasKeyToKey = useMemo(() => {
+    const map = new Map<string, string>();
+    watchlistMovieItems.forEach((item) => {
+      const currentKey = getMediaItemKey(item);
+      if (!currentKey) return;
+      const legacyKey = getLegacyMediaItemKey(item);
+      const titleToken = normalizeTitleKey((item as any)?.title || (item as any)?.Title || (item as any)?.name || "");
+      const dateToken = normalizeTitleKey(
+        safeStr((item as any)?.releaseDate || (item as any)?.ReleaseDate || (item as any)?.year || (item as any)?.Year)
+      ) || "unknown";
+      map.set(currentKey, currentKey);
+      if (legacyKey) map.set(legacyKey, currentKey);
+      if (titleToken) {
+        map.set(`movie:${titleToken}`, currentKey);
+        map.set(`movie:${titleToken}:${dateToken}`, currentKey);
+      }
+    });
+    return map;
+  }, [watchlistMovieItems]);
 
   const watchlistMovieFallbackOrderKeys = useMemo(() => {
     const sorted = [...watchlistMovieItems].sort((a, b) => {
@@ -10267,7 +10449,10 @@ export default function Page() {
     const seen = new Set<string>();
     const ordered: string[] = [];
 
-    watchlistMoviesManualOrderKeys.forEach((key) => {
+    watchlistMoviesManualOrderKeys.forEach((rawKey) => {
+      const key = watchlistMovieItemsByKey.has(rawKey)
+        ? rawKey
+        : (watchlistMovieAliasKeyToKey.get(rawKey) || rawKey);
       if (!key || seen.has(key)) return;
       if (!watchlistMovieItemsByKey.has(key)) return;
       seen.add(key);
@@ -10282,7 +10467,7 @@ export default function Page() {
     });
 
     return ordered;
-  }, [watchlistMovieFallbackOrderKeys, watchlistMovieItemsByKey, watchlistMoviesManualOrderKeys]);
+  }, [watchlistMovieAliasKeyToKey, watchlistMovieFallbackOrderKeys, watchlistMovieItemsByKey, watchlistMoviesManualOrderKeys]);
 
   const watchlistTvItems = useMemo(
     () =>
@@ -10296,6 +10481,34 @@ export default function Page() {
     const map = new Map<string, Show & { __type: "tv" }>();
     watchlistTvItems.forEach((item) => {
       map.set(getMediaItemKey(item), item);
+    });
+    return map;
+  }, [watchlistTvItems]);
+  const watchlistTvLegacyKeyToKey = useMemo(() => {
+    const map = new Map<string, string>();
+    watchlistTvItems.forEach((item) => {
+      const legacyKey = getLegacyMediaItemKey(item);
+      const currentKey = getMediaItemKey(item);
+      if (legacyKey && currentKey) map.set(legacyKey, currentKey);
+    });
+    return map;
+  }, [watchlistTvItems]);
+  const watchlistTvAliasKeyToKey = useMemo(() => {
+    const map = new Map<string, string>();
+    watchlistTvItems.forEach((item) => {
+      const currentKey = getMediaItemKey(item);
+      if (!currentKey) return;
+      const legacyKey = getLegacyMediaItemKey(item);
+      const titleToken = normalizeTitleKey((item as any)?.title || (item as any)?.Title || (item as any)?.name || "");
+      const dateToken = normalizeTitleKey(
+        safeStr((item as any)?.firstAirDate || (item as any)?.FirstAirDate || (item as any)?.releaseDate || (item as any)?.ReleaseDate || (item as any)?.year || (item as any)?.Year)
+      ) || "unknown";
+      map.set(currentKey, currentKey);
+      if (legacyKey) map.set(legacyKey, currentKey);
+      if (titleToken) {
+        map.set(`tv:${titleToken}`, currentKey);
+        map.set(`tv:${titleToken}:${dateToken}`, currentKey);
+      }
     });
     return map;
   }, [watchlistTvItems]);
@@ -10318,7 +10531,10 @@ export default function Page() {
     const seen = new Set<string>();
     const ordered: string[] = [];
 
-    watchlistTvManualOrderKeys.forEach((key) => {
+    watchlistTvManualOrderKeys.forEach((rawKey) => {
+      const key = watchlistTvItemsByKey.has(rawKey)
+        ? rawKey
+        : (watchlistTvAliasKeyToKey.get(rawKey) || rawKey);
       if (!key || seen.has(key)) return;
       if (!watchlistTvItemsByKey.has(key)) return;
       seen.add(key);
@@ -10333,7 +10549,7 @@ export default function Page() {
     });
 
     return ordered;
-  }, [watchlistTvFallbackOrderKeys, watchlistTvItemsByKey, watchlistTvManualOrderKeys]);
+  }, [watchlistTvAliasKeyToKey, watchlistTvFallbackOrderKeys, watchlistTvItemsByKey, watchlistTvManualOrderKeys]);
 
   const gamePlatformOptions = useMemo(() => {
     const options = new Set<string>();
@@ -11201,7 +11417,7 @@ export default function Page() {
         .filter((m) => isUpcomingRelease(m.item.releaseDate) || isMovieUpcomingOnlyStatus(m.item))
         .map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" }));
       const upcomingGames = indexedGames
-        .filter((g) => isUpcomingRelease(pickBestReleaseDate(g.item.releaseDate, g.item.releaseDateAlt)))
+        .filter((g) => isUpcomingRelease(g.item.releaseDate))
         .map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" }));
       const combined = [...upcomingBooks, ...upcomingShows, ...upcomingMovies, ...upcomingGames] as any[];
       const effectiveSortField = sortField === MANUAL_SORT_FIELD ? "ReleaseDate" : sortField;
@@ -11389,7 +11605,7 @@ export default function Page() {
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const queryFiltered = q ? combined.filter((item) => safeStr((item as any).title).toLowerCase().includes(q)) : combined;
-      const sorted = applySorting(queryFiltered, "CompletedDateOrReleaseDate", sortOrder);
+      const sorted = applySorting(queryFiltered, "CompletedDateOrReleaseDate", "Desc");
       return sorted as any[];
     }
 
@@ -11487,7 +11703,7 @@ export default function Page() {
       } else if (gameViewMode === "wishlist") {
         filtered = indexedGames.filter((g) => g.ownershipNorm === "wishlist");
       } else if (gameViewMode === "upcoming") {
-        const upcoming = indexedGames.filter((g) => isUpcomingRelease(pickBestReleaseDate(g.item.releaseDate, g.item.releaseDateAlt)));
+        const upcoming = indexedGames.filter((g) => isUpcomingRelease(g.item.releaseDate));
         const sorted = applySorting(upcoming.map((g) => g.item), sortField, sortOrder);
         const qf = q ? sorted.filter((g) => safeStr(g.title).toLowerCase().includes(q)) : sorted;
         return qf.map((g) => ({ ...g, __type: "game" })) as any[];
@@ -12153,7 +12369,17 @@ export default function Page() {
               ? watchlistTvItemsByKey
               : wishlistItemsByKey;
       const normalizedKeys = nextKeys
-        .map((key) => safeStr(key))
+        .map((rawKey) => {
+          const key = safeStr(rawKey);
+          if (!key) return "";
+          if (view === "watchlist-movies") {
+            return watchlistMovieAliasKeyToKey.get(key) || key;
+          }
+          if (view === "watchlist-tv") {
+            return watchlistTvAliasKeyToKey.get(key) || key;
+          }
+          return key;
+        })
         .filter(Boolean)
         .filter((key, index, arr) => arr.indexOf(key) === index)
         .filter((key) => activeItemsByKey.has(key));
@@ -12279,7 +12505,9 @@ export default function Page() {
       playNextItemsByKey,
       postSheetWrite,
       saveSetting,
+      watchlistMovieAliasKeyToKey,
       watchlistMovieItemsByKey,
+      watchlistTvAliasKeyToKey,
       watchlistTvItemsByKey,
       wishlistBookItemsByKey,
       wishlistItemsByKey,
@@ -12694,10 +12922,28 @@ export default function Page() {
               : wishlistVisibleKeys;
         persistSmartListManualOrder(manualSortableSmartListId, finalOrder);
       } else if (draggedKey && backlogView) {
+        const visibleOrderKeys = shows
+          .map((item) => getMediaItemKey(item))
+          .map((rawKey) => {
+            if (backlogView === "watchlist-movies") {
+              return watchlistMovieItemsByKey.has(rawKey)
+                ? rawKey
+                : (watchlistMovieAliasKeyToKey.get(rawKey) || rawKey);
+            }
+            if (backlogView === "watchlist-tv") {
+              return watchlistTvItemsByKey.has(rawKey)
+                ? rawKey
+                : (watchlistTvAliasKeyToKey.get(rawKey) || rawKey);
+            }
+            return rawKey;
+          })
+          .filter((key, index, arr) => Boolean(key) && arr.indexOf(key) === index);
         const finalOrder =
           latestDragOrder && latestDragOrder.length
             ? latestDragOrder
-            : backlogView === "now-playing"
+            : visibleOrderKeys.length
+              ? visibleOrderKeys
+              : backlogView === "now-playing"
               ? (nowPlayingManualOrderKeys.length ? nowPlayingManualOrderKeys : resolvedNowPlayingManualOrderKeys)
               : backlogView === "play-next"
               ? (playNextManualOrderKeys.length ? playNextManualOrderKeys : resolvedPlayNextManualOrderKeys)
@@ -12732,8 +12978,13 @@ export default function Page() {
       resolvedWatchlistMovieManualOrderKeys,
       resolvedWatchlistTvManualOrderKeys,
       resolvedWishlistManualOrderKeys,
+      shows,
       smartListManualOrderKeysById,
+      watchlistMovieItemsByKey,
+      watchlistMovieAliasKeyToKey,
       watchlistMoviesManualOrderKeys,
+      watchlistTvItemsByKey,
+      watchlistTvAliasKeyToKey,
       watchlistTvManualOrderKeys,
       wishlistVisibleKeys,
       wishlistManualOrderKeys,
@@ -13084,6 +13335,7 @@ export default function Page() {
 
   const shelfHeights = useMemo(() => {
     const upcomingExtra = isUpcomingView ? UPCOMING_LABEL_SPACE : 0;
+    const completedExtra = nav === "completed" ? COMPLETED_DATE_LABEL_SPACE : 0;
     const titleExtra = coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0;
     // For upcoming, compute a fixed offset that matches the current look for the
     // most common (game) cover type, then apply it per-shelf based on each row's
@@ -13103,32 +13355,32 @@ export default function Page() {
           ? TV_WATCHLIST_SECTION_HEADER_SPACE
           : 0;
       if (isUpcomingView) {
-        if (!shelfShows.length) return shelfRowHeight + upcomingExtra + tvWatchlistSectionSpace + titleExtra;
+        if (!shelfShows.length) return shelfRowHeight + upcomingExtra + tvWatchlistSectionSpace + titleExtra + completedExtra;
         const maxCoverH = shelfShows.reduce((max, show) => {
           const { caseHeight } = getItemVisualLayout(show);
           return Math.max(max, caseHeight);
         }, 0);
-        return Math.max(1, maxCoverH + upcomingFixedOffset + tvWatchlistSectionSpace + titleExtra);
+        return Math.max(1, maxCoverH + upcomingFixedOffset + tvWatchlistSectionSpace + titleExtra + completedExtra);
       }
       if (isMobileLayout && (nav === "play-next" || nav === "wishlist-books")) {
         // Match Movie Watchlist spacing: a full-size row leaves the same slack
         // above a movie cover; reuse that slack for the shorter game/book covers
         // so the inter-row gap stays identical instead of growing.
-        if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
+        if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra + completedExtra;
         const movieSlack = Math.max(0, shelfRowHeight - Math.round(shelfRowHeight * (mediaCoverSizePct.movies / 100)));
         const tallestCover = shelfShows.reduce((maxHeight, show) => {
           const { caseHeight } = getItemVisualLayout(show);
           return Math.max(maxHeight, caseHeight);
         }, 0);
-        return Math.max(1, tallestCover + movieSlack + tvWatchlistSectionSpace + titleExtra);
+        return Math.max(1, tallestCover + movieSlack + tvWatchlistSectionSpace + titleExtra + completedExtra);
       }
-      if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
-      if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra;
+      if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + titleExtra + completedExtra;
+      if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra + completedExtra;
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
         const { caseHeight } = getItemVisualLayout(show);
         return Math.max(maxHeight, caseHeight);
       }, 0);
-      return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + titleExtra);
+      return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + titleExtra + completedExtra);
     });
   }, [coverTitlesVisible, getItemVisualLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.games, mediaCoverSizePct.movies, nav, shelfRowHeight, shelves]);
 
@@ -13417,7 +13669,7 @@ export default function Page() {
   const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
   const gamesHomeData = useMemo(() => {
     const today = todayMidnight();
-    const getReleaseDate = (game: Game) => pickBestReleaseDate(game.releaseDate, game.releaseDateAlt);
+    const getReleaseDate = (game: Game) => safeStr(game.releaseDate);
     const getReleaseTime = (game: Game) => parseReleaseDateForComparison(getReleaseDate(game))?.getTime() ?? 0;
     const gameStatus = (game: Game) => normalizeStatus(game.status || game.playStatus || game.gameStatus);
     const isOwnedReleasedGame = (game: Game) =>
@@ -13433,7 +13685,7 @@ export default function Page() {
     const newReleases = allGames
       .filter((game) => {
         const release = parseReleaseDateForComparison(getReleaseDate(game));
-        return Boolean(release) && release!.getTime() <= today.getTime() && !hasWishlistOwnership(game.ownership);
+        return Boolean(release) && release!.getTime() <= today.getTime();
       })
       .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
       .slice(0, isMobileLayout ? 8 : 14);
@@ -13509,13 +13761,48 @@ export default function Page() {
     };
   }, [allGames, hasWishlistOwnership, isMobileLayout, normalizeStatus]);
 
+  const orderedMovieWatchlistForHome = useMemo(() => {
+    const savedSortFieldRaw = safeStr(getSetting(WATCHLIST_MOVIES_SORT_FIELD_SETTING_KEY, MANUAL_SORT_FIELD));
+    const savedSortField = savedSortFieldRaw || MANUAL_SORT_FIELD;
+    const savedSortOrderRaw = safeStr(getSetting(WATCHLIST_MOVIES_SORT_ORDER_SETTING_KEY, "Asc"));
+    const savedSortOrder: "Asc" | "Desc" = savedSortOrderRaw === "Desc" ? "Desc" : "Asc";
+    const persistedMovieWatchlistManualRaw = safeStr(
+      getSetting(WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY, "")
+    );
+    const persistedMovieWatchlistManualKeys = (() => {
+      if (!persistedMovieWatchlistManualRaw) return [] as string[];
+      try {
+        const parsed = JSON.parse(persistedMovieWatchlistManualRaw);
+        if (!Array.isArray(parsed)) return [] as string[];
+        return parsed.map((entry) => safeStr(entry)).filter(Boolean);
+      } catch {
+        return [] as string[];
+      }
+    })();
+    const movieWatchlistManualBaseKeys = persistedMovieWatchlistManualKeys.length
+      ? persistedMovieWatchlistManualKeys
+      : resolvedWatchlistMovieManualOrderKeys;
+
+    if (savedSortField === MANUAL_SORT_FIELD) {
+      return movieWatchlistManualBaseKeys
+        .map((key) => watchlistMovieItemsByKey.get(key))
+        .filter(Boolean) as Array<Movie & { __type: "movie" }>;
+    }
+
+    return applySorting(watchlistMovieItems, savedSortField, savedSortOrder) as Array<Movie & { __type: "movie" }>;
+  }, [
+    applySorting,
+    getSetting,
+    resolvedWatchlistMovieManualOrderKeys,
+    watchlistMovieItems,
+    watchlistMovieItemsByKey,
+  ]);
+
   const moviesHomeData = useMemo(() => {
     const today = todayMidnight();
     const parseMovieDate = (movie: Movie) => parseReleaseDateForComparison(safeStr(movie.releaseDate));
     const movieTime = (movie: Movie) => parseMovieDate(movie)?.getTime() ?? 0;
-    const watchlist = resolvedWatchlistMovieManualOrderKeys
-      .map((key) => watchlistMovieItemsByKey.get(key))
-      .filter(Boolean)
+    const watchlist = orderedMovieWatchlistForHome
       .slice(0, isMobileLayout ? 8 : 10) as Array<Movie & { __type: "movie" }>;
     const newReleases = allMovies
       .filter((movie) => {
@@ -13591,8 +13878,45 @@ export default function Page() {
     isMobileLayout,
     moviesHomeRemoteRecommendations,
     normalizeStatus,
-    resolvedWatchlistMovieManualOrderKeys,
-    watchlistMovieItemsByKey,
+    orderedMovieWatchlistForHome,
+  ]);
+
+  const orderedTvWatchlistForHome = useMemo(() => {
+    const savedSortFieldRaw = safeStr(getSetting(WATCHLIST_TV_SORT_FIELD_SETTING_KEY, MANUAL_SORT_FIELD));
+    const savedSortField = savedSortFieldRaw || MANUAL_SORT_FIELD;
+    const savedSortOrderRaw = safeStr(getSetting(WATCHLIST_TV_SORT_ORDER_SETTING_KEY, "Asc"));
+    const savedSortOrder: "Asc" | "Desc" = savedSortOrderRaw === "Desc" ? "Desc" : "Asc";
+    const persistedTvWatchlistManualRaw = safeStr(getSetting(WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY, ""));
+    const persistedTvWatchlistManualKeys = (() => {
+      if (!persistedTvWatchlistManualRaw) return [] as string[];
+      try {
+        const parsed = JSON.parse(persistedTvWatchlistManualRaw);
+        if (!Array.isArray(parsed)) return [] as string[];
+        return parsed.map((entry) => safeStr(entry)).filter(Boolean);
+      } catch {
+        return [] as string[];
+      }
+    })();
+    const tvWatchlistManualBaseKeys = persistedTvWatchlistManualKeys.length
+      ? persistedTvWatchlistManualKeys
+      : resolvedWatchlistTvManualOrderKeys;
+
+    const ordered =
+      savedSortField === MANUAL_SORT_FIELD
+        ? (tvWatchlistManualBaseKeys
+            .map((key) => watchlistTvItemsByKey.get(key))
+            .filter(Boolean) as Array<Show & { __type: "tv" }>)
+        : (applySorting(watchlistTvItems, savedSortField, savedSortOrder) as Array<Show & { __type: "tv" }>);
+
+    return TV_WATCHLIST_SECTION_ORDER.flatMap((sectionKey) =>
+      ordered.filter((item) => getTvWatchlistSectionForItem(item) === sectionKey)
+    ) as Array<Show & { __type: "tv" }>;
+  }, [
+    applySorting,
+    getSetting,
+    resolvedWatchlistTvManualOrderKeys,
+    watchlistTvItems,
+    watchlistTvItemsByKey,
   ]);
 
   const tvHomeData = useMemo(() => {
@@ -13600,9 +13924,8 @@ export default function Page() {
     const parseShowDate = (show: Show) =>
       parseReleaseDateForComparison(safeStr(show.firstAirDate || (show as any).releaseDate));
     const showTime = (show: Show) => parseShowDate(show)?.getTime() ?? 0;
-    const watchlist = resolvedWatchlistTvManualOrderKeys
-      .map((key) => watchlistTvItemsByKey.get(key))
-      .filter(Boolean)
+    const watchlist = orderedTvWatchlistForHome
+      .filter((show) => normalizeStatus(show.watchStatus || show.watched || show.showStatus) === "started")
       .slice(0, isMobileLayout ? 8 : 10) as Array<Show & { __type: "tv" }>;
     const newReleases = allShows
       .filter((show) => {
@@ -13672,9 +13995,8 @@ export default function Page() {
     isBrowserOnline,
     isMobileLayout,
     normalizeStatus,
-    resolvedWatchlistTvManualOrderKeys,
+    orderedTvWatchlistForHome,
     tvHomeRemoteRecommendations,
-    watchlistTvItemsByKey,
   ]);
 
   const booksHomeData = useMemo(() => {
@@ -13801,7 +14123,7 @@ export default function Page() {
   ]);
 
   const formatGamesHomeDate = (game: Game, mode: "past" | "future") => {
-    const release = parseReleaseDateForComparison(pickBestReleaseDate(game.releaseDate, game.releaseDateAlt));
+    const release = parseReleaseDateForComparison(safeStr(game.releaseDate));
     if (!release) return "";
     const diffDays = Math.round((release.getTime() - todayMidnight().getTime()) / 86400000);
     const absoluteDays = Math.abs(diffDays);
@@ -21929,7 +22251,7 @@ export default function Page() {
                       const itemKey = getMediaItemKey(show);
                       const itemReleaseDateStr = show.__type === "tv"
                         ? safeStr((show as any).firstAirDate)
-                        : safeStr((show as any).releaseDate) || (show.__type === "game" ? safeStr((show as any).releaseDateAlt) : "");
+                        : safeStr((show as any).releaseDate);
                       const itemReleaseDate = isUpcomingView ? parseReleaseDateForComparison(itemReleaseDateStr) : null;
                       const upcomingDaysRaw = itemReleaseDate
                         ? Math.round((itemReleaseDate.getTime() - todayMidnight().getTime()) / 86400000)
@@ -21953,6 +22275,37 @@ export default function Page() {
                       const upcomingDateDisplay = itemReleaseDate
                         ? itemReleaseDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : null;
+                      const isCompletedView = nav === "completed";
+                      const completedDateRaw = isCompletedView
+                        ? show.__type === "book"
+                          ? safeStr((show as any).completedDate || (show as any)["Completed Date"] || (show as any).CompletedDate)
+                          : show.__type === "tv"
+                            ? safeStr((show as any).dateCompleted || (show as any)["Date Completed"] || (show as any).CompletedDate || (show as any).watchDate)
+                            : show.__type === "movie"
+                              ? safeStr(
+                                  (show as any).watchDate ||
+                                  (show as any).WatchDate ||
+                                  (show as any)["Watch Date"] ||
+                                  (show as any)["Date Watched"]
+                                )
+                              : safeStr((show as any).dateCompleted || (show as any)["Date Completed"] || (show as any).yearPlayed)
+                        : "";
+                      const completedDateDisplay = (() => {
+                        if (!completedDateRaw) return "";
+                        const parsed = parseReleaseDateForComparison(completedDateRaw);
+                        if (parsed) {
+                          return parsed.toLocaleDateString("en-US", {
+                            month: "numeric",
+                            day: "numeric",
+                            year: "2-digit",
+                          });
+                        }
+                        if (show.__type === "movie" || show.__type === "tv") {
+                          return "";
+                        }
+                        return getYearToken(completedDateRaw);
+                      })();
+                      const showCompletedDateLabel = isCompletedView && Boolean(completedDateDisplay);
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "now-playing" ||
@@ -22011,7 +22364,12 @@ export default function Page() {
                             position: isWishlistPointerDragging ? "fixed" : "absolute",
                             left: dragLeft,
                             top: isWishlistPointerDragging ? dragTop : undefined,
-                            bottom: isWishlistPointerDragging ? undefined : shelfBottomOffset + (isUpcomingView ? UPCOMING_LABEL_SPACE : 0) + (coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0),
+                            bottom: isWishlistPointerDragging
+                              ? undefined
+                              : shelfBottomOffset +
+                                (isUpcomingView ? UPCOMING_LABEL_SPACE : 0) +
+                                (showCompletedDateLabel ? COMPLETED_DATE_LABEL_SPACE : 0) +
+                                (coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0),
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
@@ -22443,12 +22801,40 @@ export default function Page() {
                             </div>
                           ) : null}
 
+                          {showCompletedDateLabel ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: "absolute",
+                                top: caseHeight + (isUpcomingView && upcomingLabel ? 39 : 6),
+                                left: 0,
+                                width: caseWidth,
+                                textAlign: "center",
+                                pointerEvents: "none",
+                                zIndex: 10,
+                                fontSize: 10,
+                                fontWeight: 700,
+                                lineHeight: 1.2,
+                                color: isDarkShelfMode ? "rgba(200, 215, 236, 0.84)" : "rgba(95, 106, 122, 0.88)",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                padding: "0 2px",
+                              }}
+                            >
+                              {completedDateDisplay}
+                            </div>
+                          ) : null}
+
                           {coverTitlesVisible && show.title ? (
                             <div
                               title={show.title}
                               style={{
                                 position: "absolute",
-                                top: caseHeight + (isUpcomingView && upcomingLabel ? 39 : 6),
+                                top:
+                                  caseHeight +
+                                  (isUpcomingView && upcomingLabel ? 39 : 6) +
+                                  (showCompletedDateLabel ? COMPLETED_DATE_LABEL_SPACE : 0),
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",

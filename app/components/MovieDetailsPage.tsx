@@ -498,7 +498,7 @@ export function MovieDetailsPage({
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
               {onRate ? (
                 <button type="button" onClick={() => onRate(item)} style={{
-                  borderRadius: 999, padding: "6px 11px", fontSize: 11, lineHeight: 1, fontWeight: 750,
+                  borderRadius: 999, padding: isMobileLayout ? "6px 11px" : "8px 14px", fontSize: isMobileLayout ? 11 : 12, lineHeight: 1, fontWeight: 750,
                   border: `1px solid rgba(255,255,255,0.4)`, background: `${highlightColor || "#007AFF"}`,
                   color: "#fff", cursor: "pointer", whiteSpace: "nowrap",
                   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -506,7 +506,7 @@ export function MovieDetailsPage({
               ) : null}
               {onEdit ? (
                 <button type="button" onClick={() => onEdit(item)} style={{
-                  borderRadius: 999, padding: "6px 11px", fontSize: 11, lineHeight: 1, fontWeight: 750,
+                  borderRadius: 999, padding: isMobileLayout ? "6px 11px" : "8px 14px", fontSize: isMobileLayout ? 11 : 12, lineHeight: 1, fontWeight: 750,
                   border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.88)",
                   color: "#111", cursor: "pointer", whiteSpace: "nowrap",
                   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -530,7 +530,7 @@ export function MovieDetailsPage({
                   }}
                   disabled={isDeleting}
                   style={{
-                    borderRadius: 999, padding: "6px 11px", fontSize: 11, lineHeight: 1, fontWeight: 750,
+                    borderRadius: 999, padding: isMobileLayout ? "6px 11px" : "8px 14px", fontSize: isMobileLayout ? 11 : 12, lineHeight: 1, fontWeight: 750,
                     border: "1px solid rgba(248, 113, 113, 0.55)", background: "rgba(127, 29, 29, 0.9)",
                     color: "#fee2e2", cursor: isDeleting ? "default" : "pointer", whiteSpace: "nowrap",
                     opacity: isDeleting ? 0.75 : 1,
@@ -554,7 +554,7 @@ export function MovieDetailsPage({
                 </svg>
               </button>
               {watchStatus ? (
-                <span style={{ borderRadius: 999, padding: "6px 10px", fontSize: 11, lineHeight: 1, fontWeight: 850, ...statusColor }}>
+                <span style={{ borderRadius: 999, padding: isMobileLayout ? "6px 10px" : "8px 13px", fontSize: isMobileLayout ? 11 : 12, lineHeight: 1, fontWeight: 850, ...statusColor }}>
                   {watchStatus.charAt(0).toUpperCase() + watchStatus.slice(1)}
                 </span>
               ) : null}

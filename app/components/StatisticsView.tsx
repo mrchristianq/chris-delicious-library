@@ -80,7 +80,6 @@ type ShowStatsItem = {
 type GameStatsItem = {
   title?: string;
   releaseDate?: string;
-  releaseDateAlt?: string;
   dateAdded?: string;
   dateCompleted?: string;
   yearPlayed?: string;
@@ -1575,7 +1574,7 @@ export function StatisticsView({
 
     const mappedGames: UnifiedStatsItem[] = games.map((game) => {
       const title = safeText(game.title) || "Untitled Game";
-      const releaseDate = parseDateValue(game.releaseDate) || parseDateValue(game.releaseDateAlt);
+      const releaseDate = parseDateValue(game.releaseDate);
       const dateAdded = parseDateValue(game.dateAdded);
       const yearPlayedDate = parseDateValue(game.yearPlayed);
       const explicitCompletionDate = parseDateValue(game.dateCompleted);
