@@ -820,8 +820,8 @@ export function BookDetailsPage({
                   onClick={() => onRate(item)}
                   style={{
                     borderRadius: 999,
-                    padding: "6px 11px",
-                    fontSize: 11,
+                    padding: isMobileLayout ? "6px 11px" : "8px 14px",
+                    fontSize: isMobileLayout ? 11 : 12,
                     lineHeight: 1,
                     fontWeight: 750,
                     border: `1px solid rgba(255,255,255,0.3)`,
@@ -843,8 +843,8 @@ export function BookDetailsPage({
                   onClick={() => onEdit(item)}
                   style={{
                     borderRadius: 999,
-                    padding: "6px 11px",
-                    fontSize: 11,
+                    padding: isMobileLayout ? "6px 11px" : "8px 14px",
+                    fontSize: isMobileLayout ? 11 : 12,
                     lineHeight: 1,
                     fontWeight: 750,
                     border: `1px solid ${palette.surfaceBorder}`,
@@ -879,8 +879,8 @@ export function BookDetailsPage({
                   disabled={isDeleting}
                   style={{
                     borderRadius: 999,
-                    padding: "6px 11px",
-                    fontSize: 11,
+                    padding: isMobileLayout ? "6px 11px" : "8px 14px",
+                    fontSize: isMobileLayout ? 11 : 12,
                     lineHeight: 1,
                     fontWeight: 750,
                     border: "1px solid rgba(248, 113, 113, 0.55)",
@@ -931,8 +931,8 @@ export function BookDetailsPage({
                       key={`${chip}-${index}`}
                       style={{
                         borderRadius: 999,
-                        padding: "6px 10px",
-                        fontSize: 11,
+                        padding: isMobileLayout ? "6px 10px" : "8px 13px",
+                        fontSize: isMobileLayout ? 11 : 12,
                         lineHeight: 1,
                         fontWeight: 850,
                         background: isCompletedChip ? "rgba(34, 197, 94, 0.18)" : palette.chip,

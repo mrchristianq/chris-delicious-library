@@ -136,7 +136,7 @@ const MOVIE_EDIT_FIELDS: MovieEditField[] = [
 ];
 const GAME_EDIT_FIELDS: GameEditField[] = [
   { key: "status", label: "Status" },
-  { key: "releaseDateAlt", label: "Release Date" },
+  { key: "releaseDate", label: "Release Date" },
   { key: "platforms", label: "Platforms" },
   { key: "igdbRating", label: "IGDB Rating" },
   { key: "myRating", label: "My Rating" },
@@ -229,7 +229,6 @@ const RESYNC_FIELDS: Record<MediaItemType, string[]> = {
   game: [
     "title",
     "releaseDate",
-    "releaseDateAlt",
     "platforms",
     "igdbId",
     "igdbRating",
@@ -471,7 +470,6 @@ function humanizeFieldKey(key: string): string {
 function getFieldLabelForType(itemType: MediaItemType, key: string): string {
   if (key === "title") return "Title";
   if (key === "subtitle") return "Subtitle";
-  if (key === "releaseDateAlt") return "Release Date";
   if (key === "coverUrl") return "Cover URL";
   if (key === "imageUrl") return "Image URL";
 
@@ -642,7 +640,6 @@ function buildGameEditValues(item: Record<string, any>): Record<string, string> 
     status: firstNonEmpty(item, ["status", "Status", "gameStatus", "playStatus"]),
     name: firstNonEmpty(item, ["name", "Name"]),
     releaseDate: firstNonEmpty(item, ["releaseDate", "ReleaseDate"]),
-    releaseDateAlt: firstNonEmpty(item, ["releaseDateAlt", "Release Date"]),
     platforms: firstNonEmpty(item, ["platforms", "Platforms"]),
     coverUrl: firstNonEmpty(item, ["coverUrl", "CoverURL"]),
     rating: firstNonEmpty(item, ["rating", "Rating"]),
@@ -1300,7 +1297,6 @@ export const MediaModal: React.FC<MediaModalProps> = ({
 
     applyIncomingValue(next, "title", incoming.title);
     applyIncomingValue(next, "releaseDate", incoming.releaseDate);
-    applyIncomingValue(next, "releaseDateAlt", incoming.releaseDate);
     applyIncomingValue(next, "platforms", incoming.platforms);
     applyIncomingValue(next, "igdbId", incoming.igdbId);
     applyIncomingValue(next, "igdbRating", incoming.igdbRating);
