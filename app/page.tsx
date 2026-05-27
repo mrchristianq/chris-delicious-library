@@ -14061,6 +14061,183 @@ export default function Page() {
       )}
     </section>
   );
+  const renderMediaHomeHeaderActions = (itemCount: number) => {
+    if (isMobileLayout) return null;
+    return (
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
+        <button
+          onClick={clearAllFilters}
+          title="Clear filters"
+          aria-label="Clear filters"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 24,
+            minWidth: 58,
+            padding: "3px 6px",
+            background: isSimpleHeaderTheme ? "transparent" : "rgba(28, 18, 10, 0.52)",
+            border: "none",
+            borderRadius: 9,
+            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.72)",
+            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          Clear
+        </button>
+        <button
+          onClick={() => updateShowStatusIndicators(!showStatusIndicators)}
+          title="Toggle status indicators"
+          aria-label="Toggle status indicators"
+          aria-pressed={showStatusIndicators}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            height: 24,
+            minWidth: 68,
+            padding: "3px 7px",
+            background: isSimpleHeaderTheme
+              ? "transparent"
+              : showStatusIndicators
+              ? "linear-gradient(180deg, rgba(84, 129, 60, 0.76), rgba(54, 92, 38, 0.78))"
+              : "rgba(28, 18, 10, 0.52)",
+            border: isSimpleHeaderTheme
+              ? "none"
+              : showStatusIndicators
+              ? "1px solid rgba(190, 221, 166, 0.75)"
+              : "1px solid rgba(10, 6, 3, 0.78)",
+            borderRadius: 9,
+            color: isSimpleHeaderTheme
+              ? showStatusIndicators
+                ? simpleHeaderStrongTextColor
+                : simpleHeaderTextColor
+              : showStatusIndicators
+              ? "rgba(242, 255, 228, 0.95)"
+              : "rgba(250, 242, 230, 0.72)",
+            boxShadow: isSimpleHeaderTheme
+              ? "none"
+              : showStatusIndicators
+              ? "0 3px 10px rgba(22, 48, 14, 0.55), inset 0 1px 0 rgba(234, 255, 218, 0.35)"
+              : "0 3px 8px rgba(0, 0, 0, 0.34)",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: isSimpleHeaderTheme
+                ? showStatusIndicators
+                  ? simpleHeaderStatusOnColor
+                  : simpleHeaderStatusOffColor
+                : showStatusIndicators
+                ? "rgba(194, 246, 166, 0.95)"
+                : "rgba(250, 242, 230, 0.45)",
+              boxShadow: isSimpleHeaderTheme
+                ? showStatusIndicators
+                  ? "0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 8px rgba(47, 143, 91, 0.28)"
+                  : "0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 8px rgba(178, 59, 59, 0.22)"
+                : showStatusIndicators
+                ? "0 0 0 1px rgba(173, 237, 138, 0.8), 0 0 8px rgba(150, 223, 108, 0.55)"
+                : "0 0 0 1px rgba(255, 255, 255, 0.2)",
+            }}
+          />
+          Status
+        </button>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 900,
+            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+            letterSpacing: "0.01em",
+            lineHeight: 1,
+            textShadow: isSimpleHeaderTheme ? "none" : "0 2px 4px rgba(0, 0, 0, 0.5)",
+            background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+            borderRadius: 9,
+            padding: "4px 7px",
+            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+          }}
+        >
+          {`${itemCount} items`}
+        </span>
+        <button
+          onClick={() => {
+            setSettingsPopupOpen(false);
+            setSortPopupOpen((prev) => !prev);
+            setShowVersionNotes(false);
+          }}
+          title="Open sort options"
+          aria-label="Open sort options"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 30,
+            minWidth: 24,
+            padding: "5px 8px",
+            background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+            borderRadius: 9,
+            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+            cursor: "pointer",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="14" y2="6"></line>
+            <circle cx="17" cy="6" r="2"></circle>
+            <line x1="20" y1="6" x2="21" y2="6"></line>
+            <line x1="4" y1="12" x2="7" y2="12"></line>
+            <circle cx="10" cy="12" r="2"></circle>
+            <line x1="13" y1="12" x2="21" y2="12"></line>
+            <line x1="4" y1="18" x2="11" y2="18"></line>
+            <circle cx="14" cy="18" r="2"></circle>
+            <line x1="17" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <button
+          onClick={() => {
+            setSortPopupOpen(false);
+            setSettingsPopupOpen(false);
+            setShowVersionNotes(false);
+            setAddModalOpen(true);
+          }}
+          title="Add new item"
+          aria-label="Add new item"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 30,
+            minWidth: 24,
+            padding: "5px 8px",
+            background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+            borderRadius: 9,
+            color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+            cursor: "pointer",
+          }}
+        >
+          +
+        </button>
+      </div>
+    );
+  };
   const gamesHomeContent =
     nav === "games" && gameViewMode === "home" ? (
       <div ref={stageRef} style={{ width: "100%" }}>
@@ -14115,6 +14292,7 @@ export default function Page() {
               </button>
             );
           })}
+          {renderMediaHomeHeaderActions(gamesHomeData.stats.games)}
         </div>
         <div
           style={{
@@ -14403,6 +14581,7 @@ export default function Page() {
               </button>
             );
           })}
+          {renderMediaHomeHeaderActions(moviesHomeData.stats.movies)}
         </div>
         <div
           style={{
@@ -14574,6 +14753,7 @@ export default function Page() {
               </button>
             );
           })}
+          {renderMediaHomeHeaderActions(tvHomeData.stats.shows)}
         </div>
         <div style={{ minHeight: `calc(100vh - ${topSafeInset + 45}px)`, background: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent", padding: isMobileLayout ? "14px 12px 28px" : "18px 0 34px 14px", display: "flex", flexDirection: "column", gap: isMobileLayout ? 22 : 26, overflow: "hidden" }}>
           {renderTvHomeRow("Watchlist", tvHomeData.watchlist as Show[], "large")}
@@ -14771,6 +14951,7 @@ export default function Page() {
               </button>
             );
           })}
+          {renderMediaHomeHeaderActions(booksHomeData.stats.books)}
         </div>
         <div style={{ minHeight: `calc(100vh - ${topSafeInset + 45}px)`, background: isSimpleShelfPresentation ? simpleShelfBackgroundColor : "transparent", padding: isMobileLayout ? "14px 12px 28px" : "18px 0 34px 14px", display: "flex", flexDirection: "column", gap: isMobileLayout ? 22 : 26, overflow: "hidden" }}>
           {renderBooksHomeRow("Read Next", booksHomeData.readNext as Book[], "large")}
