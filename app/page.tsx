@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.20";
+const APP_VERSION = "10.0.22";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -520,6 +520,22 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.22",
+    date: "2026-05-28",
+    notes: [
+      "Made Books, Movies, TV Shows, and Games always open to their section Home screen from sidebar and mobile/native entry points.",
+      "Repaired Movie and TV Home Watchlist shelves so saved manual order keys resolve across old and current key formats.",
+    ],
+  },
+  {
+    version: "10.0.21",
+    date: "2026-05-28",
+    notes: [
+      "Opened native Books, Movies, and TV sections to their Home screens by default.",
+      "Fixed Completed shelf date labels to use movie WatchDate and reserve consistent label space so cover bottoms align.",
+    ],
+  },
   {
     version: "10.0.20",
     date: "2026-05-27",
@@ -1179,11 +1195,48 @@ function parseReleaseDateForComparison(value?: string): Date | null {
     const date = new Date(Number(slashMatch[3]), Number(slashMatch[1]) - 1, Number(slashMatch[2]));
     if (!isNaN(date.getTime())) return date;
   }
+  // M/D/YY (e.g. "5/19/26")
+  const shortSlashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (shortSlashMatch) {
+    const year = Number(shortSlashMatch[3]);
+    const fullYear = year >= 70 ? 1900 + year : 2000 + year;
+    const date = new Date(fullYear, Number(shortSlashMatch[1]) - 1, Number(shortSlashMatch[2]));
+    if (!isNaN(date.getTime())) return date;
+  }
   // Exact year only (e.g. "2026"): use Dec 31 so current/future-year entries stay upcoming
   if (/^((?:19|20)\d{2})$/.test(raw)) return new Date(Number(raw), 11, 31);
   const yearMatch = raw.match(/\b((?:19|20)\d{2})\b/);
   if (yearMatch) return new Date(Number(yearMatch[1]), 0, 1);
   return null;
+}
+
+function getCompletedDateValue(item: any): string {
+  const type = safeStr(item?.__type || getMediaType(item));
+  if (type === "movie") {
+    return safeStr(
+      item?.watchDate ||
+      item?.WatchDate ||
+      item?.watchdate ||
+      item?.["Watch Date"] ||
+      item?.["Date Watched"] ||
+      item?.completedDate ||
+      item?.CompletedDate
+    );
+  }
+  if (type === "tv") {
+    return safeStr(
+      item?.dateCompleted ||
+      item?.completedDate ||
+      item?.["Date Completed"] ||
+      item?.CompletedDate ||
+      item?.watchDate ||
+      item?.WatchDate
+    );
+  }
+  if (type === "book") {
+    return safeStr(item?.completedDate || item?.["Completed Date"] || item?.CompletedDate || item?.["Date Completed"]);
+  }
+  return safeStr(item?.dateCompleted || item?.completedDate || item?.["Date Completed"] || item?.CompletedDate || item?.yearPlayed);
 }
 
 function dateSpecificity(dateStr?: string): number {
@@ -2529,16 +2582,12 @@ export default function Page() {
   }, []);
 
   const openMediaSidebar = (section: "books" | "movies" | "tv" | "games") => {
-    const shouldOpenSectionHome = isMobileLayout && (section === "books" || section === "movies" || section === "tv");
+    const shouldOpenSectionHome = section === "books" || section === "movies" || section === "tv";
     setMovieDetailItem(null);
     setTvDetailItem(null);
     setGameDetailItem(null);
     setBookDetailItem(null);
     setBookDetailPalette(null);
-    if (nav === section) {
-      activateHomeLibrary();
-      return;
-    }
     if (section === "books") {
       setBookHomeMode(shouldOpenSectionHome);
       setWishlistFilter(false);
@@ -11281,13 +11330,13 @@ export default function Page() {
         bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) : 
                (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
       } else if (field === "CompletedDate") {
-        const aCompleted = (a as any).completedDate ?? (a as any).dateCompleted;
-        const bCompleted = (b as any).completedDate ?? (b as any).dateCompleted;
-        aVal = aCompleted ? Date.parse(aCompleted) : NaN;
-        bVal = bCompleted ? Date.parse(bCompleted) : NaN;
+        const aCompleted = getCompletedDateValue(a);
+        const bCompleted = getCompletedDateValue(b);
+        aVal = parseReleaseDateForComparison(aCompleted)?.getTime() ?? NaN;
+        bVal = parseReleaseDateForComparison(bCompleted)?.getTime() ?? NaN;
       } else if (field === "CompletedDateOrReleaseDate") {
-        const aCompleted = (a as any).completedDate ?? (a as any).dateCompleted;
-        const bCompleted = (b as any).completedDate ?? (b as any).dateCompleted;
+        const aCompleted = getCompletedDateValue(a);
+        const bCompleted = getCompletedDateValue(b);
         const aType = (a as any).__type;
         const bType = (b as any).__type;
         const aRelease = aType === "tv"
@@ -11296,8 +11345,8 @@ export default function Page() {
         const bRelease = bType === "tv"
           ? (b as any).lastAirDate ?? (b as any).firstAirDate
           : (b as any).releaseDate ?? (b as any).firstAirDate;
-        aVal = aCompleted ? Date.parse(aCompleted) : aRelease ? Date.parse(aRelease) : NaN;
-        bVal = bCompleted ? Date.parse(bCompleted) : bRelease ? Date.parse(bRelease) : NaN;
+        aVal = parseReleaseDateForComparison(aCompleted)?.getTime() ?? (aRelease ? Date.parse(aRelease) : NaN);
+        bVal = parseReleaseDateForComparison(bCompleted)?.getTime() ?? (bRelease ? Date.parse(bRelease) : NaN);
       } else if (field === "LastAirDate") {
         aVal = (a as any).lastAirDate ? Date.parse((a as any).lastAirDate) : NaN;
         bVal = (b as any).lastAirDate ? Date.parse((b as any).lastAirDate) : NaN;
@@ -13779,9 +13828,28 @@ export default function Page() {
         return [] as string[];
       }
     })();
-    const movieWatchlistManualBaseKeys = persistedMovieWatchlistManualKeys.length
-      ? persistedMovieWatchlistManualKeys
-      : resolvedWatchlistMovieManualOrderKeys;
+    const resolveMovieWatchlistKeys = (keys: string[]) => {
+      const seen = new Set<string>();
+      const ordered: string[] = [];
+
+      keys.forEach((rawKey) => {
+        const raw = safeStr(rawKey);
+        const key = watchlistMovieItemsByKey.has(raw)
+          ? raw
+          : (watchlistMovieAliasKeyToKey.get(raw) || raw);
+        if (!key || seen.has(key)) return;
+        if (!watchlistMovieItemsByKey.has(key)) return;
+        seen.add(key);
+        ordered.push(key);
+      });
+
+      return ordered;
+    };
+
+    const movieWatchlistManualBaseKeys = resolveMovieWatchlistKeys([
+      ...persistedMovieWatchlistManualKeys,
+      ...resolvedWatchlistMovieManualOrderKeys,
+    ]);
 
     if (savedSortField === MANUAL_SORT_FIELD) {
       return movieWatchlistManualBaseKeys
@@ -13794,6 +13862,7 @@ export default function Page() {
     applySorting,
     getSetting,
     resolvedWatchlistMovieManualOrderKeys,
+    watchlistMovieAliasKeyToKey,
     watchlistMovieItems,
     watchlistMovieItemsByKey,
   ]);
@@ -13897,9 +13966,28 @@ export default function Page() {
         return [] as string[];
       }
     })();
-    const tvWatchlistManualBaseKeys = persistedTvWatchlistManualKeys.length
-      ? persistedTvWatchlistManualKeys
-      : resolvedWatchlistTvManualOrderKeys;
+    const resolveTvWatchlistKeys = (keys: string[]) => {
+      const seen = new Set<string>();
+      const ordered: string[] = [];
+
+      keys.forEach((rawKey) => {
+        const raw = safeStr(rawKey);
+        const key = watchlistTvItemsByKey.has(raw)
+          ? raw
+          : (watchlistTvAliasKeyToKey.get(raw) || raw);
+        if (!key || seen.has(key)) return;
+        if (!watchlistTvItemsByKey.has(key)) return;
+        seen.add(key);
+        ordered.push(key);
+      });
+
+      return ordered;
+    };
+
+    const tvWatchlistManualBaseKeys = resolveTvWatchlistKeys([
+      ...persistedTvWatchlistManualKeys,
+      ...resolvedWatchlistTvManualOrderKeys,
+    ]);
 
     const ordered =
       savedSortField === MANUAL_SORT_FIELD
@@ -13915,6 +14003,7 @@ export default function Page() {
     applySorting,
     getSetting,
     resolvedWatchlistTvManualOrderKeys,
+    watchlistTvAliasKeyToKey,
     watchlistTvItems,
     watchlistTvItemsByKey,
   ]);
@@ -22276,20 +22365,7 @@ export default function Page() {
                         ? itemReleaseDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : null;
                       const isCompletedView = nav === "completed";
-                      const completedDateRaw = isCompletedView
-                        ? show.__type === "book"
-                          ? safeStr((show as any).completedDate || (show as any)["Completed Date"] || (show as any).CompletedDate)
-                          : show.__type === "tv"
-                            ? safeStr((show as any).dateCompleted || (show as any)["Date Completed"] || (show as any).CompletedDate || (show as any).watchDate)
-                            : show.__type === "movie"
-                              ? safeStr(
-                                  (show as any).watchDate ||
-                                  (show as any).WatchDate ||
-                                  (show as any)["Watch Date"] ||
-                                  (show as any)["Date Watched"]
-                                )
-                              : safeStr((show as any).dateCompleted || (show as any)["Date Completed"] || (show as any).yearPlayed)
-                        : "";
+                      const completedDateRaw = isCompletedView ? getCompletedDateValue(show) : "";
                       const completedDateDisplay = (() => {
                         if (!completedDateRaw) return "";
                         const parsed = parseReleaseDateForComparison(completedDateRaw);
@@ -22305,7 +22381,8 @@ export default function Page() {
                         }
                         return getYearToken(completedDateRaw);
                       })();
-                      const showCompletedDateLabel = isCompletedView && Boolean(completedDateDisplay);
+                      const reserveCompletedDateSpace = isCompletedView;
+                      const showCompletedDateLabel = reserveCompletedDateSpace && Boolean(completedDateDisplay);
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "now-playing" ||
@@ -22368,7 +22445,7 @@ export default function Page() {
                               ? undefined
                               : shelfBottomOffset +
                                 (isUpcomingView ? UPCOMING_LABEL_SPACE : 0) +
-                                (showCompletedDateLabel ? COMPLETED_DATE_LABEL_SPACE : 0) +
+                                (reserveCompletedDateSpace ? COMPLETED_DATE_LABEL_SPACE : 0) +
                                 (coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0),
                             width: caseWidth,
                             height: caseHeight,
@@ -22834,7 +22911,7 @@ export default function Page() {
                                 top:
                                   caseHeight +
                                   (isUpcomingView && upcomingLabel ? 39 : 6) +
-                                  (showCompletedDateLabel ? COMPLETED_DATE_LABEL_SPACE : 0),
+                                  (reserveCompletedDateSpace ? COMPLETED_DATE_LABEL_SPACE : 0),
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",
