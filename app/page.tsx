@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.22";
+const APP_VERSION = "10.0.23";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -423,6 +423,8 @@ const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
 const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder):/;
 const isLocalFirstViewSettingKey = (key: string) =>
   LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN.test(safeStr(key));
+const LOCAL_FIRST_VIEW_SETTING_META_KEY = "cdlLocalFirstViewSettingMeta";
+const LOCAL_FIRST_VIEW_SETTING_MAX_AGE_MS = 10 * 60 * 1000;
 const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
 const NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY = "cdlNativeSidebarIconCache";
 const SIDEBAR_ICON_SETTING_PREFIX = "sidebarIcon:";
@@ -520,6 +522,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.23",
+    date: "2026-05-29",
+    notes: [
+      "Stopped stale local Movie/TV Watchlist order caches from overriding the Google Sheet order indefinitely.",
+      "Preserved short-term local manual-order changes so force reloads right after dragging still keep the latest manual order.",
+    ],
+  },
   {
     version: "10.0.22",
     date: "2026-05-28",
@@ -7970,13 +7980,72 @@ export default function Page() {
       return undefined;
     };
 
-    if (isLocalFirstViewSettingKey(key)) {
-      const localValue = readLocalSettingValue();
-      if (localValue !== undefined) return localValue;
-    }
-
     // Prefer sheet value first for cross-device consistency.
     const setting = settingsRows.find((r) => safeStr(r["Key"]) === key);
+
+    if (isLocalFirstViewSettingKey(key)) {
+      const localValue = readLocalSettingValue();
+      if (localValue !== undefined) {
+        if (!setting) return localValue;
+
+        const rawSheetValue = safeStr(setting["Value"]);
+        if (!rawSheetValue) return localValue;
+
+        const rawLocalValue = (() => {
+          try {
+            if (settingsCacheRef.current === null) {
+              settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
+            }
+            return safeStr(settingsCacheRef.current?.[key]);
+          } catch {
+            return "";
+          }
+        })();
+
+        const normalizeSettingForCompare = (value: string) => {
+          const trimmed = safeStr(value);
+          if (!trimmed) return "";
+          try {
+            return JSON.stringify(JSON.parse(trimmed));
+          } catch {
+            return trimmed;
+          }
+        };
+
+        if (normalizeSettingForCompare(rawLocalValue) === normalizeSettingForCompare(rawSheetValue)) {
+          return localValue;
+        }
+
+        const localWriteAt = (() => {
+          try {
+            const meta = JSON.parse(localStorage.getItem(LOCAL_FIRST_VIEW_SETTING_META_KEY) || "{}");
+            const value = Number(meta?.[key] || 0);
+            return Number.isFinite(value) ? value : 0;
+          } catch {
+            return 0;
+          }
+        })();
+
+        if (localWriteAt > 0 && Date.now() - localWriteAt <= LOCAL_FIRST_VIEW_SETTING_MAX_AGE_MS) {
+          return localValue;
+        }
+
+        try {
+          if (settingsCacheRef.current) {
+            delete settingsCacheRef.current[key];
+            localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
+          }
+          const meta = JSON.parse(localStorage.getItem(LOCAL_FIRST_VIEW_SETTING_META_KEY) || "{}");
+          if (meta && typeof meta === "object" && Object.prototype.hasOwnProperty.call(meta, key)) {
+            delete meta[key];
+            localStorage.setItem(LOCAL_FIRST_VIEW_SETTING_META_KEY, JSON.stringify(meta));
+          }
+        } catch (cleanupError) {
+          console.warn("Failed to clear stale local view setting:", cleanupError);
+        }
+      }
+    }
+
     if (setting) {
       const rawValue = safeStr(setting["Value"]);
       return rawValue === "" ? defaultValue : parseStoredSettingValue(rawValue);
@@ -8155,6 +8224,13 @@ export default function Page() {
       if (settingsCacheRef.current) {
         settingsCacheRef.current[key] = String(value);
         if (isLocalFirstViewSettingKey(key)) {
+          try {
+            const meta = JSON.parse(localStorage.getItem(LOCAL_FIRST_VIEW_SETTING_META_KEY) || "{}");
+            meta[key] = Date.now();
+            localStorage.setItem(LOCAL_FIRST_VIEW_SETTING_META_KEY, JSON.stringify(meta));
+          } catch (metaError) {
+            console.warn("Failed to persist local view setting timestamp:", metaError);
+          }
           localStorage.setItem("cdlSettingsCache", JSON.stringify(settingsCacheRef.current));
         }
         // Batch localStorage writes so rapid nudge/slider updates stay responsive.
