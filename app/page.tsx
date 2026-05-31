@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.23";
+const APP_VERSION = "10.0.24";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -522,6 +522,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.24",
+    date: "2026-05-31",
+    notes: [
+      "Mapped Started TV shows to the In Progress status icon.",
+      "Mapped Watch Next TV shows to the Not Started status icon.",
+    ],
+  },
   {
     version: "10.0.23",
     date: "2026-05-29",
@@ -10948,14 +10956,14 @@ export default function Page() {
         return { key: "paused", color: STATUS_COLOR_YELLOW, label: "Paused" };
       }
       if (
+        status === "started" ||
         status === "currently watching" ||
         status === "watching" ||
-        status === "in progress" ||
-        status === "watch next"
+        status === "in progress"
       ) {
-        return { key: "watching", color: STATUS_COLOR_YELLOW, label: "Watching" };
+        return { key: "watching", color: STATUS_COLOR_YELLOW, label: "In Progress" };
       }
-      if (status === "backlog" || status === "wishlist") {
+      if (status === "watch next" || status === "backlog" || status === "wishlist") {
         return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Started" };
       }
       return { key: "not-started", color: STATUS_COLOR_RED, label: "Not Watched" };
