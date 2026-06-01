@@ -514,9 +514,8 @@ function updateGameRow_(payload) {
     for (var r = 0; r < titleValues.length; r++) {
       if (String(titleValues[r][0] || "").trim().toLowerCase() !== matchTitle.toLowerCase()) continue;
       if (String(platformValues[r][0] || "").trim().toLowerCase() !== matchPlatform.toLowerCase()) continue;
-        rowNum = r + 2;
-        break;
-      }
+      rowNum = r + 2;
+      break;
     }
   }
 

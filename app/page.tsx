@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.24";
+const APP_VERSION = "10.0.29";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -522,6 +522,46 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.29",
+    date: "2026-06-01",
+    notes: [
+      "Validated the platform-aware Google Apps Script game update handler for deployment.",
+      "Kept native online startup refresh enabled so duplicate-platform game rows stay current.",
+    ],
+  },
+  {
+    version: "10.0.28",
+    date: "2026-06-01",
+    notes: [
+      "Refreshed the native Google Sheets snapshot in the background after fast local-cache startup when online.",
+      "Allowed newly separated platform-specific game rows to replace stale native cache entries automatically.",
+    ],
+  },
+  {
+    version: "10.0.27",
+    date: "2026-06-01",
+    notes: [
+      "Kept duplicate-platform game listings visible as separate rows throughout the Library.",
+      "Prepared game refresh and edit matching so each platform keeps its own status.",
+    ],
+  },
+  {
+    version: "10.0.26",
+    date: "2026-06-01",
+    notes: [
+      "Matched game edits by IGDB ID and platform so duplicate-platform listings update independently.",
+      "Stopped game status edits from blanking hidden spreadsheet metadata fields.",
+    ],
+  },
+  {
+    version: "10.0.25",
+    date: "2026-06-01",
+    notes: [
+      "Normalized Date Added and other saved calendar fields before Google Sheet readback verification.",
+      "Prevented equivalent ISO and spreadsheet-style dates from causing false save errors.",
+    ],
+  },
   {
     version: "10.0.24",
     date: "2026-05-31",
@@ -5283,7 +5323,11 @@ export default function Page() {
       } else if (mediaType === "game" && gamesWriteUrl) {
         postSheetWrite(gamesWriteUrl, {
           action: "updateGame",
-          match: { igdbId: safeStr(item?.igdbId || item?.IGDB_ID), title },
+          match: {
+            igdbId: safeStr(item?.igdbId || item?.IGDB_ID),
+            title,
+            platform: safeStr(item?.platform || item?.Platform || item?.__renderPlatform),
+          },
           updates: { R2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save game R2 cover").catch(() => {});
       } else if (mediaType === "book" && booksWriteUrl) {
@@ -5748,7 +5792,7 @@ export default function Page() {
     async (params: {
       sheetName: "Books" | "Movies" | "Shows" | "Games";
       csvUrl?: string;
-      match: { idField?: string; idValue?: string; fallbackIdValue?: string; title?: string; fallbackTitle?: string };
+      match: { idField?: string; idValue?: string; fallbackIdValue?: string; title?: string; fallbackTitle?: string; platform?: string };
       verifyFields: Record<string, string>;
     }) => {
       if (!params.csvUrl || !Object.keys(params.verifyFields).length) return;
@@ -5769,15 +5813,23 @@ export default function Page() {
           return lowered;
         }
 
-        if (normalizedField === "releasedate" || normalizedField === "watchdate" || normalizedField === "completeddate") {
-          const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-          if (isoDateMatch) return isoDateMatch[0];
-          const parsedDate = new Date(trimmed);
-          if (!Number.isNaN(parsedDate.getTime())) {
-            const yyyy = parsedDate.getFullYear();
-            const mm = String(parsedDate.getMonth() + 1).padStart(2, "0");
-            const dd = String(parsedDate.getDate()).padStart(2, "0");
-            return `${yyyy}-${mm}-${dd}`;
+        if (
+          normalizedField === "dateadded" ||
+          normalizedField === "releasedate" ||
+          normalizedField === "watchdate" ||
+          normalizedField === "completeddate" ||
+          normalizedField === "datecompleted"
+        ) {
+          const isoDateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+          if (isoDateMatch) {
+            return `${isoDateMatch[1]}-${isoDateMatch[2].padStart(2, "0")}-${isoDateMatch[3].padStart(2, "0")}`;
+          }
+
+          const slashDateMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+          if (slashDateMatch) {
+            const parsedYear = Number(slashDateMatch[3]);
+            const yyyy = String(parsedYear < 100 ? (parsedYear >= 70 ? 1900 : 2000) + parsedYear : parsedYear);
+            return `${yyyy}-${slashDateMatch[1].padStart(2, "0")}-${slashDateMatch[2].padStart(2, "0")}`;
           }
         }
 
@@ -5800,7 +5852,9 @@ export default function Page() {
           const row = rows.find((candidate) => {
             const idValue = safeStr(candidate[safeStr(params.match.idField || "")]);
             const titleValue = safeStr(candidate.Title);
-            return (
+            const platformValue = safeStr(candidate.Platform || candidate.Platforms);
+            const platformMatches = !params.match.platform || platformValue.toLowerCase() === params.match.platform.toLowerCase();
+            return platformMatches && (
               (params.match.idField && params.match.idValue && idValue === params.match.idValue) ||
               (params.match.idField && params.match.fallbackIdValue && idValue === params.match.fallbackIdValue) ||
               (params.match.title && titleValue.toLowerCase() === params.match.title.toLowerCase()) ||
@@ -6612,6 +6666,8 @@ export default function Page() {
 
     const matchIgdbId = safeStr(updates.igdbId) || safeStr(item?.igdbId);
     const matchTitle = safeStr(updates.title) || safeStr(item?.title);
+    const matchPlatform = safeStr(item?.platform || item?.Platform || item?.__renderPlatform);
+    const verifyPlatform = safeStr(updates.platform) || matchPlatform;
     const fallbackIgdbId = safeStr(item?.igdbId);
     const fallbackTitle = safeStr(item?.title);
 
@@ -6658,33 +6714,25 @@ export default function Page() {
 
     const existingKeysByColumn: Record<string, string[]> = {
       Title: ["title", "Title"],
-      Cover: ["cover", "Cover"],
       Platform: ["platform", "Platform"],
       Status: ["status", "Status", "gameStatus", "playStatus"],
-      Name: ["name", "Name"],
       ReleaseDate: ["releaseDate", "ReleaseDate"],
-      "Release Date": ["Release Date", "releaseDate", "ReleaseDate"],
       Platforms: ["platforms", "Platforms"],
       CoverURL: ["coverUrl", "CoverURL"],
-      Rating: ["rating", "Rating"],
       "IGDB Rating": ["igdbRating", "IGDB Rating"],
       "My Rating": ["myRating", "My Rating"],
       Ownership: ["ownership", "Ownership"],
       Format: ["format", "Format"],
       Backlog: ["backlog", "Backlog"],
       Completed: ["completed", "Completed"],
-      "Completed Date": ["dateCompleted", "Completed Date", "Date Completed"],
       "Date Completed": ["dateCompleted", "Date Completed"],
       "Year Played": ["yearPlayed", "Year Played"],
       "Date Added": ["dateAdded", "Date Added"],
       Description: ["description", "Description"],
       Genres: ["genres", "Genres"],
       "Hours Played": ["hoursPlayed", "Hours Played"],
-      CoverCachedAt: ["coverCachedAt", "CoverCachedAt"],
       Developer: ["developer", "Developer"],
       ScreenshotsURL: ["ScreenshotsURL", "screenshotsUrl"],
-      WishlistOrder: ["wishlistOrder", "WishlistOrder"],
-      QueuedOrder: ["queuedOrder", "QueuedOrder"],
       IGDB_ID: ["igdbId", "IGDB_ID"],
       IGDB_ID_Override: ["igdbIdOverride", "IGDB_ID_Override"],
       LocalCoverURL: ["localCoverUrl", "LocalCoverURL"],
@@ -6692,33 +6740,25 @@ export default function Page() {
 
     const candidateUpdates: Record<string, string> = {
       Title: safeStr(updates.title),
-      Cover: safeStr(updates.cover),
       Platform: safeStr(updates.platform),
       Status: safeStr(updates.status),
-      Name: safeStr(updates.name),
       ReleaseDate: safeStr(updates.releaseDate),
-      "Release Date": safeStr(updates.releaseDate),
       Platforms: safeStr(updates.platforms),
       CoverURL: safeStr(updates.coverUrl),
-      Rating: safeStr(updates.rating),
       "IGDB Rating": safeStr(updates.igdbRating),
       "My Rating": safeStr(updates.myRating),
       Ownership: safeStr(updates.ownership),
       Format: safeStr(updates.format),
       Backlog: normalizeGameYesNo(safeStr(updates.backlog)),
       Completed: normalizeGameYesNo(safeStr(updates.completed)),
-      "Completed Date": safeStr(updates.dateCompleted),
       "Date Completed": safeStr(updates.dateCompleted),
       "Year Played": safeStr(updates.yearPlayed),
       "Date Added": safeStr(updates.dateAdded),
       Description: safeStr(updates.description),
       Genres: safeStr(updates.genres),
       "Hours Played": safeStr(updates.hoursPlayed),
-      CoverCachedAt: safeStr(updates.coverCachedAt),
       Developer: safeStr(updates.developer),
       ScreenshotsURL: safeStr(updates.screenshotsUrl),
-      WishlistOrder: safeStr(updates.wishlistOrder),
-      QueuedOrder: safeStr(updates.queuedOrder),
       IGDB_ID: safeStr(updates.igdbId),
       IGDB_ID_Override: safeStr(updates.igdbIdOverride),
       LocalCoverURL: safeStr(updates.localCoverUrl),
@@ -6742,6 +6782,22 @@ export default function Page() {
     }
 
     const changedUpdates: Record<string, string> = {};
+    const normalizeGameComparableValue = (columnName: string, value: string): string => {
+      const trimmed = safeStr(value);
+      if (!trimmed) return "";
+      if (columnName !== "ReleaseDate" && columnName !== "Date Completed" && columnName !== "Date Added") {
+        return trimmed;
+      }
+      const isoDateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+      if (isoDateMatch) {
+        return `${isoDateMatch[1]}-${isoDateMatch[2].padStart(2, "0")}-${isoDateMatch[3].padStart(2, "0")}`;
+      }
+      const slashDateMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+      if (!slashDateMatch) return trimmed;
+      const parsedYear = Number(slashDateMatch[3]);
+      const yyyy = String(parsedYear < 100 ? (parsedYear >= 70 ? 1900 : 2000) + parsedYear : parsedYear);
+      return `${yyyy}-${slashDateMatch[1].padStart(2, "0")}-${slashDateMatch[2].padStart(2, "0")}`;
+    };
     Object.entries(candidateUpdates).forEach(([columnName, nextValueRaw]) => {
       const prevValue = getFirstGameValue(item, existingKeysByColumn[columnName] || [columnName]);
       let nextValue = safeStr(nextValueRaw);
@@ -6752,7 +6808,7 @@ export default function Page() {
         comparablePrev = normalizeGameYesNo(comparablePrev);
       }
 
-      if (nextValue === comparablePrev) return;
+      if (normalizeGameComparableValue(columnName, nextValue) === normalizeGameComparableValue(columnName, comparablePrev)) return;
       changedUpdates[columnName] = nextValue;
     });
 
@@ -6771,14 +6827,11 @@ export default function Page() {
       return {
         ...prev,
         title: safeStr(updates.title) || prev.title,
-        cover: safeStr(updates.cover),
         platform: safeStr(updates.platform),
         status: safeStr(updates.status),
-        name: safeStr(updates.name),
         releaseDate: safeStr(updates.releaseDate),
         platforms: safeStr(updates.platforms),
         coverUrl: safeStr(updates.coverUrl),
-        rating: safeStr(updates.rating),
         igdbRating: safeStr(updates.igdbRating),
         myRating: safeStr(updates.myRating),
         ownership: safeStr(updates.ownership),
@@ -6791,11 +6844,8 @@ export default function Page() {
         description: safeStr(updates.description),
         genres: safeStr(updates.genres),
         hoursPlayed: safeStr(updates.hoursPlayed),
-        coverCachedAt: safeStr(updates.coverCachedAt),
         developer: safeStr(updates.developer),
         screenshotsUrl: safeStr(updates.screenshotsUrl),
-        wishlistOrder: safeStr(updates.wishlistOrder),
-        queuedOrder: safeStr(updates.queuedOrder),
         igdbId: safeStr(updates.igdbId),
         igdbIdOverride: safeStr(updates.igdbIdOverride),
         localCoverUrl: safeStr(updates.localCoverUrl),
@@ -6809,6 +6859,7 @@ export default function Page() {
       match: {
         igdbId: matchIgdbId,
         title: matchTitle,
+        platform: matchPlatform,
       },
       updates: changedUpdates,
     };
@@ -6844,6 +6895,7 @@ export default function Page() {
             fallbackIdValue: fallbackIgdbId,
             title: matchTitle,
             fallbackTitle,
+            platform: verifyPlatform,
           },
           verifyFields: gameVerifyFields,
         });
@@ -6885,27 +6937,26 @@ export default function Page() {
       prev.map((row) => {
         const rowIgdbId = safeStr(row["IGDB_ID"] || row["igdbId"]);
         const rowTitle = safeStr(row["Title"]);
+        const rowPlatform = safeStr(row["Platform"] || row["Platforms"]);
         const updatedTitle = safeStr(updates.title);
-        const sameItem =
+        const sameIdentity =
           (matchIgdbId && rowIgdbId === matchIgdbId) ||
           (fallbackIgdbId && rowIgdbId === fallbackIgdbId) ||
           (matchTitle && rowTitle.toLowerCase() === matchTitle.toLowerCase()) ||
           (fallbackTitle && rowTitle.toLowerCase() === fallbackTitle.toLowerCase());
+        const sameItem = sameIdentity && (!matchPlatform || rowPlatform.toLowerCase() === matchPlatform.toLowerCase());
 
         if (!sameItem) return row;
 
         return {
           ...row,
           Title: updatedTitle || rowTitle,
-          Cover: safeStr(updates.cover),
           Platform: safeStr(updates.platform),
           Status: safeStr(updates.status),
-          Name: safeStr(updates.name) || updatedTitle || rowTitle,
           ReleaseDate: safeStr(updates.releaseDate),
           "Release Date": safeStr(updates.releaseDate),
           Platforms: safeStr(updates.platforms),
           CoverURL: safeStr(updates.coverUrl),
-          Rating: safeStr(updates.rating),
           "IGDB Rating": safeStr(updates.igdbRating),
           "My Rating": safeStr(updates.myRating),
           Ownership: safeStr(updates.ownership),
@@ -6923,15 +6974,11 @@ export default function Page() {
           Description: safeStr(updates.description),
           Genres: safeStr(updates.genres),
           "Hours Played": safeStr(updates.hoursPlayed),
-          CoverCachedAt: safeStr(updates.coverCachedAt),
           Developer: safeStr(updates.developer),
           ScreenshotsURL: safeStr(updates.screenshotsUrl),
-          WishlistOrder: safeStr(updates.wishlistOrder),
-          QueuedOrder: safeStr(updates.queuedOrder),
           IGDB_ID: safeStr(updates.igdbId) || matchIgdbId || rowIgdbId,
           IGDB_ID_Override: safeStr(updates.igdbIdOverride),
           LocalCoverURL: safeStr(updates.localCoverUrl),
-          Tag: safeStr(updates.tags),
         };
       })
     );
@@ -7070,6 +7117,7 @@ export default function Page() {
         throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
       }
       const matchIgdbId = safeStr(item?.igdbId);
+      const matchPlatform = safeStr(item?.platform || item?.Platform || item?.__renderPlatform);
       if (!matchIgdbId && !title) {
         throw new Error("Unable to identify this game row to delete.");
       }
@@ -7081,6 +7129,7 @@ export default function Page() {
           match: {
             igdbId: matchIgdbId,
             title,
+            platform: matchPlatform,
           },
         },
         "Failed to delete game"
@@ -7090,8 +7139,10 @@ export default function Page() {
         prev.filter((row) => {
           const rowIgdbId = rowValue(row, ["IGDB_ID", "igdbId"]);
           const rowTitle = rowValue(row, ["Title"]);
-          if (matchIgdbId && rowIgdbId === matchIgdbId) return false;
-          if (title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
+          const rowPlatform = rowValue(row, ["Platform", "Platforms"]);
+          const platformMatches = !matchPlatform || rowPlatform.toLowerCase() === matchPlatform.toLowerCase();
+          if (platformMatches && matchIgdbId && rowIgdbId === matchIgdbId) return false;
+          if (platformMatches && title && rowTitle.toLowerCase() === title.toLowerCase()) return false;
           return true;
         })
       );
@@ -7344,7 +7395,15 @@ export default function Page() {
         if (data.yearPlayed) updates["Year Played"] = safeStr(data.yearPlayed);
         if (data.backlog !== undefined) updates["Backlog"] = data.backlog ? "Yes" : "";
         if (data.completed !== undefined) updates["Completed"] = data.completed ? "Yes" : "";
-        await postSheetWrite(gamesWriteUrl, { action: "updateGame", match: { title: safeStr(rateItItem.title || rateItItem.name) }, updates }, "Failed to save game rating");
+        await postSheetWrite(gamesWriteUrl, {
+          action: "updateGame",
+          match: {
+            igdbId: safeStr(rateItItem.igdbId || rateItItem.IGDB_ID),
+            title: safeStr(rateItItem.title || rateItItem.name),
+            platform: safeStr(rateItItem.platform || rateItItem.Platform || rateItItem.__renderPlatform),
+          },
+          updates,
+        }, "Failed to save game rating");
         setGameDetailItem((prev: any) => ({
           ...prev,
           ...updates,
@@ -7565,6 +7624,9 @@ export default function Page() {
           setSyncMsg(snapshot.pendingCount ? `${snapshot.pendingCount} change${snapshot.pendingCount === 1 ? "" : "s"} pending` : "Synced locally");
           setLastSyncAt(snapshot.lastSyncAt || Date.now());
           setLoading(false);
+          if (typeof navigator === "undefined" || navigator.onLine !== false) {
+            loadCsvSnapshot();
+          }
           return true;
         })
         .catch(() => false)
@@ -10858,34 +10920,6 @@ export default function Page() {
     return platforms[0];
   };
 
-  // Helper to deduplicate games by title - keeps only primary platform version
-  const deduplicateGames = useCallback((games: Game[]): Game[] => {
-    const gamesByTitle = new Map<string, Game>();
-    
-    // Platform priority helper
-    const getPlatformPriority = (platform: string) => {
-      if (platform === "Steam") return 3;
-      if (platform === "Epic Games Store") return 2;
-      return 1;
-    };
-    
-    games.forEach(game => {
-      const existingGame = gamesByTitle.get(game.title);
-      if (!existingGame) {
-        gamesByTitle.set(game.title, game);
-      } else {
-        const existingPlatform = getPrimaryPlatform(existingGame.platform);
-        const currentPlatform = getPrimaryPlatform(game.platform);
-        
-        if (getPlatformPriority(currentPlatform) > getPlatformPriority(existingPlatform)) {
-          gamesByTitle.set(game.title, game);
-        }
-      }
-    });
-    
-    return Array.from(gamesByTitle.values());
-  }, []);
-
   const platformAliasMap = useMemo(() => {
     const map = new Map<string, string>();
     const knownPlatforms = new Set<string>([
@@ -11524,14 +11558,11 @@ export default function Page() {
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
       const qg = q ? qgBase.filter((g) => g.titleLC.includes(q)) : qgBase;
       
-      // Deduplicate games by title - keep only primary platform version
-      const deduplicatedGames = deduplicateGames(qg.map((g) => g.item));
-
       const combined = [
         ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
         ...qm.map((m) => ({ ...m.item, __type: "movie" } as Movie & { __type: "movie" })),
-        ...deduplicatedGames.map((g) => ({ ...g, __type: "game" } as Game & { __type: "game" })),
+        ...qg.map((g) => ({ ...g.item, __type: "game" } as Game & { __type: "game" })),
       ] as Array<(Book & { __type: "book" }) | (Show & { __type: "tv" }) | (Movie & { __type: "movie" }) | (Game & { __type: "game" })>;
 
       const sorted = applySorting(combined, sortField, sortOrder);
@@ -12103,7 +12134,7 @@ export default function Page() {
     return sorted as any[];
   }, [
     indexedShows, indexedBooks, indexedMovies, indexedGames,
-    applySorting, deduplicateGames,
+    applySorting,
     formatFilter, gameFormatFilter, gameGenreFilter, gameOwnershipFilter, gamePlatformFilter, gameStatusFilter, gameYearPlayedFilter,
     genreFilter,
     isGameAbandonedStatus, isGameBacklogHeaderMatch, isGameCompletedStatus, isMovieWatched, isTvAbandonedStatus, isTvWatchedStatus, isTvWatchingStatus, movieGenreFilter, movieTagFilter, movieWatchFilter, nav, normalizeStatus, resolvePlatformAlias,

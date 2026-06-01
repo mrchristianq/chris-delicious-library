@@ -357,7 +357,15 @@ fn row_key(media_type: &str, row: &Row) -> String {
             .or_else_nonempty(value_for("ISBN"))
             .or_else_nonempty(value_for("Title")),
         "tv" | "movie" => value_for("TMDB_ID").or_else_nonempty(value_for("Title")),
-        "game" => value_for("IGDB_ID").or_else_nonempty(value_for("Title")),
+        "game" => {
+            let base = value_for("IGDB_ID").or_else_nonempty(value_for("Title"));
+            let platform = value_for("Platform");
+            if platform.is_empty() {
+                base
+            } else {
+                format!("{base}:{}", platform.to_ascii_lowercase())
+            }
+        }
         _ => value_for("Title"),
     }
 }
@@ -811,7 +819,12 @@ fn matches_sheet_match(media_type: &str, row: &Row, match_value: Option<&Value>)
         }
         "game" => {
             let igdb_id = row_value(&["IGDB_ID", "igdbId"]);
-            (!igdb_id.is_empty() && igdb_id == match_field("igdbId")) || title_match
+            let row_platform = row_value(&["Platform", "Platforms"]);
+            let match_platform = match_field("platform");
+            let platform_match = match_platform.is_empty()
+                || row_platform.eq_ignore_ascii_case(&match_platform);
+            platform_match
+                && ((!igdb_id.is_empty() && igdb_id == match_field("igdbId")) || title_match)
         }
         _ => title_match,
     }
@@ -1115,6 +1128,10 @@ fn seed_snapshot(
         ("movie", snapshot.movie_rows),
         ("game", snapshot.game_rows),
     ] {
+        tx.execute(
+            "DELETE FROM media_items WHERE media_type = ?1 AND sync_status != 'pending'",
+            [media_type],
+        )?;
         for row in rows {
             let item_key = row_key(media_type, &row);
             if item_key.is_empty() {
