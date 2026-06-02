@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.29";
+const APP_VERSION = "10.0.31";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -522,6 +522,22 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.31",
+    date: "2026-06-02",
+    notes: [
+      "Bypassed stale published Google Sheets CSV responses during web sync with unique refresh requests.",
+      "Added one automatic follow-up web refresh after launch so recent native edits appear without a manual sync.",
+    ],
+  },
+  {
+    version: "10.0.30",
+    date: "2026-06-02",
+    notes: [
+      "Pushed native Google Sheet writes immediately after online saves while preserving offline queue behavior.",
+      "Stopped CSV snapshots without real modification timestamps from incorrectly skipping newer native edits.",
+    ],
+  },
   {
     version: "10.0.29",
     date: "2026-06-01",
@@ -2549,6 +2565,8 @@ export default function Page() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const nativeForceRemoteRefreshRef = useRef(false);
   const nativeSyncAfterRemoteRefreshRef = useRef(false);
+  const nativeOnlineSnapshotRefreshStartedRef = useRef(false);
+  const webInitialFollowupRefreshStartedRef = useRef(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [coverSyncQuery, setCoverSyncQuery] = useState("");
@@ -5704,6 +5722,25 @@ export default function Page() {
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
     if (isNativeApp) {
       await nativeQueueSheetWrite({ url, payload, fallbackMessage });
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setSyncState("saving");
+        setSyncMsg("Change queued for sync");
+        return;
+      }
+      const result = await nativeSyncNow();
+      setSyncState(result.pending ? "saving" : "ok");
+      setSyncMsg(
+        result.pending
+          ? `${result.pending} change${result.pending === 1 ? "" : "s"} pending`
+          : result.skipped
+            ? `Skipped ${result.skipped} stale change${result.skipped === 1 ? "" : "s"}`
+            : result.pushed
+              ? `Pushed ${result.pushed} change${result.pushed === 1 ? "" : "s"}`
+              : "Synced locally"
+      );
+      if (result.pushed || result.skipped) {
+        setLastSyncAt(Date.now());
+      }
       return;
     }
 
@@ -7594,6 +7631,7 @@ export default function Page() {
     }
 
     let cancelled = false;
+    let webFollowupRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     setLoading(true);
     setError(null);
 
@@ -7624,7 +7662,11 @@ export default function Page() {
           setSyncMsg(snapshot.pendingCount ? `${snapshot.pendingCount} change${snapshot.pendingCount === 1 ? "" : "s"} pending` : "Synced locally");
           setLastSyncAt(snapshot.lastSyncAt || Date.now());
           setLoading(false);
-          if (typeof navigator === "undefined" || navigator.onLine !== false) {
+          if (
+            !nativeOnlineSnapshotRefreshStartedRef.current &&
+            (typeof navigator === "undefined" || navigator.onLine !== false)
+          ) {
+            nativeOnlineSnapshotRefreshStartedRef.current = true;
             loadCsvSnapshot();
           }
           return true;
@@ -7643,7 +7685,9 @@ export default function Page() {
     }
 
     async function fetchCsv(url: string) {
-      const res = await fetch(url, { cache: "no-store" });
+      const separator = url.includes("?") ? "&" : "?";
+      const refreshUrl = `${url}${separator}_cdlSync=${Date.now()}`;
+      const res = await fetch(refreshUrl, { cache: "no-store" });
       if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
       return await res.text();
     }
@@ -7807,6 +7851,12 @@ export default function Page() {
           setSyncMsg("Synced");
           setLastSyncAt(Date.now());
           setLoading(false);
+          if (!webInitialFollowupRefreshStartedRef.current) {
+            webInitialFollowupRefreshStartedRef.current = true;
+            webFollowupRefreshTimer = setTimeout(() => {
+              setRefreshNonce((n) => n + 1);
+            }, 2500);
+          }
         }
       })
       .catch((e) => {
@@ -7820,6 +7870,7 @@ export default function Page() {
 
     return () => {
       cancelled = true;
+      if (webFollowupRefreshTimer) clearTimeout(webFollowupRefreshTimer);
     };
   }, [tvCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp]);
 

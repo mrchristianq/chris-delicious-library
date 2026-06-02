@@ -379,7 +379,7 @@ fn as_trimmed_string(value: Option<&Value>) -> String {
     }
 }
 
-fn row_remote_updated_at(row: &Row, fallback: &str) -> String {
+fn row_remote_updated_at(row: &Row, _fallback: &str) -> String {
     let explicit = as_trimmed_string(row.get("LastModifiedAt"));
     if !explicit.is_empty() {
         return explicit;
@@ -390,7 +390,7 @@ fn row_remote_updated_at(row: &Row, fallback: &str) -> String {
         return client;
     }
 
-    fallback.to_string()
+    String::new()
 }
 
 fn timestamp_is_newer(left: &str, right: &str) -> bool {
