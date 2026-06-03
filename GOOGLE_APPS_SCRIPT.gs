@@ -226,11 +226,23 @@ function updateBookRow_(payload) {
   const matchGoogleBooksVolumeId = String(match.googleBooksVolumeId || "").trim();
   const matchOpenLibraryWorkKey = String(match.openLibraryWorkKey || "").trim();
   const matchIsbn = String(match.isbn || "").trim();
+  const matchAudibleAsin = String(match.audibleAsin || match.audibleASIN || "").trim();
+  const matchAudnexusAsin = String(match.audnexusAsin || match.audnexusASIN || "").trim();
+  const matchHardcoverId = String(match.hardcoverId || match.hardcoverID || "").trim();
   const matchType = String(match.type || "").trim();
   const matchImageUrl = String(match.imageUrl || "").trim();
   const matchTitle = String(match.title || "").trim();
 
-  if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchImageUrl && !matchTitle) {
+  if (
+    !matchGoogleBooksVolumeId &&
+    !matchOpenLibraryWorkKey &&
+    !matchIsbn &&
+    !matchAudibleAsin &&
+    !matchAudnexusAsin &&
+    !matchHardcoverId &&
+    !matchImageUrl &&
+    !matchTitle
+  ) {
     return createCORSResponse("Error: missing book match keys");
   }
 
@@ -269,6 +281,39 @@ function updateBookRow_(payload) {
     const values = sheet.getRange(2, isbnCol, lastRow - 1, 1).getValues();
     for (var r = 0; r < values.length; r++) {
       if (String(values[r][0] || "").trim() === matchIsbn) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  const audibleAsinCol = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, "AudibleASIN");
+  if (rowNum === -1 && audibleAsinCol && matchAudibleAsin) {
+    const values = sheet.getRange(2, audibleAsinCol, lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchAudibleAsin) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  const audnexusAsinCol = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, "AudnexusASIN");
+  if (rowNum === -1 && audnexusAsinCol && matchAudnexusAsin) {
+    const values = sheet.getRange(2, audnexusAsinCol, lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchAudnexusAsin) {
+        rowNum = r + 2;
+        break;
+      }
+    }
+  }
+
+  const hardcoverIdCol = resolveHeaderIndex_(headerIndex, normalizedHeaderIndex, "HardcoverID");
+  if (rowNum === -1 && hardcoverIdCol && matchHardcoverId) {
+    const values = sheet.getRange(2, hardcoverIdCol, lastRow - 1, 1).getValues();
+    for (var r = 0; r < values.length; r++) {
+      if (String(values[r][0] || "").trim() === matchHardcoverId) {
         rowNum = r + 2;
         break;
       }

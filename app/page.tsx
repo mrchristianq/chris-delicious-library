@@ -194,6 +194,8 @@ type Book = {
   r2CoverUrl?: string;
   r2CoverUrlDate?: string;
   hardcoverId?: string;
+  audibleAsin?: string;
+  audnexusAsin?: string;
   recommendationSource?: string;
   recommendedIds?: string;
   recommendedTitles?: string;
@@ -339,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.35";
+const APP_VERSION = "10.0.36";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -522,6 +524,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.36",
+    date: "2026-06-03",
+    notes: [
+      "Fixed Audnexus audiobook saves and cover-only book updates by matching book rows with Audible, Audnexus, and Hardcover IDs.",
+    ],
+  },
   {
     version: "10.0.35",
     date: "2026-06-03",
@@ -2264,6 +2273,8 @@ function rowToBook(r: Row): Book | null {
     r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
     r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
     hardcoverId: safeStr(r["HardcoverID"]) || undefined,
+    audibleAsin: safeStr(r["AudibleASIN"]) || safeStr(r["Audible Asin"]) || safeStr(r["Audible_ASIN"]) || undefined,
+    audnexusAsin: safeStr(r["AudnexusASIN"]) || safeStr(r["Audnexus Asin"]) || safeStr(r["Audnexus_ASIN"]) || undefined,
     recommendationSource: safeStr(r["RecommendationSource"]) || undefined,
     recommendedIds: safeStr(r["RecommendedIDs"]) || undefined,
     recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
@@ -5377,16 +5388,10 @@ export default function Page() {
           updates: { R2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save game R2 cover").catch(() => {});
       } else if (mediaType === "book" && booksWriteUrl) {
+        const bookMatch = buildBookSheetMatch(item);
         postSheetWrite(booksWriteUrl, {
           action: "updateBook",
-          match: {
-            title,
-            type: safeStr(item?.types || item?.type || item?.Type),
-            imageUrl: safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image),
-            isbn: safeStr(item?.isbn || item?.ISBN),
-            googleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
-            openLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
-          },
+          match: bookMatch,
           updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save book R2 cover").catch(() => {});
       }
@@ -5448,6 +5453,34 @@ export default function Page() {
       );
     }
   };
+
+  const buildBookSheetMatch = useCallback((item: any, updates?: Record<string, string>) => {
+    const source = item || {};
+    const next = updates || {};
+    return {
+      googleBooksVolumeId:
+        safeStr(next.googleBooksVolumeId) ||
+        safeStr(source.googleBooksVolumeId || source.GoogleBooksVolumeId),
+      openLibraryWorkKey:
+        safeStr(next.openLibraryWorkKey) ||
+        safeStr(source.openLibraryWorkKey || source.OpenLibraryWorkKey),
+      isbn:
+        safeStr(next.isbn) ||
+        safeStr(source.isbn || source.ISBN || source.isbn13 || source.ISBN13 || source.isbn10 || source.ISBN10),
+      audibleAsin:
+        safeStr(next.audibleAsin) ||
+        safeStr(source.audibleAsin || source.AudibleASIN || source["Audible Asin"] || source.Audible_ASIN),
+      audnexusAsin:
+        safeStr(next.audnexusAsin) ||
+        safeStr(source.audnexusAsin || source.AudnexusASIN || source["Audnexus Asin"] || source.Audnexus_ASIN),
+      hardcoverId:
+        safeStr(next.hardcoverId) ||
+        safeStr(source.hardcoverId || source.HardcoverID || source.HardcoverId || source["Hardcover ID"]),
+      type: safeStr(next.type) || safeStr(source.types || source.type || source.Type),
+      imageUrl: safeStr(next.imageUrl) || safeStr(source.imageUrl || source.ImageURL || source["Image URL"] || source.Image),
+      title: safeStr(next.title) || safeStr(source.title || source.Title),
+    };
+  }, []);
 
   const persistBookSelectedSourceToR2 = async (item: any, mode: "custom" | "default") => {
     if (!item || getMediaType(item) !== "book" || isStaticSiteBuild) return "";
@@ -5514,15 +5547,7 @@ export default function Page() {
           mediaType === "tv" ? "updateShow" :
           "updateGame";
         const title = safeStr(item?.title || item?.Title || item?.name);
-        const bookMatch = mediaType === "book"
-          ? {
-              type: safeStr(item?.types || item?.type || item?.Type),
-              googleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
-              openLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
-              isbn: safeStr(item?.isbn || item?.ISBN),
-              imageUrl: safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image),
-            }
-          : {};
+        const bookMatch = mediaType === "book" ? buildBookSheetMatch(item) : {};
         const gameMatch = mediaType === "game"
           ? {
               igdbId: safeStr(item?.igdbId || item?.IGDB_ID),
@@ -6031,16 +6056,31 @@ export default function Page() {
       throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
     }
 
-    const matchGoogleBooksVolumeId = safeStr(updates.googleBooksVolumeId) || safeStr(item?.googleBooksVolumeId);
-    const matchOpenLibraryWorkKey = safeStr(updates.openLibraryWorkKey) || safeStr(item?.openLibraryWorkKey);
-    const matchIsbn = safeStr(updates.isbn) || safeStr(item?.isbn);
-    const matchTitle = safeStr(item?.title);
-    const fallbackGoogleBooksVolumeId = safeStr(item?.googleBooksVolumeId);
-    const fallbackOpenLibraryWorkKey = safeStr(item?.openLibraryWorkKey);
-    const fallbackIsbn = safeStr(item?.isbn);
-    const fallbackTitle = safeStr(item?.title);
+    const bookSheetMatch = buildBookSheetMatch(item, updates);
+    const matchGoogleBooksVolumeId = bookSheetMatch.googleBooksVolumeId;
+    const matchOpenLibraryWorkKey = bookSheetMatch.openLibraryWorkKey;
+    const matchIsbn = bookSheetMatch.isbn;
+    const matchAudibleAsin = bookSheetMatch.audibleAsin;
+    const matchAudnexusAsin = bookSheetMatch.audnexusAsin;
+    const matchHardcoverId = bookSheetMatch.hardcoverId;
+    const matchTitle = bookSheetMatch.title || safeStr(item?.title || item?.Title);
+    const fallbackGoogleBooksVolumeId = safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId);
+    const fallbackOpenLibraryWorkKey = safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey);
+    const fallbackIsbn = safeStr(item?.isbn || item?.ISBN || item?.isbn13 || item?.ISBN13 || item?.isbn10 || item?.ISBN10);
+    const fallbackAudibleAsin = safeStr(item?.audibleAsin || item?.AudibleASIN || item?.["Audible Asin"] || item?.Audible_ASIN);
+    const fallbackAudnexusAsin = safeStr(item?.audnexusAsin || item?.AudnexusASIN || item?.["Audnexus Asin"] || item?.Audnexus_ASIN);
+    const fallbackHardcoverId = safeStr(item?.hardcoverId || item?.HardcoverID || item?.HardcoverId || item?.["Hardcover ID"]);
+    const fallbackTitle = safeStr(item?.title || item?.Title);
 
-    if (!matchGoogleBooksVolumeId && !matchOpenLibraryWorkKey && !matchIsbn && !matchTitle) {
+    if (
+      !matchGoogleBooksVolumeId &&
+      !matchOpenLibraryWorkKey &&
+      !matchIsbn &&
+      !matchAudibleAsin &&
+      !matchAudnexusAsin &&
+      !matchHardcoverId &&
+      !matchTitle
+    ) {
       throw new Error("Unable to identify this book row to update.");
     }
 
@@ -6056,6 +6096,7 @@ export default function Page() {
     const payload = {
       action: "updateBook",
       match: {
+        ...bookSheetMatch,
         googleBooksVolumeId: matchGoogleBooksVolumeId,
         openLibraryWorkKey: matchOpenLibraryWorkKey,
         isbn: matchIsbn,
@@ -6211,6 +6252,9 @@ export default function Page() {
       const prevGoogleBooksVolumeId = safeStr(prev?.googleBooksVolumeId || prev?.GoogleBooksVolumeId);
       const prevOpenLibraryWorkKey = safeStr(prev?.openLibraryWorkKey || prev?.OpenLibraryWorkKey);
       const prevIsbn = safeStr(prev?.isbn || prev?.ISBN || prev?.isbn13 || prev?.ISBN13 || prev?.isbn10 || prev?.ISBN10);
+      const prevAudibleAsin = safeStr(prev?.audibleAsin || prev?.AudibleASIN || prev?.["Audible Asin"] || prev?.Audible_ASIN);
+      const prevAudnexusAsin = safeStr(prev?.audnexusAsin || prev?.AudnexusASIN || prev?.["Audnexus Asin"] || prev?.Audnexus_ASIN);
+      const prevHardcoverId = safeStr(prev?.hardcoverId || prev?.HardcoverID || prev?.HardcoverId || prev?.["Hardcover ID"]);
       const prevTitle = safeStr(prev?.title || prev?.Title);
       const isSameItem =
         (matchGoogleBooksVolumeId && prevGoogleBooksVolumeId === matchGoogleBooksVolumeId) ||
@@ -6219,6 +6263,12 @@ export default function Page() {
         (fallbackOpenLibraryWorkKey && prevOpenLibraryWorkKey === fallbackOpenLibraryWorkKey) ||
         (matchIsbn && prevIsbn === matchIsbn) ||
         (fallbackIsbn && prevIsbn === fallbackIsbn) ||
+        (matchAudibleAsin && prevAudibleAsin === matchAudibleAsin) ||
+        (fallbackAudibleAsin && prevAudibleAsin === fallbackAudibleAsin) ||
+        (matchAudnexusAsin && prevAudnexusAsin === matchAudnexusAsin) ||
+        (fallbackAudnexusAsin && prevAudnexusAsin === fallbackAudnexusAsin) ||
+        (matchHardcoverId && prevHardcoverId === matchHardcoverId) ||
+        (fallbackHardcoverId && prevHardcoverId === fallbackHardcoverId) ||
         (matchTitle && prevTitle.toLowerCase() === matchTitle.toLowerCase()) ||
         (fallbackTitle && prevTitle.toLowerCase() === fallbackTitle.toLowerCase());
 
@@ -6261,6 +6311,9 @@ export default function Page() {
         const rowGoogleBooksVolumeId = safeStr(row["GoogleBooksVolumeId"] || row["googleBooksVolumeId"]);
         const rowOpenLibraryWorkKey = safeStr(row["OpenLibraryWorkKey"] || row["openLibraryWorkKey"]);
         const rowIsbn = safeStr(row["ISBN"] || row["isbn"]);
+        const rowAudibleAsin = safeStr(row["AudibleASIN"] || row["audibleAsin"] || row["Audible Asin"] || row["Audible_ASIN"]);
+        const rowAudnexusAsin = safeStr(row["AudnexusASIN"] || row["audnexusAsin"] || row["Audnexus Asin"] || row["Audnexus_ASIN"]);
+        const rowHardcoverId = safeStr(row["HardcoverID"] || row["hardcoverId"] || row["HardcoverId"] || row["Hardcover ID"]);
         const rowTitle = safeStr(row["Title"]);
         const updatedTitle = safeStr(finalUpdates.title);
         const sameItem =
@@ -6270,6 +6323,12 @@ export default function Page() {
           (fallbackOpenLibraryWorkKey && rowOpenLibraryWorkKey === fallbackOpenLibraryWorkKey) ||
           (matchIsbn && rowIsbn === matchIsbn) ||
           (fallbackIsbn && rowIsbn === fallbackIsbn) ||
+          (matchAudibleAsin && rowAudibleAsin === matchAudibleAsin) ||
+          (fallbackAudibleAsin && rowAudibleAsin === fallbackAudibleAsin) ||
+          (matchAudnexusAsin && rowAudnexusAsin === matchAudnexusAsin) ||
+          (fallbackAudnexusAsin && rowAudnexusAsin === fallbackAudnexusAsin) ||
+          (matchHardcoverId && rowHardcoverId === matchHardcoverId) ||
+          (fallbackHardcoverId && rowHardcoverId === fallbackHardcoverId) ||
           (matchTitle && rowTitle.toLowerCase() === matchTitle.toLowerCase()) ||
           (fallbackTitle && rowTitle.toLowerCase() === fallbackTitle.toLowerCase());
 
