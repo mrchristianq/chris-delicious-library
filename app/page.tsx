@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.34";
+const APP_VERSION = "10.0.35";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -522,6 +522,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.35",
+    date: "2026-06-03",
+    notes: [
+      "Scaled shelf metadata labels with cover size so upcoming dates and status text stay aligned at smaller cover sizes.",
+    ],
+  },
   {
     version: "10.0.34",
     date: "2026-06-03",
@@ -3658,7 +3665,6 @@ export default function Page() {
   const SIDEBAR_WIDTH = 260;
   const SHELF_HEIGHT = 190;
   const SHELF_SIDE_PADDING = 10;
-  const UPCOMING_LABEL_SPACE = -3;
   const COVER_TITLE_LABEL_SPACE = 28;
   const COMPLETED_DATE_LABEL_SPACE = 18;
   const RAW_COVER_STANDARD_GAP = 10;
@@ -13556,6 +13562,36 @@ export default function Page() {
     getDisplayCoverUrl,
   ]);
 
+  const getShelfMetadataLayout = useCallback((caseWidth: number) => {
+    const scale = Math.max(0.5, Math.min(1, caseWidth / 128));
+    const primaryFontSize = Math.max(6.2, Math.round(11 * scale * 10) / 10);
+    const compactPrimaryFontSize = Math.max(5.8, Math.round(primaryFontSize * 0.82 * 10) / 10);
+    const secondaryFontSize = Math.max(5.8, Math.round(10 * scale * 10) / 10);
+    const titleFontSize = Math.max(7, Math.round(11 * scale * 10) / 10);
+    const primaryLineHeight = Math.max(7, Math.round(14 * scale));
+    const secondaryLineHeight = Math.max(7, Math.round(12 * scale));
+    const titleLineHeight = Math.max(8, Math.round(13 * scale));
+    const topGap = Math.max(1, Math.round(5 * scale));
+    const upcomingSpace = topGap + primaryLineHeight + secondaryLineHeight + Math.max(1, Math.round(2 * scale));
+    const completedSpace = Math.max(10, Math.round(COMPLETED_DATE_LABEL_SPACE * scale));
+    const titleSpace = Math.max(16, Math.round(COVER_TITLE_LABEL_SPACE * scale));
+
+    return {
+      scale,
+      primaryFontSize,
+      compactPrimaryFontSize,
+      secondaryFontSize,
+      titleFontSize,
+      primaryLineHeight,
+      secondaryLineHeight,
+      titleLineHeight,
+      topGap,
+      upcomingSpace,
+      completedSpace,
+      titleSpace,
+    };
+  }, []);
+
   const shelves = useMemo(() => {
     const usable = Math.max(0, stageWidth - shelfSidePadding * 2);
     const out: any[][] = [];
@@ -13597,16 +13633,28 @@ export default function Page() {
   }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout, nav]);
 
   const shelfHeights = useMemo(() => {
-    const upcomingExtra = isUpcomingView ? UPCOMING_LABEL_SPACE : 0;
-    const completedExtra = nav === "completed" ? COMPLETED_DATE_LABEL_SPACE : 0;
-    const titleExtra = coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0;
-    // For upcoming, compute a fixed offset that matches the current look for the
-    // most common (game) cover type, then apply it per-shelf based on each row's
-    // tallest cover so the gap between label text and the next row's tallest cover
-    // stays consistent regardless of media type.
-    const upcomingFixedOffset = isUpcomingView
-      ? (shelfRowHeight + UPCOMING_LABEL_SPACE) - Math.round(shelfRowHeight * (mediaCoverSizePct.games / 100))
-      : 0;
+    const getRowMetadataSpace = (shelfShows: any[]) => {
+      if (!shelfShows.length) {
+        const emptyScale = getShelfMetadataLayout(shelfRowHeight * 0.67);
+        return (
+          (isUpcomingView ? emptyScale.upcomingSpace : 0) +
+          (nav === "completed" ? emptyScale.completedSpace : 0) +
+          (coverTitlesVisible ? emptyScale.titleSpace : 0)
+        );
+      }
+
+      return shelfShows.reduce((maxSpace, show) => {
+        const { caseWidth } = getItemVisualLayout(show);
+        const metadataLayout = getShelfMetadataLayout(caseWidth);
+        return Math.max(
+          maxSpace,
+          (isUpcomingView ? metadataLayout.upcomingSpace : 0) +
+            (nav === "completed" ? metadataLayout.completedSpace : 0) +
+            (coverTitlesVisible ? metadataLayout.titleSpace : 0)
+        );
+      }, 0);
+    };
+
     return shelves.map((shelfShows, shelfIndex) => {
       const tvWatchlistSectionSpace =
         nav === "watchlist-tv" &&
@@ -13618,34 +13666,34 @@ export default function Page() {
           ? TV_WATCHLIST_SECTION_HEADER_SPACE
           : 0;
       if (isUpcomingView) {
-        if (!shelfShows.length) return shelfRowHeight + upcomingExtra + tvWatchlistSectionSpace + titleExtra + completedExtra;
+        if (!shelfShows.length) return shelfRowHeight + getRowMetadataSpace(shelfShows) + tvWatchlistSectionSpace;
         const maxCoverH = shelfShows.reduce((max, show) => {
           const { caseHeight } = getItemVisualLayout(show);
           return Math.max(max, caseHeight);
         }, 0);
-        return Math.max(1, maxCoverH + upcomingFixedOffset + tvWatchlistSectionSpace + titleExtra + completedExtra);
+        return Math.max(1, maxCoverH + getRowMetadataSpace(shelfShows) + tvWatchlistSectionSpace);
       }
       if (isMobileLayout && (nav === "play-next" || nav === "wishlist-books")) {
         // Match Movie Watchlist spacing: a full-size row leaves the same slack
         // above a movie cover; reuse that slack for the shorter game/book covers
         // so the inter-row gap stays identical instead of growing.
-        if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra + completedExtra;
+        if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows);
         const movieSlack = Math.max(0, shelfRowHeight - Math.round(shelfRowHeight * (mediaCoverSizePct.movies / 100)));
         const tallestCover = shelfShows.reduce((maxHeight, show) => {
           const { caseHeight } = getItemVisualLayout(show);
           return Math.max(maxHeight, caseHeight);
         }, 0);
-        return Math.max(1, tallestCover + movieSlack + tvWatchlistSectionSpace + titleExtra + completedExtra);
+        return Math.max(1, tallestCover + movieSlack + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows));
       }
-      if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + titleExtra + completedExtra;
-      if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + titleExtra + completedExtra;
+      if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows);
+      if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows);
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
         const { caseHeight } = getItemVisualLayout(show);
         return Math.max(maxHeight, caseHeight);
       }, 0);
-      return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + titleExtra + completedExtra);
+      return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows));
     });
-  }, [coverTitlesVisible, getItemVisualLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.games, mediaCoverSizePct.movies, nav, shelfRowHeight, shelves]);
+  }, [coverTitlesVisible, getItemVisualLayout, getShelfMetadataLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.movies, nav, shelfRowHeight, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -22623,6 +22671,11 @@ export default function Page() {
                       })();
                       const reserveCompletedDateSpace = isCompletedView;
                       const showCompletedDateLabel = reserveCompletedDateSpace && Boolean(completedDateDisplay);
+                      const metadataLayout = getShelfMetadataLayout(caseWidth);
+                      const upcomingMetadataSpace = isUpcomingView && upcomingLabel ? metadataLayout.upcomingSpace : 0;
+                      const completedMetadataSpace = reserveCompletedDateSpace ? metadataLayout.completedSpace : 0;
+                      const titleMetadataSpace = coverTitlesVisible ? metadataLayout.titleSpace : 0;
+                      const lowerMetadataSpace = upcomingMetadataSpace + completedMetadataSpace + titleMetadataSpace;
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "now-playing" ||
@@ -22683,10 +22736,7 @@ export default function Page() {
                             top: isWishlistPointerDragging ? dragTop : undefined,
                             bottom: isWishlistPointerDragging
                               ? undefined
-                              : shelfBottomOffset +
-                                (isUpcomingView ? UPCOMING_LABEL_SPACE : 0) +
-                                (reserveCompletedDateSpace ? COMPLETED_DATE_LABEL_SPACE : 0) +
-                                (coverTitlesVisible ? COVER_TITLE_LABEL_SPACE : 0),
+                              : shelfBottomOffset + lowerMetadataSpace,
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
@@ -23099,19 +23149,44 @@ export default function Page() {
                               aria-hidden
                               style={{
                                 position: "absolute",
-                                top: caseHeight + 5,
+                                top: caseHeight + metadataLayout.topGap,
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",
                                 pointerEvents: "none",
                                 zIndex: 10,
+                                padding: "0 1px",
                               }}
                             >
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(140,140,140,0.9)", lineHeight: 1.3 }}>
+                              <div
+                                style={{
+                                  fontSize: showPendingDigitalReleaseLabel
+                                    ? metadataLayout.compactPrimaryFontSize
+                                    : metadataLayout.primaryFontSize,
+                                  fontWeight: 700,
+                                  color: "rgba(140,140,140,0.9)",
+                                  lineHeight: `${metadataLayout.primaryLineHeight}px`,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  letterSpacing: 0,
+                                }}
+                              >
                                 {upcomingLabel}
                               </div>
                               {upcomingDateDisplay ? (
-                                <div style={{ fontSize: 10, color: "rgba(160,160,160,0.75)", marginTop: 1 }}>
+                                <div
+                                  style={{
+                                    fontSize: metadataLayout.secondaryFontSize,
+                                    color: "rgba(160,160,160,0.75)",
+                                    lineHeight: `${metadataLayout.secondaryLineHeight}px`,
+                                    marginTop: 0,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    letterSpacing: 0,
+                                  }}
+                                >
                                   {upcomingDateDisplay}
                                 </div>
                               ) : null}
@@ -23123,15 +23198,15 @@ export default function Page() {
                               aria-hidden
                               style={{
                                 position: "absolute",
-                                top: caseHeight + (isUpcomingView && upcomingLabel ? 39 : 6),
+                                top: caseHeight + upcomingMetadataSpace + metadataLayout.topGap,
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",
                                 pointerEvents: "none",
                                 zIndex: 10,
-                                fontSize: 10,
+                                fontSize: metadataLayout.secondaryFontSize,
                                 fontWeight: 700,
-                                lineHeight: 1.2,
+                                lineHeight: `${metadataLayout.secondaryLineHeight}px`,
                                 color: isDarkShelfMode ? "rgba(200, 215, 236, 0.84)" : "rgba(95, 106, 122, 0.88)",
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
@@ -23148,18 +23223,15 @@ export default function Page() {
                               title={show.title}
                               style={{
                                 position: "absolute",
-                                top:
-                                  caseHeight +
-                                  (isUpcomingView && upcomingLabel ? 39 : 6) +
-                                  (reserveCompletedDateSpace ? COMPLETED_DATE_LABEL_SPACE : 0),
+                                top: caseHeight + upcomingMetadataSpace + completedMetadataSpace + metadataLayout.topGap,
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",
                                 pointerEvents: "none",
                                 zIndex: 10,
-                                fontSize: 11,
+                                fontSize: metadataLayout.titleFontSize,
                                 fontWeight: 600,
-                                lineHeight: 1.2,
+                                lineHeight: `${metadataLayout.titleLineHeight}px`,
                                 color: isDarkShelfMode ? "rgba(232, 236, 244, 0.86)" : "rgba(60, 70, 84, 0.86)",
                                 display: "-webkit-box",
                                 WebkitLineClamp: 2,
