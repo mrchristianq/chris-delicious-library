@@ -35,6 +35,9 @@ type DiffRow = {
   selected: boolean;
 };
 
+type BookSyncSource = "audnexus" | "hardcover";
+type SyncFieldDef = { key: string; label: string };
+
 const TYPE_OPTIONS = ["Book", "eBook", "Audiobook", "Hardcover", "Paperback"] as const;
 const DEFAULT_STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
 const OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Ripped", "Borrowed"] as const;
@@ -47,6 +50,8 @@ const createBookFields = (statusOptions?: Array<{ value: string; label: string }
     { key: "subtitle",           label: "Subtitle" },
     { key: "series",             label: "Series" },
     { key: "author",             label: "Author" },
+    { key: "narrator",           label: "Narrator" },
+    { key: "publisher",          label: "Publisher" },
     { key: "ownership",          label: "Ownership",         options: OWNERSHIP_OPTIONS },
     { key: "type",               label: "Type",              options: TYPE_OPTIONS },
     { key: "status",             label: "Status",            options: statusLabels },
@@ -61,21 +66,32 @@ const createBookFields = (statusOptions?: Array<{ value: string; label: string }
     { key: "audiobookDuration",  label: "Audiobook Duration" },
     { key: "genre",              label: "Genre" },
     { key: "tags",               label: "Tags" },
+    { key: "audibleAsin",        label: "Audible ASIN" },
+    { key: "audnexusAsin",       label: "Audnexus ASIN" },
     { key: "description",        label: "Description",       multiline: true },
   ];
 };
 
-const APPLE_BOOKS_SYNC_FIELDS: { key: string; label: string }[] = [
-  { key: "title",       label: "Title" },
-  { key: "author",      label: "Author" },
-  { key: "description", label: "Description" },
-  { key: "genre",       label: "Genre" },
-  { key: "releaseDate", label: "Release Date" },
-  { key: "imageUrl",    label: "Image URL" },
-  { key: "userRating",  label: "User Rating" },
+const AUDNEXUS_SYNC_FIELDS: SyncFieldDef[] = [
+  { key: "title",             label: "Title" },
+  { key: "subtitle",          label: "Subtitle" },
+  { key: "series",            label: "Series" },
+  { key: "author",            label: "Author" },
+  { key: "narrator",          label: "Narrator" },
+  { key: "publisher",         label: "Publisher" },
+  { key: "description",       label: "Description" },
+  { key: "genre",             label: "Genre" },
+  { key: "releaseDate",       label: "Release Date" },
+  { key: "imageUrl",          label: "Image URL" },
+  { key: "audiobookDuration", label: "Audiobook Duration" },
+  { key: "isbn",              label: "ISBN" },
+  { key: "userRating",        label: "User Rating" },
+  { key: "type",              label: "Type" },
+  { key: "audibleAsin",       label: "Audible ASIN" },
+  { key: "audnexusAsin",      label: "Audnexus ASIN" },
 ];
 
-const HARDCOVER_SYNC_FIELDS: { key: string; label: string }[] = [
+const HARDCOVER_SYNC_FIELDS: SyncFieldDef[] = [
   { key: "title",             label: "Title" },
   { key: "subtitle",          label: "Subtitle" },
   { key: "series",            label: "Series" },
@@ -175,6 +191,8 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     subtitle: firstNonEmpty(item, ["subtitle", "Subtitle"]),
     series: firstNonEmpty(item, ["series", "Series"]),
     author: firstNonEmpty(item, ["author", "Author"]),
+    narrator: firstNonEmpty(item, ["narrator", "Narrator"]),
+    publisher: firstNonEmpty(item, ["publisher", "Publisher"]),
     ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
     type: firstNonEmpty(item, ["types", "type", "Type"]),
     status: firstNonEmpty(item, ["status", "Status"]),
@@ -191,6 +209,8 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     tags: firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     openLibraryWorkKey: firstNonEmpty(item, ["openLibraryWorkKey", "OpenLibraryWorkKey"]),
     googleBooksVolumeId: firstNonEmpty(item, ["googleBooksVolumeId", "GoogleBooksVolumeId"]),
+    audibleAsin: firstNonEmpty(item, ["audibleAsin", "AudibleASIN", "Audible Asin", "Audible_ASIN"]),
+    audnexusAsin: firstNonEmpty(item, ["audnexusAsin", "AudnexusASIN", "Audnexus Asin", "Audnexus_ASIN"]),
     description: firstNonEmpty(item, ["description", "Description"]),
   };
 }
@@ -224,7 +244,7 @@ export function BookDetailsEditModal({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncDiff, setSyncDiff] = useState<DiffRow[] | null>(null);
-  const [syncSource, setSyncSource] = useState<"apple" | "hardcover" | null>(null);
+  const [syncSource, setSyncSource] = useState<BookSyncSource | null>(null);
   const [syncStep, setSyncStep] = useState<"books" | "editions" | null>(null);
   const [syncBookResults, setSyncBookResults] = useState<Array<{ id: string; title: string; author: string; imageUrl: string; year: string; data: Record<string, string> }>>([]);
   const [syncEditionResults, setSyncEditionResults] = useState<Array<{ id: string; format: string; isbn: string; pages: string; imageUrl: string; releaseDate: string; publisher: string; data: Record<string, string> }>>([]);
@@ -318,7 +338,7 @@ export function BookDetailsEditModal({
 
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
-  const buildDiff = (incoming: Record<string, string>, syncFields: typeof APPLE_BOOKS_SYNC_FIELDS): DiffRow[] => {
+  const buildDiff = (incoming: Record<string, string>, syncFields: SyncFieldDef[]): DiffRow[] => {
     const proposed: Record<string, string> = { ...values };
     for (const { key } of syncFields) {
       const v = safeStr(incoming[key]);
@@ -332,7 +352,7 @@ export function BookDetailsEditModal({
     }).filter(Boolean) as DiffRow[];
   };
 
-  const handleSync = async (source: "apple" | "hardcover") => {
+  const handleSync = async (source: BookSyncSource) => {
     if (isSyncing || isSaving) return;
     setSyncError(null);
     setSyncNotice(null);
@@ -344,7 +364,7 @@ export function BookDetailsEditModal({
       const title = values.title || safeStr(item?.title) || safeStr(item?.Title);
       if (!title) throw new Error("No title to search with.");
 
-      const type = source === "apple" ? "book-apple" : "book-hardcover";
+      const type = source === "audnexus" ? "book-audnexus" : "book-hardcover";
       const params = new URLSearchParams({ type, query: title });
       if (values.type) params.set("bookFormat", values.type);
       const res = await fetchMediaSearch(params);
@@ -353,25 +373,17 @@ export function BookDetailsEditModal({
       if (!res.ok || !payload.ok) throw new Error(payload.error || "Sync failed.");
       if (!payload.results?.length) { setSyncNotice("No results found."); return; }
 
-      if (source === "hardcover") {
-        // Show book picker
-        setSyncBookResults(payload.results.map((r) => ({
-          id: safeStr(r.data?.hardcoverBookId || r.id),
-          title: safeStr(r.title),
-          author: safeStr(r.subtitle),
-          imageUrl: safeStr(r.imageUrl),
-          year: safeStr(r.year),
-          data: r.data ?? {},
-        })));
-        setSyncStep("books");
-        return;
-      }
-
-      // Apple Books: go straight to diff
-      const incoming = payload.results[0].data ?? {};
-      const diff = buildDiff(incoming, APPLE_BOOKS_SYNC_FIELDS);
-      if (!diff.length) { setSyncNotice("Everything is already up to date."); return; }
-      setSyncDiff(diff);
+      setSyncBookResults(payload.results.map((r) => ({
+        id: source === "audnexus"
+          ? safeStr(r.data?.audibleAsin || r.data?.audnexusAsin || r.id)
+          : safeStr(r.data?.hardcoverBookId || r.id),
+        title: safeStr(r.title),
+        author: safeStr(r.subtitle),
+        imageUrl: safeStr(r.imageUrl),
+        year: safeStr(r.year),
+        data: r.data ?? {},
+      })));
+      setSyncStep("books");
     } catch (err: unknown) {
       setSyncError(err instanceof Error ? err.message : "Sync failed.");
     } finally {
@@ -379,23 +391,31 @@ export function BookDetailsEditModal({
     }
   };
 
-  const handleSelectHardcoverBook = async (bookId: string, bookData: Record<string, string>) => {
+  const handleSelectProviderBook = async (bookId: string, bookData: Record<string, string>) => {
     if (isSyncing) return;
     setSyncError(null);
     setSelectedBookData(bookData);
     setIsSyncing(true);
     try {
-      const params = new URLSearchParams({ type: "book-hardcover", lookupId: bookId });
-      if (values.type) params.set("bookFormat", values.type);
+      const source = syncSource || "hardcover";
+      const params = new URLSearchParams({
+        type: source === "audnexus" ? "book-audnexus" : "book-hardcover",
+        lookupId: bookId,
+      });
+      if (source === "audnexus") {
+        params.set("bookFormat", "Audiobook");
+      } else if (values.type) {
+        params.set("bookFormat", values.type);
+      }
       const res = await fetchMediaSearch(params);
       const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: Array<{ id?: string; title?: string; subtitle?: string; imageUrl?: string; year?: string; data?: Record<string, string> }> };
 
       if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to fetch editions.");
-      if (!payload.results?.length) { setSyncNotice("No editions found for this book."); setSyncStep(null); return; }
+      if (!payload.results?.length) { setSyncNotice("No edition details found for this book."); setSyncStep(null); return; }
 
       setSyncEditionResults(payload.results.map((r) => ({
         id: safeStr(r.id),
-        format: safeStr(r.data?.editionFormat || r.title),
+        format: safeStr(r.data?.editionFormat || r.data?.type || r.title),
         isbn: safeStr(r.data?.isbn),
         pages: safeStr(r.data?.pages),
         imageUrl: safeStr(r.imageUrl || r.data?.imageUrl),
@@ -405,20 +425,20 @@ export function BookDetailsEditModal({
       })));
       setSyncStep("editions");
     } catch (err: unknown) {
-      setSyncError(err instanceof Error ? err.message : "Failed to fetch editions.");
+      setSyncError(err instanceof Error ? err.message : "Failed to fetch edition details.");
       setSyncStep(null);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handleSelectHardcoverEdition = (editionData: Record<string, string>) => {
+  const handleSelectProviderEdition = (editionData: Record<string, string>) => {
     // Merge: book-level fields + edition overrides
     const merged: Record<string, string> = { ...selectedBookData };
     for (const [k, v] of Object.entries(editionData)) {
       if (v) merged[k] = v;
     }
-    const diff = buildDiff(merged, HARDCOVER_SYNC_FIELDS);
+    const diff = buildDiff(merged, syncSource === "audnexus" ? AUDNEXUS_SYNC_FIELDS : HARDCOVER_SYNC_FIELDS);
     setSyncStep(null);
     if (!diff.length) { setSyncNotice("Everything is already up to date."); return; }
     setSyncDiff(diff);
@@ -436,12 +456,16 @@ export function BookDetailsEditModal({
     setValues((prev) => ({ ...prev, ...patch }));
     const count = syncDiff.filter((r) => r.selected).length;
     setSyncDiff(null);
-    setSyncNotice(`Applied ${count} field(s) from ${syncSource === "apple" ? "Apple Books" : "Hardcover"}.`);
+    setSyncNotice(`Applied ${count} field(s) from ${syncSource === "audnexus" ? "Audnexus" : "Hardcover"}.`);
   };
 
   const selectedCount = syncDiff ? syncDiff.filter((r) => r.selected).length : 0;
-  const syncLabel = syncSource === "apple" ? "Apple Books" : "Hardcover";
-  const syncAccent = syncSource === "apple" ? "#0071e3" : "#7c3aed";
+  const syncLabel = syncSource === "audnexus" ? "Audnexus" : "Hardcover";
+  const syncAccent = syncSource === "audnexus" ? "#0f766e" : "#7c3aed";
+  const syncBookThumbnailSize = syncSource === "audnexus"
+    ? { width: 44, height: 44 }
+    : { width: 36, height: 52 };
+  const syncEditionImageHeight = syncSource === "audnexus" ? "auto" : 100;
   const handleSave = async () => {
     if (!item) return;
     setIsSaving(true);
@@ -528,18 +552,18 @@ export function BookDetailsEditModal({
             <button
               type="button"
               disabled={isSyncing || isSaving}
-              onClick={() => handleSync("apple")}
+              onClick={() => handleSync("audnexus")}
               style={{
-                border: "1px solid rgba(0,113,227,0.4)", borderRadius: 8,
+                border: "1px solid rgba(15,118,110,0.4)", borderRadius: 8,
                 padding: "6px 12px",
-                background: isSyncing && syncSource === "apple" ? "rgba(0,113,227,0.07)" : "rgba(0,113,227,0.09)",
-                color: "#0071e3", cursor: isSyncing || isSaving ? "default" : "pointer",
+                background: isSyncing && syncSource === "audnexus" ? "rgba(15,118,110,0.07)" : "rgba(15,118,110,0.09)",
+                color: "#0f766e", cursor: isSyncing || isSaving ? "default" : "pointer",
                 fontSize: 12, fontWeight: 650,
                 opacity: isSyncing || isSaving ? 0.6 : 1,
                 transition: "opacity 120ms",
               }}
             >
-              {isSyncing && syncSource === "apple" ? "Syncing…" : "Sync from Apple Books"}
+              {isSyncing && syncSource === "audnexus" ? "Syncing…" : "Sync from Audnexus"}
             </button>
             <button
               type="button"
@@ -578,28 +602,28 @@ export function BookDetailsEditModal({
 
         {/* Step 1: Book picker */}
         {syncStep === "books" ? (
-          <div style={{ margin: "12px 12px 0", border: "1px solid #7c3aed33", borderRadius: 12, background: "#7c3aed08", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #7c3aed22", background: "#7c3aed0a" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>Select the correct book from Hardcover</div>
+          <div style={{ margin: "12px 12px 0", border: `1px solid ${syncAccent}33`, borderRadius: 12, background: `${syncAccent}08`, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: `1px solid ${syncAccent}22`, background: `${syncAccent}0a` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: syncAccent }}>Select the correct book from {syncLabel}</div>
               <button type="button" onClick={() => setSyncStep(null)} style={{ border: "none", background: "transparent", fontSize: 11, color: "rgba(0,0,0,0.45)", cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>Cancel</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {syncBookResults.map((book) => (
-                <button key={book.id} type="button" onClick={() => handleSelectHardcoverBook(book.id, book.data)} disabled={isSyncing}
+                <button key={book.id} type="button" onClick={() => handleSelectProviderBook(book.id, book.data)} disabled={isSyncing}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", border: "none", borderBottom: "1px solid #7c3aed14", background: "transparent", cursor: isSyncing ? "default" : "pointer", textAlign: "left", transition: "background 100ms" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#7c3aed0a")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = `${syncAccent}0a`)}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
                   {book.imageUrl ? (
-                    <img src={book.imageUrl} alt={book.title} style={{ width: 36, height: 52, objectFit: "cover", flexShrink: 0, ...COVER_IMAGE_RADIUS_STYLE }} />
+                    <img src={book.imageUrl} alt={book.title} style={{ ...syncBookThumbnailSize, objectFit: "cover", flexShrink: 0, ...COVER_IMAGE_RADIUS_STYLE }} />
                   ) : (
-                    <div style={{ width: 36, height: 52, borderRadius: 4, background: "#e8eaf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>?</div>
+                    <div style={{ ...syncBookThumbnailSize, borderRadius: 4, background: "#e8eaf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>?</div>
                   )}
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#1c2738" }}>{book.title}</div>
                     <div style={{ fontSize: 11, color: "#516279", marginTop: 2 }}>{book.author}{book.year ? ` · ${book.year}` : ""}</div>
                   </div>
-                  <div style={{ marginLeft: "auto", fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>Select →</div>
+                  <div style={{ marginLeft: "auto", fontSize: 11, color: syncAccent, fontWeight: 600 }}>Select →</div>
                 </button>
               ))}
             </div>
@@ -608,27 +632,27 @@ export function BookDetailsEditModal({
 
         {/* Step 2: Edition picker */}
         {syncStep === "editions" ? (
-          <div style={{ margin: "12px 12px 0", border: "1px solid #7c3aed33", borderRadius: 12, background: "#7c3aed08", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #7c3aed22", background: "#7c3aed0a" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>Select an edition</div>
+          <div style={{ margin: "12px 12px 0", border: `1px solid ${syncAccent}33`, borderRadius: 12, background: `${syncAccent}08`, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: `1px solid ${syncAccent}22`, background: `${syncAccent}0a` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: syncAccent }}>Select an edition</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" onClick={() => setSyncStep("books")} style={{ border: "none", background: "transparent", fontSize: 11, color: "#7c3aed", cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>← Back</button>
+                <button type="button" onClick={() => setSyncStep("books")} style={{ border: "none", background: "transparent", fontSize: 11, color: syncAccent, cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>← Back</button>
                 <button type="button" onClick={() => setSyncStep(null)} style={{ border: "none", background: "transparent", fontSize: 11, color: "rgba(0,0,0,0.45)", cursor: "pointer", fontWeight: 600, padding: "4px 6px" }}>Cancel</button>
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, padding: 12 }}>
               {syncEditionResults.map((ed) => (
-                <button key={ed.id} type="button" onClick={() => handleSelectHardcoverEdition(ed.data)}
-                  style={{ display: "flex", flexDirection: "column", gap: 6, padding: 8, border: "1px solid #7c3aed22", borderRadius: 10, background: "rgba(255,255,255,0.7)", cursor: "pointer", textAlign: "left", transition: "border-color 100ms, background 100ms" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#7c3aed66"; e.currentTarget.style.background = "#7c3aed08"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#7c3aed22"; e.currentTarget.style.background = "rgba(255,255,255,0.7)"; }}
+                <button key={ed.id} type="button" onClick={() => handleSelectProviderEdition(ed.data)}
+                  style={{ display: "flex", flexDirection: "column", gap: 6, padding: 8, border: `1px solid ${syncAccent}22`, borderRadius: 10, background: "rgba(255,255,255,0.7)", cursor: "pointer", textAlign: "left", transition: "border-color 100ms, background 100ms" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${syncAccent}66`; e.currentTarget.style.background = `${syncAccent}08`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${syncAccent}22`; e.currentTarget.style.background = "rgba(255,255,255,0.7)"; }}
                 >
                   {ed.imageUrl ? (
-                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", height: 100, objectFit: "cover", ...COVER_IMAGE_RADIUS_STYLE }} />
+                    <img src={ed.imageUrl} alt={ed.format} style={{ width: "100%", aspectRatio: syncSource === "audnexus" ? "1 / 1" : undefined, height: syncEditionImageHeight, objectFit: "cover", ...COVER_IMAGE_RADIUS_STYLE }} />
                   ) : (
-                    <div style={{ width: "100%", height: 100, borderRadius: 6, background: "#e8eaf0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>No cover</div>
+                    <div style={{ width: "100%", height: syncEditionImageHeight, borderRadius: 6, background: "#e8eaf0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#8a95a3" }}>No cover</div>
                   )}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>{ed.format}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: syncAccent }}>{ed.format}</div>
                   {ed.publisher ? <div style={{ fontSize: 10, color: "#516279" }}>{ed.publisher}</div> : null}
                   <div style={{ fontSize: 10, color: "#8a95a3", display: "flex", flexDirection: "column", gap: 2 }}>
                     {ed.isbn ? <span>ISBN: {ed.isbn}</span> : null}

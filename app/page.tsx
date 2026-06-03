@@ -339,7 +339,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.31";
+const APP_VERSION = "10.0.34";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -522,6 +522,28 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.34",
+    date: "2026-06-03",
+    notes: [
+      "Fixed mobile bottom Back and Home buttons so they dismiss active add/edit screens before navigating.",
+    ],
+  },
+  {
+    version: "10.0.33",
+    date: "2026-06-03",
+    notes: [
+      "Fixed Audnexus audiobook search and sync thumbnails so square cover art is not forced into a portrait frame.",
+    ],
+  },
+  {
+    version: "10.0.32",
+    date: "2026-06-03",
+    notes: [
+      "Replaced the Apple Books book-add and metadata-sync path with Audnexus audiobook metadata on dev.",
+      "Kept Hardcover sync intact while adding Audnexus result and edition confirmation before applying book metadata.",
+    ],
+  },
   {
     version: "10.0.31",
     date: "2026-06-02",
@@ -6056,6 +6078,10 @@ export default function Page() {
         audiobookDuration: safeStr(finalUpdates.audiobookDuration),
         genre: safeStr(finalUpdates.genre),
         tags: safeStr(finalUpdates.tags),
+        Narrator: safeStr(finalUpdates.narrator),
+        Publisher: safeStr(finalUpdates.publisher),
+        AudibleASIN: safeStr(finalUpdates.audibleAsin),
+        AudnexusASIN: safeStr(finalUpdates.audnexusAsin),
         OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
         GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
       },
@@ -6071,6 +6097,10 @@ export default function Page() {
       "My Rating": safeStr(finalUpdates.myRating),
       genre: safeStr(finalUpdates.genre),
       tags: safeStr(finalUpdates.tags),
+      Narrator: safeStr(finalUpdates.narrator),
+      Publisher: safeStr(finalUpdates.publisher),
+      AudibleASIN: safeStr(finalUpdates.audibleAsin),
+      AudnexusASIN: safeStr(finalUpdates.audnexusAsin),
       OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
       GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
     };
@@ -6084,6 +6114,10 @@ export default function Page() {
       "My Rating": safeStr(item?.myRating || item?.["My Rating"]),
       genre: safeStr(item?.genre || item?.categories),
       tags: safeStr(item?.tags || item?.Tag),
+      Narrator: safeStr(item?.narrator || item?.Narrator),
+      Publisher: safeStr(item?.publisher || item?.Publisher),
+      AudibleASIN: safeStr(item?.audibleAsin || item?.AudibleASIN || item?.["Audible Asin"] || item?.Audible_ASIN),
+      AudnexusASIN: safeStr(item?.audnexusAsin || item?.AudnexusASIN || item?.["Audnexus Asin"] || item?.Audnexus_ASIN),
       OpenLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
       GoogleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
     };
@@ -6155,6 +6189,10 @@ export default function Page() {
         categories: safeStr(finalUpdates.genre),
         genre: safeStr(finalUpdates.genre),
         tags: safeStr(finalUpdates.tags),
+        narrator: safeStr(finalUpdates.narrator),
+        publisher: safeStr(finalUpdates.publisher),
+        audibleAsin: safeStr(finalUpdates.audibleAsin),
+        audnexusAsin: safeStr(finalUpdates.audnexusAsin),
         openLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
         googleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
       };
@@ -6202,6 +6240,10 @@ export default function Page() {
         categories: safeStr(finalUpdates.genre),
         genre: safeStr(finalUpdates.genre),
         tags: safeStr(finalUpdates.tags),
+        narrator: safeStr(finalUpdates.narrator),
+        publisher: safeStr(finalUpdates.publisher),
+        audibleAsin: safeStr(finalUpdates.audibleAsin),
+        audnexusAsin: safeStr(finalUpdates.audnexusAsin),
         openLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
         googleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
       };
@@ -6252,6 +6294,10 @@ export default function Page() {
           genre: safeStr(finalUpdates.genre),
           tags: safeStr(finalUpdates.tags),
           Tag: safeStr(finalUpdates.tags),
+          Narrator: safeStr(finalUpdates.narrator),
+          Publisher: safeStr(finalUpdates.publisher),
+          AudibleASIN: safeStr(finalUpdates.audibleAsin),
+          AudnexusASIN: safeStr(finalUpdates.audnexusAsin),
           OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
           GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
         };
@@ -7198,7 +7244,7 @@ export default function Page() {
   const handleAddItemSelectResult = useCallback((type: AddExtendedType, data: Record<string, unknown>, bookFormat: string) => {
     setAddModalOpen(false);
     setAddModalInitialSelection(null);
-    const mediaType = (type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
+    const mediaType = (type === "book-audnexus" || type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
     setIsAddingNewItem(true);
     setAddNewItemType(mediaType === "book" ? "book" : mediaType);
     const prefill = bookFormat && mediaType === "book" ? { ...data, type: bookFormat } : data;
@@ -7220,7 +7266,7 @@ export default function Page() {
   const handleAddItemManually = useCallback((type: AddExtendedType, bookFormat: string) => {
     setAddModalOpen(false);
     setAddModalInitialSelection(null);
-    const mediaType = (type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
+    const mediaType = (type === "book-audnexus" || type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
     setIsAddingNewItem(true);
     setAddNewItemType(mediaType === "book" ? "book" : mediaType);
     const prefill: Record<string, unknown> = mediaType === "book" ? { type: bookFormat } : {};
@@ -7527,6 +7573,8 @@ export default function Page() {
       audiobookDuration: safeStr(values.audiobookDuration), genre: safeStr(values.genre),
       tags: safeStr(values.tags), OpenLibraryWorkKey: safeStr(values.openLibraryWorkKey),
       GoogleBooksVolumeId: safeStr(values.googleBooksVolumeId),
+      AudibleASIN: safeStr(values.audibleAsin), AudnexusASIN: safeStr(values.audnexusAsin),
+      Narrator: safeStr(values.narrator), Publisher: safeStr(values.publisher),
     };
     await postSheetWrite(booksWriteUrl, { action: "addBook", values: row }, "Failed to add book");
     setBookRows((prev) => [...prev, row]);
@@ -13708,6 +13756,12 @@ export default function Page() {
     { key: "abandoned", label: "Abandoned" },
   ];
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics" && nav !== "cover-sync";
+  const mobileBlockingOverlayOpen =
+    addModalOpen ||
+    bookDetailsEditOpen ||
+    movieDetailsEditOpen ||
+    tvDetailsEditOpen ||
+    gameDetailsEditOpen;
   const mobileSidebarShowsMediaFiltersOnly = nav === "books" || nav === "movies" || nav === "tv" || nav === "games";
   const isManualSortView =
     nav === "wishlist" ||
@@ -13723,7 +13777,26 @@ export default function Page() {
     setTvDetailItem(null);
     setGameDetailItem(null);
   }, []);
+  const closeMobileBlockingOverlay = useCallback(() => {
+    if (!addModalOpen && !bookDetailsEditOpen && !movieDetailsEditOpen && !tvDetailsEditOpen && !gameDetailsEditOpen) {
+      return false;
+    }
+    setAddModalOpen(false);
+    setAddModalInitialSelection(null);
+    setBookDetailsEditOpen(false);
+    setMovieDetailsEditOpen(false);
+    setTvDetailsEditOpen(false);
+    setGameDetailsEditOpen(false);
+    setGameDetailEditItem(null);
+    setCoverUploadError(null);
+    setIsAddingNewItem(false);
+    setAddNewItemType(null);
+    return true;
+  }, [addModalOpen, bookDetailsEditOpen, gameDetailsEditOpen, movieDetailsEditOpen, tvDetailsEditOpen]);
   const handleMobileBack = useCallback(() => {
+    if (closeMobileBlockingOverlay()) {
+      return;
+    }
     if (bookDetailItem || movieDetailItem || tvDetailItem || gameDetailItem) {
       closeAllDetails();
       return;
@@ -13748,12 +13821,13 @@ export default function Page() {
       return;
     }
     if (nav !== "home") setNav("home");
-  }, [bookDetailItem, closeAllDetails, gameDetailItem, mobileFullLibraryOpen, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
+  }, [bookDetailItem, closeAllDetails, closeMobileBlockingOverlay, gameDetailItem, mobileFullLibraryOpen, mobileSearchOpen, mobileSettingsOpen, mobileSidebarOpen, movieDetailItem, nav, tvDetailItem]);
   // Reorder mode is per-visit: leaving the view always turns it back off.
   useEffect(() => {
     setMobileSortEditMode(false);
   }, [nav]);
   const handleMobileHome = useCallback(() => {
+    closeMobileBlockingOverlay();
     closeAllDetails();
     setMobileFullLibraryOpen(false);
     setNav("home");
@@ -13761,7 +13835,7 @@ export default function Page() {
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
     setMobileSearchOpen(false);
-  }, [closeAllDetails]);
+  }, [closeAllDetails, closeMobileBlockingOverlay]);
   const handleMobileFullLibrary = useCallback(() => {
     closeAllDetails();
     activateHomeLibrary();
@@ -16214,7 +16288,7 @@ export default function Page() {
         </div>
       ) : null}
       {mobileBottomDockVisible ? (
-        <div style={mobileBottomDockStyle}>
+        <div style={{ ...mobileBottomDockStyle, zIndex: mobileBlockingOverlayOpen ? 9300 : mobileBottomDockStyle.zIndex }}>
           <div style={mobileBottomDockMainRailStyle}>
             <button
               type="button"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type SearchType = "book" | "book-apple" | "book-hardcover" | "tv" | "movie" | "game";
+type SearchType = "book" | "book-audnexus" | "book-apple" | "book-hardcover" | "tv" | "movie" | "game";
 
 type SearchResult = {
   id: string;
@@ -583,16 +583,41 @@ async function lookupTmdbById(type: "tv" | "movie", id: string): Promise<SearchR
   };
 }
 
-type ItunesBook = {
-  trackId?: number;
-  trackName?: string;
-  artistName?: string;
+type AudibleCatalogBook = {
+  asin?: string;
+  title?: string;
+  subtitle?: string;
+  authors?: Array<{ name?: string; asin?: string }>;
+  narrators?: Array<{ name?: string; asin?: string }>;
+  publisher_name?: string;
+  release_date?: string;
+  runtime_length_min?: number;
+  product_images?: Record<string, string>;
+  rating?: { overall_distribution?: { display_average_rating?: string | number } };
+  category_ladders?: Array<{ ladder?: Array<{ name?: string }> }>;
+  series?: Array<{ title?: string; sequence?: string | number }>;
+};
+
+type AudnexusBook = {
+  asin?: string;
+  authors?: Array<{ name?: string; asin?: string }>;
+  copyright?: number;
   description?: string;
-  artworkUrl512?: string;
-  artworkUrl100?: string;
-  genres?: string[];
+  formatType?: string;
+  genres?: Array<{ name?: string; type?: string }>;
+  image?: string;
+  isbn?: string;
+  language?: string;
+  literatureType?: string;
+  narrators?: Array<{ name?: string; asin?: string }>;
+  publisherName?: string;
+  rating?: string | number;
   releaseDate?: string;
-  averageUserRating?: number;
+  runtimeLengthMin?: number;
+  series?: Array<{ name?: string; position?: string | number }>;
+  subtitle?: string;
+  summary?: string;
+  title?: string;
 };
 
 type HardcoverSearchDocument = {
@@ -607,40 +632,197 @@ type HardcoverSearchDocument = {
   isbns?: string[];
 };
 
-async function searchAppleBooks(query: string, bookFormat: string): Promise<SearchResult[]> {
-  const isAudiobook = bookFormat.toLowerCase() === "audiobook";
-  const params = new URLSearchParams({
-    term: query,
-    entity: isAudiobook ? "audiobook" : "ebook",
-    media: isAudiobook ? "audiobook" : "ebook",
-    limit: "8",
-  });
-  const res = await fetch(`https://itunes.apple.com/search?${params.toString()}`, { cache: "no-store" });
-  const payload = (await res.json().catch(() => ({}))) as { results?: ItunesBook[]; errorMessage?: string };
-  if (!res.ok) throw new Error(payload.errorMessage || "Apple Books search failed.");
-  const list = Array.isArray(payload.results) ? payload.results : [];
-  return list.map((item) => {
-    const title = safeStr(item.trackName);
-    const author = safeStr(item.artistName);
-    const image = safeStr(item.artworkUrl512 || item.artworkUrl100).replace(/\d+x\d+bb/, "512x512bb");
-    const genre = Array.isArray(item.genres) ? item.genres.join(", ") : "";
-    const releaseDate = item.releaseDate ? item.releaseDate.slice(0, 10) : "";
-    const year = releaseDate ? releaseDate.slice(0, 4) : "";
-    return {
-      id: `book-apple:${String(item.trackId || title)}`,
+function stripHtml(value: string): string {
+  return safeStr(value)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function formatAudiobookDurationFromMinutes(minutes: number | null | undefined): string {
+  if (!minutes || !Number.isFinite(minutes) || minutes <= 0) return "";
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours <= 0) return `${mins}m`;
+  if (mins <= 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
+function formatAudnexusReleaseDate(value: unknown): string {
+  const raw = safeStr(value);
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  return raw;
+}
+
+function buildAudnexusSeriesLabel(series: AudnexusBook["series"] | AudibleCatalogBook["series"]): string {
+  if (!Array.isArray(series)) return "";
+  return series
+    .map((entry) => {
+      const seriesEntry = entry as { name?: string; title?: string; position?: string | number; sequence?: string | number };
+      const name = safeStr(seriesEntry.name || seriesEntry.title);
+      if (!name) return "";
+      const position = safeStr(seriesEntry.position || seriesEntry.sequence);
+      return position ? `${name} #${position}` : name;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function buildAudibleCatalogGenre(item: AudibleCatalogBook): string {
+  const names = new Set<string>();
+  for (const ladder of item.category_ladders || []) {
+    for (const node of ladder.ladder || []) {
+      const name = safeStr(node.name);
+      if (name) names.add(name);
+    }
+  }
+  return Array.from(names).slice(0, 6).join(", ");
+}
+
+function pickAudibleImage(item: AudibleCatalogBook): string {
+  const images = item.product_images || {};
+  return safeStr(
+    images["500"] ||
+    images["480"] ||
+    images["882"] ||
+    images["252"] ||
+    images["1215"] ||
+    Object.values(images).find(Boolean)
+  );
+}
+
+function mapAudibleCatalogBookToResult(item: AudibleCatalogBook): SearchResult {
+  const title = safeStr(item.title);
+  const subtitle = safeStr(item.subtitle);
+  const asin = safeStr(item.asin);
+  const author = (item.authors || []).map((person) => safeStr(person.name)).filter(Boolean).join(", ");
+  const narrator = (item.narrators || []).map((person) => safeStr(person.name)).filter(Boolean).join(", ");
+  const releaseDate = formatAudnexusReleaseDate(item.release_date);
+  const year = releaseDate.slice(0, 4);
+  const imageUrl = pickAudibleImage(item);
+  const runtime = formatAudiobookDurationFromMinutes(item.runtime_length_min);
+  return {
+    id: `book-audnexus:${asin || title}`,
+    title,
+    subtitle: [author, narrator ? `Narrated by ${narrator}` : ""].filter(Boolean).join(" · ") || undefined,
+    year: year || undefined,
+    imageUrl: imageUrl || undefined,
+    data: {
       title,
-      subtitle: author || undefined,
-      year: year || undefined,
-      imageUrl: image || undefined,
-      data: {
-        title, author,
-        description: safeStr(item.description),
-        genre, releaseDate,
-        imageUrl: image,
-        userRating: item.averageUserRating != null ? String(item.averageUserRating) : "",
-      },
-    };
+      subtitle,
+      author,
+      narrator,
+      publisher: safeStr(item.publisher_name),
+      releaseDate,
+      imageUrl,
+      genre: buildAudibleCatalogGenre(item),
+      audiobookDuration: runtime,
+      userRating: item.rating?.overall_distribution?.display_average_rating != null
+        ? String(item.rating.overall_distribution.display_average_rating)
+        : "",
+      series: buildAudnexusSeriesLabel(item.series),
+      type: "Audiobook",
+      audibleAsin: asin,
+      audnexusAsin: asin,
+      editionFormat: "Audiobook",
+    },
+  };
+}
+
+function mapAudnexusBookToResult(item: AudnexusBook): SearchResult {
+  const asin = safeStr(item.asin);
+  const title = safeStr(item.title);
+  const subtitle = safeStr(item.subtitle);
+  const author = (item.authors || []).map((person) => safeStr(person.name)).filter(Boolean).join(", ");
+  const narrator = (item.narrators || []).map((person) => safeStr(person.name)).filter(Boolean).join(", ");
+  const releaseDate = formatAudnexusReleaseDate(item.releaseDate);
+  const year = releaseDate.slice(0, 4);
+  const imageUrl = safeStr(item.image);
+  const genre = (item.genres || [])
+    .map((genreItem) => safeStr(genreItem.name))
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(", ");
+  const runtime = formatAudiobookDurationFromMinutes(item.runtimeLengthMin);
+  const seriesLabel = buildAudnexusSeriesLabel(item.series);
+  return {
+    id: `book-audnexus-edition:${asin || title}`,
+    title,
+    subtitle: [author, narrator ? `Narrated by ${narrator}` : ""].filter(Boolean).join(" · ") || undefined,
+    year: year || undefined,
+    imageUrl: imageUrl || undefined,
+    data: {
+      title,
+      subtitle,
+      author,
+      narrator,
+      publisher: safeStr(item.publisherName),
+      releaseDate,
+      description: stripHtml(safeStr(item.summary) || safeStr(item.description)),
+      genre,
+      imageUrl,
+      isbn: safeStr(item.isbn),
+      audiobookDuration: runtime,
+      userRating: item.rating != null ? String(item.rating) : "",
+      type: "Audiobook",
+      series: seriesLabel,
+      audibleAsin: asin,
+      audnexusAsin: asin,
+      editionFormat: item.formatType ? `Audiobook (${safeStr(item.formatType)})` : "Audiobook",
+      language: safeStr(item.language),
+      literatureType: safeStr(item.literatureType),
+    },
+  };
+}
+
+async function lookupAudnexusBook(asin: string): Promise<SearchResult | null> {
+  const cleanAsin = safeStr(asin);
+  if (!cleanAsin) return null;
+  const params = new URLSearchParams({ region: "us" });
+  const res = await fetch(`https://api.audnex.us/books/${encodeURIComponent(cleanAsin)}?${params.toString()}`, {
+    cache: "no-store",
   });
+  const payload = (await res.json().catch(() => ({}))) as AudnexusBook & { error?: { message?: string }; message?: string };
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(payload.error?.message || payload.message || "Audnexus book lookup failed.");
+  return mapAudnexusBookToResult(payload);
+}
+
+async function searchAudnexusAudiobooks(query: string): Promise<SearchResult[]> {
+  const params = new URLSearchParams({
+    keywords: query,
+    response_groups: "contributors,product_attrs,product_desc,media,product_extended_attrs,rating,series,category_ladders",
+    num_results: "10",
+    sort_by: "Relevance",
+  });
+  const res = await fetch(`https://api.audible.com/1.0/catalog/products?${params.toString()}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  const payload = (await res.json().catch(() => ({}))) as { products?: AudibleCatalogBook[]; message?: string };
+  if (!res.ok) throw new Error(payload.message || "Audnexus audiobook search failed.");
+  const list = Array.isArray(payload.products) ? payload.products : [];
+  const seen = new Set<string>();
+  return list
+    .filter((item) => {
+      const asin = safeStr(item.asin);
+      const title = safeStr(item.title);
+      const key = asin || title.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8)
+    .map(mapAudibleCatalogBookToResult);
 }
 
 async function searchHardcover(query: string, bookFormat: string): Promise<SearchResult[]> {
@@ -1098,7 +1280,7 @@ export async function GET(req: NextRequest) {
     return searchJson({ ok: false, error: "Missing query or lookupId." }, { status: 400 });
   }
 
-  if (!["book", "book-apple", "book-hardcover", "tv", "movie", "game"].includes(type)) {
+  if (!["book", "book-audnexus", "book-apple", "book-hardcover", "tv", "movie", "game"].includes(type)) {
     return searchJson({ ok: false, error: "Invalid media type." }, { status: 400 });
   }
 
@@ -1123,6 +1305,10 @@ export async function GET(req: NextRequest) {
         const editions = await lookupHardcoverEditions(lookupId, bookFormat);
         return searchJson({ ok: true, results: editions });
       }
+      if (type === "book-audnexus" || type === "book-apple") {
+        const audiobook = await lookupAudnexusBook(lookupId);
+        return searchJson({ ok: true, results: audiobook ? [audiobook] : [] });
+      }
       const lookupResult =
         type === "book"
           ? await lookupGoogleBookById(lookupId)
@@ -1143,8 +1329,8 @@ export async function GET(req: NextRequest) {
     const results =
       type === "book"
         ? await searchGoogleBooks(query)
-        : type === "book-apple"
-          ? await searchAppleBooks(query, bookFormat)
+        : type === "book-audnexus" || type === "book-apple"
+          ? await searchAudnexusAudiobooks(query)
           : type === "book-hardcover"
             ? await searchHardcover(query, bookFormat)
             : type === "tv"

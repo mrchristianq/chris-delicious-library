@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
-export type AddExtendedType = "movie" | "tv" | "game" | "book-apple" | "book-hardcover";
+export type AddExtendedType = "movie" | "tv" | "game" | "book-audnexus" | "book-apple" | "book-hardcover";
 
 type SearchResult = {
   id: string;
@@ -30,7 +30,7 @@ const TYPE_OPTIONS: Array<{ type: AddExtendedType; label: string; sub?: string; 
   { type: "movie",          label: "Movie",   emoji: "🎬" },
   { type: "tv",             label: "TV Show", emoji: "📺" },
   { type: "game",           label: "Game",    emoji: "🎮" },
-  { type: "book-apple",     label: "Book",    sub: "Apple Books",  emoji: "📚" },
+  { type: "book-audnexus",  label: "Book",    sub: "Audnexus",     emoji: "🎧" },
   { type: "book-hardcover", label: "Book",    sub: "Hardcover",    emoji: "📖" },
 ];
 
@@ -46,7 +46,8 @@ function safeStr(v: unknown): string {
 }
 
 function getApiType(type: AddExtendedType): string {
-  if (type === "book-apple")     return "book-apple";
+  if (type === "book-apple")     return "book-audnexus";
+  if (type === "book-audnexus")  return "book-audnexus";
   if (type === "book-hardcover") return "book-hardcover";
   return type;
 }
@@ -55,7 +56,8 @@ function typeLabel(type: AddExtendedType): string {
   if (type === "movie")          return "Movie";
   if (type === "tv")             return "TV Show";
   if (type === "game")           return "Game";
-  if (type === "book-apple")     return "Book (Apple Books)";
+  if (type === "book-apple")     return "Book (Audnexus)";
+  if (type === "book-audnexus")  return "Book (Audnexus)";
   if (type === "book-hardcover") return "Book (Hardcover)";
   return type;
 }
@@ -78,8 +80,9 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
   // Reset when opening
   useEffect(() => {
     if (!open) return;
-    setSelectedType(initialSelection?.type ?? null);
-    setBookFormat("Physical");
+    const initialType = initialSelection?.type ?? null;
+    setSelectedType(initialType);
+    setBookFormat(initialType === "book-audnexus" || initialType === "book-apple" ? "Audiobook" : "Physical");
     setQuery(safeStr(initialSelection?.query));
     setResults([]);
     setIsSearching(false);
@@ -135,8 +138,18 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
 
   if (!open) return null;
 
-  const isBook = selectedType === "book-apple" || selectedType === "book-hardcover";
-  const showBookFormatPicker = selectedType === "book-apple";
+  const isBook = selectedType === "book-audnexus" || selectedType === "book-apple" || selectedType === "book-hardcover";
+  const isAudnexusBook = selectedType === "book-audnexus" || selectedType === "book-apple";
+  const showBookFormatPicker = false;
+  const providerThumbnailSize = isAudnexusBook
+    ? { width: 48, height: 48 }
+    : { width: 48, height: 70 };
+  const editionThumbnailSize = isAudnexusBook
+    ? { width: 56, height: 56 }
+    : { width: 56, height: 82 };
+  const resultThumbnailSize = isAudnexusBook
+    ? { width: 66, height: 66 }
+    : { width: 66, height: 96 };
 
   const handleSearch = async () => {
     if (!selectedType || !query.trim()) return;
@@ -161,27 +174,29 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
   const handleSelectResult = async (result: SearchResult) => {
     if (!selectedType) return;
 
-    // For Hardcover books, drill into editions so the user can pick a specific one
-    // (e.g., audiobook vs paperback) instead of grabbing the canonical book record.
-    if (selectedType === "book-hardcover") {
-      const hardcoverBookId = safeStr((result.data as Record<string, unknown>)?.hardcoverBookId);
-      if (hardcoverBookId) {
+    // For provider-backed books, drill into a detail/edition confirmation step
+    // instead of blindly filling the edit form from the first search result.
+    if (selectedType === "book-hardcover" || isAudnexusBook) {
+      const lookupId = selectedType === "book-hardcover"
+        ? safeStr((result.data as Record<string, unknown>)?.hardcoverBookId)
+        : safeStr((result.data as Record<string, unknown>)?.audibleAsin || (result.data as Record<string, unknown>)?.audnexusAsin);
+      if (lookupId) {
         setHardcoverBook(result);
         setEditionResults([]);
         setEditionsError(null);
         setIsLoadingEditions(true);
         try {
           const params = new URLSearchParams({
-            type: "book-hardcover",
-            lookupId: hardcoverBookId,
-            bookFormat,
+            type: selectedType === "book-hardcover" ? "book-hardcover" : "book-audnexus",
+            lookupId,
+            bookFormat: selectedType === "book-hardcover" ? bookFormat : "Audiobook",
           });
           const res = await fetchMediaSearch(params);
           const payload = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; results?: SearchResult[] };
-          if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to load editions.");
+          if (!res.ok || !payload.ok) throw new Error(payload.error || "Failed to load edition details.");
           setEditionResults(Array.isArray(payload.results) ? payload.results : []);
         } catch (e: unknown) {
-          setEditionsError(e instanceof Error ? e.message : "Failed to load editions.");
+          setEditionsError(e instanceof Error ? e.message : "Failed to load edition details.");
         } finally {
           setIsLoadingEditions(false);
         }
@@ -191,9 +206,9 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
 
     const data: Record<string, unknown> = {
       ...result.data,
-      type: isBook ? bookFormat : undefined,
+      type: isAudnexusBook ? "Audiobook" : isBook ? bookFormat : undefined,
     };
-    onSelectResult(selectedType, data, bookFormat);
+    onSelectResult(selectedType, data, isAudnexusBook ? "Audiobook" : bookFormat);
   };
 
   const handleSelectEdition = (edition: SearchResult) => {
@@ -214,7 +229,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
 
   const handleAddManually = () => {
     if (!selectedType) return;
-    onAddManually(selectedType, bookFormat);
+    onAddManually(selectedType, isAudnexusBook ? "Audiobook" : bookFormat);
   };
 
   return (
@@ -277,7 +292,10 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
                 {TYPE_OPTIONS.map((opt) => (
                   <button
                     key={opt.type}
-                    onClick={() => setSelectedType(opt.type)}
+                    onClick={() => {
+                      setSelectedType(opt.type);
+                      if (opt.type === "book-audnexus") setBookFormat("Audiobook");
+                    }}
                     style={{
                       display: "flex",
                       flexDirection: "column",
@@ -316,7 +334,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
             </div>
           )}
 
-          {/* ── Editions view (Hardcover only, after a book is picked) ── */}
+          {/* ── Edition/detail view (provider-backed books, after a result is picked) ── */}
           {hardcoverBook && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
@@ -332,7 +350,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
               </button>
 
               <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 12px", background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: 12 }}>
-                <div style={{ width: 48, height: 70, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "rgba(149,161,178,0.18)", boxShadow: "0 2px 6px rgba(0,0,0,0.16)" }}>
+                <div style={{ ...providerThumbnailSize, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "rgba(149,161,178,0.18)", boxShadow: "0 2px 6px rgba(0,0,0,0.16)" }}>
                   {hardcoverBook.imageUrl ? (
                     <img src={hardcoverBook.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : null}
@@ -343,7 +361,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
                     <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hardcoverBook.subtitle}</div>
                   )}
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginTop: 4 }}>
-                    {isLoadingEditions ? "Loading editions…" : `${editionResults.length} edition${editionResults.length !== 1 ? "s" : ""}`}
+                    {isLoadingEditions ? "Loading details…" : `${editionResults.length} edition${editionResults.length !== 1 ? "s" : ""}`}
                   </div>
                 </div>
               </div>
@@ -360,7 +378,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
 
               {!isLoadingEditions && !editionsError && editionResults.length === 0 && (
                 <div style={{ textAlign: "center", padding: "16px 0", fontSize: 12, color: "#9ca3af", fontWeight: 500 }}>
-                  No editions found for this book.
+                  No edition details found for this book.
                 </div>
               )}
 
@@ -394,7 +412,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
                         }}
                       >
                         <div style={{
-                          width: 56, height: 82, borderRadius: 6,
+                          ...editionThumbnailSize, borderRadius: 6,
                           overflow: "hidden", flexShrink: 0,
                           background: "rgba(149,161,178,0.18)",
                           boxShadow: "0 2px 8px rgba(0,0,0,0.14)",
@@ -432,7 +450,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
             </div>
           )}
 
-          {/* ── Step 2: Book format picker (Apple Books only — Hardcover lets you pick the edition later) ── */}
+          {/* ── Step 2: Book format picker ── */}
           {selectedType && showBookFormatPicker && !searched && !hardcoverBook && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: "#516279", letterSpacing: 0.2, textTransform: "uppercase" }}>
@@ -630,7 +648,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
                   >
                     {/* Cover thumbnail */}
                     <div style={{
-                      width: 66, height: 96, borderRadius: 8,
+                      ...resultThumbnailSize, borderRadius: 8,
                       overflow: "hidden", flexShrink: 0,
                       background: "rgba(149,161,178,0.18)",
                       border: "1px solid rgba(149,161,178,0.22)",
