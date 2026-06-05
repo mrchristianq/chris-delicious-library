@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
@@ -10,6 +10,10 @@ type MovieDetailsEditModalProps = {
   onClose: () => void;
   onSave: (item: Record<string, unknown>, updates: Record<string, string>) => Promise<void> | void;
   onSaved?: () => void;
+  onReplaceCover?: (item: Record<string, unknown>, file: File) => Promise<void> | void;
+  onSyncCoverToR2?: (item: Record<string, unknown>, sourceUrl: string) => Promise<void> | void;
+  isReplacingCover?: boolean;
+  replaceCoverError?: string | null;
   isNew?: boolean;
 };
 
@@ -48,7 +52,6 @@ const MOVIE_FIELDS: FieldDef[] = [
   { key: "tags",        label: "Tags" },
   { key: "posterUrl",     label: "Poster URL" },
   { key: "backdropUrl",   label: "Backdrop URL" },
-  { key: "customImageUrl", label: "Custom Cover URL" },
   { key: "overview",      label: "Overview",        multiline: true },
 ];
 
@@ -115,7 +118,6 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     overview:    firstNonEmpty(item, ["overview", "Overview"]),
     posterUrl:      firstNonEmpty(item, ["posterUrl", "PosterURL"]),
     backdropUrl:    firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
-    customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
   };
   for (const key of Object.keys(raw)) {
     if (key.toLowerCase().includes("date")) {
@@ -164,7 +166,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: string
   return <input type={field.isDate ? "date" : "text"} value={value} onChange={(e) => onChange(e.target.value)} style={INPUT_STYLE} />;
 }
 
-export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, isNew }: MovieDetailsEditModalProps) {
+export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, onReplaceCover, onSyncCoverToR2, isReplacingCover = false, replaceCoverError, isNew }: MovieDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -175,6 +177,7 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncDiff, setSyncDiff] = useState<DiffRow[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -219,6 +222,9 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
   if (!open || !item) return null;
 
   const posterUrl = values.posterUrl || safeStr(item.posterUrl) || safeStr(item.PosterURL);
+  const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+  const r2BackdropUrl = safeStr(item?.r2BackdropUrl || item?.R2BackdropUrl);
+  const displayedPosterUrl = r2CoverUrl || posterUrl;
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
   const handleSave = async () => {
@@ -520,14 +526,21 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
 
           {/* Cover panel */}
           <div style={{
-            border: "1px solid rgba(167,177,191,0.42)", borderRadius: 12,
-            background: "rgba(255,255,255,0.78)", padding: 10,
-            display: "flex", flexDirection: "column", gap: 8,
+            border: "1px solid rgba(167,177,191,0.34)", borderRadius: 14,
+            background: "linear-gradient(180deg,rgba(255,255,255,0.9),rgba(246,249,253,0.88))", padding: 12,
+            display: "flex", flexDirection: "column", gap: 10,
+            boxShadow: "0 8px 24px rgba(31,45,61,0.08)",
           }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
-            {posterUrl ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 850, letterSpacing: 0.35, color: "#3f4d61" }}>ARTWORK</div>
+              <span style={{ borderRadius: 999, padding: "3px 8px", fontSize: 10, fontWeight: 800, color: r2CoverUrl ? "#0f766e" : "#806200", background: r2CoverUrl ? "rgba(15,118,110,0.1)" : "rgba(245,158,11,0.12)" }}>
+                {r2CoverUrl ? "R2 ready" : "Needs sync"}
+              </span>
+            </div>
+            <div style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,0.72)", border: "1px solid rgba(167,177,191,0.24)" }}>
+            {displayedPosterUrl ? (
               <img
-                src={posterUrl}
+                src={displayedPosterUrl}
                 alt={safeStr(item.title) || "Movie poster"}
                 style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 280, ...COVER_IMAGE_RADIUS_STYLE }}
               />
@@ -541,20 +554,54 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, is
                 No poster
               </div>
             )}
-            <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}>
-              <strong>PosterURL:</strong> {posterUrl || "—"}
             </div>
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP</div>
-              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
-                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
-                <span><strong>Cover:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
-              </div>
-              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
-                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2BackdropUrl) ? "✓" : "○"}</span>
-                <span><strong>Backdrop:</strong> {safeStr(item?.r2BackdropUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
-              </div>
+            <div style={{ display: "grid", gap: 7 }}>
+              <button
+                type="button"
+                disabled={isReplacingCover || !posterUrl || !onSyncCoverToR2}
+                onClick={async () => {
+                  if (!posterUrl || !onSyncCoverToR2) return;
+                  await Promise.resolve(onSyncCoverToR2(item, posterUrl));
+                }}
+                style={{ border: "1px solid rgba(15,118,110,0.34)", borderRadius: 10, padding: "9px 10px", fontSize: 12, fontWeight: 800, cursor: isReplacingCover || !posterUrl || !onSyncCoverToR2 ? "default" : "pointer", background: "linear-gradient(180deg,rgba(236,253,245,0.98),rgba(209,250,229,0.88))", color: isReplacingCover || !posterUrl || !onSyncCoverToR2 ? "#8a929d" : "#0f766e" }}
+              >
+                {isReplacingCover ? "Updating..." : "Use metadata artwork"}
+              </button>
+              <button
+                type="button"
+                disabled={isReplacingCover || !onReplaceCover}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ border: "1px solid rgba(149,161,178,0.42)", borderRadius: 10, padding: "9px 10px", background: "rgba(255,255,255,0.95)", color: isReplacingCover || !onReplaceCover ? "#8a929d" : "#243244", fontSize: 12, fontWeight: 800, cursor: isReplacingCover || !onReplaceCover ? "default" : "pointer" }}
+              >
+                {isReplacingCover ? "Uploading..." : "Choose custom artwork"}
+              </button>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file || !onReplaceCover) return;
+                await Promise.resolve(onReplaceCover(item, file));
+              }}
+            />
+            {replaceCoverError ? <div style={{ color: "#b4232f", fontSize: 11 }}>{replaceCoverError}</div> : null}
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}><span>Default artwork</span><strong style={{ color: posterUrl ? "#0f766e" : "#8a929d" }}>{posterUrl ? "Available" : "Missing"}</strong></div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}><span>Displayed cover</span><strong style={{ color: r2CoverUrl ? "#0f766e" : "#8a929d" }}>{r2CoverUrl ? "Stored in R2" : "Using default"}</strong></div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}><span>Backdrop</span><strong style={{ color: r2BackdropUrl ? "#0f766e" : "#8a929d" }}>{r2BackdropUrl ? "Stored in R2" : "Pending"}</strong></div>
+            </div>
+            <details style={{ borderTop: "1px solid rgba(149,161,178,0.24)", paddingTop: 8 }}>
+              <summary style={{ cursor: "pointer", color: "#66758a", fontSize: 10.5, fontWeight: 750 }}>Source details</summary>
+              <div style={{ marginTop: 7, display: "grid", gap: 5 }}>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>Default:</strong> {posterUrl || "—"}</div>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2:</strong> {r2CoverUrl || "—"}</div>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>Backdrop:</strong> {r2BackdropUrl || "—"}</div>
+              </div>
+            </details>
           </div>
 
           {/* Fields panel */}

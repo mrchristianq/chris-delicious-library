@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
@@ -10,6 +10,10 @@ type GameDetailsEditModalProps = {
   onClose: () => void;
   onSave: (item: Record<string, unknown>, updates: Record<string, string>) => Promise<void> | void;
   onSaved?: () => void;
+  onReplaceCover?: (item: Record<string, unknown>, file: File) => Promise<void> | void;
+  onSyncCoverToR2?: (item: Record<string, unknown>, sourceUrl: string) => Promise<void> | void;
+  isReplacingCover?: boolean;
+  replaceCoverError?: string | null;
   isNew?: boolean;
   statusOptions?: string[];
   platformOptions?: string[];
@@ -47,7 +51,6 @@ const IGDB_SYNC_FIELDS: { key: string; label: string }[] = [
   { key: "developer",   label: "Developer" },
   { key: "description", label: "Description" },
   { key: "coverUrl",       label: "Cover URL" },
-  { key: "customImageUrl", label: "Custom Cover URL" },
 ];
 
 function safeStr(v: unknown): string {
@@ -123,7 +126,6 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     // URLs
     coverUrl:       firstNonEmpty(item, ["coverUrl", "CoverURL", "metadataCoverUrl"]),
     localCoverUrl:  firstNonEmpty(item, ["localCoverUrl", "LocalCoverURL"]),
-    customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "CustomImageURL"]),
     // Less common sheet columns
     platforms:      firstNonEmpty(item, ["platforms", "Platforms"]),
     backlog:        firstNonEmpty(item, ["backlog", "Backlog"]),
@@ -198,6 +200,10 @@ export function GameDetailsEditModal({
   onClose,
   onSave,
   onSaved,
+  onReplaceCover,
+  onSyncCoverToR2,
+  isReplacingCover = false,
+  replaceCoverError,
   isNew,
   statusOptions = [],
   platformOptions = [],
@@ -214,6 +220,7 @@ export function GameDetailsEditModal({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [syncDiff, setSyncDiff] = useState<DiffRow[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -282,7 +289,9 @@ export function GameDetailsEditModal({
     { key: "description",    label: "Description",        multiline: true, wide: true },
   ];
 
-  const coverDisplayUrl = values.localCoverUrl || values.coverUrl || safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl);
+  const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+  const defaultCoverUrl = values.coverUrl || safeStr(item.posterUrl) || safeStr(item.metadataCoverUrl);
+  const coverDisplayUrl = r2CoverUrl || values.localCoverUrl || defaultCoverUrl;
   const coverDisplaySrc = proxied(coverDisplayUrl);
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
@@ -560,11 +569,18 @@ export function GameDetailsEditModal({
 
           {/* Cover panel */}
           <div style={{
-            border: "1px solid rgba(167,177,191,0.42)", borderRadius: 12,
-            background: "rgba(255,255,255,0.78)", padding: 10,
-            display: "flex", flexDirection: "column", gap: 8,
+            border: "1px solid rgba(167,177,191,0.34)", borderRadius: 14,
+            background: "linear-gradient(180deg,rgba(255,255,255,0.9),rgba(246,249,253,0.88))", padding: 12,
+            display: "flex", flexDirection: "column", gap: 10,
+            boxShadow: "0 8px 24px rgba(31,45,61,0.08)",
           }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 850, letterSpacing: 0.35, color: "#3f4d61" }}>ARTWORK</div>
+              <span style={{ borderRadius: 999, padding: "3px 8px", fontSize: 10, fontWeight: 800, color: r2CoverUrl ? "#0f766e" : "#806200", background: r2CoverUrl ? "rgba(15,118,110,0.1)" : "rgba(245,158,11,0.12)" }}>
+                {r2CoverUrl ? "R2 ready" : "Needs sync"}
+              </span>
+            </div>
+            <div style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,0.72)", border: "1px solid rgba(167,177,191,0.24)" }}>
             {coverDisplaySrc ? (
               <img
                 src={coverDisplaySrc}
@@ -581,16 +597,52 @@ export function GameDetailsEditModal({
                 No cover
               </div>
             )}
-            <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}>
-              <strong>CoverURL:</strong> {values.coverUrl || "—"}
             </div>
-            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP</div>
-              <div style={{ fontSize: 9, color: "#3f4d61", display: "flex", alignItems: "flex-start", gap: 4 }}>
-                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
-                <span><strong>Cover:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>Backed up</span> : <span style={{ color: "#8a929d" }}>Pending</span>}</span>
+            <div style={{ display: "grid", gap: 7 }}>
+              <button
+                type="button"
+                disabled={isReplacingCover || !defaultCoverUrl || !onSyncCoverToR2}
+                onClick={async () => {
+                  if (!defaultCoverUrl || !onSyncCoverToR2) return;
+                  await Promise.resolve(onSyncCoverToR2(item, defaultCoverUrl));
+                }}
+                style={{ border: "1px solid rgba(15,118,110,0.34)", borderRadius: 10, padding: "9px 10px", fontSize: 12, fontWeight: 800, cursor: isReplacingCover || !defaultCoverUrl || !onSyncCoverToR2 ? "default" : "pointer", background: "linear-gradient(180deg,rgba(236,253,245,0.98),rgba(209,250,229,0.88))", color: isReplacingCover || !defaultCoverUrl || !onSyncCoverToR2 ? "#8a929d" : "#0f766e" }}
+              >
+                {isReplacingCover ? "Updating..." : "Use metadata artwork"}
+              </button>
+              <button
+                type="button"
+                disabled={isReplacingCover || !onReplaceCover}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ border: "1px solid rgba(149,161,178,0.42)", borderRadius: 10, padding: "9px 10px", background: "rgba(255,255,255,0.95)", color: isReplacingCover || !onReplaceCover ? "#8a929d" : "#243244", fontSize: 12, fontWeight: 800, cursor: isReplacingCover || !onReplaceCover ? "default" : "pointer" }}
+              >
+                {isReplacingCover ? "Uploading..." : "Choose custom artwork"}
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file || !onReplaceCover) return;
+                await Promise.resolve(onReplaceCover(item, file));
+              }}
+            />
+            {replaceCoverError ? <div style={{ color: "#b4232f", fontSize: 11 }}>{replaceCoverError}</div> : null}
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}><span>Default artwork</span><strong style={{ color: defaultCoverUrl ? "#0f766e" : "#8a929d" }}>{defaultCoverUrl ? "Available" : "Missing"}</strong></div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}><span>Displayed cover</span><strong style={{ color: r2CoverUrl ? "#0f766e" : "#8a929d" }}>{r2CoverUrl ? "Stored in R2" : "Using default"}</strong></div>
+            </div>
+            <details style={{ borderTop: "1px solid rgba(149,161,178,0.24)", paddingTop: 8 }}>
+              <summary style={{ cursor: "pointer", color: "#66758a", fontSize: 10.5, fontWeight: 750 }}>Source details</summary>
+              <div style={{ marginTop: 7, display: "grid", gap: 5 }}>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>Default:</strong> {defaultCoverUrl || "—"}</div>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2:</strong> {r2CoverUrl || "—"}</div>
               </div>
-            </div>
+            </details>
           </div>
 
           {/* Fields panel */}

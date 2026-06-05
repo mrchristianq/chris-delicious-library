@@ -14,6 +14,7 @@ type BookDetailsEditModalProps = {
   onSave: (item: Record<string, unknown>, updates: Record<string, string>) => Promise<void> | void;
   onSaved?: () => void;
   onReplaceCover: (item: Record<string, unknown>, file: File) => Promise<void> | void;
+  onSyncCoverToR2?: (item: Record<string, unknown>, sourceUrl: string) => Promise<void> | void;
   onCoverModeChange: (item: Record<string, unknown>, mode: "custom" | "default") => void;
   isNew?: boolean;
   statusOptions?: Array<{ value: string; label: string }>;
@@ -59,7 +60,6 @@ const createBookFields = (statusOptions?: Array<{ value: string; label: string }
     { key: "isbn",               label: "ISBN" },
     { key: "releaseDate",        label: "Release Date",      isDate: true },
     { key: "imageUrl",           label: "Image URL" },
-    { key: "customImageUrl",     label: "Custom URL" },
     { key: "userRating",         label: "User Rating" },
     { key: "myRating",           label: "My Rating" },
     { key: "pages",              label: "Pages" },
@@ -200,7 +200,6 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     isbn: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]),
     releaseDate: formatDateForInput(firstNonEmpty(item, ["releaseDate", "ReleaseDate"])),
     imageUrl: firstNonEmpty(item, ["imageUrl", "ImageURL", "Image URL"]),
-    customImageUrl: firstNonEmpty(item, ["customImageUrl", "CustomURL", "Custom URL", "CustomImageURL"]),
     userRating: firstNonEmpty(item, ["userRating", "UserRating", "externalAverageRating"]),
     myRating: firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]),
     pages: firstNonEmpty(item, ["pages", "Pages"]),
@@ -225,6 +224,7 @@ export function BookDetailsEditModal({
   onSave,
   onSaved,
   onReplaceCover,
+  onSyncCoverToR2,
   onCoverModeChange,
   isNew,
   statusOptions,
@@ -314,27 +314,16 @@ export function BookDetailsEditModal({
   );
 
   const customUrl = safeStr(customCoverCandidate?.url);
-  const defaultUrl = safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image);
-  const customSourceUrl = safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL);
+  const defaultUrl = safeStr(values.imageUrl || item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image);
+  const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
   const backupUrl = safeStr(item?.coverOverrideUrl || customUrl);
-  const activeMode = selectedMode;
-  const previewUrl = activeMode === "custom" ? customSourceUrl || defaultUrl || backupUrl : defaultUrl || customSourceUrl || backupUrl;
-  const hasCustomCover = Boolean(customSourceUrl);
+  const previewUrl = r2CoverUrl || defaultUrl || backupUrl;
+  const imageUrlSyncSource = defaultUrl;
 
   useEffect(() => {
     if (!open) return;
-    const nextMode = popupCoverMode || (customSourceUrl ? "custom" : "default");
-    setSelectedMode(nextMode);
-  }, [customSourceUrl, open, popupCoverMode]);
-
-  // Auto-sync custom cover URL to form field when a custom cover is uploaded
-  useEffect(() => {
-    if (!open || !customUrl) return;
-    // If there's a custom cover candidate but customImageUrl is empty, auto-populate it
-    if (customUrl && !safeStr(values.customImageUrl)) {
-      setValues((prev) => ({ ...prev, customImageUrl: customUrl }));
-    }
-  }, [open, customUrl, values.customImageUrl]);
+    setSelectedMode(popupCoverMode || "default");
+  }, [open, popupCoverMode]);
 
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
@@ -473,25 +462,7 @@ export function BookDetailsEditModal({
     setSaveSuccess(null);
     try {
       const nextValues = { ...values };
-      if (activeMode === "default") {
-        nextValues.customImageUrl = "";
-      } else if (!safeStr(nextValues.customImageUrl)) {
-        throw new Error("Custom mode requires a Custom URL (or upload a custom cover first).");
-      }
       await Promise.resolve(onSave(item, nextValues));
-      if (!isNew) {
-        onCoverModeChange(
-          {
-            ...item,
-            imageUrl: nextValues.imageUrl,
-            customImageUrl: nextValues.customImageUrl,
-            ImageURL: nextValues.imageUrl,
-            CustomURL: nextValues.customImageUrl,
-            CustomImageURL: nextValues.customImageUrl,
-          },
-          activeMode
-        );
-      }
       onSaved?.();
       onClose();
     } catch (error: unknown) {
@@ -712,9 +683,14 @@ export function BookDetailsEditModal({
 
         <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(184px, 220px) minmax(0,1fr)", gap: 12, padding: isMobileLayout ? 10 : 12 }}>
           {/* Cover panel */}
-          <div style={{ border: "1px solid rgba(167,177,191,0.42)", borderRadius: 12, background: "rgba(255,255,255,0.78)", padding: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3, color: "#516279" }}>COVER</div>
-            <div style={{ marginTop: 8 }}>
+          <div style={{ border: "1px solid rgba(167,177,191,0.34)", borderRadius: 14, background: "linear-gradient(180deg,rgba(255,255,255,0.9),rgba(246,249,253,0.88))", padding: 12, boxShadow: "0 8px 24px rgba(31,45,61,0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 850, letterSpacing: 0.35, color: "#3f4d61" }}>ARTWORK</div>
+              <span style={{ borderRadius: 999, padding: "3px 8px", fontSize: 10, fontWeight: 800, color: r2CoverUrl ? "#0f766e" : "#806200", background: r2CoverUrl ? "rgba(15,118,110,0.1)" : "rgba(245,158,11,0.12)" }}>
+                {r2CoverUrl ? "R2 ready" : "Needs sync"}
+              </span>
+            </div>
+            <div style={{ marginTop: 10, padding: 8, borderRadius: 12, background: "rgba(255,255,255,0.72)", border: "1px solid rgba(167,177,191,0.24)" }}>
               {previewUrl ? (
                 <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 250, ...COVER_IMAGE_RADIUS_STYLE }} />
               ) : (
@@ -723,28 +699,53 @@ export function BookDetailsEditModal({
                 </div>
               )}
             </div>
-            <div style={{ marginTop: 8, display: "inline-flex", border: "1px solid rgba(149,161,178,0.5)", borderRadius: 999, overflow: "hidden" }}>
-              <button type="button" onClick={() => setSelectedMode("default")} style={{ border: "none", padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", background: activeMode === "default" ? "rgba(32,94,252,0.14)" : "transparent", color: activeMode === "default" ? "#1a4dd7" : "#394b62" }}>Default</button>
-              <button type="button" onClick={() => setSelectedMode("custom")} style={{ border: "none", borderLeft: "1px solid rgba(149,161,178,0.5)", padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", background: activeMode === "custom" ? "rgba(32,94,252,0.14)" : "transparent", color: activeMode === "custom" ? "#1a4dd7" : "#394b62" }}>Custom</button>
+            <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+              <button
+                type="button"
+                disabled={isReplacingCover || !imageUrlSyncSource || !onSyncCoverToR2}
+                onClick={async () => {
+                  if (!imageUrlSyncSource || !onSyncCoverToR2) return;
+                  await Promise.resolve(onSyncCoverToR2(item, imageUrlSyncSource));
+                }}
+                style={{
+                  border: "1px solid rgba(15,118,110,0.34)",
+                  borderRadius: 10,
+                  padding: "9px 10px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: isReplacingCover || !imageUrlSyncSource || !onSyncCoverToR2 ? "default" : "pointer",
+                  background: "linear-gradient(180deg,rgba(236,253,245,0.98),rgba(209,250,229,0.88))",
+                  color: isReplacingCover || !imageUrlSyncSource || !onSyncCoverToR2 ? "#8a929d" : "#0f766e",
+                }}
+              >
+                {isReplacingCover ? "Updating..." : "Use metadata artwork"}
+              </button>
+              <button
+                type="button"
+                disabled={isReplacingCover}
+                onClick={() => fileInputRef.current?.click()}
+                style={{ border: "1px solid rgba(149,161,178,0.42)", borderRadius: 10, padding: "9px 10px", background: "rgba(255,255,255,0.95)", color: "#243244", fontSize: 12, fontWeight: 800, cursor: isReplacingCover ? "default" : "pointer" }}
+              >
+                {isReplacingCover ? "Uploading..." : "Choose custom artwork"}
+              </button>
             </div>
-            <div style={{ marginTop: 8, fontSize: 10.5, color: "#5f6e82" }}>
-              {activeMode === "default" ? "Using spreadsheet cover." : hasCustomCover ? "Using custom uploaded cover." : "No custom cover yet. Upload one below."}
-            </div>
-            <div style={{ marginTop: 8, display: "grid", gap: 5 }}>
-              <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>ImageURL:</strong> {defaultUrl || "—"}</div>
-              <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>CustomURL:</strong> {customSourceUrl || "—"}</div>
-              <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2 Backup:</strong> {backupUrl || "—"}</div>
-            </div>
-            <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid rgba(149,161,178,0.3)", display: "grid", gap: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#516279", letterSpacing: 0.3 }}>R2 BACKUP STATUS</div>
-              <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all", display: "flex", alignItems: "flex-start", gap: 6 }}>
-                <span style={{ flex: "0 0 auto", marginTop: 2 }}>{safeStr(item?.r2CoverUrl) ? "✓" : "○"}</span>
-                <span><strong>R2 Cover URL:</strong> {safeStr(item?.r2CoverUrl) ? <span style={{ color: "#0b7f3f" }}>{safeStr(item?.r2CoverUrl)}</span> : <span style={{ color: "#8a929d" }}>Not backed up yet</span>}</span>
+            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}>
+                <span>Default artwork</span>
+                <strong style={{ color: defaultUrl ? "#0f766e" : "#8a929d" }}>{defaultUrl ? "Available" : "Missing"}</strong>
               </div>
-              {!safeStr(item?.r2CoverUrl) && (defaultUrl || customSourceUrl) && (
-                <div style={{ fontSize: 10, color: "#8a929d" }}>Will be backed up when you save this item.</div>
-              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}>
+                <span>Displayed cover</span>
+                <strong style={{ color: r2CoverUrl ? "#0f766e" : "#8a929d" }}>{r2CoverUrl ? "Stored in R2" : "Using default"}</strong>
+              </div>
             </div>
+            <details style={{ marginTop: 10, borderTop: "1px solid rgba(149,161,178,0.24)", paddingTop: 8 }}>
+              <summary style={{ cursor: "pointer", color: "#66758a", fontSize: 10.5, fontWeight: 750 }}>Source details</summary>
+              <div style={{ marginTop: 7, display: "grid", gap: 5 }}>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>Default:</strong> {defaultUrl || "—"}</div>
+                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2:</strong> {r2CoverUrl || "—"}</div>
+              </div>
+            </details>
             <input
               ref={fileInputRef}
               type="file"
@@ -757,14 +758,6 @@ export function BookDetailsEditModal({
                 await Promise.resolve(onReplaceCover(item, file));
               }}
             />
-            <button
-              type="button"
-              disabled={isReplacingCover}
-              onClick={() => fileInputRef.current?.click()}
-              style={{ marginTop: 8, width: "100%", border: "1px solid rgba(149,161,178,0.5)", borderRadius: 9, padding: "8px 9px", background: "rgba(255,255,255,0.9)", color: "#243244", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-            >
-              {isReplacingCover ? "Uploading..." : "Upload Custom Cover"}
-            </button>
             {replaceCoverError ? <div style={{ marginTop: 6, color: "#b4232f", fontSize: 11 }}>{replaceCoverError}</div> : null}
           </div>
 

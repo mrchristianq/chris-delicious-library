@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.36";
+const APP_VERSION = "10.0.42";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,48 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.42",
+    date: "2026-06-05",
+    notes: [
+      "Polished the edit artwork panels so cover actions look like app controls and technical source URLs stay tucked behind source details.",
+    ],
+  },
+  {
+    version: "10.0.41",
+    date: "2026-06-05",
+    notes: [
+      "Simplified cover editing across books, movies, TV shows, and games so Default is metadata and R2 is the displayed/custom cover.",
+    ],
+  },
+  {
+    version: "10.0.40",
+    date: "2026-06-05",
+    notes: [
+      "Changed the book cover repair action to explicitly sync ImageURL to R2 and fixed the edit panel R2 status display.",
+    ],
+  },
+  {
+    version: "10.0.39",
+    date: "2026-06-05",
+    notes: [
+      "Added a book edit cover Sync R2 action that backs up the current ImageURL or CustomURL to R2 without needing a metadata diff.",
+    ],
+  },
+  {
+    version: "10.0.38",
+    date: "2026-06-05",
+    notes: [
+      "Fixed Audnexus book cover saves so the selected ImageURL refreshes the R2 backup cover while R2 remains the primary display source.",
+    ],
+  },
+  {
+    version: "10.0.37",
+    date: "2026-06-03",
+    notes: [
+      "Updated Audnexus book cover sync so selected audiobook artwork also refreshes CustomURL and the active display cover.",
+    ],
+  },
   {
     version: "10.0.36",
     date: "2026-06-03",
@@ -1873,11 +1915,7 @@ function getBookImageUrl(item: any): string {
 }
 
 function getBookSourceUrlByMode(item: any, _mode?: "custom" | "default"): string {
-  const imageUrl = getBookImageUrl(item);
-  const customUrl = getBookCustomUrl(item);
-
-  // For books, custom URL is always the source of truth when present.
-  return customUrl || imageUrl;
+  return getBookImageUrl(item);
 }
 
 function getDisplayCover(item: any, mediaType: "book" | "movie" | "tv" | "game"): string {
@@ -2133,12 +2171,12 @@ function rowToShow(r: Row): Show | null {
   const csvCustomUrl = safeStr(r["CustomURL"]) || safeStr(r["CustomImageURL"]);
   const csvPosterUrl = safeStr(r["PosterURL"]);
   const csvPoster = safeStr(r["Poster"]);
-  const metadataCoverUrl = csvCustomUrl || csvPosterUrl || csvPoster;
+  const metadataCoverUrl = csvPosterUrl || csvPoster;
   const { posterUrl, coverSource, coverCandidates } = chooseCover([
-    { label: "CustomURL", url: csvCustomUrl },
     { label: "PosterURL", url: csvPosterUrl },
     { label: "Poster", url: csvPoster },
     { label: "Generated GitHub Cover", url: githubUrl },
+    { label: "Legacy CustomURL", url: csvCustomUrl },
   ]);
 
   return {
@@ -2220,13 +2258,13 @@ function rowToBook(r: Row): Book | null {
     safeStr(r["\"CustomImageURL"]) ||
     safeStr(r["CustomImageURL\n"]);
   const imageUrl = safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]);
-  const metadataCoverUrl = customImageUrl || imageUrl;
+  const metadataCoverUrl = imageUrl;
   const csvUrl = metadataCoverUrl;
   const orderedCandidates: CoverCandidate[] = [
-    { label: "CustomImageURL", url: customImageUrl },
     { label: "ImageURL", url: imageUrl },
     { label: "GitHubCoverURL", url: githubCoverUrl || "" },
     { label: "Generated GitHub Cover", url: generatedGitHubUrl },
+    { label: "Legacy CustomImageURL", url: customImageUrl },
   ];
   const { posterUrl, coverSource, coverCandidates } = chooseCover(orderedCandidates);
   const rawBookGenre =
@@ -2239,7 +2277,7 @@ function rowToBook(r: Row): Book | null {
     metadataCoverUrl: metadataCoverUrl || undefined,
     coverSource,
     coverCandidates,
-    posterUrlFallback: csvUrl || customImageUrl || githubCoverUrl || generatedGitHubUrl || undefined,
+    posterUrlFallback: csvUrl || githubCoverUrl || generatedGitHubUrl || customImageUrl || undefined,
     cover: safeStr(r["Cover"]) || safeStr(r["CoverURL"]) || undefined,
     subtitle: safeStr(r["Subtitle"]) || undefined,
     author: safeStr(r["Author"]) || undefined,
@@ -2291,13 +2329,13 @@ function rowToMovie(r: Row): Movie | null {
   const csvCustomUrl = safeStr(r["CustomURL"]) || safeStr(r["CustomImageURL"]);
   const csvPosterUrl = safeStr(r["PosterURL"]);
   const csvPoster = safeStr(r["Poster"]);
-  const metadataCoverUrl = csvCustomUrl || csvPosterUrl || csvPoster;
+  const metadataCoverUrl = csvPosterUrl || csvPoster;
   const csvUrl = metadataCoverUrl;
   const { posterUrl, coverSource, coverCandidates } = chooseCover([
-    { label: "CustomURL", url: csvCustomUrl },
     { label: "PosterURL", url: csvPosterUrl },
     { label: "Poster", url: csvPoster },
     { label: "Generated GitHub Cover", url: githubUrl },
+    { label: "Legacy CustomURL", url: csvCustomUrl },
   ]);
   return {
     title,
@@ -2352,13 +2390,13 @@ function rowToGame(r: Row): Game | null {
   const csvPosterUrl = safeStr(r["PosterURL"]);
   const csvPoster = safeStr(r["Poster"]);
   const csvCoverUrl = safeStr(r["CoverURL"]);
-  const metadataCoverUrl = csvCustomUrl || csvCoverUrl || csvPosterUrl || csvPoster;
+  const metadataCoverUrl = csvCoverUrl || csvPosterUrl || csvPoster;
   const { posterUrl, coverSource, coverCandidates } = chooseCover([
-    { label: "CustomURL", url: csvCustomUrl },
     { label: "CoverURL", url: csvCoverUrl },
     { label: "PosterURL", url: csvPosterUrl },
     { label: "Poster", url: csvPoster },
     { label: "Generated GitHub Cover", url: githubUrl },
+    { label: "Legacy CustomURL", url: csvCustomUrl },
   ]);
   return {
     title,
@@ -3957,12 +3995,14 @@ export default function Page() {
 
   const buildItemWithCoverSelection = (item: any, overrides: Record<string, string>) => {
     const itemKey = getMediaItemKey(item);
-    const coverMode = getPopupCoverModeForItem(item);
+    const mediaType = getMediaType(item);
     const overrideUrl = safeStr(overrides[itemKey]);
-    const metadataUrl =
-      getMediaType(item) === "book"
-        ? getBookSourceUrlByMode(item, coverMode)
-        : safeStr(item?.metadataCoverUrl) || safeStr(item?.posterUrl) || "";
+    const displayUrl = getDisplayCover(item, mediaType);
+    const sourceMetadataUrl =
+      mediaType === "book"
+        ? safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image)
+        : safeStr(item?.PosterURL || item?.posterUrl || item?.metadataCoverUrl || item?.CoverURL || item?.coverUrl || "");
+    const metadataUrl = displayUrl || sourceMetadataUrl;
     const fallbackUrl = safeStr(item?.posterUrlFallback);
     const existingCandidates = Array.isArray(item?.coverCandidates)
       ? item.coverCandidates.filter(
@@ -3979,9 +4019,10 @@ export default function Page() {
       coverCandidates.push({ label, url: normalizedUrl });
     };
 
-    if (overrideUrl) addCandidate("Override Cover", overrideUrl);
-    if (metadataUrl) addCandidate("Metadata Cover", metadataUrl);
+    if (metadataUrl) addCandidate("Displayed Cover", metadataUrl);
+    if (sourceMetadataUrl && sourceMetadataUrl !== metadataUrl) addCandidate("Default Cover", sourceMetadataUrl);
     if (fallbackUrl && fallbackUrl !== metadataUrl) addCandidate("Generated Backup", fallbackUrl);
+    if (overrideUrl && overrideUrl !== metadataUrl) addCandidate("Legacy Custom Cover", overrideUrl);
     for (const candidate of existingCandidates) {
       addCandidate(safeStr(candidate.label) || "Cover Candidate", safeStr(candidate.url));
     }
@@ -3989,11 +4030,11 @@ export default function Page() {
     return {
       ...item,
       itemKey,
-      posterUrl: overrideUrl || metadataUrl || fallbackUrl || "",
+      posterUrl: metadataUrl || fallbackUrl || overrideUrl || "",
       metadataCoverUrl: metadataUrl || undefined,
       posterUrlFallback: metadataUrl || fallbackUrl || undefined,
-      coverOverrideUrl: overrideUrl || undefined,
-      coverSource: overrideUrl ? "Override Cover" : "Metadata Cover",
+      coverOverrideUrl: undefined,
+      coverSource: "Displayed Cover",
       coverCandidates,
     };
   };
@@ -4007,8 +4048,8 @@ export default function Page() {
     const shouldPreferNativeArtwork = isNativeApp && typeof navigator !== "undefined" && navigator.onLine === false;
     const overrideUrl = safeStr(coverOverrides[itemKey]);
     const candidates = shouldPreferNativeArtwork
-      ? [overrideUrl, nativeCover, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean)
-      : [overrideUrl, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean);
+      ? [nativeCover, baseCover, safeStr(item?.posterUrlFallback), overrideUrl].filter(Boolean)
+      : [baseCover, safeStr(item?.posterUrlFallback), overrideUrl].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
@@ -4021,8 +4062,8 @@ export default function Page() {
     const nativeCover = safeStr(item?.nativeCoverUrl || item?.NativeCoverUrl);
     const overrideUrl = safeStr(coverOverrides[itemKey]);
     const candidates = isNativeApp
-      ? [overrideUrl, nativeCover, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean)
-      : [overrideUrl, baseCover, safeStr(item?.posterUrlFallback)].filter(Boolean);
+      ? [nativeCover, baseCover, safeStr(item?.posterUrlFallback), overrideUrl].filter(Boolean)
+      : [baseCover, safeStr(item?.posterUrlFallback), overrideUrl].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
     return uniqueCandidates.find((url) => !failed.has(url)) || "";
   };
@@ -4812,28 +4853,14 @@ export default function Page() {
     if (modalItem) {
       setModalItem((prev: any) => {
         if (!prev) return prev;
-        const itemKey = getMediaItemKey(prev);
-        const activeOverride = safeStr(coverOverrides[itemKey]);
-        const updated = buildItemWithCoverSelection(prev, coverOverrides);
-        // If there's a pending override, auto-sync it to the CustomURL field
-        if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
-          return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
-        }
-        return updated;
+        return buildItemWithCoverSelection(prev, coverOverrides);
       });
     }
 
     if (bookDetailItem) {
       setBookDetailItem((prev: any) => {
         if (!prev) return prev;
-        const updated = buildItemWithCoverSelection(prev, coverOverrides);
-        // If there's a pending override, auto-sync it to the CustomURL field
-        const itemKey = getMediaItemKey(prev);
-        const activeOverride = safeStr(coverOverrides[itemKey]);
-        if (activeOverride && !safeStr(prev.customImageUrl || prev.CustomURL || prev.CustomImageURL)) {
-          return { ...updated, customImageUrl: activeOverride, CustomURL: activeOverride, CustomImageURL: activeOverride };
-        }
-        return updated;
+        return buildItemWithCoverSelection(prev, coverOverrides);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5342,43 +5369,23 @@ export default function Page() {
       const syncedCoverUrl = safeStr(payload.remoteUrl) || uploadedUrl;
       console.log(`[Cover Upload] Got uploaded URL: ${uploadedUrl}`);
 
-      setCoverOverrides((prev) => {
-        const next = { ...prev, [itemKey]: uploadedUrl };
-        console.log(`[Cover Upload] Updated coverOverrides:`, { itemKey, uploadedUrl });
-        try {
-          localStorage.setItem("cdlCoverOverrides", JSON.stringify(next));
-        } catch (e) {
-          console.warn("Failed to persist cover overrides locally:", e);
-        }
-        return next;
-      });
-
-      if (settingsWriteUrl) {
-        saveSettingToSheet(
-          `coverOverride:${itemKey}`,
-          syncedCoverUrl,
-          "Cover Overrides",
-          `${mediaType} cover override for ${safeStr(item?.title)}`
-        );
-      }
-
-      // Persist replacement as R2 cover override in sheet (do not overwrite source metadata URLs)
+      // Persist replacement as the displayed R2 cover (do not overwrite source metadata URLs).
       const title = safeStr(item?.title || item?.Title);
       const replacementDate = new Date().toISOString();
       if (mediaType === "movie" && moviesWriteUrl) {
-        postSheetWrite(moviesWriteUrl, {
+        await postSheetWrite(moviesWriteUrl, {
           action: "updateMovie",
           match: { tmdbId: safeStr(item?.tmdbId), title },
           updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
-        }, "Failed to save movie R2 cover").catch(() => {});
+        }, "Failed to save movie R2 cover");
       } else if (mediaType === "tv" && showsWriteUrl) {
-        postSheetWrite(showsWriteUrl, {
+        await postSheetWrite(showsWriteUrl, {
           action: "updateShow",
           match: { tmdbId: safeStr(item?.tmdbId), title },
           updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
-        }, "Failed to save TV show R2 cover").catch(() => {});
+        }, "Failed to save TV show R2 cover");
       } else if (mediaType === "game" && gamesWriteUrl) {
-        postSheetWrite(gamesWriteUrl, {
+        await postSheetWrite(gamesWriteUrl, {
           action: "updateGame",
           match: {
             igdbId: safeStr(item?.igdbId || item?.IGDB_ID),
@@ -5386,43 +5393,32 @@ export default function Page() {
             platform: safeStr(item?.platform || item?.Platform || item?.__renderPlatform),
           },
           updates: { R2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
-        }, "Failed to save game R2 cover").catch(() => {});
+        }, "Failed to save game R2 cover");
       } else if (mediaType === "book" && booksWriteUrl) {
         const bookMatch = buildBookSheetMatch(item);
-        postSheetWrite(booksWriteUrl, {
+        await postSheetWrite(booksWriteUrl, {
           action: "updateBook",
           match: bookMatch,
           updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
-        }, "Failed to save book R2 cover").catch(() => {});
+        }, "Failed to save book R2 cover");
       }
 
-      setModalItem((prev: any) => {
-        if (!prev) return prev;
-        const newCoverOverrides = { ...coverOverrides, [itemKey]: uploadedUrl };
-        console.log(`[Cover Upload] Setting modal item with override:`, {
-          itemKey,
-          uploadedUrl: uploadedUrl.substring(0, 50),
-          newCoverOverridesCount: Object.keys(newCoverOverrides).length
-        });
-        const updatedItem = buildItemWithCoverSelection(prev, newCoverOverrides);
-        console.log(`[Cover Upload] Modal item updated:`, {
-          itemKey: getMediaItemKey(updatedItem),
-          posterUrl: updatedItem?.posterUrl?.substring(0, 50),
-          coverOverrideUrl: updatedItem?.coverOverrideUrl?.substring(0, 50),
-          hasOverride: Boolean(updatedItem?.coverOverrideUrl)
-        });
-        return updatedItem;
-      });
-
-      setBookDetailItem((prev: any) => {
+      const withUploadedR2Cover = (prev: any) => {
         if (!prev) return prev;
         const matchesKey = getMediaItemKey(prev) === itemKey;
-        console.log(`[Cover Upload] BookDetail itemKey match:`, matchesKey, getMediaItemKey(prev), itemKey);
         if (!matchesKey) return prev;
-        const updatedItem = buildItemWithCoverSelection(prev, { ...coverOverrides, [itemKey]: uploadedUrl });
-        console.log(`[Cover Upload] BookDetail item updated, displayUrl:`, updatedItem?.posterUrl);
-        return updatedItem;
-      });
+        return buildItemWithCoverSelection(
+          { ...prev, R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate, r2CoverUrlDate: replacementDate },
+          coverOverrides
+        );
+      };
+
+      setModalItem((prev: any) => withUploadedR2Cover(prev));
+      setBookDetailItem((prev: any) => withUploadedR2Cover(prev));
+      setMovieDetailItem((prev: any) => withUploadedR2Cover(prev));
+      setTvDetailItem((prev: any) => withUploadedR2Cover(prev));
+      setGameDetailItem((prev: any) => withUploadedR2Cover(prev));
+      setGameDetailEditItem((prev: any) => withUploadedR2Cover(prev));
     } catch (e: any) {
       const msg = e?.message || "Failed to upload cover";
       setCoverUploadError(msg);
@@ -5649,9 +5645,13 @@ export default function Page() {
     cancelBackdropMigrationRef.current = true;
   };
 
-  const syncSingleItemCoverToR2 = async (item: any, mediaType: "book" | "movie" | "tv" | "game") => {
+  const syncSingleItemCoverToR2 = async (
+    item: any,
+    mediaType: "book" | "movie" | "tv" | "game",
+    sourceOverrideUrl?: string
+  ) => {
     try {
-      const displayUrl = getDisplayCover(item, mediaType);
+      const displayUrl = safeStr(sourceOverrideUrl) || getDisplayCover(item, mediaType);
       const existingR2Url = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
 
       if (!displayUrl) return;
@@ -5717,6 +5717,8 @@ export default function Page() {
           }
         }
       }
+
+      return r2Url;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "R2 sync failed";
       console.debug("Auto R2 sync failed (non-critical):", e);
@@ -5771,6 +5773,47 @@ export default function Page() {
       }
     })();
   };
+
+  const handleDetailsSyncCoverToR2 = async (item: any, sourceUrl: string) => {
+    if (!item) return;
+    const mediaType = getMediaType(item);
+    const itemKey = getMediaItemKey(item);
+    setUploadingCoverForKey(itemKey);
+    setCoverUploadError(null);
+    try {
+      const r2Url = await syncSingleItemCoverToR2(item, mediaType, sourceUrl);
+      const nextR2Url = safeStr(r2Url);
+      if (!nextR2Url) return;
+      const withR2Cover = (prev: any) => (
+        prev && getMediaItemKey(prev) === itemKey
+          ? buildItemWithCoverSelection({ ...prev, R2CoverUrl: nextR2Url, r2CoverUrl: nextR2Url }, coverOverrides)
+          : prev
+      );
+      setModalItem((prev: any) => (
+        withR2Cover(prev)
+      ));
+      setBookDetailItem((prev: any) => (
+        withR2Cover(prev)
+      ));
+      setMovieDetailItem((prev: any) => withR2Cover(prev));
+      setTvDetailItem((prev: any) => withR2Cover(prev));
+      setGameDetailItem((prev: any) => withR2Cover(prev));
+      setGameDetailEditItem((prev: any) => withR2Cover(prev));
+      setSyncState("ok");
+      setSyncMsg("R2 cover synced");
+      setLastSyncAt(Date.now());
+      setTimeout(() => {
+        setSyncMsg("Synced");
+      }, 1200);
+    } catch (e: any) {
+      setCoverUploadError(e?.message || "Failed to sync cover to R2");
+      throw e;
+    } finally {
+      setUploadingCoverForKey(null);
+    }
+  };
+
+  const handleBookDetailsSyncCoverToR2 = handleDetailsSyncCoverToR2;
 
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
     if (isNativeApp) {
@@ -6084,14 +6127,8 @@ export default function Page() {
       throw new Error("Unable to identify this book row to update.");
     }
 
-    // If there's a pending override, add it to updates so it gets persisted to the sheet
     const itemKey = getMediaItemKey(item);
-    const activeOverride = safeStr(coverOverrides[itemKey]);
     const finalUpdates = { ...updates };
-    if (activeOverride && !safeStr(updates.customImageUrl)) {
-      console.log(`[Save] Adding pending override to CustomURL for ${itemKey}:`, activeOverride.substring(0, 50));
-      finalUpdates.customImageUrl = activeOverride;
-    }
 
     const payload = {
       action: "updateBook",
@@ -6372,14 +6409,30 @@ export default function Page() {
     // Re-sync to pick up the canonical sheet values once published CSV refreshes.
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if:
-    // - imageUrl or customImageUrl were updated, OR
-    // - there's a cover override that hasn't been synced to R2 yet
-    // Note: finalUpdates includes the override if it was added above
-    if (safeStr(finalUpdates.imageUrl) || safeStr(finalUpdates.customImageUrl)) {
-      syncSingleItemCoverToR2(item, "book").catch(() => {
-        // Silently ignore sync failures
-      });
+    if (safeStr(finalUpdates.imageUrl)) {
+      const coverSourceForR2 = safeStr(finalUpdates.imageUrl);
+      const savedBookForCoverSync = {
+        ...item,
+        imageUrl: safeStr(finalUpdates.imageUrl),
+        ImageURL: safeStr(finalUpdates.imageUrl),
+      };
+      syncSingleItemCoverToR2(savedBookForCoverSync, "book", coverSourceForR2)
+        .then((r2Url) => {
+          const nextR2Url = safeStr(r2Url);
+          if (!nextR2Url) return;
+          setModalItem((prev: any) => (
+            prev ? buildItemWithCoverSelection({ ...prev, R2CoverUrl: nextR2Url, r2CoverUrl: nextR2Url }, coverOverrides) : prev
+          ));
+          setBookDetailItem((prev: any) => {
+            if (!prev || getMediaType(prev) !== "book") return prev;
+            const prevKey = getMediaItemKey(prev);
+            if (prevKey !== itemKey) return prev;
+            return buildItemWithCoverSelection({ ...prev, R2CoverUrl: nextR2Url, r2CoverUrl: nextR2Url }, coverOverrides);
+          });
+        })
+        .catch(() => {
+          // Silently ignore sync failures
+        });
     }
   };
 
@@ -6589,16 +6642,9 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if:
-    // - posterUrl was updated, OR
-    // - there's a cover override that hasn't been synced to R2 yet
     const itemKey = getMediaItemKey(item);
-    const activeOverride = safeStr(coverOverrides[itemKey]);
-    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
-    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
-
-    if (safeStr(updates.posterUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
-      syncSingleItemCoverToR2(item, "tv").catch(() => {
+    if (safeStr(updates.posterUrl)) {
+      syncSingleItemCoverToR2({ ...item, posterUrl: safeStr(updates.posterUrl), PosterURL: safeStr(updates.posterUrl) }, "tv", safeStr(updates.posterUrl)).catch(() => {
         // Silently ignore sync failures
       });
     }
@@ -6792,16 +6838,9 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if:
-    // - posterUrl was updated, OR
-    // - there's a cover override that hasn't been synced to R2 yet
     const itemKey = getMediaItemKey(item);
-    const activeOverride = safeStr(coverOverrides[itemKey]);
-    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
-    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
-
-    if (safeStr(updates.posterUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
-      syncSingleItemCoverToR2(item, "movie").catch(() => {
+    if (safeStr(updates.posterUrl)) {
+      syncSingleItemCoverToR2({ ...item, posterUrl: safeStr(updates.posterUrl), PosterURL: safeStr(updates.posterUrl) }, "movie", safeStr(updates.posterUrl)).catch(() => {
         // Silently ignore sync failures
       });
     }
@@ -7133,16 +7172,9 @@ export default function Page() {
 
     setRefreshNonce((n) => n + 1);
 
-    // Auto-sync cover to R2 in background (silently) if:
-    // - coverUrl was updated, OR
-    // - there's a cover override that hasn't been synced to R2 yet
     const itemKey = getMediaItemKey(item);
-    const activeOverride = safeStr(coverOverrides[itemKey]);
-    const currentR2Url = safeStr(item?.R2CoverUrl || item?.r2CoverUrl);
-    const hasPendingOverride = activeOverride && activeOverride !== currentR2Url;
-
-    if (safeStr(updates.coverUrl) || safeStr(updates.customImageUrl) || hasPendingOverride) {
-      syncSingleItemCoverToR2(item, "game").catch(() => {
+    if (safeStr(updates.coverUrl)) {
+      syncSingleItemCoverToR2({ ...item, coverUrl: safeStr(updates.coverUrl), CoverURL: safeStr(updates.coverUrl) }, "game", safeStr(updates.coverUrl)).catch(() => {
         // Silently ignore sync failures
       });
     }
@@ -23838,6 +23870,7 @@ export default function Page() {
         onSave={isAddingNewItem && addNewItemType === "book" ? handleSaveNewBook : handleSaveBookEdits}
         onSaved={triggerSaveToast}
         onReplaceCover={handleReplaceCover}
+        onSyncCoverToR2={handleBookDetailsSyncCoverToR2}
         onCoverModeChange={handleBookDetailsCoverModeChange}
         popupCoverMode={bookDetailItem ? getPopupCoverModeForItem(bookDetailItem) : undefined}
         isReplacingCover={Boolean(bookDetailItem && uploadingCoverForKey === getMediaItemKey(bookDetailItem))}
@@ -23855,6 +23888,10 @@ export default function Page() {
         }}
         onSave={isAddingNewItem && addNewItemType === "movie" ? handleSaveNewMovie : handleSaveMovieEdits}
         onSaved={triggerSaveToast}
+        onReplaceCover={handleReplaceCover}
+        onSyncCoverToR2={handleDetailsSyncCoverToR2}
+        isReplacingCover={Boolean(movieDetailItem && uploadingCoverForKey === getMediaItemKey(movieDetailItem))}
+        replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "movie"}
       />
 
@@ -23867,6 +23904,10 @@ export default function Page() {
         }}
         onSave={isAddingNewItem && addNewItemType === "tv" ? handleSaveNewTV : handleSaveShowEdits}
         onSaved={triggerSaveToast}
+        onReplaceCover={handleReplaceCover}
+        onSyncCoverToR2={handleDetailsSyncCoverToR2}
+        isReplacingCover={Boolean(tvDetailItem && uploadingCoverForKey === getMediaItemKey(tvDetailItem))}
+        replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "tv"}
       />
 
@@ -23880,6 +23921,10 @@ export default function Page() {
         }}
         onSave={isAddingNewItem && addNewItemType === "game" ? handleSaveNewGame : handleSaveGameEdits}
         onSaved={triggerSaveToast}
+        onReplaceCover={handleReplaceCover}
+        onSyncCoverToR2={handleDetailsSyncCoverToR2}
+        isReplacingCover={Boolean(gameDetailEditItem && uploadingCoverForKey === getMediaItemKey(gameDetailEditItem))}
+        replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "game"}
         statusOptions={gameStatusOptions}
         platformOptions={gamePlatformOptions}
