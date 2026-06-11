@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.42";
+const APP_VERSION = "10.0.45";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,27 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.45",
+    date: "2026-06-11",
+    notes: [
+      "Fixed Games Home Play Next so it uses the saved Play Next order immediately on first load.",
+    ],
+  },
+  {
+    version: "10.0.44",
+    date: "2026-06-11",
+    notes: [
+      "Added Play Next to Games Home using the same saved order as the main Play Next view.",
+    ],
+  },
+  {
+    version: "10.0.43",
+    date: "2026-06-05",
+    notes: [
+      "Fixed game home card labels so longer titles and date text have enough room and no longer clip.",
+    ],
+  },
   {
     version: "10.0.42",
     date: "2026-06-05",
@@ -14095,6 +14116,49 @@ export default function Page() {
   const sidebarDetailGradientActive = sidebarFloatOverPageBackground;
   const sidebarDetailShellBackground = sidebarShellBackground;
   const sidebarDetailBackplateOpacity = sidebarBackplateOpacity;
+
+  const orderedPlayNextForGamesHome = useMemo(() => {
+    const savedSortFieldRaw = safeStr(getSetting(PLAY_NEXT_SORT_FIELD_SETTING_KEY, MANUAL_SORT_FIELD));
+    const savedSortField = savedSortFieldRaw || MANUAL_SORT_FIELD;
+    const savedSortOrderRaw = safeStr(getSetting(PLAY_NEXT_SORT_ORDER_SETTING_KEY, "Asc"));
+    const savedSortOrder: "Asc" | "Desc" = savedSortOrderRaw === "Desc" ? "Desc" : "Asc";
+    const persistedPlayNextManualRaw = safeStr(getSetting(PLAY_NEXT_MANUAL_ORDER_SETTING_KEY, ""));
+    const persistedPlayNextManualKeys = (() => {
+      if (!persistedPlayNextManualRaw) return [] as string[];
+      try {
+        const parsed = JSON.parse(persistedPlayNextManualRaw);
+        if (!Array.isArray(parsed)) return [] as string[];
+        return parsed.map((entry) => safeStr(entry)).filter(Boolean);
+      } catch {
+        return [] as string[];
+      }
+    })();
+
+    if (savedSortField !== MANUAL_SORT_FIELD) {
+      return applySorting(playNextItems as any[], savedSortField, savedSortOrder)
+        .filter((item): item is Game & { __type: "game" } => Boolean(item) && (item as any).__type === "game");
+    }
+
+    const seen = new Set<string>();
+    const orderedKeys = [...persistedPlayNextManualKeys, ...resolvedPlayNextManualOrderKeys].filter((rawKey) => {
+      const key = safeStr(rawKey);
+      if (!key || seen.has(key)) return false;
+      if (!playNextItemsByKey.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return orderedKeys
+      .map((key) => playNextItemsByKey.get(key))
+      .filter((item): item is Game & { __type: "game" } => Boolean(item) && (item as any).__type === "game");
+  }, [
+    applySorting,
+    getSetting,
+    playNextItems,
+    playNextItemsByKey,
+    resolvedPlayNextManualOrderKeys,
+  ]);
+
   const gamesHomeData = useMemo(() => {
     const today = todayMidnight();
     const getReleaseDate = (game: Game) => safeStr(game.releaseDate);
@@ -14109,6 +14173,7 @@ export default function Page() {
       })
       .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
       .slice(0, isMobileLayout ? 4 : 6);
+    const playNext = orderedPlayNextForGamesHome.slice(0, isMobileLayout ? 8 : 14);
     const inProgressKeys = new Set(inProgress.map((game) => getMediaItemKey({ ...game, __type: "game" })));
     const newReleases = allGames
       .filter((game) => {
@@ -14174,6 +14239,7 @@ export default function Page() {
 
     return {
       inProgress,
+      playNext,
       newReleases,
       upcoming,
       recommended,
@@ -14187,7 +14253,7 @@ export default function Page() {
         trophies,
       },
     };
-  }, [allGames, hasWishlistOwnership, isMobileLayout, normalizeStatus]);
+  }, [allGames, hasWishlistOwnership, isMobileLayout, normalizeStatus, orderedPlayNextForGamesHome]);
 
   const orderedMovieWatchlistForHome = useMemo(() => {
     const savedSortFieldRaw = safeStr(getSetting(WATCHLIST_MOVIES_SORT_FIELD_SETTING_KEY, MANUAL_SORT_FIELD));
@@ -14822,11 +14888,11 @@ export default function Page() {
             }}
           />
         </div>
-        <div style={{ marginTop: 9, height: variant === "large" ? 42 : 36, display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "hidden" }}>
-          <div style={{ fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.08, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+        <div style={{ marginTop: 8, minHeight: variant === "large" ? 47 : 43, display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "visible" }}>
+          <div style={{ fontSize: variant === "large" ? 14 : 12, fontWeight: 900, lineHeight: 1.12, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", paddingBottom: 1 }}>
             {title}
           </div>
-          <div style={{ marginTop: 3, minHeight: 12, fontSize: 11, fontWeight: 800, lineHeight: 1.05, color: gamesHomeMutedColor }}>
+          <div style={{ marginTop: 2, minHeight: 13, fontSize: 11, fontWeight: 800, lineHeight: 1.12, color: gamesHomeMutedColor, paddingBottom: 1 }}>
             {meta || ""}
           </div>
         </div>
@@ -15096,6 +15162,7 @@ export default function Page() {
           }}
         >
           {renderGamesHomeRow("In Progress", gamesHomeData.inProgress, "large")}
+          {renderGamesHomeRow("Play Next", gamesHomeData.playNext, "standard")}
           {renderGamesHomeRow("New Releases", gamesHomeData.newReleases, "standard", "past")}
           {renderGamesHomeRow("Upcoming", gamesHomeData.upcoming, "standard", "future")}
           <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
