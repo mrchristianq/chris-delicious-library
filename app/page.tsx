@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.47";
+const APP_VERSION = "10.0.48";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.48",
+    date: "2026-06-14",
+    notes: [
+      "Prevented normal book saves from clearing the hidden artwork URL after uploading a custom R2 cover.",
+    ],
+  },
   {
     version: "10.0.47",
     date: "2026-06-14",
@@ -2327,9 +2334,11 @@ function rowToBook(r: Row): Book | null {
     safeStr(r["\"CustomImageURL"]) ||
     safeStr(r["CustomImageURL\n"]);
   const imageUrl = safeStr(r["ImageURL"]) || safeStr(r["Image URL"]) || safeStr(r["Image"]);
+  const r2CoverUrl = safeStr(r["R2CoverUrl"]);
   const metadataCoverUrl = imageUrl;
   const csvUrl = metadataCoverUrl;
   const orderedCandidates: CoverCandidate[] = [
+    { label: "R2CoverUrl", url: r2CoverUrl },
     { label: "ImageURL", url: imageUrl },
     { label: "GitHubCoverURL", url: githubCoverUrl || "" },
     { label: "Generated GitHub Cover", url: generatedGitHubUrl },
@@ -2377,7 +2386,7 @@ function rowToBook(r: Row): Book | null {
     coverSyncStatus: coverSyncStatus || undefined,
     wishlistOrder: safeStr(r["WishlistOrder"]) || undefined,
     queuedOrder: safeStr(r["QueuedOrder"]) || undefined,
-    r2CoverUrl: safeStr(r["R2CoverUrl"]) || undefined,
+    r2CoverUrl: r2CoverUrl || undefined,
     r2CoverUrlDate: safeStr(r["R2CoverUrl_Date"]) || undefined,
     hardcoverId: safeStr(r["HardcoverID"]) || undefined,
     audibleAsin: safeStr(r["AudibleASIN"]) || safeStr(r["Audible Asin"]) || safeStr(r["Audible_ASIN"]) || undefined,
@@ -6251,6 +6260,12 @@ export default function Page() {
     if (shouldMoveBookTypeToGenre(rawBookTypeForSave)) {
       finalUpdates.genre = appendUniqueCsvValue(safeStr(finalUpdates.genre), rawBookTypeForSave);
     }
+    const existingBookR2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
+    const existingBookCustomUrl = safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL);
+    const preservedBookArtworkUrl =
+      safeStr(finalUpdates.customImageUrl) ||
+      existingBookR2CoverUrl ||
+      existingBookCustomUrl;
 
     const payload = {
       action: "updateBook",
@@ -6276,8 +6291,9 @@ export default function Page() {
         ReleaseDate: safeStr(finalUpdates.releaseDate),
         description: safeStr(finalUpdates.description),
         ImageURL: safeStr(finalUpdates.imageUrl),
-        CustomURL: safeStr(finalUpdates.customImageUrl),
-        CustomImageURL: safeStr(finalUpdates.customImageUrl),
+        ...(preservedBookArtworkUrl
+          ? { CustomURL: preservedBookArtworkUrl, CustomImageURL: preservedBookArtworkUrl }
+          : {}),
         userRating: safeStr(finalUpdates.userRating),
         "My Rating": safeStr(finalUpdates.myRating),
         pages: safeStr(finalUpdates.pages),
@@ -6299,7 +6315,7 @@ export default function Page() {
       CompletedDate: safeStr(finalUpdates.completedDate),
       isbn: safeStr(finalUpdates.isbn),
       ReleaseDate: safeStr(finalUpdates.releaseDate),
-      CustomURL: safeStr(finalUpdates.customImageUrl),
+      ...(preservedBookArtworkUrl ? { CustomURL: preservedBookArtworkUrl } : {}),
       "My Rating": safeStr(finalUpdates.myRating),
       genre: safeStr(finalUpdates.genre),
       tags: safeStr(finalUpdates.tags),
@@ -6387,7 +6403,9 @@ export default function Page() {
         releaseDate: safeStr(finalUpdates.releaseDate),
         description: safeStr(finalUpdates.description),
         imageUrl: safeStr(finalUpdates.imageUrl),
-        customImageUrl: safeStr(finalUpdates.customImageUrl),
+        customImageUrl: preservedBookArtworkUrl,
+        CustomURL: preservedBookArtworkUrl,
+        CustomImageURL: preservedBookArtworkUrl,
         userRating: safeStr(finalUpdates.userRating),
         myRating: safeStr(finalUpdates.myRating),
         pages: safeStr(finalUpdates.pages),
@@ -6447,7 +6465,9 @@ export default function Page() {
         releaseDate: safeStr(finalUpdates.releaseDate),
         description: safeStr(finalUpdates.description),
         imageUrl: safeStr(finalUpdates.imageUrl),
-        customImageUrl: safeStr(finalUpdates.customImageUrl),
+        customImageUrl: preservedBookArtworkUrl,
+        CustomURL: preservedBookArtworkUrl,
+        CustomImageURL: preservedBookArtworkUrl,
         userRating: safeStr(finalUpdates.userRating),
         myRating: safeStr(finalUpdates.myRating),
         pages: safeStr(finalUpdates.pages),
@@ -6509,8 +6529,9 @@ export default function Page() {
           ReleaseDate: safeStr(finalUpdates.releaseDate),
           description: safeStr(finalUpdates.description),
           ImageURL: safeStr(finalUpdates.imageUrl),
-          CustomURL: safeStr(finalUpdates.customImageUrl),
-          CustomImageURL: safeStr(finalUpdates.customImageUrl),
+          ...(preservedBookArtworkUrl
+            ? { CustomURL: preservedBookArtworkUrl, CustomImageURL: preservedBookArtworkUrl }
+            : {}),
           userRating: safeStr(finalUpdates.userRating),
           "My Rating": safeStr(finalUpdates.myRating),
           pages: safeStr(finalUpdates.pages),
@@ -6531,25 +6552,45 @@ export default function Page() {
     // Re-sync to pick up the canonical sheet values once published CSV refreshes.
     setRefreshNonce((n) => n + 1);
 
-    if (safeStr(finalUpdates.imageUrl)) {
-      const coverSourceForR2 = safeStr(finalUpdates.imageUrl);
+    const nextBookImageUrl = safeStr(finalUpdates.imageUrl);
+    const previousBookImageUrl = safeStr(item?.imageUrl || item?.ImageURL || item?.["Image URL"] || item?.Image);
+    const shouldSyncDefaultArtworkToR2 = Boolean(nextBookImageUrl) && nextBookImageUrl !== previousBookImageUrl;
+
+    if (shouldSyncDefaultArtworkToR2) {
+      const coverSourceForR2 = nextBookImageUrl;
       const savedBookForCoverSync = {
         ...item,
-        imageUrl: safeStr(finalUpdates.imageUrl),
-        ImageURL: safeStr(finalUpdates.imageUrl),
+        imageUrl: nextBookImageUrl,
+        ImageURL: nextBookImageUrl,
       };
       syncSingleItemCoverToR2(savedBookForCoverSync, "book", coverSourceForR2)
         .then((r2Url) => {
           const nextR2Url = safeStr(r2Url);
           if (!nextR2Url) return;
           setModalItem((prev: any) => (
-            prev ? buildItemWithCoverSelection({ ...prev, R2CoverUrl: nextR2Url, r2CoverUrl: nextR2Url }, coverOverrides) : prev
+            prev
+              ? buildItemWithCoverSelection({
+                  ...prev,
+                  R2CoverUrl: nextR2Url,
+                  r2CoverUrl: nextR2Url,
+                  CustomURL: nextR2Url,
+                  CustomImageURL: nextR2Url,
+                  customImageUrl: nextR2Url,
+                }, coverOverrides)
+              : prev
           ));
           setBookDetailItem((prev: any) => {
             if (!prev || getMediaType(prev) !== "book") return prev;
             const prevKey = getMediaItemKey(prev);
             if (prevKey !== itemKey) return prev;
-            return buildItemWithCoverSelection({ ...prev, R2CoverUrl: nextR2Url, r2CoverUrl: nextR2Url }, coverOverrides);
+            return buildItemWithCoverSelection({
+              ...prev,
+              R2CoverUrl: nextR2Url,
+              r2CoverUrl: nextR2Url,
+              CustomURL: nextR2Url,
+              CustomImageURL: nextR2Url,
+              customImageUrl: nextR2Url,
+            }, coverOverrides);
           });
         })
         .catch(() => {
