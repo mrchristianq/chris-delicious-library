@@ -39,9 +39,10 @@ type DiffRow = {
 type BookSyncSource = "audnexus" | "hardcover";
 type SyncFieldDef = { key: string; label: string };
 
-const TYPE_OPTIONS = ["Book", "eBook", "Audiobook", "Hardcover", "Paperback"] as const;
+const TYPE_OPTIONS = ["Physical", "Audiobook", "eBook"] as const;
 const DEFAULT_STATUS_OPTIONS = ["Want to Read", "Reading", "Completed", "Abandoned", "Did Not Finish"] as const;
 const OWNERSHIP_OPTIONS = ["Owned", "Wishlist", "Ripped", "Borrowed"] as const;
+const BOOK_TYPE_GENRE_VALUES = new Set(["Strategy Guide"]);
 
 // Helper function to create BOOK_FIELDS with dynamic status options
 const createBookFields = (statusOptions?: Array<{ value: string; label: string }>): FieldDef[] => {
@@ -138,7 +139,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: string
       <select value={value} onChange={(e) => onChange(e.target.value)} style={INPUT_STYLE}>
         <option value="">— select —</option>
         {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        {value && !opts.includes(value as never) ? <option value={value}>{value}</option> : null}
+        {field.key !== "type" && value && !opts.includes(value as never) ? <option value={value}>{value}</option> : null}
       </select>
     );
   }
@@ -147,6 +148,38 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: string
 
 function safeStr(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function normalizeBookTypeForSheet(value: unknown): string {
+  const raw = safeStr(value);
+  const normalized = raw.toLowerCase();
+
+  if (!raw) return "";
+  if (normalized === "audiobook" || normalized === "audio book" || normalized === "audio") return "Audiobook";
+  if (normalized === "ebook" || normalized === "e-book" || normalized === "e book" || normalized === "kindle") return "eBook";
+
+  return "Physical";
+}
+
+function shouldMoveBookTypeToGenre(value: unknown): boolean {
+  return BOOK_TYPE_GENRE_VALUES.has(safeStr(value));
+}
+
+function appendUniqueCsvValue(source: string, value: string): string {
+  const nextValue = safeStr(value);
+  if (!nextValue) return source;
+
+  const parts = safeStr(source)
+    .split(/[,|;/]+/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const existing = new Set(parts.map((part) => part.toLowerCase()));
+
+  if (!existing.has(nextValue.toLowerCase())) {
+    parts.push(nextValue);
+  }
+
+  return parts.join(", ");
 }
 
 function firstNonEmpty(item: Record<string, unknown>, keys: string[]): string {
@@ -186,6 +219,9 @@ function formatDateForInput(dateStr: string): string {
 }
 
 function buildBookEditValues(item: Record<string, unknown>): Record<string, string> {
+  const rawType = firstNonEmpty(item, ["types", "type", "Type"]);
+  const rawGenre = firstNonEmpty(item, ["genre", "Genre", "categories", "Categories"]);
+
   return {
     title: firstNonEmpty(item, ["title", "Title"]),
     subtitle: firstNonEmpty(item, ["subtitle", "Subtitle"]),
@@ -194,7 +230,7 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     narrator: firstNonEmpty(item, ["narrator", "Narrator"]),
     publisher: firstNonEmpty(item, ["publisher", "Publisher"]),
     ownership: firstNonEmpty(item, ["ownership", "Ownership"]),
-    type: firstNonEmpty(item, ["types", "type", "Type"]),
+    type: normalizeBookTypeForSheet(rawType),
     status: firstNonEmpty(item, ["status", "Status"]),
     completedDate: formatDateForInput(firstNonEmpty(item, ["completedDate", "CompletedDate", "Completed Date", "Date Completed"])),
     isbn: firstNonEmpty(item, ["isbn", "ISBN", "isbn13", "ISBN13", "isbn10", "ISBN10"]),
@@ -204,7 +240,7 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     myRating: firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]),
     pages: firstNonEmpty(item, ["pages", "Pages"]),
     audiobookDuration: firstNonEmpty(item, ["audiobookDuration", "AudiobookDuration"]),
-    genre: firstNonEmpty(item, ["genre", "Genre", "categories", "Categories"]),
+    genre: shouldMoveBookTypeToGenre(rawType) ? appendUniqueCsvValue(rawGenre, rawType) : rawGenre,
     tags: firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]),
     openLibraryWorkKey: firstNonEmpty(item, ["openLibraryWorkKey", "OpenLibraryWorkKey"]),
     googleBooksVolumeId: firstNonEmpty(item, ["googleBooksVolumeId", "GoogleBooksVolumeId"]),
@@ -330,7 +366,7 @@ export function BookDetailsEditModal({
   const buildDiff = (incoming: Record<string, string>, syncFields: SyncFieldDef[]): DiffRow[] => {
     const proposed: Record<string, string> = { ...values };
     for (const { key } of syncFields) {
-      const v = safeStr(incoming[key]);
+      const v = key === "type" ? normalizeBookTypeForSheet(incoming[key]) : safeStr(incoming[key]);
       if (v) proposed[key] = v;
     }
     return syncFields.map(({ key, label }) => {
@@ -442,6 +478,9 @@ export function BookDetailsEditModal({
     for (const row of syncDiff) {
       if (row.selected) patch[row.key] = row.after === "—" ? "" : row.after;
     }
+    if (patch.type !== undefined) {
+      patch.type = normalizeBookTypeForSheet(patch.type);
+    }
     setValues((prev) => ({ ...prev, ...patch }));
     const count = syncDiff.filter((r) => r.selected).length;
     setSyncDiff(null);
@@ -461,7 +500,7 @@ export function BookDetailsEditModal({
     setSaveError(null);
     setSaveSuccess(null);
     try {
-      const nextValues = { ...values };
+      const nextValues = { ...values, type: normalizeBookTypeForSheet(values.type) };
       await Promise.resolve(onSave(item, nextValues));
       onSaved?.();
       onClose();

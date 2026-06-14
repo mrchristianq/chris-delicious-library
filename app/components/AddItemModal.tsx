@@ -35,14 +35,24 @@ const TYPE_OPTIONS: Array<{ type: AddExtendedType; label: string; sub?: string; 
 ];
 
 const BOOK_FORMAT_OPTIONS = [
-  { value: "Physical", label: "Print / eBook", emoji: "📖" },
-  { value: "Audiobook", label: "Audiobook",     emoji: "🎧" },
+  { value: "Physical",  label: "Physical",  emoji: "📖" },
+  { value: "Audiobook", label: "Audiobook", emoji: "🎧" },
+  { value: "eBook",     label: "eBook",     emoji: "📱" },
 ];
 
 const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif';
 
 function safeStr(v: unknown): string {
   return String(v ?? "").trim();
+}
+
+function normalizeBookTypeForSheet(value: unknown): string {
+  const raw = safeStr(value);
+  const normalized = raw.toLowerCase().replace(/[\s_-]+/g, "");
+
+  if (normalized === "audiobook" || normalized === "audio") return "Audiobook";
+  if (normalized === "ebook" || normalized === "kindle") return "eBook";
+  return "Physical";
 }
 
 function getApiType(type: AddExtendedType): string {
@@ -221,7 +231,7 @@ export function AddItemModal({ open, onClose, onSelectResult, onAddManually, ini
       ...(hardcoverBook.data as Record<string, unknown>),
       ...editionData,
     };
-    const derivedType = safeStr(editionData?.type) || "Book";
+    const derivedType = normalizeBookTypeForSheet(editionData?.type);
     if (!safeStr(data.type)) data.type = derivedType;
     // Forward the derived type as bookFormat so downstream prefill stores the right thing.
     onSelectResult(selectedType, data, derivedType);

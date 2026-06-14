@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.45";
+const APP_VERSION = "10.0.46";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.46",
+    date: "2026-06-14",
+    notes: [
+      "Restricted Book Type edits to Physical, Audiobook, or eBook and keeps Strategy Guide as genre metadata.",
+    ],
+  },
   {
     version: "10.0.45",
     date: "2026-06-11",
@@ -1025,6 +1032,40 @@ const SHOW_HEADER_DEBUG_CONTROLS = false;
 
 function safeStr(v: unknown) {
   return (v ?? "").toString().trim();
+}
+
+const BOOK_TYPE_GENRE_VALUES = new Set(["Strategy Guide"]);
+
+function normalizeBookTypeForSheet(value: unknown): string {
+  const raw = safeStr(value);
+  const normalized = raw.toLowerCase();
+
+  if (!raw) return "";
+  if (normalized === "audiobook" || normalized === "audio book" || normalized === "audio") return "Audiobook";
+  if (normalized === "ebook" || normalized === "e-book" || normalized === "e book" || normalized === "kindle") return "eBook";
+
+  return "Physical";
+}
+
+function shouldMoveBookTypeToGenre(value: unknown): boolean {
+  return BOOK_TYPE_GENRE_VALUES.has(safeStr(value));
+}
+
+function appendUniqueCsvValue(source: string, value: string): string {
+  const nextValue = safeStr(value);
+  if (!nextValue) return source;
+
+  const parts = safeStr(source)
+    .split(/[,|;/]+/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const existing = new Set(parts.map((part) => part.toLowerCase()));
+
+  if (!existing.has(nextValue.toLowerCase())) {
+    parts.push(nextValue);
+  }
+
+  return parts.join(", ");
 }
 
 function getLocalDateKey(date = new Date()): string {
@@ -6150,6 +6191,11 @@ export default function Page() {
 
     const itemKey = getMediaItemKey(item);
     const finalUpdates = { ...updates };
+    const rawBookTypeForSave = safeStr(finalUpdates.type);
+    finalUpdates.type = normalizeBookTypeForSheet(rawBookTypeForSave);
+    if (shouldMoveBookTypeToGenre(rawBookTypeForSave)) {
+      finalUpdates.genre = appendUniqueCsvValue(safeStr(finalUpdates.genre), rawBookTypeForSave);
+    }
 
     const payload = {
       action: "updateBook",
