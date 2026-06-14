@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.46";
+const APP_VERSION = "10.0.47";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.47",
+    date: "2026-06-14",
+    notes: [
+      "Kept legacy book CustomURL in sync with the displayed R2 cover so custom artwork survives save and reload.",
+    ],
+  },
   {
     version: "10.0.46",
     date: "2026-06-14",
@@ -5461,7 +5468,13 @@ export default function Page() {
         await postSheetWrite(booksWriteUrl, {
           action: "updateBook",
           match: bookMatch,
-          updates: { R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
+          updates: {
+            R2CoverUrl: syncedCoverUrl,
+            r2CoverUrl: syncedCoverUrl,
+            R2CoverUrl_Date: replacementDate,
+            CustomURL: syncedCoverUrl,
+            CustomImageURL: syncedCoverUrl,
+          },
         }, "Failed to save book R2 cover");
       }
 
@@ -5469,8 +5482,18 @@ export default function Page() {
         if (!prev) return prev;
         const matchesKey = getMediaItemKey(prev) === itemKey;
         if (!matchesKey) return prev;
+        const bookCompatibilityFields = mediaType === "book"
+          ? { CustomURL: syncedCoverUrl, CustomImageURL: syncedCoverUrl, customImageUrl: syncedCoverUrl }
+          : {};
         return buildItemWithCoverSelection(
-          { ...prev, R2CoverUrl: syncedCoverUrl, r2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate, r2CoverUrlDate: replacementDate },
+          {
+            ...prev,
+            ...bookCompatibilityFields,
+            R2CoverUrl: syncedCoverUrl,
+            r2CoverUrl: syncedCoverUrl,
+            R2CoverUrl_Date: replacementDate,
+            r2CoverUrlDate: replacementDate,
+          },
           coverOverrides
         );
       };
@@ -5481,6 +5504,22 @@ export default function Page() {
       setTvDetailItem((prev: any) => withUploadedR2Cover(prev));
       setGameDetailItem((prev: any) => withUploadedR2Cover(prev));
       setGameDetailEditItem((prev: any) => withUploadedR2Cover(prev));
+      if (mediaType === "book") {
+        setBookRows((prev) =>
+          prev.map((row) =>
+            buildTypedItemKey(row, "book") === itemKey
+              ? {
+                  ...row,
+                  R2CoverUrl: syncedCoverUrl,
+                  r2CoverUrl: syncedCoverUrl,
+                  R2CoverUrl_Date: replacementDate,
+                  CustomURL: syncedCoverUrl,
+                  CustomImageURL: syncedCoverUrl,
+                }
+              : row
+          )
+        );
+      }
     } catch (e: any) {
       const msg = e?.message || "Failed to upload cover";
       setCoverUploadError(msg);
@@ -5622,6 +5661,10 @@ export default function Page() {
         if (lowerCamelFieldName && lowerCamelFieldName !== fieldName) {
           updates[lowerCamelFieldName] = syncedUrl;
         }
+        if (mediaType === "book" && imageType === "cover") {
+          updates.CustomURL = syncedUrl;
+          updates.CustomImageURL = syncedUrl;
+        }
 
         console.log(`[R2] Writing ${fieldName} to sheet for "${title}" (${mediaType}):`, syncedUrl);
         await postSheetWrite(writeUrl, {
@@ -5727,7 +5770,9 @@ export default function Page() {
       if (mediaType === "book") {
         setBookRows((prev) =>
           prev.map((row) =>
-            buildTypedItemKey(row, "book") === itemKey ? { ...row, R2CoverUrl: r2Url, R2CoverUrl_Date: nowIso } : row
+            buildTypedItemKey(row, "book") === itemKey
+              ? { ...row, R2CoverUrl: r2Url, R2CoverUrl_Date: nowIso, CustomURL: r2Url, CustomImageURL: r2Url }
+              : row
           )
         );
       } else if (mediaType === "movie") {
@@ -5848,7 +5893,17 @@ export default function Page() {
       if (!nextR2Url) return;
       const withR2Cover = (prev: any) => (
         prev && getMediaItemKey(prev) === itemKey
-          ? buildItemWithCoverSelection({ ...prev, R2CoverUrl: nextR2Url, r2CoverUrl: nextR2Url }, coverOverrides)
+          ? buildItemWithCoverSelection(
+              {
+                ...prev,
+                ...(mediaType === "book"
+                  ? { CustomURL: nextR2Url, CustomImageURL: nextR2Url, customImageUrl: nextR2Url }
+                  : {}),
+                R2CoverUrl: nextR2Url,
+                r2CoverUrl: nextR2Url,
+              },
+              coverOverrides
+            )
           : prev
       );
       setModalItem((prev: any) => (
