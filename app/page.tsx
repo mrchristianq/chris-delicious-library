@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.50";
+const APP_VERSION = "10.0.52";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,21 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.52",
+    date: "2026-06-20",
+    notes: [
+      "Made the sidebar sync refresh perform a hard library refresh with a delayed follow-up pull so recent Google Sheets changes appear without a browser hard reload.",
+    ],
+  },
+  {
+    version: "10.0.51",
+    date: "2026-06-20",
+    notes: [
+      "Writes movie Rate It watch dates as local Sheet dates to avoid timezone day shifts during Google Sheets confirmation.",
+      "Added targeted Rate It save logging so failed confirmations show the exact movie payload being checked.",
+    ],
+  },
   {
     version: "10.0.50",
     date: "2026-06-20",
@@ -2739,6 +2754,7 @@ export default function Page() {
   const nativeSyncAfterRemoteRefreshRef = useRef(false);
   const nativeOnlineSnapshotRefreshStartedRef = useRef(false);
   const webInitialFollowupRefreshStartedRef = useRef(false);
+  const webHardRefreshFollowupRef = useRef(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [coverSyncQuery, setCoverSyncQuery] = useState("");
@@ -6034,6 +6050,13 @@ export default function Page() {
     [normalizeSheetFieldKey]
   );
 
+  const formatDateForSheetWrite = useCallback((value: string): string => {
+    const trimmed = safeStr(value);
+    const isoDateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!isoDateMatch) return trimmed;
+    return `${Number(isoDateMatch[2])}/${Number(isoDateMatch[3])}/${isoDateMatch[1]}`;
+  }, []);
+
   const buildChangeLogRowsForSave = useCallback(
     (params: {
       sourceSheet: "Books" | "Movies" | "Shows" | "Games";
@@ -7705,11 +7728,18 @@ export default function Page() {
           verifyFields["Watch Status"] = watchStatus;
         }
         if (data.watchDate) {
-          updates.WatchDate = safeStr(data.watchDate);
-          verifyFields.WatchDate = safeStr(data.watchDate);
+          const watchDateForSheet = formatDateForSheetWrite(safeStr(data.watchDate));
+          updates.WatchDate = watchDateForSheet;
+          verifyFields.WatchDate = watchDateForSheet;
         }
         const matchTmdbId = safeStr(rateItItem.tmdbId || rateItItem.TMDB_ID);
         const matchTitle = safeStr(rateItItem.title || rateItItem.Title);
+        console.log("[RateIt Save] Movie", {
+          title: matchTitle,
+          tmdbId: matchTmdbId,
+          updates,
+          verifyFields,
+        });
         await postSheetWrite(
           moviesWriteUrl,
           { action: "updateMovie", match: { tmdbId: matchTmdbId, title: matchTitle }, updates },
@@ -7825,7 +7855,7 @@ export default function Page() {
       window.alert(e?.message || "Failed to save rating");
       throw e;
     }
-  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, verifySavedFieldsFromCsv, triggerSaveToast]);
+  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, triggerSaveToast]);
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
@@ -8222,9 +8252,14 @@ export default function Page() {
           setSyncMsg("Synced");
           setLastSyncAt(Date.now());
           setLoading(false);
-          if (!webInitialFollowupRefreshStartedRef.current) {
+          const shouldRunFollowupRefresh =
+            webHardRefreshFollowupRef.current || !webInitialFollowupRefreshStartedRef.current;
+          webHardRefreshFollowupRef.current = false;
+          if (shouldRunFollowupRefresh) {
             webInitialFollowupRefreshStartedRef.current = true;
             webFollowupRefreshTimer = setTimeout(() => {
+              setSyncState("saving");
+              setSyncMsg("Checking for latest Sheet changes...");
               setRefreshNonce((n) => n + 1);
             }, 2500);
           }
@@ -8317,6 +8352,9 @@ export default function Page() {
       setRefreshNonce((n) => n + 1);
       return;
     }
+    setSyncState("saving");
+    setSyncMsg("Hard refreshing library...");
+    webHardRefreshFollowupRef.current = true;
     setRefreshNonce((n) => n + 1);
   }, [isNativeApp]);
 
