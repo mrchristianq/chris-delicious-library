@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.49";
+const APP_VERSION = "10.0.50";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.50",
+    date: "2026-06-20",
+    notes: [
+      "Hardened the Rate It save path so movie ratings, status, and watch dates verify against Google Sheets before showing success.",
+      "Updated Rate It movie matching to use TMDB id first instead of relying on title-only updates.",
+    ],
+  },
   {
     version: "10.0.49",
     date: "2026-06-20",
@@ -7686,15 +7694,39 @@ export default function Page() {
       if (rateItMediaType === "movie") {
         if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
         const updates: Record<string, string> = {};
+        const verifyFields: Record<string, string> = {};
         if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
+        if (data.myRating) verifyFields["My Rating"] = safeStr(data.myRating);
         if (data.watchStatus) {
           const watchStatus = safeStr(data.watchStatus);
           updates["Watch Status"] = watchStatus;
           updates.WatchStatus = watchStatus;
           updates.Watched = watchStatus;
+          verifyFields["Watch Status"] = watchStatus;
         }
-        if (data.watchDate) updates["WatchDate"] = safeStr(data.watchDate);
-        await postSheetWrite(moviesWriteUrl, { action: "updateMovie", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save movie rating");
+        if (data.watchDate) {
+          updates.WatchDate = safeStr(data.watchDate);
+          verifyFields.WatchDate = safeStr(data.watchDate);
+        }
+        const matchTmdbId = safeStr(rateItItem.tmdbId || rateItItem.TMDB_ID);
+        const matchTitle = safeStr(rateItItem.title || rateItItem.Title);
+        await postSheetWrite(
+          moviesWriteUrl,
+          { action: "updateMovie", match: { tmdbId: matchTmdbId, title: matchTitle }, updates },
+          "Failed to save movie rating"
+        );
+        if (isBrowserLikelyOnline()) {
+          await verifySavedFieldsFromCsv({
+            sheetName: "Movies",
+            csvUrl: moviesCsvUrl,
+            match: {
+              idField: "TMDB_ID",
+              idValue: matchTmdbId,
+              title: matchTitle,
+            },
+            verifyFields,
+          });
+        }
         setMovieDetailItem((prev: any) => ({
           ...prev,
           ...updates,
@@ -7791,8 +7823,9 @@ export default function Page() {
       triggerSaveToast();
     } catch (e: any) {
       window.alert(e?.message || "Failed to save rating");
+      throw e;
     }
-  }, [rateItItem, rateItMediaType, moviesWriteUrl, showsWriteUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, triggerSaveToast]);
+  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, verifySavedFieldsFromCsv, triggerSaveToast]);
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
