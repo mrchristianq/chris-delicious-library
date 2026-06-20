@@ -159,9 +159,9 @@ export async function nativeSeedSnapshot(snapshot: NativeSeedSnapshot): Promise<
   await invoke("seed_snapshot", { snapshot });
 }
 
-export async function nativeQueueSheetWrite(write: NativeSheetWrite): Promise<void> {
+export async function nativeQueueSheetWrite(write: NativeSheetWrite): Promise<number> {
   const { invoke } = await getTauriCore();
-  await invoke("queue_sheet_write", { write });
+  return await invoke("queue_sheet_write", { write });
 }
 
 export async function nativeSaveItem(write: NativeItemWrite): Promise<void> {
@@ -193,9 +193,9 @@ export async function nativeSaveAssetBytes(asset: NativeAssetBytes): Promise<{ a
   };
 }
 
-export async function nativeSyncNow(): Promise<{ pushed: number; pulled: number; skipped: number; pending: number }> {
+export async function nativeSyncNow(targetId?: number): Promise<{ pushed: number; pulled: number; skipped: number; failed?: number; pending: number; syncedIds?: number[] }> {
   const { invoke } = await getTauriCore();
-  return await invoke("sync_now");
+  return await invoke("sync_now", targetId ? { targetId } : {});
 }
 
 export async function nativeCacheRemoteMedia(limit = 300): Promise<NativeCacheSummary> {

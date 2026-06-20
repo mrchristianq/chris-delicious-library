@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.48";
+const APP_VERSION = "10.0.49";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.0.49",
+    date: "2026-06-20",
+    notes: [
+      "Hardened Google Sheets saves so native online writes only report success after the exact queued write reaches the remote sheet.",
+      "Expanded movie edit verification to include changed rating and watch date fields instead of only watch status.",
+    ],
+  },
   {
     version: "10.0.48",
     date: "2026-06-14",
@@ -5943,13 +5951,30 @@ export default function Page() {
 
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
     if (isNativeApp) {
-      await nativeQueueSheetWrite({ url, payload, fallbackMessage });
+      const queuedWriteId = await nativeQueueSheetWrite({ url, payload, fallbackMessage });
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         setSyncState("saving");
         setSyncMsg("Change queued for sync");
         return;
       }
-      const result = await nativeSyncNow();
+      const result = await nativeSyncNow(queuedWriteId);
+      const syncedIds = Array.isArray(result.syncedIds) ? result.syncedIds : [];
+      if (!syncedIds.includes(queuedWriteId)) {
+        const failedCount = typeof result.failed === "number" ? result.failed : 0;
+        setSyncState("error");
+        setSyncMsg(
+          failedCount > 0
+            ? "Google Sheets sync failed"
+            : result.pending
+              ? `${result.pending} change${result.pending === 1 ? "" : "s"} still pending`
+              : "Google Sheets did not confirm this save"
+        );
+        throw new Error(
+          failedCount > 0
+            ? `${fallbackMessage}. Native sync failed before Google Sheets confirmed the write.`
+            : `${fallbackMessage}. Google Sheets did not confirm this save; it may still be pending.`
+        );
+      }
       setSyncState(result.pending ? "saving" : "ok");
       setSyncMsg(
         result.pending
@@ -6360,7 +6385,7 @@ export default function Page() {
     }
 
     const bookChangeLogOk = await appendChangeLogRowsBestEffort(booksWriteUrl, bookChangeLogRows);
-    const bookReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
+    const bookReadbackOnline = isBrowserLikelyOnline();
     if (bookReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -6697,7 +6722,7 @@ export default function Page() {
     }
 
     const showChangeLogOk = await appendChangeLogRowsBestEffort(showsWriteUrl, showChangeLogRows);
-    const showReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
+    const showReadbackOnline = isBrowserLikelyOnline();
     if (showReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -6889,9 +6914,14 @@ export default function Page() {
       oldValues: movieOldValues,
       newValues: movieFieldChanges,
     });
+    const movieSaveVerifyFields = new Set(
+      ["Watch Status", "WatchDate", "My Rating", "MyRating", "Title", "TMDB_ID"].map((field) =>
+        normalizeSheetFieldKey(field)
+      )
+    );
     const movieVerifyFields = Object.fromEntries(
       movieChangeLogRows
-        .filter((row) => normalizeSheetFieldKey(row.Field) === normalizeSheetFieldKey("Watch Status"))
+        .filter((row) => movieSaveVerifyFields.has(normalizeSheetFieldKey(row.Field)))
         .map((row) => [row.Field, row["New Value"]])
     );
 
@@ -6902,7 +6932,7 @@ export default function Page() {
     }
 
     const movieChangeLogOk = await appendChangeLogRowsBestEffort(moviesWriteUrl, movieChangeLogRows);
-    const movieReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
+    const movieReadbackOnline = isBrowserLikelyOnline();
     if (movieReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({
@@ -7233,7 +7263,7 @@ export default function Page() {
       throw new Error(e?.message || "Failed to save game edits");
     }
     const gameChangeLogOk = await appendChangeLogRowsBestEffort(gamesWriteUrl, gameChangeLogRows);
-    const gameReadbackOnline = !isNativeApp && isBrowserLikelyOnline();
+    const gameReadbackOnline = isBrowserLikelyOnline();
     if (gameReadbackOnline) {
       try {
         await verifySavedFieldsFromCsv({

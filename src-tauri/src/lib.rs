@@ -173,7 +173,10 @@ struct SyncSummary {
     pushed: i64,
     pulled: i64,
     skipped: i64,
+    failed: i64,
     pending: i64,
+    #[serde(rename = "syncedIds")]
+    synced_ids: Vec<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -955,7 +958,7 @@ fn queue_local_change(
     entity_key: &str,
     payload: Value,
     now: &str,
-) -> NativeResult<()> {
+) -> NativeResult<i64> {
     conn.execute(
         "INSERT INTO sync_queue (op_type, entity_type, entity_key, payload_json, client_updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -967,7 +970,7 @@ fn queue_local_change(
             now
         ],
     )?;
-    Ok(())
+    Ok(conn.last_insert_rowid())
 }
 
 trait NonEmptyFallback {
@@ -1206,7 +1209,7 @@ fn queue_sheet_write(
     app: AppHandle,
     state: State<LibraryDb>,
     write: NativeSheetWrite,
-) -> NativeResult<()> {
+) -> NativeResult<i64> {
     let conn = open_db(&app, &state)?;
     let now = Utc::now().to_rfc3339();
     let action = write
@@ -1223,8 +1226,7 @@ fn queue_sheet_write(
         "clientUpdatedAt": now,
     });
 
-    queue_local_change(&conn, action, entity_type, &entity_key, payload, &now)?;
-    Ok(())
+    queue_local_change(&conn, action, entity_type, &entity_key, payload, &now)
 }
 
 #[tauri::command]
@@ -1984,21 +1986,25 @@ fn save_asset_bytes(
 
 #[tauri::command]
 fn sync_status(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary> {
-    sync_now(app, state)
+    sync_now(app, state, None)
 }
 
 #[tauri::command]
-fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary> {
+fn sync_now(
+    app: AppHandle,
+    state: State<LibraryDb>,
+    target_id: Option<i64>,
+) -> NativeResult<SyncSummary> {
     let conn = open_db(&app, &state)?;
     let pending_rows = {
-        let mut stmt = conn.prepare(
-            "SELECT id, op_type, entity_type, entity_key, payload_json, client_updated_at
-             FROM sync_queue
-             WHERE status = 'pending'
-             ORDER BY id ASC",
-        )?;
-        let rows = stmt
-            .query_map([], |row| {
+        if let Some(target_id) = target_id {
+            let mut stmt = conn.prepare(
+                "SELECT id, op_type, entity_type, entity_key, payload_json, client_updated_at
+                 FROM sync_queue
+                 WHERE status = 'pending' AND id = ?1
+                 ORDER BY id ASC",
+            )?;
+            let rows = stmt.query_map([target_id], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
@@ -2007,9 +2013,27 @@ fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
                 ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT id, op_type, entity_type, entity_key, payload_json, client_updated_at
+                 FROM sync_queue
+                 WHERE status = 'pending'
+                 ORDER BY id ASC",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
     };
 
     let client = Client::builder()
@@ -2017,6 +2041,8 @@ fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary
         .build()?;
     let mut pushed = 0;
     let mut skipped = 0;
+    let mut failed = 0;
+    let mut synced_ids: Vec<i64> = Vec::new();
 
     for (id, op_type, entity_type, entity_key, payload_json, client_updated_at) in pending_rows {
         let queued = serde_json::from_str::<Value>(&payload_json)?;
@@ -2056,12 +2082,14 @@ fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary
                         [id],
                     )?;
                     pushed += 1;
+                    synced_ids.push(id);
                 }
                 Err(err) => {
                     conn.execute(
                         "UPDATE sync_queue SET last_error = ?2 WHERE id = ?1",
                         params![id, err.to_string()],
                     )?;
+                    failed += 1;
                 }
             }
             continue;
@@ -2114,6 +2142,7 @@ fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary
                         "UPDATE sync_queue SET last_error = ?2 WHERE id = ?1",
                         params![id, format!("Remote write failed: HTTP {status} {text}")],
                     )?;
+                    failed += 1;
                     continue;
                 }
 
@@ -2139,12 +2168,14 @@ fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary
                     )?;
                 }
                 pushed += 1;
+                synced_ids.push(id);
             }
             Err(err) => {
                 conn.execute(
                     "UPDATE sync_queue SET last_error = ?2 WHERE id = ?1",
                     params![id, err.to_string()],
                 )?;
+                failed += 1;
             }
         }
     }
@@ -2166,7 +2197,9 @@ fn sync_now(app: AppHandle, state: State<LibraryDb>) -> NativeResult<SyncSummary
         pushed,
         pulled: 0,
         skipped,
+        failed,
         pending,
+        synced_ids,
     })
 }
 
