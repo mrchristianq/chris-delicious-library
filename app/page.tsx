@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.0.52";
+const APP_VERSION = "10.1.0";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -524,6 +524,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.0",
+    date: "2026-06-21",
+    notes: [
+      "Added a separate configurable status icon for Games marked Now Playing.",
+    ],
+  },
   {
     version: "10.0.52",
     date: "2026-06-20",
@@ -11479,10 +11486,11 @@ export default function Page() {
       if (status === "completed" || status === "done" || status === "beaten" || status === "finished") {
         return { key: "completed", color: STATUS_COLOR_GREEN, label: "Completed" };
       }
+      if (status === "now playing" || status === "currently playing") {
+        return { key: "game-now-playing", color: STATUS_COLOR_BLUE, label: "Now Playing" };
+      }
       if (
         status === "playing" ||
-        status === "now playing" ||
-        status === "currently playing" ||
         status === "in progress" ||
         status === "paused"
       ) {
@@ -11510,6 +11518,7 @@ export default function Page() {
     () => [
       { key: "completed", label: "Completed / Watched", color: STATUS_COLOR_GREEN },
       { key: "watching", label: "In Progress", color: STATUS_COLOR_YELLOW },
+      { key: "game-now-playing", label: "Now Playing (Games)", color: STATUS_COLOR_BLUE },
       { key: "abandoned", label: "Abandoned", color: STATUS_COLOR_ORANGE },
       { key: "not-started", label: "Not Started", color: STATUS_COLOR_RED },
       { key: "pending-return", label: "Pending Return", color: STATUS_COLOR_YELLOW },
