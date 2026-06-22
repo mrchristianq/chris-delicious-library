@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.0";
+const APP_VERSION = "10.1.7";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -422,9 +422,127 @@ const WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-mov
 const WATCHLIST_TV_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-tv";
 const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
-const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder):/;
+const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder|DisplayMode|ListColumns|ListSize):/;
 const isLocalFirstViewSettingKey = (key: string) =>
   LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN.test(safeStr(key));
+type DisplayMode = "cover" | "list";
+type ListColumnKey =
+  | "cover"
+  | "mediaType"
+  | "title"
+  | "author"
+  | "type"
+  | "status"
+  | "watchStatus"
+  | "showStatus"
+  | "ownership"
+  | "platform"
+  | "releaseDate"
+  | "firstAirDate"
+  | "lastAirDate"
+  | "completedDate"
+  | "watchDate"
+  | "myRating"
+  | "userRating"
+  | "tmdbRating"
+  | "igdbRating"
+  | "runtime"
+  | "genres"
+  | "seasons"
+  | "timeToBeat"
+  | "series";
+type ListColumnDef = {
+  key: ListColumnKey;
+  label: string;
+  sortField?: string;
+};
+type ListEditDrafts = Record<string, Record<string, string>>;
+const VIEW_DISPLAY_MODE_SETTING_PREFIX = "viewDisplayMode:";
+const VIEW_LIST_COLUMNS_SETTING_PREFIX = "viewListColumns:";
+const VIEW_LIST_SIZE_SETTING_PREFIX = "viewListSize:";
+const LIST_COLUMN_DEFS: Record<ListColumnKey, ListColumnDef> = {
+  cover: { key: "cover", label: "Cover" },
+  mediaType: { key: "mediaType", label: "Media" },
+  title: { key: "title", label: "Title", sortField: "Title" },
+  author: { key: "author", label: "Author" },
+  type: { key: "type", label: "Type" },
+  status: { key: "status", label: "Status" },
+  watchStatus: { key: "watchStatus", label: "Watch Status" },
+  showStatus: { key: "showStatus", label: "Show Status" },
+  ownership: { key: "ownership", label: "Ownership" },
+  platform: { key: "platform", label: "Platform" },
+  releaseDate: { key: "releaseDate", label: "Release Date", sortField: "ReleaseDate" },
+  firstAirDate: { key: "firstAirDate", label: "First Air", sortField: "FirstAirDate" },
+  lastAirDate: { key: "lastAirDate", label: "Last Air", sortField: "LastAirDate" },
+  completedDate: { key: "completedDate", label: "Completed", sortField: "CompletedDate" },
+  watchDate: { key: "watchDate", label: "Watch Date", sortField: "CompletedDate" },
+  myRating: { key: "myRating", label: "My Rating", sortField: "MyRatingSort" },
+  userRating: { key: "userRating", label: "User Rating", sortField: "ExternalRatingSort" },
+  tmdbRating: { key: "tmdbRating", label: "TMDB", sortField: "ExternalRatingSort" },
+  igdbRating: { key: "igdbRating", label: "IGDB", sortField: "ExternalRatingSort" },
+  runtime: { key: "runtime", label: "Runtime" },
+  genres: { key: "genres", label: "Genres" },
+  seasons: { key: "seasons", label: "Seasons" },
+  timeToBeat: { key: "timeToBeat", label: "Time To Beat" },
+  series: { key: "series", label: "Series" },
+};
+const LIST_COLUMN_PRESETS: Record<MediaType | "mixed", ListColumnKey[]> = {
+  book: ["cover", "title", "author", "type", "status", "releaseDate", "completedDate", "myRating", "userRating", "series"],
+  movie: ["cover", "title", "watchStatus", "releaseDate", "watchDate", "myRating", "tmdbRating", "runtime", "genres"],
+  tv: ["cover", "title", "watchStatus", "showStatus", "firstAirDate", "lastAirDate", "myRating", "tmdbRating", "seasons"],
+  game: ["cover", "title", "platform", "status", "ownership", "releaseDate", "completedDate", "myRating", "igdbRating", "timeToBeat"],
+  mixed: ["cover", "mediaType", "title", "status", "releaseDate", "myRating"],
+};
+const LIST_EDIT_FIELD_MAP: Record<MediaType, Partial<Record<ListColumnKey, string>>> = {
+  book: {
+    title: "title",
+    author: "author",
+    type: "type",
+    status: "status",
+    releaseDate: "releaseDate",
+    completedDate: "completedDate",
+    myRating: "myRating",
+    userRating: "userRating",
+    series: "series",
+    genres: "genre",
+  },
+  movie: {
+    title: "title",
+    watchStatus: "watchStatus",
+    status: "status",
+    releaseDate: "releaseDate",
+    watchDate: "watchDate",
+    myRating: "myRating",
+    tmdbRating: "tmdbRating",
+    runtime: "runtime",
+    genres: "genres",
+    ownership: "ownership",
+  },
+  tv: {
+    title: "title",
+    watchStatus: "watchStatus",
+    showStatus: "showStatus",
+    firstAirDate: "firstAirDate",
+    lastAirDate: "lastAirDate",
+    myRating: "myRating",
+    tmdbRating: "tmdbRating",
+    seasons: "numberOfSeasons",
+    ownership: "ownership",
+    genres: "genres",
+  },
+  game: {
+    title: "title",
+    platform: "platform",
+    status: "status",
+    ownership: "ownership",
+    releaseDate: "releaseDate",
+    completedDate: "dateCompleted",
+    myRating: "myRating",
+    igdbRating: "igdbRating",
+    timeToBeat: "timeToBeat",
+    genres: "genres",
+  },
+};
 const LOCAL_FIRST_VIEW_SETTING_META_KEY = "cdlLocalFirstViewSettingMeta";
 const LOCAL_FIRST_VIEW_SETTING_MAX_AGE_MS = 10 * 60 * 1000;
 const SIDEBAR_ICON_OVERRIDES_LOCAL_KEY = "cdlSidebarIconOverrides";
@@ -524,6 +642,55 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.7",
+    date: "2026-06-21",
+    notes: [
+      "Made List view covers render as freestanding rounded artwork instead of sitting on a backing tile.",
+    ],
+  },
+  {
+    version: "10.1.6",
+    date: "2026-06-21",
+    notes: [
+      "Added per-section List size controls for List view covers and text.",
+    ],
+  },
+  {
+    version: "10.1.5",
+    date: "2026-06-21",
+    notes: [
+      "Added dropdown and calendar controls to List view edit mode.",
+    ],
+  },
+  {
+    version: "10.1.4",
+    date: "2026-06-21",
+    notes: [
+      "Added direct editing and batch save support to List view.",
+    ],
+  },
+  {
+    version: "10.1.3",
+    date: "2026-06-21",
+    notes: [
+      "Fixed Book Type values in List view.",
+    ],
+  },
+  {
+    version: "10.1.2",
+    date: "2026-06-21",
+    notes: [
+      "Fixed List view completed-date fallbacks for games and normalized List view rating display.",
+    ],
+  },
+  {
+    version: "10.1.1",
+    date: "2026-06-21",
+    notes: [
+      "Added a configurable List view with per-view column preferences for library and smart-list screens.",
+    ],
+  },
   {
     version: "10.1.0",
     date: "2026-06-21",
@@ -1504,7 +1671,7 @@ function getCompletedDateValue(item: any): string {
   if (type === "book") {
     return safeStr(item?.completedDate || item?.["Completed Date"] || item?.CompletedDate || item?.["Date Completed"]);
   }
-  return safeStr(item?.dateCompleted || item?.completedDate || item?.["Date Completed"] || item?.CompletedDate || item?.yearPlayed);
+  return safeStr(item?.dateCompleted || item?.completedDate || item?.["Date Completed"] || item?.CompletedDate);
 }
 
 function dateSpecificity(dateStr?: string): number {
@@ -2974,6 +3141,12 @@ export default function Page() {
     (nav === "games" && gameViewMode === "upcoming");
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
+  const [displayModeNonce, setDisplayModeNonce] = useState(0);
+  const [listColumnsNonce, setListColumnsNonce] = useState(0);
+  const [listSizeNonce, setListSizeNonce] = useState(0);
+  const [listEditMode, setListEditMode] = useState(false);
+  const [listEditSaving, setListEditSaving] = useState(false);
+  const [listEditDrafts, setListEditDrafts] = useState<ListEditDrafts>({});
   const [wishlistManualOrderKeys, setWishlistManualOrderKeys] = useState<string[]>([]);
   const [readNextManualOrderKeys, setReadNextManualOrderKeys] = useState<string[]>([]);
   const [nowPlayingManualOrderKeys, setNowPlayingManualOrderKeys] = useState<string[]>([]);
@@ -7149,6 +7322,7 @@ export default function Page() {
       Description: ["description", "Description"],
       Genres: ["genres", "Genres"],
       "Hours Played": ["hoursPlayed", "Hours Played"],
+      TimeToBeat: ["timeToBeat", "TimeToBeat", "Time To Beat"],
       Developer: ["developer", "Developer"],
       ScreenshotsURL: ["ScreenshotsURL", "screenshotsUrl"],
       IGDB_ID: ["igdbId", "IGDB_ID"],
@@ -7175,6 +7349,7 @@ export default function Page() {
       Description: safeStr(updates.description),
       Genres: safeStr(updates.genres),
       "Hours Played": safeStr(updates.hoursPlayed),
+      TimeToBeat: safeStr(updates.timeToBeat),
       Developer: safeStr(updates.developer),
       ScreenshotsURL: safeStr(updates.screenshotsUrl),
       IGDB_ID: safeStr(updates.igdbId),
@@ -7262,6 +7437,7 @@ export default function Page() {
         description: safeStr(updates.description),
         genres: safeStr(updates.genres),
         hoursPlayed: safeStr(updates.hoursPlayed),
+        timeToBeat: safeStr(updates.timeToBeat),
         developer: safeStr(updates.developer),
         screenshotsUrl: safeStr(updates.screenshotsUrl),
         igdbId: safeStr(updates.igdbId),
@@ -12894,6 +13070,681 @@ export default function Page() {
       ? gameViewMode
       : null;
 
+  const activeListViewKey = useMemo(() => {
+    if (
+      nav === "statistics" ||
+      nav === "roadmap" ||
+      nav === "cover-sync" ||
+      nav === "themes" ||
+      nav === "icons"
+    ) {
+      return null;
+    }
+    if (nav === "books") {
+      if (activeBookQuickLink === "home") return null;
+      return `books:${activeBookQuickLink}`;
+    }
+    if (nav === "movies") {
+      if (activeMovieQuickLink === "home") return null;
+      return activeMovieQuickLink ? `movies:${activeMovieQuickLink}` : "movies:library";
+    }
+    if (nav === "tv") {
+      if (activeTvQuickLink === "home") return null;
+      return activeTvQuickLink ? `tv:${activeTvQuickLink}` : "tv:library";
+    }
+    if (nav === "games") {
+      if (activeGameQuickLink === "home") return null;
+      return activeGameQuickLink ? `games:${activeGameQuickLink}` : "games:library";
+    }
+    if (nav === "smart-custom") {
+      return activeSmartList ? `smart-custom:${activeSmartList.id}` : null;
+    }
+    return nav;
+  }, [activeBookQuickLink, activeGameQuickLink, activeMovieQuickLink, activeSmartList, activeTvQuickLink, nav]);
+
+  const listViewEligible = Boolean(activeListViewKey);
+
+  const activeListMediaKind = useMemo<MediaType | "mixed">(() => {
+    if (nav === "books") return "book";
+    if (nav === "movies") return "movie";
+    if (nav === "tv") return "tv";
+    if (nav === "games") return "game";
+    const types = new Set<MediaType>();
+    shows.forEach((item) => {
+      const type = getMediaType(item);
+      if (type === "book" || type === "movie" || type === "tv" || type === "game") types.add(type);
+    });
+    return types.size === 1 ? Array.from(types)[0] : "mixed";
+  }, [nav, shows]);
+
+  const defaultListColumns = useMemo(
+    () => LIST_COLUMN_PRESETS[activeListMediaKind] || LIST_COLUMN_PRESETS.mixed,
+    [activeListMediaKind]
+  );
+
+  const availableListColumns = useMemo(() => {
+    const keys = new Set<ListColumnKey>(defaultListColumns);
+    return Array.from(keys).map((key) => LIST_COLUMN_DEFS[key]).filter(Boolean);
+  }, [defaultListColumns]);
+
+  const activeDisplayMode = useMemo<DisplayMode>(() => {
+    if (!activeListViewKey) return "cover";
+    if (typeof window === "undefined") return "cover";
+    const stored = safeStr(getSetting(`${VIEW_DISPLAY_MODE_SETTING_PREFIX}${activeListViewKey}`, "cover"));
+    return stored === "list" ? "list" : "cover";
+  }, [activeListViewKey, displayModeNonce, getSetting]);
+
+  const activeListColumns = useMemo<ListColumnKey[]>(() => {
+    if (!activeListViewKey) return defaultListColumns;
+    if (typeof window === "undefined") return defaultListColumns;
+    const stored = getSetting(`${VIEW_LIST_COLUMNS_SETTING_PREFIX}${activeListViewKey}`, "");
+    const parsed = parseStringArraySetting(stored).filter((key): key is ListColumnKey =>
+      Object.prototype.hasOwnProperty.call(LIST_COLUMN_DEFS, key)
+    );
+    const available = new Set(availableListColumns.map((column) => column.key));
+    const normalized = parsed.filter((key) => available.has(key));
+    const next = normalized.length ? normalized : defaultListColumns;
+    return next.includes("title") ? next : ["title", ...next];
+  }, [activeListViewKey, availableListColumns, defaultListColumns, getSetting, listColumnsNonce]);
+
+  const activeListSizePct = useMemo(() => {
+    if (!activeListViewKey) return 100;
+    if (typeof window === "undefined") return 100;
+    const stored = Number.parseInt(safeStr(getSetting(`${VIEW_LIST_SIZE_SETTING_PREFIX}${activeListViewKey}`, "100")), 10);
+    if (!Number.isFinite(stored)) return 100;
+    return Math.max(70, Math.min(150, stored));
+  }, [activeListViewKey, getSetting, listSizeNonce]);
+
+  const persistListSizePct = useCallback(
+    (sizePct: number) => {
+      if (!activeListViewKey) return;
+      const next = Math.max(70, Math.min(150, Math.round(sizePct)));
+      saveSetting(
+        `${VIEW_LIST_SIZE_SETTING_PREFIX}${activeListViewKey}`,
+        String(next),
+        "View Display",
+        `List size for ${activeListViewKey}`
+      );
+      setListSizeNonce((value) => value + 1);
+    },
+    [activeListViewKey, saveSetting]
+  );
+
+  const persistDisplayMode = useCallback(
+    (mode: DisplayMode) => {
+      if (!activeListViewKey) return;
+      saveSetting(
+        `${VIEW_DISPLAY_MODE_SETTING_PREFIX}${activeListViewKey}`,
+        mode,
+        "View Display",
+        `Display mode for ${activeListViewKey}`
+      );
+      setDisplayModeNonce((value) => value + 1);
+    },
+    [activeListViewKey, saveSetting]
+  );
+
+  const persistListColumns = useCallback(
+    (columns: ListColumnKey[]) => {
+      if (!activeListViewKey) return;
+      const available = new Set(availableListColumns.map((column) => column.key));
+      const normalized = columns
+        .filter((key) => Object.prototype.hasOwnProperty.call(LIST_COLUMN_DEFS, key))
+        .filter((key) => available.has(key))
+        .filter((key, index, arr) => arr.indexOf(key) === index);
+      const nextColumns = normalized.includes("title") ? normalized : ["title", ...normalized];
+      saveSetting(
+        `${VIEW_LIST_COLUMNS_SETTING_PREFIX}${activeListViewKey}`,
+        JSON.stringify(nextColumns),
+        "View Display",
+        `List columns for ${activeListViewKey}`
+      );
+      setListColumnsNonce((value) => value + 1);
+    },
+    [activeListViewKey, availableListColumns, saveSetting]
+  );
+
+  const formatListDate = useCallback((value: unknown) => {
+    const raw = safeStr(value);
+    if (!raw) return "";
+    const parsed = parseReleaseDateForComparison(raw);
+    if (!parsed) return raw;
+    return parsed.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" });
+  }, []);
+
+  const formatListRating = useCallback((item: any, value: unknown) => {
+    const raw = safeStr(value);
+    if (!raw) return "";
+
+    const number = Number.parseFloat(raw.replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(number)) return raw;
+
+    if (getMediaType(item) === "book") {
+      return number.toFixed(1);
+    }
+
+    const normalized = number <= 10 ? number * 10 : number;
+    return String(Math.round(normalized));
+  }, []);
+
+  const getListColumnText = useCallback(
+    (item: any, key: ListColumnKey) => {
+      const type = getMediaType(item);
+      if (key === "cover") return "";
+      if (key === "mediaType") {
+        if (type === "tv") return "TV Show";
+        return type.charAt(0).toUpperCase() + type.slice(1);
+      }
+      if (key === "title") return safeStr(item.title || item.Title || item.name);
+      if (key === "author") return safeStr(item.author || item.Author);
+      if (key === "type") return safeStr(item.types || item.type || item.Type || item.Types);
+      if (key === "status") {
+        return safeStr(
+          item.status ||
+            item.Status ||
+            item.watchStatus ||
+            item.WatchStatus ||
+            item.watched ||
+            item.playStatus ||
+            item.gameStatus
+        );
+      }
+      if (key === "watchStatus") return safeStr(item.watchStatus || item.WatchStatus || item.watched || item.Watched);
+      if (key === "showStatus") return safeStr(item.showStatus || item.ShowStatus);
+      if (key === "ownership") return safeStr(item.ownership || item.Ownership);
+      if (key === "platform") return safeStr(item.__renderPlatform || item.platform || item.Platform);
+      if (key === "releaseDate") return formatListDate(item.releaseDate || item.ReleaseDate || item.firstAirDate);
+      if (key === "firstAirDate") return formatListDate(item.firstAirDate || item.FirstAirDate || item.releaseDate);
+      if (key === "lastAirDate") return formatListDate(item.lastAirDate || item.LastAirDate);
+      if (key === "completedDate" || key === "watchDate") return formatListDate(getCompletedDateValue(item));
+      if (key === "myRating") return formatListRating(item, item.myRating || item["My Rating"] || item.MyRating);
+      if (key === "userRating") return formatListRating(item, item.userRating || item.externalAverageRating || item.rating);
+      if (key === "tmdbRating") return formatListRating(item, item.tmdbRating || item.TMDB_Rating || item.rating);
+      if (key === "igdbRating") return formatListRating(item, item.igdbRating || item.IGDB_Rating || item.rating);
+      if (key === "runtime") return safeStr(item.runtime || item.Runtime || item.episodeRuntime || item.averageEpisodeRuntime);
+      if (key === "genres") return safeStr(item.genres || item.genre || item.Genres || item.Genre);
+      if (key === "seasons") return safeStr(item.seasons || item.Seasons);
+      if (key === "timeToBeat") {
+        const raw = safeStr(item.timeToBeat || item.TimeToBeat || item["Time To Beat"]);
+        if (!raw) return "";
+        const hours = Math.ceil(Number.parseFloat(raw));
+        return Number.isFinite(hours) ? `${hours} Hours` : raw;
+      }
+      if (key === "series") return safeStr(item.series || item.Series);
+      return "";
+    },
+    [formatListDate, formatListRating]
+  );
+
+  const getListColumnRawValue = useCallback((item: any, key: ListColumnKey) => {
+    if (key === "cover" || key === "mediaType") return "";
+    if (key === "title") return safeStr(item.title || item.Title || item.name);
+    if (key === "author") return safeStr(item.author || item.Author);
+    if (key === "type") return safeStr(item.types || item.type || item.Type || item.Types);
+    if (key === "status") {
+      return safeStr(
+        item.status ||
+          item.Status ||
+          item.watchStatus ||
+          item.WatchStatus ||
+          item.watched ||
+          item.playStatus ||
+          item.gameStatus
+      );
+    }
+    if (key === "watchStatus") return safeStr(item.watchStatus || item.WatchStatus || item.watched || item.Watched);
+    if (key === "showStatus") return safeStr(item.showStatus || item.ShowStatus);
+    if (key === "ownership") return safeStr(item.ownership || item.Ownership);
+    if (key === "platform") return safeStr(item.__renderPlatform || item.platform || item.Platform);
+    if (key === "releaseDate") return safeStr(item.releaseDate || item.ReleaseDate || item.firstAirDate);
+    if (key === "firstAirDate") return safeStr(item.firstAirDate || item.FirstAirDate || item.releaseDate);
+    if (key === "lastAirDate") return safeStr(item.lastAirDate || item.LastAirDate);
+    if (key === "completedDate" || key === "watchDate") return safeStr(getCompletedDateValue(item));
+    if (key === "myRating") return safeStr(item.myRating || item["My Rating"] || item.MyRating);
+    if (key === "userRating") return safeStr(item.userRating || item.externalAverageRating || item.rating);
+    if (key === "tmdbRating") return safeStr(item.tmdbRating || item.TMDB_Rating || item.rating);
+    if (key === "igdbRating") return safeStr(item.igdbRating || item.IGDB_Rating || item.rating);
+    if (key === "runtime") return safeStr(item.runtime || item.Runtime || item.episodeRuntime || item.averageEpisodeRuntime);
+    if (key === "genres") return safeStr(item.genres || item.genre || item.Genres || item.Genre);
+    if (key === "seasons") return safeStr(item.seasons || item.Seasons || item.numberOfSeasons || item.NumberOfSeasons);
+    if (key === "timeToBeat") return safeStr(item.timeToBeat || item.TimeToBeat || item["Time To Beat"]);
+    if (key === "series") return safeStr(item.series || item.Series);
+    return "";
+  }, []);
+
+  const bookOwnershipOptions = useMemo(() => {
+    const options = new Set<string>(["Owned", "Wishlist"]);
+    allBooks.forEach((book) => {
+      const value = safeStr(book.ownership);
+      if (value) options.add(value);
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allBooks]);
+
+  const movieReleaseStatusOptions = useMemo(() => {
+    const options = new Set<string>(["Released", "Upcoming"]);
+    allMovies.forEach((movie) => {
+      const value = safeStr(movie.status || movie.movieStatus);
+      if (value) options.add(value);
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allMovies]);
+
+  const movieOwnershipOptions = useMemo(() => {
+    const options = new Set<string>(["Owned", "Wishlist"]);
+    allMovies.forEach((movie) => {
+      const value = safeStr(movie.ownership);
+      if (value) options.add(value);
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allMovies]);
+
+  const tvOwnershipOptions = useMemo(() => {
+    const options = new Set<string>(["Owned", "Wishlist"]);
+    allShows.forEach((show) => {
+      const value = safeStr(show.ownership);
+      if (value) options.add(value);
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [allShows]);
+
+  const listEditSelectOptions = useCallback(
+    (item: any, columnKey: ListColumnKey) => {
+      const type = getMediaType(item);
+      const currentValue = safeStr(getListColumnRawValue(item, columnKey));
+      let options: string[] = [];
+
+      if (type === "book") {
+        if (columnKey === "type") options = ["Audiobook", "eBook", "Physical"];
+        if (columnKey === "status") options = readingStatuses;
+        if (columnKey === "ownership") options = bookOwnershipOptions;
+      } else if (type === "movie") {
+        if (columnKey === "watchStatus") options = ["Watched", "Backlog", "Abandoned", "Started", "Pending Digital Release"];
+        if (columnKey === "status") options = movieReleaseStatusOptions;
+        if (columnKey === "ownership") options = movieOwnershipOptions;
+      } else if (type === "tv") {
+        if (columnKey === "watchStatus") options = watchStatuses;
+        if (columnKey === "showStatus") options = showStatuses;
+        if (columnKey === "ownership") options = tvOwnershipOptions;
+      } else if (type === "game") {
+        if (columnKey === "platform") options = gamePlatformOptions;
+        if (columnKey === "status") {
+          options = [
+            "Now Playing",
+            "Queued",
+            "Collection",
+            "Completed",
+            "Abandoned",
+            "Wishlist",
+            "Replay",
+            "Backlog",
+            ...gameStatusOptions,
+          ];
+        }
+        if (columnKey === "ownership") options = gameOwnershipOptions;
+      }
+
+      const deduped = options
+        .map((option) => safeStr(option))
+        .filter(Boolean)
+        .filter((option, index, arr) => arr.findIndex((value) => value.toLowerCase() === option.toLowerCase()) === index);
+
+      if (currentValue && !deduped.some((option) => option.toLowerCase() === currentValue.toLowerCase())) {
+        return [currentValue, ...deduped];
+      }
+
+      return deduped;
+    },
+    [
+      bookOwnershipOptions,
+      gameOwnershipOptions,
+      gamePlatformOptions,
+      gameStatusOptions,
+      getListColumnRawValue,
+      movieOwnershipOptions,
+      movieReleaseStatusOptions,
+      readingStatuses,
+      showStatuses,
+      tvOwnershipOptions,
+      watchStatuses,
+    ]
+  );
+
+  const isListDateColumn = useCallback((columnKey: ListColumnKey) => {
+    return (
+      columnKey === "releaseDate" ||
+      columnKey === "firstAirDate" ||
+      columnKey === "lastAirDate" ||
+      columnKey === "completedDate" ||
+      columnKey === "watchDate"
+    );
+  }, []);
+
+  const toListDateInputValue = useCallback((value: string) => {
+    const raw = safeStr(value);
+    if (!raw) return "";
+    const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+    }
+    const parsed = parseReleaseDateForComparison(raw);
+    if (!parsed) return "";
+    const yyyy = String(parsed.getFullYear());
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const getListEditableField = useCallback((item: any, columnKey: ListColumnKey) => {
+    if (columnKey === "cover" || columnKey === "mediaType") return "";
+    const type = getMediaType(item);
+    return safeStr(LIST_EDIT_FIELD_MAP[type]?.[columnKey]);
+  }, []);
+
+  const getListDraftRowKey = useCallback((item: any) => getMediaItemKey(item), []);
+
+  const getListEditCellValue = useCallback(
+    (item: any, columnKey: ListColumnKey) => {
+      const rowKey = getListDraftRowKey(item);
+      if (Object.prototype.hasOwnProperty.call(listEditDrafts[rowKey] || {}, columnKey)) {
+        return safeStr(listEditDrafts[rowKey][columnKey]);
+      }
+      return getListColumnRawValue(item, columnKey);
+    },
+    [getListColumnRawValue, getListDraftRowKey, listEditDrafts]
+  );
+
+  const updateListEditCell = useCallback(
+    (item: any, columnKey: ListColumnKey, value: string) => {
+      const rowKey = getListDraftRowKey(item);
+      setListEditDrafts((prev) => ({
+        ...prev,
+        [rowKey]: {
+          ...(prev[rowKey] || {}),
+          [columnKey]: value,
+        },
+      }));
+    },
+    [getListDraftRowKey]
+  );
+
+  const renderListEditControl = useCallback(
+    (
+      item: any,
+      columnKey: ListColumnKey,
+      styleOptions: {
+        rowBorder: string;
+        textColor: string;
+        background: string;
+        fontSize: number;
+        fontWeight: number;
+        height?: number | string;
+      }
+    ) => {
+      const value = getListEditCellValue(item, columnKey);
+      const commonStyle: CSSProperties = {
+        width: "100%",
+        minWidth: 0,
+        height: styleOptions.height || 30,
+        border: styleOptions.rowBorder,
+        borderRadius: 7,
+        background: styleOptions.background,
+        color: styleOptions.textColor,
+        padding: "0 8px",
+        fontSize: styleOptions.fontSize,
+        fontWeight: styleOptions.fontWeight,
+        outline: "none",
+        boxSizing: "border-box",
+      };
+
+      const selectOptions = listEditSelectOptions(item, columnKey);
+      if (selectOptions.length) {
+        return (
+          <select
+            value={value}
+            onChange={(event) => updateListEditCell(item, columnKey, event.target.value)}
+            style={commonStyle}
+          >
+            <option value="">—</option>
+            {selectOptions.map((option) => (
+              <option key={`${columnKey}-${option}`} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        );
+      }
+
+      if (isListDateColumn(columnKey)) {
+        return (
+          <input
+            type="date"
+            value={toListDateInputValue(value)}
+            onChange={(event) => updateListEditCell(item, columnKey, event.target.value)}
+            style={commonStyle}
+          />
+        );
+      }
+
+      return (
+        <input
+          value={value}
+          onChange={(event) => updateListEditCell(item, columnKey, event.target.value)}
+          style={commonStyle}
+        />
+      );
+    },
+    [getListEditCellValue, isListDateColumn, listEditSelectOptions, toListDateInputValue, updateListEditCell]
+  );
+
+  const clearListEdits = useCallback(() => {
+    setListEditDrafts({});
+    setListEditMode(false);
+  }, []);
+
+  const buildListSaveBaseUpdates = useCallback((item: any): Record<string, string> => {
+    const type = getMediaType(item);
+    if (type === "book") {
+      return {
+        title: safeStr(item?.title || item?.Title),
+        subtitle: safeStr(item?.subtitle || item?.Subtitle),
+        series: safeStr(item?.series || item?.Series),
+        author: safeStr(item?.author || item?.Author),
+        ownership: safeStr(item?.ownership || item?.Ownership),
+        type: safeStr(item?.types || item?.type || item?.Type || item?.Types),
+        status: safeStr(item?.status || item?.Status),
+        completedDate: safeStr(item?.completedDate || item?.CompletedDate || item?.["Completed Date"] || item?.["Date Completed"]),
+        isbn: safeStr(item?.isbn || item?.ISBN || item?.isbn13 || item?.ISBN13 || item?.isbn10 || item?.ISBN10),
+        releaseDate: safeStr(item?.releaseDate || item?.ReleaseDate),
+        description: safeStr(item?.description || item?.Description),
+        imageUrl: safeStr(item?.imageUrl || item?.ImageURL),
+        customImageUrl: safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL || item?.r2CoverUrl || item?.R2CoverUrl),
+        userRating: safeStr(item?.userRating || item?.UserRating || item?.externalAverageRating),
+        myRating: safeStr(item?.myRating || item?.["My Rating"] || item?.MyRating),
+        pages: safeStr(item?.pages || item?.Pages),
+        audiobookDuration: safeStr(item?.audiobookDuration || item?.AudiobookDuration),
+        genre: safeStr(item?.genre || item?.categories || item?.Genre),
+        tags: safeStr(item?.tags || item?.Tag || item?.Tags),
+        narrator: safeStr(item?.narrator || item?.Narrator),
+        publisher: safeStr(item?.publisher || item?.Publisher),
+        audibleAsin: safeStr(item?.audibleAsin || item?.AudibleASIN || item?.["Audible Asin"] || item?.Audible_ASIN),
+        audnexusAsin: safeStr(item?.audnexusAsin || item?.AudnexusASIN || item?.["Audnexus Asin"] || item?.Audnexus_ASIN),
+        openLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
+        googleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
+      };
+    }
+
+    if (type === "movie") {
+      return {
+        title: safeStr(item?.title || item?.Title),
+        year: safeStr(item?.year || item?.Year),
+        myRating: safeStr(item?.myRating || item?.MyRating || item?.["My Rating"]),
+        tmdbRating: safeStr(item?.tmdbRating || item?.TMDB_Rating || item?.rating),
+        tmdbId: safeStr(item?.tmdbId || item?.TMDB_ID),
+        watchStatus: safeStr(item?.watchStatus || item?.WatchStatus || item?.watched || item?.Watched || item?.["Watch Status"]),
+        watchDate: safeStr(item?.watchDate || item?.WatchDate),
+        tags: safeStr(item?.tags || item?.Tag || item?.Tags),
+        releaseDate: safeStr(item?.releaseDate || item?.ReleaseDate),
+        runtime: safeStr(item?.runtime || item?.Runtime),
+        status: safeStr(item?.status || item?.Status),
+        genres: safeStr(item?.genres || item?.Genres),
+        overview: safeStr(item?.overview || item?.Overview),
+        posterUrl: safeStr(item?.posterUrl || item?.PosterURL),
+        backdropUrl: safeStr(item?.backdropUrl || item?.BackdropURL),
+        ownership: safeStr(item?.ownership || item?.Ownership),
+        customImageUrl: safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL || item?.r2CoverUrl || item?.R2CoverUrl),
+      };
+    }
+
+    if (type === "tv") {
+      return {
+        title: safeStr(item?.title || item?.Title),
+        year: safeStr(item?.year || item?.Year),
+        tmdbId: safeStr(item?.tmdbId || item?.TMDB_ID),
+        firstAirDate: safeStr(item?.firstAirDate || item?.FirstAirDate),
+        lastAirDate: safeStr(item?.lastAirDate || item?.LastAirDate),
+        dateCompleted: safeStr(item?.dateCompleted || item?.CompletedDate || item?.["Date Completed"] || item?.["Completed Date"]),
+        numberOfSeasons: safeStr(item?.numberOfSeasons || item?.NumberOfSeasons || item?.seasons || item?.Seasons),
+        numberOfEpisodes: safeStr(item?.numberOfEpisodes || item?.NumberOfEpisodes),
+        watchStatus: safeStr(item?.watchStatus || item?.WatchStatus || item?.watched || item?.Watched),
+        showStatus: safeStr(item?.showStatus || item?.status || item?.Status),
+        networks: safeStr(item?.networks || item?.Networks),
+        streamingUS: safeStr(item?.streamingUS || item?.StreamingUS),
+        genres: safeStr(item?.genres || item?.Genres),
+        tmdbRating: safeStr(item?.tmdbRating || item?.TMDB_Rating || item?.rating),
+        myRating: safeStr(item?.myRating || item?.MyRating || item?.["My Rating"]),
+        backdropUrl: safeStr(item?.backdropUrl || item?.BackdropURL),
+        overview: safeStr(item?.overview || item?.Overview),
+        ownership: safeStr(item?.ownership || item?.Ownership),
+        tags: safeStr(item?.tags || item?.Tag || item?.Tags),
+        posterUrl: safeStr(item?.posterUrl || item?.PosterURL),
+        customImageUrl: safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL || item?.r2CoverUrl || item?.R2CoverUrl),
+      };
+    }
+
+    return {
+      title: safeStr(item?.title || item?.Title),
+      platform: safeStr(item?.__renderPlatform || item?.platform || item?.Platform),
+      status: safeStr(item?.status || item?.Status || item?.gameStatus || item?.playStatus),
+      releaseDate: safeStr(item?.releaseDate || item?.ReleaseDate),
+      platforms: safeStr(item?.platforms || item?.Platforms),
+      coverUrl: safeStr(item?.coverUrl || item?.CoverURL),
+      igdbRating: safeStr(item?.igdbRating || item?.["IGDB Rating"] || item?.rating),
+      myRating: safeStr(item?.myRating || item?.["My Rating"]),
+      ownership: safeStr(item?.ownership || item?.Ownership),
+      format: safeStr(item?.format || item?.Format),
+      backlog: safeStr(item?.backlog || item?.Backlog),
+      completed: safeStr(item?.completed || item?.Completed),
+      dateCompleted: safeStr(item?.dateCompleted || item?.["Date Completed"]),
+      yearPlayed: safeStr(item?.yearPlayed || item?.["Year Played"]),
+      dateAdded: safeStr(item?.dateAdded || item?.["Date Added"]),
+      description: safeStr(item?.description || item?.Description),
+      genres: safeStr(item?.genres || item?.Genres),
+      hoursPlayed: safeStr(item?.hoursPlayed || item?.["Hours Played"]),
+      developer: safeStr(item?.developer || item?.Developer),
+      screenshotsUrl: safeStr(item?.screenshotsUrl || item?.ScreenshotsURL),
+      igdbId: safeStr(item?.igdbId || item?.IGDB_ID),
+      igdbIdOverride: safeStr(item?.igdbIdOverride || item?.IGDB_ID_Override),
+      localCoverUrl: safeStr(item?.localCoverUrl || item?.LocalCoverURL),
+      timeToBeat: safeStr(item?.timeToBeat || item?.TimeToBeat || item?.["Time To Beat"]),
+      customImageUrl: safeStr(item?.customImageUrl || item?.CustomURL || item?.CustomImageURL || item?.r2CoverUrl || item?.R2CoverUrl),
+    };
+  }, []);
+
+  const handleSaveListEdits = useCallback(async () => {
+    if (!listViewEligible || activeDisplayMode !== "list" || listEditSaving) return;
+
+    const rowEntries = Object.entries(listEditDrafts).filter(([, values]) => Object.keys(values || {}).length > 0);
+    if (!rowEntries.length) {
+      setListEditMode(false);
+      return;
+    }
+
+    setListEditSaving(true);
+    try {
+      let savedRows = 0;
+      const itemByKey = new Map<string, any>();
+      shows.forEach((item) => itemByKey.set(getListDraftRowKey(item), item));
+
+      for (const [rowKey, draft] of rowEntries) {
+        const item = itemByKey.get(rowKey);
+        if (!item) continue;
+
+        const updates = buildListSaveBaseUpdates(item);
+        let hasChanges = false;
+
+        Object.entries(draft).forEach(([columnKeyRaw, value]) => {
+          const columnKey = columnKeyRaw as ListColumnKey;
+          const editField = getListEditableField(item, columnKey);
+          if (!editField) return;
+          const nextValue = safeStr(value);
+          const currentValue = safeStr(getListColumnRawValue(item, columnKey));
+          if (nextValue.trim() === currentValue.trim()) return;
+          updates[editField] = nextValue;
+          hasChanges = true;
+        });
+
+        if (!hasChanges) continue;
+
+        const mediaType = getMediaType(item);
+        if (mediaType === "book") {
+          await handleSaveBookEdits(item, updates);
+        } else if (mediaType === "movie") {
+          await handleSaveMovieEdits(item, updates);
+        } else if (mediaType === "tv") {
+          await handleSaveShowEdits(item, updates);
+        } else if (mediaType === "game") {
+          await handleSaveGameEdits(item, updates);
+        }
+        savedRows++;
+      }
+
+      setListEditDrafts({});
+      setListEditMode(false);
+      if (savedRows > 0) {
+        triggerSaveToast();
+      }
+    } catch (error: any) {
+      console.error("[List View] Save failed", error);
+      alert(error?.message || "Failed to save list edits.");
+    } finally {
+      setListEditSaving(false);
+    }
+  }, [
+    activeDisplayMode,
+    buildListSaveBaseUpdates,
+    getListColumnRawValue,
+    getListDraftRowKey,
+    getListEditableField,
+    handleSaveBookEdits,
+    handleSaveGameEdits,
+    handleSaveMovieEdits,
+    handleSaveShowEdits,
+    listEditDrafts,
+    listEditSaving,
+    listViewEligible,
+    shows,
+    triggerSaveToast,
+  ]);
+
+  useEffect(() => {
+    setListEditMode(false);
+    setListEditDrafts({});
+  }, [activeDisplayMode, activeListViewKey]);
+
+  const handleListColumnSort = useCallback(
+    (columnKey: ListColumnKey) => {
+      const sortFieldForColumn = LIST_COLUMN_DEFS[columnKey]?.sortField;
+      if (!sortFieldForColumn) return;
+      if (sortField === sortFieldForColumn) {
+        handleSortOrderChange(sortOrder === "Asc" ? "Desc" : "Asc");
+        return;
+      }
+      handleSortFieldChange(sortFieldForColumn);
+    },
+    [handleSortFieldChange, handleSortOrderChange, sortField, sortOrder]
+  );
+
   const activateBookQuickLink = useCallback((nextView: BookQuickLinkKey) => {
     setNav("books");
     setOpenSection("books");
@@ -16111,6 +16962,352 @@ export default function Page() {
       </div>
     ) : null;
 
+  const renderListViewContent = () => {
+    const columns = activeListColumns;
+    const listScale = activeListSizePct / 100;
+    const desktopCoverColumnWidth = Math.round(64 * listScale);
+    const desktopThumbWidth = Math.round(44 * listScale);
+    const desktopPosterThumbHeight = Math.round(54 * listScale);
+    const desktopSquareThumbSize = Math.round(44 * listScale);
+    const desktopRowMinHeight = Math.round(58 * listScale);
+    const desktopHeaderHeight = Math.round(36 * listScale);
+    const desktopTitleFontSize = Math.max(11, Math.round(13 * listScale));
+    const desktopMetaFontSize = Math.max(10, Math.round(12 * listScale));
+    const mobileCoverWidth = Math.round(58 * listScale);
+    const mobilePosterCoverHeight = Math.round(78 * listScale);
+    const mobileSquareCoverSize = Math.round(58 * listScale);
+    const mobileGridCoverColumn = Math.round(62 * listScale);
+    const mobileTitleFontSize = Math.max(12, Math.round(14 * listScale));
+    const mobileMetaFontSize = Math.max(10, Math.round(11 * listScale));
+    const tableGridTemplateColumns = columns
+      .map((columnKey) => {
+        if (columnKey === "cover") return `${desktopCoverColumnWidth}px`;
+        if (columnKey === "title") return "minmax(220px, 2fr)";
+        if (columnKey === "genres") return "minmax(180px, 1.4fr)";
+        return "minmax(118px, 1fr)";
+      })
+      .join(" ");
+    const listBackground = isSimpleShelfPresentation
+      ? simpleShelfBackgroundColor
+      : isSimpleHeaderTheme
+        ? "#eef0f3"
+        : "linear-gradient(180deg, rgba(14, 28, 50, 0.96), rgba(18, 32, 55, 0.94))";
+    const rowBackground = isSimpleHeaderTheme ? "rgba(255,255,255,0.74)" : "rgba(255,255,255,0.08)";
+    const rowBorder = isSimpleHeaderTheme ? "1px solid rgba(140, 150, 165, 0.28)" : "1px solid rgba(155, 185, 230, 0.16)";
+    const textColor = isSimpleHeaderTheme ? "#263244" : "rgba(245, 249, 255, 0.92)";
+    const mutedColor = isSimpleHeaderTheme ? "#6c7787" : "rgba(214, 225, 244, 0.66)";
+
+    if (isMobileLayout) {
+      return (
+        <div
+          style={{
+            minHeight: Math.max(400, shelfOffsets.totalHeight || viewportH - 120),
+            background: listBackground,
+            padding: "12px 12px 28px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 9,
+          }}
+        >
+          {shows.map((item, index) => {
+            const coverUrl = getDisplayCoverUrl(item, true);
+            const statusIndicator = getStatusIndicator(item);
+            const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
+            const visibleMetaColumns = columns.filter((key) => key !== "cover" && key !== "title").slice(0, 5);
+            const isAudiobook = isAudiobookItem(item);
+            return (
+              <div
+                key={`list-mobile-${getMediaItemKey(item)}-${index}`}
+                role={listEditMode ? undefined : "button"}
+                tabIndex={listEditMode ? undefined : 0}
+                onClick={() => {
+                  if (!listEditMode) openSelectedItem(item);
+                }}
+                onKeyDown={(event) => {
+                  if (!listEditMode && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    openSelectedItem(item);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  border: rowBorder,
+                  borderRadius: 12,
+                  background: rowBackground,
+                  color: textColor,
+                  padding: 9,
+                  display: "grid",
+                  gridTemplateColumns: `${mobileGridCoverColumn}px minmax(0, 1fr)`,
+                  gap: 10,
+                  textAlign: "left",
+                  cursor: listEditMode ? "default" : "pointer",
+                  boxShadow: isSimpleHeaderTheme ? "0 8px 18px rgba(24, 32, 44, 0.08)" : "0 10px 22px rgba(0,0,0,0.22)",
+                }}
+              >
+                <span
+                  style={{
+                    position: "relative",
+                    width: mobileCoverWidth,
+                    height: isAudiobook ? mobileSquareCoverSize : mobilePosterCoverHeight,
+                    alignSelf: "start",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "visible",
+                    background: "transparent",
+                  }}
+                >
+                  {coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={coverUrl}
+                      alt=""
+                      style={{
+                        width: isAudiobook ? "100%" : "auto",
+                        height: "100%",
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        objectFit: "contain",
+                        borderRadius: 8,
+                        display: "block",
+                        boxShadow: isSimpleHeaderTheme ? "0 3px 8px rgba(24, 32, 44, 0.18)" : "0 4px 10px rgba(0,0,0,0.34)",
+                      }}
+                    />
+                  ) : null}
+                  {showStatusIndicators && statusIndicator ? (
+                    <span style={{ position: "absolute", right: 4, bottom: 4, width: 18, height: 18, borderRadius: "50%", background: statusIconSrc ? "transparent" : statusIndicator.color, boxShadow: "0 2px 6px rgba(0,0,0,0.35)" }}>
+                      {statusIconSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                      ) : null}
+                    </span>
+                  ) : null}
+                </span>
+                <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                  {listEditMode && getListEditableField(item, "title") ? (
+                    renderListEditControl(item, "title", {
+                      rowBorder,
+                      textColor,
+                      background: isSimpleHeaderTheme ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.12)",
+                      fontSize: mobileTitleFontSize,
+                      fontWeight: 850,
+                      height: 32,
+                    })
+                  ) : (
+                    <span style={{ fontSize: mobileTitleFontSize, fontWeight: 900, lineHeight: 1.18, color: textColor }}>{getListColumnText(item, "title")}</span>
+                  )}
+                  <span style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {visibleMetaColumns.map((columnKey) => {
+                      const value = getListColumnText(item, columnKey);
+                      const editableField = getListEditableField(item, columnKey);
+                      if (!value && !listEditMode) return null;
+                      if (listEditMode && editableField) {
+                        return (
+                          <label key={`list-mobile-meta-${columnKey}`} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 124, flex: "1 1 124px" }}>
+                            <span style={{ fontSize: 10, fontWeight: 900, color: mutedColor, textTransform: "uppercase" }}>{LIST_COLUMN_DEFS[columnKey].label}</span>
+                            {renderListEditControl(item, columnKey, {
+                              rowBorder,
+                              textColor,
+                              background: isSimpleHeaderTheme ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.12)",
+                              fontSize: mobileMetaFontSize,
+                              fontWeight: 760,
+                              height: 30,
+                            })}
+                          </label>
+                        );
+                      }
+                      return (
+                        <span key={`list-mobile-meta-${columnKey}`} style={{ fontSize: mobileMetaFontSize, fontWeight: 750, color: mutedColor, lineHeight: 1.25 }}>
+                          <strong style={{ color: textColor, fontWeight: 850 }}>{LIST_COLUMN_DEFS[columnKey].label}:</strong> {value}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          minHeight: Math.max(480, shelfOffsets.totalHeight || viewportH - 120),
+          background: listBackground,
+          padding: "14px 16px 36px",
+        }}
+      >
+        <div
+          style={{
+            border: rowBorder,
+            borderRadius: 14,
+            overflow: "hidden",
+            background: isSimpleHeaderTheme ? "rgba(255,255,255,0.62)" : "rgba(8, 18, 34, 0.38)",
+            boxShadow: isSimpleHeaderTheme ? "0 16px 36px rgba(30, 40, 55, 0.1)" : "0 18px 42px rgba(0,0,0,0.32)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: tableGridTemplateColumns,
+              gap: 0,
+              position: "sticky",
+              top: topSafeInset + 45,
+              zIndex: 4,
+              background: isSimpleHeaderTheme ? "rgba(237, 241, 247, 0.96)" : "rgba(18, 34, 58, 0.96)",
+              borderBottom: rowBorder,
+            }}
+          >
+            {columns.map((columnKey) => {
+              const column = LIST_COLUMN_DEFS[columnKey];
+              const sortable = Boolean(column.sortField);
+              const activeSort = column.sortField && sortField === column.sortField;
+              return (
+                <button
+                  key={`list-header-${columnKey}`}
+                  type="button"
+                  disabled={!sortable}
+                  onClick={() => handleListColumnSort(columnKey)}
+                  style={{
+                    height: desktopHeaderHeight,
+                    border: "none",
+                    borderRight: rowBorder,
+                    background: "transparent",
+                    color: activeSort ? (isSimpleHeaderTheme ? "#1f66d1" : "#9cc5ff") : mutedColor,
+                    cursor: sortable ? "pointer" : "default",
+                    textAlign: columnKey === "cover" ? "center" : "left",
+                    padding: columnKey === "cover" ? "0 8px" : "0 10px",
+                    fontSize: Math.max(10, Math.round(11 * listScale)),
+                    fontWeight: 950,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {column.label}{activeSort ? ` ${sortOrder === "Asc" ? "↑" : "↓"}` : ""}
+                </button>
+              );
+            })}
+          </div>
+          {shows.map((item, index) => {
+            const coverUrl = getDisplayCoverUrl(item, true);
+            const statusIndicator = getStatusIndicator(item);
+            const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
+            const isAudiobook = isAudiobookItem(item);
+            return (
+              <div
+                key={`list-row-${getMediaItemKey(item)}-${index}`}
+                role={listEditMode ? undefined : "button"}
+                tabIndex={listEditMode ? undefined : 0}
+                onClick={() => {
+                  if (!listEditMode) openSelectedItem(item);
+                }}
+                onKeyDown={(event) => {
+                  if (!listEditMode && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    openSelectedItem(item);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gridTemplateColumns: tableGridTemplateColumns,
+                  alignItems: "center",
+                  minHeight: desktopRowMinHeight,
+                  border: "none",
+                  borderBottom: rowBorder,
+                  background: index % 2 === 0 ? rowBackground : "transparent",
+                  color: textColor,
+                  cursor: listEditMode ? "default" : "pointer",
+                  textAlign: "left",
+                  padding: 0,
+                }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.background = isSimpleHeaderTheme ? "rgba(88, 142, 236, 0.12)" : "rgba(100, 150, 230, 0.16)";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.background = index % 2 === 0 ? rowBackground : "transparent";
+                }}
+              >
+                {columns.map((columnKey) => {
+                  if (columnKey === "cover") {
+                    return (
+                      <span
+                        key={`list-cell-${columnKey}`}
+                        style={{
+                          position: "relative",
+                          width: desktopThumbWidth,
+                          height: isAudiobook ? desktopSquareThumbSize : desktopPosterThumbHeight,
+                          margin: "6px auto",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "visible",
+                          background: "transparent",
+                        }}
+                      >
+                        {coverUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={coverUrl}
+                            alt=""
+                            style={{
+                              width: isAudiobook ? "100%" : "auto",
+                              height: "100%",
+                              maxWidth: "100%",
+                              maxHeight: "100%",
+                              objectFit: "contain",
+                              borderRadius: 7,
+                              display: "block",
+                              boxShadow: isSimpleHeaderTheme ? "0 2px 6px rgba(24, 32, 44, 0.18)" : "0 3px 8px rgba(0,0,0,0.32)",
+                            }}
+                          />
+                        ) : null}
+                        {showStatusIndicators && statusIndicator ? (
+                          <span style={{ position: "absolute", right: 2, bottom: 2, width: 15, height: 15, borderRadius: "50%", background: statusIconSrc ? "transparent" : statusIndicator.color, boxShadow: "0 2px 5px rgba(0,0,0,0.32)" }}>
+                            {statusIconSrc ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                            ) : null}
+                          </span>
+                        ) : null}
+                      </span>
+                    );
+                  }
+                  const value = getListColumnText(item, columnKey);
+                  const editableField = getListEditableField(item, columnKey);
+                  if (listEditMode && editableField) {
+                    return (
+                      <span key={`list-cell-${columnKey}`} style={{ padding: "6px 8px", minWidth: 0 }}>
+                        {renderListEditControl(item, columnKey, {
+                          rowBorder,
+                          textColor,
+                          background: isSimpleHeaderTheme ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)",
+                          fontSize: columnKey === "title" ? desktopTitleFontSize : desktopMetaFontSize,
+                          fontWeight: columnKey === "title" ? 850 : 740,
+                          height: 30,
+                        })}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span key={`list-cell-${columnKey}`} style={{ padding: "8px 10px", minWidth: 0, color: columnKey === "title" ? textColor : mutedColor, fontSize: columnKey === "title" ? desktopTitleFontSize : desktopMetaFontSize, fontWeight: columnKey === "title" ? 900 : 750, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {value || "—"}
+                    </span>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       style={{
@@ -16272,6 +17469,95 @@ export default function Page() {
                   {mobileSortEditMode ? "On" : "Off"}
                 </span>
               </button>
+            ) : null}
+            {listViewEligible ? (
+              <div
+                style={{
+                  border: mobilePanelBorder,
+                  borderRadius: 12,
+                  background: mobilePanelCardBackground,
+                  padding: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 900, color: mobilePanelSectionLabelColor, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  View
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {(["cover", "list"] as DisplayMode[]).map((mode) => {
+                    const active = activeDisplayMode === mode;
+                    return (
+                      <button
+                        key={`mobile-display-mode-${mode}`}
+                        type="button"
+                        onClick={() => persistDisplayMode(mode)}
+                        aria-pressed={active}
+                        style={{
+                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {mode}
+                      </button>
+                    );
+                  })}
+                </div>
+                {activeDisplayMode === "list" ? (
+                  <div style={{ display: "grid", gridTemplateColumns: listEditMode ? "1fr 1fr" : "1fr", gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (listEditMode) {
+                          void handleSaveListEdits();
+                        } else {
+                          setListEditMode(true);
+                        }
+                      }}
+                      disabled={listEditSaving}
+                      style={{
+                        border: mobilePanelActiveButtonBorder,
+                        background: mobilePanelActiveButtonBackground,
+                        color: mobilePanelActiveButtonTextColor,
+                        borderRadius: 10,
+                        padding: "8px 10px",
+                        cursor: listEditSaving ? "wait" : "pointer",
+                        fontSize: 12,
+                        fontWeight: 900,
+                      }}
+                    >
+                      {listEditSaving ? "Saving..." : listEditMode ? "Save Edits" : "Edit List"}
+                    </button>
+                    {listEditMode ? (
+                      <button
+                        type="button"
+                        onClick={clearListEdits}
+                        disabled={listEditSaving}
+                        style={{
+                          border: mobilePanelButtonBorder,
+                          background: mobilePanelButtonBackground,
+                          color: mobilePanelButtonTextColor,
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          cursor: listEditSaving ? "default" : "pointer",
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             {mobileSidebarShowsMediaFiltersOnly && nav === "movies" ? (
               <>
@@ -19997,6 +21283,141 @@ export default function Page() {
                   <option value="Desc">Desc</option>
                 </select>
               </label>
+              {listViewEligible ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    paddingTop: 8,
+                    borderTop: mobilePanelDivider,
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingBottom: 8, borderBottom: mobilePanelDivider }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: mobilePanelSectionLabelColor, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                        List Size
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => persistListSizePct(100)}
+                        style={{
+                          border: mobilePanelButtonBorder,
+                          background: mobilePanelButtonBackground,
+                          color: mobilePanelButtonTextColor,
+                          borderRadius: 8,
+                          padding: "4px 8px",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <label style={{ display: "grid", gridTemplateColumns: "1fr 44px", alignItems: "center", gap: 10 }}>
+                      <input
+                        type="range"
+                        min={70}
+                        max={150}
+                        step={5}
+                        value={activeListSizePct}
+                        onChange={(event) => persistListSizePct(Number(event.target.value))}
+                        style={{ width: "100%", accentColor: "#4f8cff" }}
+                      />
+                      <span style={{ color: mobilePanelTextColor, fontSize: 11, fontWeight: 900, textAlign: "right" }}>
+                        {activeListSizePct}%
+                      </span>
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: mobilePanelSectionLabelColor, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      Columns
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => persistListColumns(defaultListColumns)}
+                      style={{
+                        border: mobilePanelButtonBorder,
+                        background: mobilePanelButtonBackground,
+                        color: mobilePanelButtonTextColor,
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontWeight: 800,
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
+                    {availableListColumns.map((column) => {
+                      const checked = activeListColumns.includes(column.key);
+                      const index = activeListColumns.indexOf(column.key);
+                      const canMoveUp = index > 0;
+                      const canMoveDown = index >= 0 && index < activeListColumns.length - 1;
+                      return (
+                        <div
+                          key={`list-column-setting-${column.key}`}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                            alignItems: "center",
+                            gap: 6,
+                            border: mobilePanelButtonBorder,
+                            background: checked ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                            borderRadius: 9,
+                            padding: "6px 7px",
+                          }}
+                        >
+                          <label style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, color: checked ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, fontSize: 12, fontWeight: 800 }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={column.key === "title"}
+                              onChange={(event) => {
+                                if (event.target.checked) {
+                                  persistListColumns([...activeListColumns, column.key]);
+                                } else {
+                                  persistListColumns(activeListColumns.filter((key) => key !== column.key));
+                                }
+                              }}
+                            />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{column.label}</span>
+                          </label>
+                          <button
+                            type="button"
+                            disabled={!canMoveUp}
+                            onClick={() => {
+                              const next = [...activeListColumns];
+                              const [moved] = next.splice(index, 1);
+                              next.splice(index - 1, 0, moved);
+                              persistListColumns(next);
+                            }}
+                            style={{ border: mobilePanelButtonBorder, background: mobilePanelButtonBackground, color: mobilePanelButtonTextColor, borderRadius: 7, padding: "3px 6px", cursor: canMoveUp ? "pointer" : "default", opacity: canMoveUp ? 1 : 0.4 }}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!canMoveDown}
+                            onClick={() => {
+                              const next = [...activeListColumns];
+                              const [moved] = next.splice(index, 1);
+                              next.splice(index + 1, 0, moved);
+                              persistListColumns(next);
+                            }}
+                            style={{ border: mobilePanelButtonBorder, background: mobilePanelButtonBackground, color: mobilePanelButtonTextColor, borderRadius: 7, padding: "3px 6px", cursor: canMoveDown ? "pointer" : "default", opacity: canMoveDown ? 1 : 0.4 }}
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -22691,6 +24112,106 @@ export default function Page() {
                     >
                       {`${shows.length} items`}
                     </span>
+                    {listViewEligible ? (
+                      <span
+                        role="group"
+                        aria-label="Display mode"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          height: 30,
+                          padding: 2,
+                          borderRadius: 10,
+                          background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                          border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+                          boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                        }}
+                      >
+                        {(["cover", "list"] as DisplayMode[]).map((mode) => {
+                          const active = activeDisplayMode === mode;
+                          return (
+                            <button
+                              key={`display-mode-${mode}`}
+                              type="button"
+                              onClick={() => persistDisplayMode(mode)}
+                              aria-pressed={active}
+                              style={{
+                                height: 24,
+                                border: active ? "1px solid rgba(255,255,255,0.5)" : "1px solid transparent",
+                                borderRadius: 8,
+                                background: active
+                                  ? isSimpleHeaderTheme
+                                    ? "rgba(64, 128, 244, 0.92)"
+                                    : "rgba(86, 146, 246, 0.78)"
+                                  : "transparent",
+                                color: active ? "#ffffff" : (isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)"),
+                                padding: "0 8px",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                fontWeight: 900,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {mode}
+                            </button>
+                          );
+                        })}
+                      </span>
+                    ) : null}
+                    {listViewEligible && activeDisplayMode === "list" ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (listEditMode) {
+                              void handleSaveListEdits();
+                            } else {
+                              setListEditMode(true);
+                            }
+                          }}
+                          disabled={listEditSaving}
+                          style={{
+                            height: 30,
+                            border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+                            borderRadius: 9,
+                            background: listEditMode
+                              ? "linear-gradient(180deg, rgba(67, 142, 242, 0.96), rgba(44, 105, 218, 0.98))"
+                              : isSimpleHeaderTheme
+                                ? simpleHeaderBackground
+                                : "rgba(28, 18, 10, 0.52)",
+                            color: listEditMode ? "#ffffff" : (isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.72)"),
+                            padding: "0 10px",
+                            cursor: listEditSaving ? "wait" : "pointer",
+                            fontSize: 11,
+                            fontWeight: 900,
+                            boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          }}
+                        >
+                          {listEditSaving ? "Saving..." : listEditMode ? "Save" : "Edit"}
+                        </button>
+                        {listEditMode ? (
+                          <button
+                            type="button"
+                            onClick={clearListEdits}
+                            disabled={listEditSaving}
+                            style={{
+                              height: 30,
+                              border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+                              borderRadius: 9,
+                              background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
+                              color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.72)",
+                              padding: "0 10px",
+                              cursor: listEditSaving ? "default" : "pointer",
+                              fontSize: 11,
+                              fontWeight: 900,
+                              boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
+                      </span>
+                    ) : null}
                     <button
                       onClick={() => {
                         setSettingsPopupOpen(false);
@@ -22819,6 +24340,8 @@ export default function Page() {
                 </div>
               {smartListBuilderOpen ? (
                 <div style={{ height: Math.max(0, shelfOffsets.totalHeight) }} />
+              ) : activeDisplayMode === "list" && listViewEligible ? (
+                renderListViewContent()
               ) : (
                 <div style={{ position: "relative" }}>
               {isSimpleShelfPresentation ? (
