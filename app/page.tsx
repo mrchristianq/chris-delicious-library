@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.7";
+const APP_VERSION = "10.1.11";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -422,7 +422,7 @@ const WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-mov
 const WATCHLIST_TV_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-tv";
 const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
-const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder|DisplayMode|ListColumns|ListSize):/;
+const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder|DisplayMode|ListColumns|ListSize|ListColumnWidths):/;
 const isLocalFirstViewSettingKey = (key: string) =>
   LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN.test(safeStr(key));
 type DisplayMode = "cover" | "list";
@@ -457,9 +457,11 @@ type ListColumnDef = {
   sortField?: string;
 };
 type ListEditDrafts = Record<string, Record<string, string>>;
+type ListColumnWidthMap = Partial<Record<ListColumnKey, number>>;
 const VIEW_DISPLAY_MODE_SETTING_PREFIX = "viewDisplayMode:";
 const VIEW_LIST_COLUMNS_SETTING_PREFIX = "viewListColumns:";
 const VIEW_LIST_SIZE_SETTING_PREFIX = "viewListSize:";
+const VIEW_LIST_COLUMN_WIDTHS_SETTING_PREFIX = "viewListColumnWidths:";
 const LIST_COLUMN_DEFS: Record<ListColumnKey, ListColumnDef> = {
   cover: { key: "cover", label: "Cover" },
   mediaType: { key: "mediaType", label: "Media" },
@@ -642,6 +644,34 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.11",
+    date: "2026-06-22",
+    notes: [
+      "Reduced List view column header text size.",
+    ],
+  },
+  {
+    version: "10.1.10",
+    date: "2026-06-22",
+    notes: [
+      "Removed the visible List view column resize marker while keeping columns draggable.",
+    ],
+  },
+  {
+    version: "10.1.9",
+    date: "2026-06-22",
+    notes: [
+      "Reduced List view typography weight and rendered inline custom status icons without badge circles.",
+    ],
+  },
+  {
+    version: "10.1.8",
+    date: "2026-06-22",
+    notes: [
+      "Improved List view wrapping, softer typography, inline status icons, and resizable columns.",
+    ],
+  },
   {
     version: "10.1.7",
     date: "2026-06-21",
@@ -3144,6 +3174,8 @@ export default function Page() {
   const [displayModeNonce, setDisplayModeNonce] = useState(0);
   const [listColumnsNonce, setListColumnsNonce] = useState(0);
   const [listSizeNonce, setListSizeNonce] = useState(0);
+  const [listColumnWidthsNonce, setListColumnWidthsNonce] = useState(0);
+  const [listColumnWidthDrafts, setListColumnWidthDrafts] = useState<Record<string, ListColumnWidthMap>>({});
   const [listEditMode, setListEditMode] = useState(false);
   const [listEditSaving, setListEditSaving] = useState(false);
   const [listEditDrafts, setListEditDrafts] = useState<ListEditDrafts>({});
@@ -13147,6 +13179,32 @@ export default function Page() {
     return next.includes("title") ? next : ["title", ...next];
   }, [activeListViewKey, availableListColumns, defaultListColumns, getSetting, listColumnsNonce]);
 
+  const activeListColumnWidths = useMemo<ListColumnWidthMap>(() => {
+    if (!activeListViewKey || typeof window === "undefined") return {};
+
+    const stored = safeStr(getSetting(`${VIEW_LIST_COLUMN_WIDTHS_SETTING_PREFIX}${activeListViewKey}`, ""));
+    let parsed: unknown = null;
+
+    try {
+      parsed = stored ? JSON.parse(stored) : null;
+    } catch {
+      parsed = null;
+    }
+
+    const next: ListColumnWidthMap = {};
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      Object.entries(parsed as Record<string, unknown>).forEach(([key, value]) => {
+        if (!Object.prototype.hasOwnProperty.call(LIST_COLUMN_DEFS, key)) return;
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return;
+        next[key as ListColumnKey] = Math.max(52, Math.min(640, Math.round(numeric)));
+      });
+    }
+
+    const draft = listColumnWidthDrafts[activeListViewKey] || {};
+    return { ...next, ...draft };
+  }, [activeListViewKey, getSetting, listColumnWidthDrafts, listColumnWidthsNonce]);
+
   const activeListSizePct = useMemo(() => {
     if (!activeListViewKey) return 100;
     if (typeof window === "undefined") return 100;
@@ -13168,6 +13226,65 @@ export default function Page() {
       setListSizeNonce((value) => value + 1);
     },
     [activeListViewKey, saveSetting]
+  );
+
+  const persistListColumnWidth = useCallback(
+    (columnKey: ListColumnKey, widthPx: number) => {
+      if (!activeListViewKey) return;
+
+      const nextWidth = Math.max(52, Math.min(640, Math.round(widthPx)));
+      const nextWidths = { ...activeListColumnWidths, [columnKey]: nextWidth };
+
+      saveSetting(
+        `${VIEW_LIST_COLUMN_WIDTHS_SETTING_PREFIX}${activeListViewKey}`,
+        JSON.stringify(nextWidths),
+        "View Display",
+        `List column widths for ${activeListViewKey}`
+      );
+      setListColumnWidthDrafts((prev) => {
+        if (!prev[activeListViewKey]) return prev;
+        const next = { ...prev };
+        delete next[activeListViewKey];
+        return next;
+      });
+      setListColumnWidthsNonce((value) => value + 1);
+    },
+    [activeListColumnWidths, activeListViewKey, saveSetting]
+  );
+
+  const startListColumnResize = useCallback(
+    (event: ReactMouseEvent, columnKey: ListColumnKey, startWidthPx: number) => {
+      if (!activeListViewKey) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const viewKey = activeListViewKey;
+      const startX = event.clientX;
+      const clampWidth = (value: number) => Math.max(52, Math.min(640, Math.round(value)));
+      let latestWidth = clampWidth(startWidthPx);
+
+      const handleMove = (moveEvent: MouseEvent) => {
+        latestWidth = clampWidth(startWidthPx + moveEvent.clientX - startX);
+        setListColumnWidthDrafts((prev) => ({
+          ...prev,
+          [viewKey]: {
+            ...(prev[viewKey] || {}),
+            [columnKey]: latestWidth,
+          },
+        }));
+      };
+
+      const handleUp = () => {
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("mouseup", handleUp);
+        persistListColumnWidth(columnKey, latestWidth);
+      };
+
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("mouseup", handleUp);
+    },
+    [activeListViewKey, persistListColumnWidth]
   );
 
   const persistDisplayMode = useCallback(
@@ -16971,22 +17088,35 @@ export default function Page() {
     const desktopSquareThumbSize = Math.round(44 * listScale);
     const desktopRowMinHeight = Math.round(58 * listScale);
     const desktopHeaderHeight = Math.round(36 * listScale);
-    const desktopTitleFontSize = Math.max(11, Math.round(13 * listScale));
-    const desktopMetaFontSize = Math.max(10, Math.round(12 * listScale));
+    const desktopTitleFontSize = Math.max(9, Math.round(11 * listScale));
+    const desktopMetaFontSize = Math.max(8, Math.round(10 * listScale));
     const mobileCoverWidth = Math.round(58 * listScale);
     const mobilePosterCoverHeight = Math.round(78 * listScale);
     const mobileSquareCoverSize = Math.round(58 * listScale);
     const mobileGridCoverColumn = Math.round(62 * listScale);
-    const mobileTitleFontSize = Math.max(12, Math.round(14 * listScale));
-    const mobileMetaFontSize = Math.max(10, Math.round(11 * listScale));
+    const mobileTitleFontSize = Math.max(10, Math.round(12 * listScale));
+    const mobileMetaFontSize = Math.max(8, Math.round(9 * listScale));
+    const getDefaultListColumnWidth = (columnKey: ListColumnKey) => {
+      if (columnKey === "cover") return desktopCoverColumnWidth;
+      if (columnKey === "title") return Math.round(220 * listScale);
+      if (columnKey === "genres") return Math.round(180 * listScale);
+      if (columnKey === "mediaType") return Math.round(96 * listScale);
+      if (columnKey === "myRating" || columnKey === "userRating" || columnKey === "tmdbRating" || columnKey === "igdbRating") {
+        return Math.round(96 * listScale);
+      }
+      if (columnKey === "releaseDate" || columnKey === "firstAirDate" || columnKey === "lastAirDate" || columnKey === "completedDate" || columnKey === "watchDate") {
+        return Math.round(118 * listScale);
+      }
+      if (columnKey === "status" || columnKey === "watchStatus" || columnKey === "showStatus") return Math.round(132 * listScale);
+      if (columnKey === "platform" || columnKey === "ownership" || columnKey === "type") return Math.round(124 * listScale);
+      return Math.round(118 * listScale);
+    };
+    const getListColumnWidth = (columnKey: ListColumnKey) =>
+      activeListColumnWidths[columnKey] || getDefaultListColumnWidth(columnKey);
     const tableGridTemplateColumns = columns
-      .map((columnKey) => {
-        if (columnKey === "cover") return `${desktopCoverColumnWidth}px`;
-        if (columnKey === "title") return "minmax(220px, 2fr)";
-        if (columnKey === "genres") return "minmax(180px, 1.4fr)";
-        return "minmax(118px, 1fr)";
-      })
+      .map((columnKey) => `${getListColumnWidth(columnKey)}px`)
       .join(" ");
+    const statusColumnKeys = new Set<ListColumnKey>(["status", "watchStatus", "showStatus"]);
     const listBackground = isSimpleShelfPresentation
       ? simpleShelfBackgroundColor
       : isSimpleHeaderTheme
@@ -16996,6 +17126,32 @@ export default function Page() {
     const rowBorder = isSimpleHeaderTheme ? "1px solid rgba(140, 150, 165, 0.28)" : "1px solid rgba(155, 185, 230, 0.16)";
     const textColor = isSimpleHeaderTheme ? "#263244" : "rgba(245, 249, 255, 0.92)";
     const mutedColor = isSimpleHeaderTheme ? "#6c7787" : "rgba(214, 225, 244, 0.66)";
+    const renderInlineStatusIcon = (statusIndicator: ReturnType<typeof getStatusIndicator>, statusIconSrc: string, size: number) => {
+      if (!showStatusIndicators || !statusIndicator) return null;
+
+      return (
+        <span
+          aria-hidden
+          style={{
+            width: size,
+            height: size,
+            borderRadius: statusIconSrc ? 0 : "50%",
+            flex: "0 0 auto",
+            background: statusIconSrc ? "transparent" : statusIndicator.color,
+            boxShadow: statusIconSrc ? "none" : "0 1px 4px rgba(0,0,0,0.28)",
+            overflow: statusIconSrc ? "visible" : "hidden",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {statusIconSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+          ) : null}
+        </span>
+      );
+    };
 
     if (isMobileLayout) {
       return (
@@ -17074,14 +17230,6 @@ export default function Page() {
                       }}
                     />
                   ) : null}
-                  {showStatusIndicators && statusIndicator ? (
-                    <span style={{ position: "absolute", right: 4, bottom: 4, width: 18, height: 18, borderRadius: "50%", background: statusIconSrc ? "transparent" : statusIndicator.color, boxShadow: "0 2px 6px rgba(0,0,0,0.35)" }}>
-                      {statusIconSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
-                      ) : null}
-                    </span>
-                  ) : null}
                 </span>
                 <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
                   {listEditMode && getListEditableField(item, "title") ? (
@@ -17090,11 +17238,11 @@ export default function Page() {
                       textColor,
                       background: isSimpleHeaderTheme ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.12)",
                       fontSize: mobileTitleFontSize,
-                      fontWeight: 850,
+                      fontWeight: 640,
                       height: 32,
                     })
                   ) : (
-                    <span style={{ fontSize: mobileTitleFontSize, fontWeight: 900, lineHeight: 1.18, color: textColor }}>{getListColumnText(item, "title")}</span>
+                    <span style={{ fontSize: mobileTitleFontSize, fontWeight: 660, lineHeight: 1.22, color: textColor }}>{getListColumnText(item, "title")}</span>
                   )}
                   <span style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                     {visibleMetaColumns.map((columnKey) => {
@@ -17106,19 +17254,24 @@ export default function Page() {
                           <label key={`list-mobile-meta-${columnKey}`} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 124, flex: "1 1 124px" }}>
                             <span style={{ fontSize: 10, fontWeight: 900, color: mutedColor, textTransform: "uppercase" }}>{LIST_COLUMN_DEFS[columnKey].label}</span>
                             {renderListEditControl(item, columnKey, {
-                              rowBorder,
-                              textColor,
+                          rowBorder,
+                          textColor,
                               background: isSimpleHeaderTheme ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.12)",
                               fontSize: mobileMetaFontSize,
-                              fontWeight: 760,
+                              fontWeight: 540,
                               height: 30,
                             })}
                           </label>
                         );
                       }
+                      const inlineStatusIcon = statusColumnKeys.has(columnKey)
+                        ? renderInlineStatusIcon(statusIndicator, statusIconSrc, Math.max(12, Math.round(14 * listScale)))
+                        : null;
                       return (
-                        <span key={`list-mobile-meta-${columnKey}`} style={{ fontSize: mobileMetaFontSize, fontWeight: 750, color: mutedColor, lineHeight: 1.25 }}>
-                          <strong style={{ color: textColor, fontWeight: 850 }}>{LIST_COLUMN_DEFS[columnKey].label}:</strong> {value}
+                        <span key={`list-mobile-meta-${columnKey}`} style={{ fontSize: mobileMetaFontSize, fontWeight: 540, color: mutedColor, lineHeight: 1.3, display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
+                          <strong style={{ color: textColor, fontWeight: 560 }}>{LIST_COLUMN_DEFS[columnKey].label}:</strong>
+                          {inlineStatusIcon}
+                          <span>{value}</span>
                         </span>
                       );
                     })}
@@ -17137,6 +17290,7 @@ export default function Page() {
           minHeight: Math.max(480, shelfOffsets.totalHeight || viewportH - 120),
           background: listBackground,
           padding: "14px 16px 36px",
+          overflowX: "auto",
         }}
       >
         <div
@@ -17144,6 +17298,8 @@ export default function Page() {
             border: rowBorder,
             borderRadius: 14,
             overflow: "hidden",
+            width: "max-content",
+            minWidth: "100%",
             background: isSimpleHeaderTheme ? "rgba(255,255,255,0.62)" : "rgba(8, 18, 34, 0.38)",
             boxShadow: isSimpleHeaderTheme ? "0 16px 36px rgba(30, 40, 55, 0.1)" : "0 18px 42px rgba(0,0,0,0.32)",
           }}
@@ -17164,32 +17320,65 @@ export default function Page() {
               const column = LIST_COLUMN_DEFS[columnKey];
               const sortable = Boolean(column.sortField);
               const activeSort = column.sortField && sortField === column.sortField;
+              const columnWidth = getListColumnWidth(columnKey);
               return (
-                <button
+                <div
                   key={`list-header-${columnKey}`}
-                  type="button"
-                  disabled={!sortable}
-                  onClick={() => handleListColumnSort(columnKey)}
+                  role="columnheader"
                   style={{
+                    position: "relative",
                     height: desktopHeaderHeight,
-                    border: "none",
                     borderRight: rowBorder,
                     background: "transparent",
-                    color: activeSort ? (isSimpleHeaderTheme ? "#1f66d1" : "#9cc5ff") : mutedColor,
-                    cursor: sortable ? "pointer" : "default",
-                    textAlign: columnKey === "cover" ? "center" : "left",
-                    padding: columnKey === "cover" ? "0 8px" : "0 10px",
-                    fontSize: Math.max(10, Math.round(11 * listScale)),
-                    fontWeight: 950,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    minWidth: 0,
+                    display: "flex",
+                    alignItems: "stretch",
                   }}
                 >
-                  {column.label}{activeSort ? ` ${sortOrder === "Asc" ? "↑" : "↓"}` : ""}
-                </button>
+                  <button
+                    type="button"
+                    disabled={!sortable}
+                    onClick={() => handleListColumnSort(columnKey)}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      border: "none",
+                      background: "transparent",
+                      color: activeSort ? (isSimpleHeaderTheme ? "#1f66d1" : "#9cc5ff") : mutedColor,
+                      cursor: sortable ? "pointer" : "default",
+                      textAlign: columnKey === "cover" ? "center" : "left",
+                      padding: columnKey === "cover" ? "0 8px" : "0 18px 0 10px",
+                      fontSize: Math.max(8, Math.round(9 * listScale)),
+                      fontWeight: 680,
+                      letterSpacing: "0.02em",
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {column.label}{activeSort ? ` ${sortOrder === "Asc" ? "↑" : "↓"}` : ""}
+                  </button>
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={`Resize ${column.label} column`}
+                    title={`Resize ${column.label}`}
+                    onMouseDown={(event) => startListColumnResize(event, columnKey, columnWidth)}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      right: -4,
+                      width: 8,
+                      height: "100%",
+                      cursor: "col-resize",
+                      zIndex: 6,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  />
+                </div>
               );
             })}
           </div>
@@ -17267,14 +17456,6 @@ export default function Page() {
                             }}
                           />
                         ) : null}
-                        {showStatusIndicators && statusIndicator ? (
-                          <span style={{ position: "absolute", right: 2, bottom: 2, width: 15, height: 15, borderRadius: "50%", background: statusIconSrc ? "transparent" : statusIndicator.color, boxShadow: "0 2px 5px rgba(0,0,0,0.32)" }}>
-                            {statusIconSrc ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={statusIconSrc} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
-                            ) : null}
-                          </span>
-                        ) : null}
                       </span>
                     );
                   }
@@ -17288,15 +17469,38 @@ export default function Page() {
                           textColor,
                           background: isSimpleHeaderTheme ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)",
                           fontSize: columnKey === "title" ? desktopTitleFontSize : desktopMetaFontSize,
-                          fontWeight: columnKey === "title" ? 850 : 740,
+                          fontWeight: columnKey === "title" ? 640 : 520,
                           height: 30,
                         })}
                       </span>
                     );
                   }
+                  const inlineStatusIcon = statusColumnKeys.has(columnKey)
+                    ? renderInlineStatusIcon(statusIndicator, statusIconSrc, Math.max(12, Math.round(14 * listScale)))
+                    : null;
                   return (
-                    <span key={`list-cell-${columnKey}`} style={{ padding: "8px 10px", minWidth: 0, color: columnKey === "title" ? textColor : mutedColor, fontSize: columnKey === "title" ? desktopTitleFontSize : desktopMetaFontSize, fontWeight: columnKey === "title" ? 900 : 750, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {value || "—"}
+                    <span
+                      key={`list-cell-${columnKey}`}
+                      style={{
+                        padding: "8px 10px",
+                        minWidth: 0,
+                        color: columnKey === "title" ? textColor : mutedColor,
+                        fontSize: columnKey === "title" ? desktopTitleFontSize : desktopMetaFontSize,
+                        fontWeight: columnKey === "title" ? 640 : 520,
+                        lineHeight: 1.3,
+                        whiteSpace: "normal",
+                        overflow: "visible",
+                        textOverflow: "clip",
+                        wordBreak: "break-word",
+                        overflowWrap: "anywhere",
+                        display: inlineStatusIcon ? "inline-flex" : "block",
+                        alignItems: inlineStatusIcon ? "center" : undefined,
+                        flexWrap: inlineStatusIcon ? "wrap" : undefined,
+                        gap: inlineStatusIcon ? 6 : undefined,
+                      }}
+                    >
+                      {inlineStatusIcon}
+                      <span>{value || "—"}</span>
                     </span>
                   );
                 })}
