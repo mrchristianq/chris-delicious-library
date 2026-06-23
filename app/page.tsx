@@ -341,7 +341,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.11";
+const APP_VERSION = "10.1.28";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -644,6 +644,118 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.28",
+    date: "2026-06-22",
+    notes: [
+      "Tightened Movie and TV Top 10 poster spacing by using full-width natural-height covers.",
+    ],
+  },
+  {
+    version: "10.1.27",
+    date: "2026-06-22",
+    notes: [
+      "Bottom-aligned physical and eBook covers in Statistics Top 10 book rows.",
+    ],
+  },
+  {
+    version: "10.1.26",
+    date: "2026-06-22",
+    notes: [
+      "Prevented physical and eBook covers from being cropped in Statistics Top 10 book sections.",
+    ],
+  },
+  {
+    version: "10.1.24",
+    date: "2026-06-22",
+    notes: [
+      "Updated Statistics cover selection to prefer displayed R2 artwork before metadata artwork.",
+    ],
+  },
+  {
+    version: "10.1.23",
+    date: "2026-06-22",
+    notes: [
+      "Matched Statistics Top 10 comparison cards to the compact ranked-cover layout.",
+    ],
+  },
+  {
+    version: "10.1.22",
+    date: "2026-06-22",
+    notes: [
+      "Centered the Statistics pace card contents within the Year in Review layout.",
+    ],
+  },
+  {
+    version: "10.1.21",
+    date: "2026-06-22",
+    notes: [
+      "Expanded Statistics Storyline chips so they fill the module space more evenly.",
+    ],
+  },
+  {
+    version: "10.1.20",
+    date: "2026-06-22",
+    notes: [
+      "Further increased Statistics ranked-count and rank/score text sizes, with rank and score grouped together.",
+    ],
+  },
+  {
+    version: "10.1.19",
+    date: "2026-06-22",
+    notes: [
+      "Increased Statistics ranked-count and rank/score text sizes.",
+    ],
+  },
+  {
+    version: "10.1.18",
+    date: "2026-06-22",
+    notes: [
+      "Increased Statistics ranked-cover lane height so covers can scale larger without changing spacing.",
+    ],
+  },
+  {
+    version: "10.1.17",
+    date: "2026-06-22",
+    notes: [
+      "Expanded Statistics ranked cover widths with fixed gaps while preserving uncropped artwork.",
+    ],
+  },
+  {
+    version: "10.1.16",
+    date: "2026-06-22",
+    notes: [
+      "Reworked Statistics ranked-cover sections into compact fixed-width cover grids with rank and score only.",
+    ],
+  },
+  {
+    version: "10.1.15",
+    date: "2026-06-22",
+    notes: [
+      "Reduced Statistics ranked-cover spacing and widened the ranked cover lane.",
+    ],
+  },
+  {
+    version: "10.1.14",
+    date: "2026-06-22",
+    notes: [
+      "Adjusted Statistics ranked covers to use consistent widths without cropping artwork.",
+    ],
+  },
+  {
+    version: "10.1.13",
+    date: "2026-06-22",
+    notes: [
+      "Normalized Statistics ranked thumbnails so cover, rank, rating, and title spacing stays consistent across media types.",
+    ],
+  },
+  {
+    version: "10.1.12",
+    date: "2026-06-22",
+    notes: [
+      "Stabilized Statistics ranked-card layouts so rank, rating, and title stay aligned across window sizes.",
+    ],
+  },
   {
     version: "10.1.11",
     date: "2026-06-22",

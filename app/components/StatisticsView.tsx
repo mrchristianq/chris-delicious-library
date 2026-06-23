@@ -32,6 +32,10 @@ type BookStatsItem = {
   cover?: string;
   imageUrl?: string;
   customImageUrl?: string;
+  CustomURL?: string;
+  CustomImageURL?: string;
+  r2CoverUrl?: string;
+  R2CoverUrl?: string;
   audiobookDuration?: string;
   githubCoverUrl?: string;
 };
@@ -51,6 +55,8 @@ type MovieStatsItem = {
   tags?: string;
   posterUrl?: string;
   metadataCoverUrl?: string;
+  r2CoverUrl?: string;
+  R2CoverUrl?: string;
   poster?: string;
   runtime?: string;
   director?: string;
@@ -75,6 +81,8 @@ type ShowStatsItem = {
   posterUrl?: string;
   metadataCoverUrl?: string;
   posterUrlFallback?: string;
+  r2CoverUrl?: string;
+  R2CoverUrl?: string;
 };
 
 type GameStatsItem = {
@@ -102,6 +110,8 @@ type GameStatsItem = {
   cover?: string;
   coverUrl?: string;
   localCoverUrl?: string;
+  r2CoverUrl?: string;
+  R2CoverUrl?: string;
   hoursPlayed?: string;
   "Hours Played"?: string;
   HoursPlayed?: string;
@@ -906,7 +916,7 @@ function TopRatedColumn({
   };
 
   return (
-    <section className="topRatedColumn">
+    <section className={`topRatedColumn topRatedColumn-${filter}`}>
       <div className="topRatedColumnHeader">
         <h3>{title}</h3>
         <span>{items.length} ranked</span>
@@ -1441,11 +1451,15 @@ export function StatisticsView({
         "book",
         title,
         [
-          // Prefer concrete metadata/poster candidates first; local GitHub fallback last.
+          // Match the app display order: R2/custom artwork first, metadata fallback last.
+          book.r2CoverUrl,
+          book.R2CoverUrl,
+          book.customImageUrl,
+          book.CustomURL,
+          book.CustomImageURL,
           book.metadataCoverUrl,
           book.posterUrl,
           book.posterUrlFallback,
-          book.customImageUrl,
           book.imageUrl,
           book.cover,
           book.githubCoverUrl,
@@ -1498,7 +1512,7 @@ export function StatisticsView({
       const coverUrl = resolveCoverUrl(
         "movie",
         title,
-        [movie.posterUrl, movie.metadataCoverUrl, movie.poster],
+        [movie.r2CoverUrl, movie.R2CoverUrl, movie.posterUrl, movie.metadataCoverUrl, movie.poster],
         coverOverrides
       );
       const runtimeMinutes = parseRuntimeToMinutes(movie.runtime);
@@ -1544,7 +1558,7 @@ export function StatisticsView({
       const coverUrl = resolveCoverUrl(
         "tv",
         title,
-        [show.posterUrl, show.metadataCoverUrl, show.posterUrlFallback],
+        [show.r2CoverUrl, show.R2CoverUrl, show.posterUrl, show.metadataCoverUrl, show.posterUrlFallback],
         coverOverrides
       );
 
@@ -1610,6 +1624,8 @@ export function StatisticsView({
         "game",
         title,
         [
+          game.r2CoverUrl,
+          game.R2CoverUrl,
           game.localCoverUrl,
           game.coverUrl,
           game.posterUrl,
@@ -5055,7 +5071,8 @@ export function StatisticsView({
         .yearStoryBody {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 14px;
+          flex: 1;
         }
 
         .yearStoryBody p {
@@ -5081,8 +5098,10 @@ export function StatisticsView({
 
         .yearStoryChips {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 8px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          flex: 1;
+          align-items: stretch;
         }
 
         .yearStoryChip {
@@ -5090,11 +5109,13 @@ export function StatisticsView({
           border-radius: 10px;
           background:
             linear-gradient(180deg, rgba(17, 38, 75, 0.72), rgba(8, 22, 48, 0.72));
-          padding: 10px 10px;
+          min-height: 62px;
+          padding: 12px 14px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 8px;
           align-items: center;
+          justify-content: center;
           text-align: center;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
@@ -5117,7 +5138,7 @@ export function StatisticsView({
 
         .yearStoryChip span {
           color: rgba(244, 188, 92, 0.94);
-          font-size: 10px;
+          font-size: 11px;
           font-weight: 900;
           text-transform: uppercase;
           letter-spacing: 0.09em;
@@ -5126,11 +5147,21 @@ export function StatisticsView({
 
         .yearStoryChip strong {
           color: #f8fbff;
-          font-size: 16px;
+          font-size: 18px;
           font-weight: 900;
           line-height: 1.25;
           font-family: "Avenir Next", "Segoe UI", sans-serif;
           text-wrap: balance;
+        }
+
+        @media (max-width: 720px) {
+          .yearStoryChips {
+            grid-template-columns: 1fr;
+          }
+
+          .yearStoryChip {
+            min-height: 54px;
+          }
         }
 
         .yearSpotlightBody {
@@ -5243,29 +5274,35 @@ export function StatisticsView({
 
         .yearTopRatedGrid {
           display: grid;
-          grid-template-columns: repeat(10, minmax(0, 1fr));
-          gap: 4px;
+          grid-template-columns: repeat(10, calc((100% - 54px) / 10));
+          gap: 10px 6px;
           width: 100%;
+          align-items: start;
+          align-content: start;
+          justify-content: start;
         }
 
         .yearTopRatedTile {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(110px, 10.5cqw, 160px) minmax(5em, auto);
-          gap: 5px;
+          grid-template-rows: clamp(138px, 15cqw, 220px) 22px;
+          gap: 3px;
           min-width: 0;
           position: relative;
+          min-height: 0;
+          justify-items: center;
         }
 
         .yearTopRatedMedia {
           position: relative;
           width: 100%;
-          height: clamp(110px, 10.5cqw, 160px);
+          height: clamp(138px, 15cqw, 220px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
           overflow: visible;
           border-radius: 6px;
+          background: transparent;
         }
 
         .yearTopRatedCoverFrame {
@@ -5295,13 +5332,14 @@ export function StatisticsView({
 
         .yearTopRatedTileInteractive {
           cursor: pointer;
-          border-radius: 10px;
-          padding: 2px;
-          transition: background 120ms ease;
+          border-radius: 9px;
+          padding: 0;
+          transition: background 120ms ease, box-shadow 120ms ease;
         }
 
         .yearTopRatedTileInteractive:hover {
-          background: rgba(115, 169, 245, 0.14);
+          background: rgba(115, 169, 245, 0.13);
+          box-shadow: inset 0 0 0 1px rgba(159, 204, 255, 0.16);
         }
 
         .yearTopRatedTileInteractive:focus-visible {
@@ -5326,7 +5364,7 @@ export function StatisticsView({
         }
 
         .yearTopRatedTile img {
-          width: auto;
+          width: 100%;
           height: auto;
           max-width: 100%;
           max-height: 100%;
@@ -5340,18 +5378,20 @@ export function StatisticsView({
         }
 
         .yearTopRatedCoverFrame img.yearTopRatedCoverAudiobook {
-          width: auto;
+          width: 100%;
           height: auto;
           max-width: 100%;
           max-height: 100%;
           aspect-ratio: auto;
+          object-fit: contain;
         }
 
         .yearTopRatedCoverFrame img.yearTopRatedCoverGame {
-          width: auto;
+          width: 100%;
           height: auto;
           max-width: 100%;
           max-height: 100%;
+          object-fit: contain;
         }
 
         .statsCoverRatingBadge {
@@ -5374,21 +5414,23 @@ export function StatisticsView({
         }
 
         .yearTopRatedTile figcaption {
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-rows: 22px;
+          align-content: start;
           gap: 3px;
-          min-height: 5em;
+          min-height: 0;
+          min-width: 0;
+          width: 100%;
         }
 
         .yearTopRatedStatsRow {
           display: flex;
           align-items: center;
           justify-content: flex-start;
-          gap: 6px;
+          gap: 8px;
           width: 100%;
-          min-height: 14px;
           color: rgba(218, 234, 255, 0.9);
-          font-size: 10px;
+          font-size: 17px;
           line-height: 1.1;
           font-weight: 900;
         }
@@ -5401,21 +5443,18 @@ export function StatisticsView({
           white-space: nowrap;
         }
 
+        .yearTopRatedRankText {
+          color: rgba(226, 239, 255, 0.82);
+          text-align: left;
+        }
+
         .yearTopRatedScoreText {
           color: #f0b756;
+          text-align: left;
         }
 
         .yearTopRatedTitle {
-          font-size: 10px;
-          color: rgba(186, 210, 240, 0.82);
-          font-weight: 700;
-          line-height: 1.2;
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          white-space: normal;
-          min-height: 3.6em;
+          display: none;
         }
 
         .yearTopRatedMeta {
@@ -5423,7 +5462,7 @@ export function StatisticsView({
         }
 
         .yearTopRatedCover {
-          width: auto;
+          width: 100%;
           height: auto;
           max-width: 100%;
           max-height: 100%;
@@ -5440,15 +5479,13 @@ export function StatisticsView({
           width: 100%;
           height: auto;
           align-self: flex-end;
+          object-fit: contain;
         }
 
         .yearTopRatedCoverGame {
-          /* Fill the slot height like portrait covers do, instead of being
-             forced into a 1.4:1 landscape rectangle that letterboxed the
-             actual game artwork to a fraction of its intended size. */
           aspect-ratio: auto;
-          width: auto;
-          height: 100%;
+          width: 100%;
+          height: auto;
           max-width: 100%;
           max-height: 100%;
           object-fit: contain;
@@ -5457,8 +5494,7 @@ export function StatisticsView({
         }
 
         .yearTopRatedCoverTv {
-          transform: scale(0.93);
-          transform-origin: bottom center;
+          transform: none;
         }
 
         .topRatedComparison {
@@ -5503,23 +5539,27 @@ export function StatisticsView({
 
         .topRatedGrid {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 8px;
+          grid-template-columns: repeat(5, calc((100% - 24px) / 5));
+          gap: 10px 6px;
+          align-items: start;
+          align-content: start;
+          justify-content: start;
         }
 
         .topRatedTile {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(92px, 8cqw, 132px) minmax(3.6em, auto);
-          gap: 4px;
+          grid-template-rows: clamp(112px, 10cqw, 164px) 22px;
+          gap: 3px;
           min-width: 0;
           position: relative;
+          justify-items: center;
         }
 
         .topRatedMedia {
           position: relative;
           width: 100%;
-          height: clamp(92px, 8cqw, 132px);
+          height: clamp(112px, 10cqw, 164px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
@@ -5532,15 +5572,15 @@ export function StatisticsView({
         }
 
         .topRatedMediaBook {
-          height: clamp(92px, 8cqw, 132px);
+          height: clamp(112px, 10cqw, 164px);
         }
 
         .topRatedTileGame {
-          grid-template-rows: clamp(126px, 10.5cqw, 178px) minmax(3.6em, auto);
+          grid-template-rows: clamp(132px, 12cqw, 192px) 22px;
         }
 
         .topRatedMediaGame {
-          height: clamp(126px, 10.5cqw, 178px);
+          height: clamp(132px, 12cqw, 192px);
         }
 
         .topRatedCoverWrap {
@@ -5589,17 +5629,19 @@ export function StatisticsView({
         }
 
         .topRatedImageClipBook {
-          width: auto;
-          height: auto;
+          width: 100%;
+          height: 100%;
         }
 
         .topRatedCoverWrapAudiobook {
-          width: min(100%, clamp(92px, 8cqw, 132px));
+          width: min(100%, clamp(112px, 10cqw, 164px));
           height: auto;
         }
 
         .topRatedCoverWrapBook {
-          align-items: flex-start;
+          width: 100%;
+          height: 100%;
+          align-items: flex-end;
         }
 
         .topRatedCoverWrapPoster {
@@ -5620,13 +5662,14 @@ export function StatisticsView({
 
         .topRatedTileInteractive {
           cursor: pointer;
-          border-radius: 10px;
-          padding: 2px;
-          transition: background 120ms ease;
+          border-radius: 9px;
+          padding: 0;
+          transition: background 120ms ease, box-shadow 120ms ease;
         }
 
         .topRatedTileInteractive:hover {
-          background: rgba(115, 169, 245, 0.14);
+          background: rgba(115, 169, 245, 0.13);
+          box-shadow: inset 0 0 0 1px rgba(159, 204, 255, 0.16);
         }
 
         .topRatedTileInteractive:focus-visible {
@@ -5669,8 +5712,8 @@ export function StatisticsView({
         }
 
         .topRatedMediaBook img.yearTopRatedCover {
-          height: auto;
-          width: auto;
+          height: 100%;
+          width: 100%;
           max-width: 100%;
           max-height: 100%;
           aspect-ratio: auto;
@@ -5735,22 +5778,22 @@ export function StatisticsView({
         }
 
         .topRatedTile figcaption {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          justify-self: center;
+          display: grid;
+          grid-template-rows: 22px;
+          align-content: start;
           width: 100%;
+          min-width: 0;
+          min-height: 0;
         }
 
         .topRatedStatsRow {
           display: flex;
           align-items: center;
           justify-content: flex-start;
-          gap: 6px;
+          gap: 8px;
           width: 100%;
-          min-height: 14px;
           color: rgba(218, 234, 255, 0.9);
-          font-size: 10px;
+          font-size: 17px;
           line-height: 1.1;
           font-weight: 900;
         }
@@ -5768,11 +5811,11 @@ export function StatisticsView({
         }
 
         .topRatedTilePoster figcaption {
-          width: min(100%, calc(clamp(116px, 9.8cqw, 164px) * 0.6667));
+          width: 100%;
         }
 
         .topRatedTileAudiobook figcaption {
-          width: min(100%, clamp(92px, 8cqw, 132px));
+          width: 100%;
         }
 
         .topRatedTileGame figcaption {
@@ -5780,16 +5823,56 @@ export function StatisticsView({
         }
 
         .topRatedTitle {
-          font-size: 10px;
-          color: rgba(186, 210, 240, 0.82);
-          font-weight: 700;
-          line-height: 1.2;
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          white-space: normal;
-          min-height: 3.6em;
+          display: none;
+        }
+
+        .topRatedColumn-book .topRatedTile {
+          grid-template-rows: auto 22px;
+          align-self: end;
+        }
+
+        .topRatedColumn-book .topRatedGrid {
+          align-items: end;
+        }
+
+        .topRatedColumn-book .topRatedMediaBook {
+          height: auto;
+          align-items: flex-start;
+        }
+
+        .topRatedColumn-book .topRatedCoverWrapBook,
+        .topRatedColumn-book .topRatedImageClipBook {
+          width: 100%;
+          height: auto;
+          align-items: flex-start;
+        }
+
+        .topRatedColumn-book .topRatedMediaBook img.yearTopRatedCover {
+          width: 100%;
+          height: auto;
+          max-height: none;
+        }
+
+        .topRatedColumn-movie .topRatedTilePoster,
+        .topRatedColumn-tv .topRatedTilePoster {
+          grid-template-rows: auto 22px;
+        }
+
+        .topRatedColumn-movie .topRatedMediaPoster,
+        .topRatedColumn-tv .topRatedMediaPoster,
+        .topRatedColumn-movie .topRatedCoverWrapPoster,
+        .topRatedColumn-tv .topRatedCoverWrapPoster,
+        .topRatedColumn-movie .topRatedImageClipPoster,
+        .topRatedColumn-tv .topRatedImageClipPoster {
+          width: 100%;
+          height: auto;
+        }
+
+        .topRatedColumn-movie .topRatedCoverWrapPoster img.yearTopRatedCover,
+        .topRatedColumn-tv .topRatedCoverWrapPoster img.yearTopRatedCover {
+          width: 100%;
+          height: auto;
+          max-height: none;
         }
 
         .topRatedMeta {
@@ -5835,23 +5918,27 @@ export function StatisticsView({
 
         :global(.topRatedGrid) {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 8px;
+          grid-template-columns: repeat(5, calc((100% - 24px) / 5));
+          gap: 10px 6px;
+          align-items: start;
+          align-content: start;
+          justify-content: start;
         }
 
         :global(.topRatedTile) {
           margin: 0;
           display: grid;
-          grid-template-rows: clamp(82px, 7cqw, 118px) minmax(3.45em, auto);
-          gap: 4px;
+          grid-template-rows: clamp(112px, 10cqw, 164px) 22px;
+          gap: 3px;
           min-width: 0;
           position: relative;
+          justify-items: center;
         }
 
         :global(.topRatedMedia) {
           position: relative;
           width: 100%;
-          height: clamp(82px, 7cqw, 118px);
+          height: clamp(112px, 10cqw, 164px);
           display: flex;
           align-items: flex-end;
           justify-content: center;
@@ -5860,11 +5947,11 @@ export function StatisticsView({
         }
 
         :global(.topRatedTilePoster) {
-          grid-template-rows: clamp(116px, 9.8cqw, 164px) minmax(3.45em, auto);
+          grid-template-rows: clamp(132px, 12cqw, 192px) 22px;
         }
 
         :global(.topRatedMediaPoster) {
-          height: clamp(116px, 9.8cqw, 164px);
+          height: clamp(132px, 12cqw, 192px);
         }
 
         :global(.topRatedImageClip) {
@@ -5901,16 +5988,16 @@ export function StatisticsView({
         }
 
         :global(.topRatedImageClipBook) {
-          width: auto;
-          height: auto;
+          width: 100%;
+          height: 100%;
         }
 
         :global(.topRatedTileGame) {
-          grid-template-rows: clamp(104px, 8.7cqw, 148px) minmax(3.45em, auto);
+          grid-template-rows: clamp(132px, 12cqw, 192px) 22px;
         }
 
         :global(.topRatedMediaGame) {
-          height: clamp(104px, 8.7cqw, 148px);
+          height: clamp(132px, 12cqw, 192px);
         }
 
         :global(.topRatedCoverWrap) {
@@ -5926,8 +6013,14 @@ export function StatisticsView({
         }
 
         :global(.topRatedCoverWrapAudiobook) {
-          width: min(100%, clamp(82px, 7cqw, 118px));
+          width: min(100%, clamp(112px, 10cqw, 164px));
           height: auto;
+        }
+
+        :global(.topRatedCoverWrapBook) {
+          width: 100%;
+          height: 100%;
+          align-items: flex-end;
         }
 
         :global(.topRatedCoverWrapPoster) {
@@ -5948,13 +6041,14 @@ export function StatisticsView({
 
         :global(.topRatedTileInteractive) {
           cursor: pointer;
-          border-radius: 10px;
-          padding: 2px;
-          transition: background 120ms ease;
+          border-radius: 9px;
+          padding: 0;
+          transition: background 120ms ease, box-shadow 120ms ease;
         }
 
         :global(.topRatedTileInteractive:hover) {
-          background: rgba(115, 169, 245, 0.14);
+          background: rgba(115, 169, 245, 0.13);
+          box-shadow: inset 0 0 0 1px rgba(159, 204, 255, 0.16);
         }
 
         :global(.topRatedTileInteractive:focus-visible) {
@@ -5993,11 +6087,12 @@ export function StatisticsView({
         }
 
         :global(.topRatedMediaBook img.yearTopRatedCover) {
-          height: auto;
-          width: auto;
+          height: 100%;
+          width: 100%;
           max-width: 100%;
           max-height: 100%;
           aspect-ratio: auto;
+          object-fit: contain;
         }
 
         :global(.topRatedTile img.yearTopRatedCoverAudiobook) {
@@ -6034,22 +6129,22 @@ export function StatisticsView({
         }
 
         :global(.topRatedTile figcaption) {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          justify-self: center;
+          display: grid;
+          grid-template-rows: 22px;
+          align-content: start;
           width: 100%;
+          min-width: 0;
+          min-height: 0;
         }
 
         :global(.topRatedStatsRow) {
           display: flex;
           align-items: center;
           justify-content: flex-start;
-          gap: 6px;
+          gap: 8px;
           width: 100%;
-          min-height: 14px;
           color: rgba(218, 234, 255, 0.9);
-          font-size: 10px;
+          font-size: 17px;
           line-height: 1.1;
           font-weight: 900;
         }
@@ -6067,24 +6162,64 @@ export function StatisticsView({
         }
 
         :global(.topRatedTilePoster figcaption) {
-          width: min(100%, calc(clamp(116px, 9.8cqw, 164px) * 0.6667));
+          width: 100%;
         }
 
         :global(.topRatedTileAudiobook figcaption) {
-          width: min(100%, clamp(82px, 7cqw, 118px));
+          width: 100%;
         }
 
         :global(.topRatedTitle) {
-          font-size: 10px;
-          color: rgba(186, 210, 240, 0.82);
-          font-weight: 700;
-          line-height: 1.15;
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          white-space: normal;
-          min-height: 3.45em;
+          display: none;
+        }
+
+        :global(.topRatedColumn-book .topRatedTile) {
+          grid-template-rows: auto 22px;
+          align-self: end;
+        }
+
+        :global(.topRatedColumn-book .topRatedGrid) {
+          align-items: end;
+        }
+
+        :global(.topRatedColumn-book .topRatedMediaBook) {
+          height: auto;
+          align-items: flex-start;
+        }
+
+        :global(.topRatedColumn-book .topRatedCoverWrapBook),
+        :global(.topRatedColumn-book .topRatedImageClipBook) {
+          width: 100%;
+          height: auto;
+          align-items: flex-start;
+        }
+
+        :global(.topRatedColumn-book .topRatedMediaBook img.yearTopRatedCover) {
+          width: 100%;
+          height: auto;
+          max-height: none;
+        }
+
+        :global(.topRatedColumn-movie .topRatedTilePoster),
+        :global(.topRatedColumn-tv .topRatedTilePoster) {
+          grid-template-rows: auto 22px;
+        }
+
+        :global(.topRatedColumn-movie .topRatedMediaPoster),
+        :global(.topRatedColumn-tv .topRatedMediaPoster),
+        :global(.topRatedColumn-movie .topRatedCoverWrapPoster),
+        :global(.topRatedColumn-tv .topRatedCoverWrapPoster),
+        :global(.topRatedColumn-movie .topRatedImageClipPoster),
+        :global(.topRatedColumn-tv .topRatedImageClipPoster) {
+          width: 100%;
+          height: auto;
+        }
+
+        :global(.topRatedColumn-movie .topRatedCoverWrapPoster img.yearTopRatedCover),
+        :global(.topRatedColumn-tv .topRatedCoverWrapPoster img.yearTopRatedCover) {
+          width: 100%;
+          height: auto;
+          max-height: none;
         }
 
         .cardEmpty.compactEmpty {
@@ -6237,7 +6372,7 @@ export function StatisticsView({
         }
 
         .yearPaceCard {
-          justify-content: flex-start;
+          justify-content: stretch;
         }
 
         .yearPaceBody {
@@ -6245,7 +6380,9 @@ export function StatisticsView({
           flex-direction: column;
           gap: 10px;
           flex: 1;
+          align-items: center;
           justify-content: center;
+          text-align: center;
         }
 
         .yearPaceValue {
@@ -6259,6 +6396,7 @@ export function StatisticsView({
           display: flex;
           flex-direction: column;
           gap: 4px;
+          align-items: center;
         }
 
         .yearPaceDelta {
@@ -6342,8 +6480,8 @@ export function StatisticsView({
 
         .cardHeader span {
           color: var(--stats-muted);
-          font-size: 11px;
-          font-weight: 700;
+          font-size: 17px;
+          font-weight: 800;
         }
 
         .cardEmpty {
@@ -7279,7 +7417,21 @@ export function StatisticsView({
           }
 
           .yearTopRatedGrid {
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(5, calc((100% - 24px) / 5));
+            gap: 10px 6px;
+          }
+
+          .yearTopRatedTile {
+            grid-template-rows: clamp(114px, 25vw, 178px) 22px;
+          }
+
+          .yearTopRatedMedia {
+            width: 100%;
+            height: clamp(114px, 25vw, 178px);
+          }
+
+          .yearTopRatedTile figcaption {
+            width: 100%;
           }
 
           .topRatedGrid {
