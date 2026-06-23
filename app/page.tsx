@@ -342,7 +342,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.42";
+const APP_VERSION = "10.1.46";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -645,6 +645,34 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.46",
+    date: "2026-06-23",
+    notes: [
+      "Tightened Read Next cover rows to match the reduced shelf spacing used by Play Next.",
+    ],
+  },
+  {
+    version: "10.1.45",
+    date: "2026-06-23",
+    notes: [
+      "Tightened Games Play Next cover rows so game shelves no longer reserve extra generic row height.",
+    ],
+  },
+  {
+    version: "10.1.44",
+    date: "2026-06-23",
+    notes: [
+      "Kept one decimal visible for all Statistics Top Rated comparison scores.",
+    ],
+  },
+  {
+    version: "10.1.43",
+    date: "2026-06-23",
+    notes: [
+      "Kept book scores in Statistics Top 10 comparison sections on a 5-point decimal scale.",
+    ],
+  },
   {
     version: "10.1.42",
     date: "2026-06-23",
@@ -15311,7 +15339,7 @@ export default function Page() {
         }, 0);
         return Math.max(1, tallestCover + movieSlack + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows));
       }
-      if (nav !== "books" && nav !== "games") return shelfRowHeight + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows);
+      if (nav !== "books" && nav !== "games" && nav !== "play-next" && nav !== "wishlist-books") return shelfRowHeight + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows);
       if (!shelfShows.length) return shelfRowHeight + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows);
       const tallestCover = shelfShows.reduce((maxHeight, show) => {
         const { caseHeight } = getItemVisualLayout(show);

@@ -491,7 +491,19 @@ function getTop20CoverFrameClass(item: UnifiedStatsItem): string {
 function formatScoreValue(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-";
   const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return rounded.toFixed(1);
+}
+
+function formatTopRatedScoreValue(item: UnifiedStatsItem, scoreKey: "rating" | "externalRating"): string {
+  const value = item[scoreKey];
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-";
+
+  if (item.mediaType === "book") {
+    const valueOutOfFive = value > 5 ? value / 2 : value;
+    return (Math.round(valueOutOfFive * 10) / 10).toFixed(1);
+  }
+
+  return formatScoreValue(value);
 }
 
 function formatStarRowFive(valueOutOfFive: number): string {
@@ -908,7 +920,7 @@ function TopRatedColumn({
     onOpenDetail({
       id: `${detailIdPrefix}_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}_${index + 1}`,
       title: `${detailTitlePrefix} #${index + 1}`,
-      value: formatScoreValue(item[scoreKey]),
+      value: formatTopRatedScoreValue(item, scoreKey),
       summary: detailSummary,
       calculation: detailCalculation,
       items: [item],
@@ -959,7 +971,7 @@ function TopRatedColumn({
                 <figcaption>
                   <span className="topRatedStatsRow">
                     <span className="topRatedRankText">#{index + 1}</span>
-                    <span className="topRatedScoreText">{formatScoreValue(item[scoreKey])}</span>
+                    <span className="topRatedScoreText">{formatTopRatedScoreValue(item, scoreKey)}</span>
                   </span>
                   <span className="topRatedTitle">{item.title}</span>
                 </figcaption>
