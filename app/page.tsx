@@ -22,6 +22,7 @@ import { MovieDetailsEditModal } from "./components/MovieDetailsEditModal";
 import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
 import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
 import { RateItModal } from "./components/RateItModal";
+import { RolodexCounter } from "./components/RolodexCounter";
 import { COVER_IMAGE_RADIUS_STYLE } from "./components/coverStyles";
 import {
   isNativeRuntime,
@@ -341,7 +342,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.28";
+const APP_VERSION = "10.1.42";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -644,6 +645,104 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.42",
+    date: "2026-06-23",
+    notes: [
+      "Reduced Library sidebar rolodex digit font size for better seam alignment.",
+    ],
+  },
+  {
+    version: "10.1.41",
+    date: "2026-06-23",
+    notes: [
+      "Adjusted Library sidebar rolodex digits upward to better align with the split seam.",
+    ],
+  },
+  {
+    version: "10.1.40",
+    date: "2026-06-23",
+    notes: [
+      "Optically centered Library sidebar rolodex digits against the split line.",
+    ],
+  },
+  {
+    version: "10.1.39",
+    date: "2026-06-23",
+    notes: [
+      "Prevented inactive Library sidebar rolodex counters from animating when another media row is selected.",
+    ],
+  },
+  {
+    version: "10.1.38",
+    date: "2026-06-23",
+    notes: [
+      "Made Library sidebar rolodex row clicks force a visible selected-counter animation.",
+    ],
+  },
+  {
+    version: "10.1.37",
+    date: "2026-06-23",
+    notes: [
+      "Restored direct selected-row rolodex animation when choosing a Library media type.",
+    ],
+  },
+  {
+    version: "10.1.36",
+    date: "2026-06-23",
+    notes: [
+      "Slightly reduced the Library sidebar rolodex tile proportions.",
+    ],
+  },
+  {
+    version: "10.1.35",
+    date: "2026-06-23",
+    notes: [
+      "Limited Library sidebar rolodex animations to only the selected row after initial load.",
+    ],
+  },
+  {
+    version: "10.1.34",
+    date: "2026-06-23",
+    notes: [
+      "Slightly reduced the Library sidebar rolodex tile size.",
+    ],
+  },
+  {
+    version: "10.1.33",
+    date: "2026-06-23",
+    notes: [
+      "Reduced the Library sidebar rolodex digit weight for a closer split-flap look.",
+    ],
+  },
+  {
+    version: "10.1.32",
+    date: "2026-06-23",
+    notes: [
+      "Retuned Library sidebar rolodex digits to better match the reference split-flap tile proportions.",
+    ],
+  },
+  {
+    version: "10.1.31",
+    date: "2026-06-23",
+    notes: [
+      "Added a split-flap seam to Library sidebar rolodex digits and limited post-load animation to the highlighted row.",
+    ],
+  },
+  {
+    version: "10.1.30",
+    date: "2026-06-23",
+    notes: [
+      "Enlarged the Library sidebar rolodex digits and made their tiles more rectangular for better readability.",
+    ],
+  },
+  {
+    version: "10.1.29",
+    date: "2026-06-23",
+    notes: [
+      "Changed Library sidebar counts to compact rolodex-style digit tiles with matching active colors.",
+    ],
+  },
   {
     version: "10.1.28",
     date: "2026-06-22",
@@ -3204,6 +3303,12 @@ export default function Page() {
       setSortField("ReleaseDate");
       setSortOrder("Desc");
     }
+    if (!sidebarCountsInitialAnimation) {
+      setSidebarCountAnimation((current) => ({
+        key: section,
+        nonce: current.nonce + 1,
+      }));
+    }
     setNav(section);
     setOpenSection(section);
   };
@@ -3429,6 +3534,11 @@ export default function Page() {
 
   // Sidebar icon size
   const [iconSize, setIconSize] = useState<number>(16);
+  const [sidebarCountsInitialAnimation, setSidebarCountsInitialAnimation] = useState(true);
+  const [sidebarCountAnimation, setSidebarCountAnimation] = useState<{
+    key: Exclude<CoverScaleGroupKey, "home"> | null;
+    nonce: number;
+  }>({ key: null, nonce: 0 });
 
   // Sidebar text styling
   const [sidebarFontSize, setSidebarFontSize] = useState<number>(12);
@@ -3657,7 +3767,6 @@ export default function Page() {
           color: sidebarAccentPalette[key].text,
         }
       : {};
-  const usesThemeCountBubbleColor = true;
   const sidebarModuleStackGap = Math.max(0, sidebarSectionGap);
   const sidebarModuleMarginTop = isSimpleSidebarTheme ? 8 : isMacSidebarTheme ? 0 : 12;
   const sidebarPrimaryModuleMarginTop = isElectricBlueSidebarTheme ? 9 : isSimpleSidebarTheme ? 0 : isMacSidebarTheme ? 0 : 6;
@@ -3919,6 +4028,10 @@ export default function Page() {
     }
     setSimpleShelfBackgroundColor(DEFAULT_SIMPLE_SHELF_BACKGROUND);
   }, [shelfThemeMode]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSidebarCountsInitialAnimation(false), 1400);
+    return () => window.clearTimeout(timer);
+  }, []);
   const sidebarInlineCountColor = isSimpleSidebarTheme ? currentTheme.secondaryColor : isDarkSidebarTheme ? "rgba(241, 248, 255, 0.98)" : isMacSidebarTheme ? "#58606b" : "#333";
   const sidebarInlineCountBorder = isSimpleSidebarTheme
     ? `1px solid ${currentTheme.highlightBorder}`
@@ -3927,6 +4040,75 @@ export default function Page() {
     : isDarkSidebarTheme
       ? "1px solid rgba(146, 181, 235, 0.45)"
       : "1px solid rgba(0,0,0,0.12)";
+  const renderSidebarLibraryCount = (
+    value: number,
+    accentKey: Exclude<CoverScaleGroupKey, "home">,
+    active: boolean
+  ) => {
+    const activeColor = sidebarAccentPalette[accentKey].countBubble;
+    const inactiveText = isDarkSidebarTheme ? "rgba(231, 239, 250, 0.86)" : "#1f2933";
+    const inactiveBackground = isDarkSidebarTheme
+      ? "linear-gradient(180deg, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.14) 49%, rgba(0,0,0,0.11) 50%, rgba(255,255,255,0.09) 51%, rgba(255,255,255,0.16) 100%)"
+      : "linear-gradient(180deg, #f8fafc 0%, #eef2f6 49%, #d6dce3 50%, #e9edf2 51%, #f4f7fa 100%)";
+    const selectedAnimationTrigger = active && sidebarCountAnimation.key === accentKey
+      ? sidebarCountAnimation.nonce
+      : null;
+
+    return (
+      <span
+        aria-hidden="true"
+        title={`${value} items`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          minWidth: 72,
+          height: 23,
+          lineHeight: 1,
+          overflow: "visible",
+        }}
+      >
+        <RolodexCounter
+          key={`${accentKey}-${selectedAnimationTrigger ?? "stable"}`}
+          value={value}
+          minDigits={1}
+          animateOnMount={sidebarCountsInitialAnimation || selectedAnimationTrigger !== null}
+          animateChanges={active}
+          animationTrigger={selectedAnimationTrigger}
+          showLabel={false}
+          showCommas={false}
+          digitHeight={21}
+          digitWidth={15}
+          spacing={4}
+          numberFontSize={15}
+          extraSpins={2}
+          durationMs={520}
+          digitTileBackground={
+            active
+              ? `linear-gradient(180deg, ${activeColor} 0%, ${activeColor} 48%, rgba(0,0,0,0.22) 50%, ${activeColor} 52%, ${activeColor} 100%)`
+              : inactiveBackground
+          }
+          digitTileBorder={active ? "rgba(0,0,0,0.18)" : "rgba(174, 182, 192, 0.58)"}
+          digitTileShadow={
+            active
+              ? "inset 0 1px 0 rgba(255,255,255,0.34), inset 0 -1px 0 rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.18)"
+              : "inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.12)"
+          }
+          digitTileRadius={5}
+          digitSplitLineColor={active ? "rgba(0,0,0,0.34)" : "rgba(117, 126, 137, 0.46)"}
+          digitHighlightBackground={
+            active
+              ? "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.02) 100%)"
+              : "linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.05) 100%)"
+          }
+          digitNumberColor={active ? "#fff" : inactiveText}
+          digitNumberFontWeight={650}
+          digitNumberOffsetY={-1}
+          digitNumberTextShadow={active ? "0 1px 1px rgba(0,0,0,0.24)" : "0 1px 0 rgba(255,255,255,0.9)"}
+        />
+      </span>
+    );
+  };
   const sandboxOverlayText = "rgba(255, 248, 214, 0.96)";
   const sandboxOverlayBg = "rgba(83, 54, 0, 0.84)";
   const sandboxOverlayBorder = "1px solid rgba(255, 214, 102, 0.7)";
@@ -18874,24 +19056,7 @@ export default function Page() {
                     </span>
                     Books
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "books" ? Math.min(Number(sidebarFontWeight) + 200, 900) : sidebarFontWeight,
-                        background: nav === "books" ? sidebarAccentPalette.books.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#6ba56a",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.books}
-                    </span>
-                  </span>
+                  {renderSidebarLibraryCount(stats.books, "books", nav === "books")}
                 </button>
 
                 {nav === "books" ? (
@@ -19053,24 +19218,7 @@ export default function Page() {
                     </span>
                     Movies
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "movies" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
-                        background: nav === "movies" ? sidebarAccentPalette.movies.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#5b9bd5",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.movies}
-                    </span>
-                  </span>
+                  {renderSidebarLibraryCount(stats.movies, "movies", nav === "movies")}
                 </button>
 
                 {nav === "movies" ? (
@@ -19198,24 +19346,7 @@ export default function Page() {
                     </span>
                     TV Shows
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "tv" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
-                        background: nav === "tv" ? sidebarAccentPalette.tv.countBubble : usesThemeCountBubbleColor ? currentTheme.countBubbleColor : "#d97642",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.tv}
-                    </span>
-                  </span>
+                  {renderSidebarLibraryCount(stats.tv, "tv", nav === "tv")}
                 </button>
 
                 {nav === "tv" ? (
@@ -19385,29 +19516,7 @@ export default function Page() {
                     </span>
                     Games
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: sidebarFontSize,
-                        fontWeight: nav === "games" ? Math.min(Number(sidebarFontWeight) + 150, 900) : sidebarFontWeight,
-                        background:
-                          nav === "games"
-                            ? sidebarAccentPalette.games.countBubble
-                            : usesThemeCountBubbleColor
-                                ? currentTheme.countBubbleColor
-                                : "#333",
-                        color: "#fff",
-                      }}
-                    >
-                      {stats.games}
-                    </span>
-                  </span>
+                  {renderSidebarLibraryCount(stats.games, "games", nav === "games")}
                 </button>
 
                 {nav === "games" ? (

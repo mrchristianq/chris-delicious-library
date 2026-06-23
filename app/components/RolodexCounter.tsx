@@ -42,10 +42,18 @@ type RolodexCounterProps = {
   digitTileBackground?: string; // background gradient for digit tiles
   digitTileBorder?: string;   // border color for digit tiles
   digitTileShadow?: string;   // box shadow for digit tiles
+  digitTileRadius?: number;   // border radius for digit tiles
   digitHighlightBackground?: string; // highlight overlay background
+  digitSplitLineColor?: string; // center seam for split-flap style tiles
   digitNumberTextShadow?: string; // text shadow for digit numbers
+  digitNumberFontWeight?: number | string; // font weight for digit numbers
+  digitNumberOffsetY?: number; // optical vertical adjustment for digit numbers
   showLabel?: boolean;        // show/hide "Total Media:" label
   labelText?: string;         // custom label text
+  minDigits?: number;         // minimum digit count before padding
+  animateOnMount?: boolean;   // roll into place when first rendered
+  animateChanges?: boolean;   // roll when value changes after mount
+  animationTrigger?: string | number | null; // external trigger for a one-off roll
 };
 
 export function RolodexCounter({
@@ -70,32 +78,55 @@ export function RolodexCounter({
   digitTileBackground = "linear-gradient(180deg, #f5f0e8 0%, #ebe4d8 100%)",
   digitTileBorder = "rgba(139,69,19,.15)",
   digitTileShadow = "0 2px 4px rgba(0,0,0,.15), inset 0 1px 1px rgba(255,255,255,.8)",
+  digitTileRadius = 7,
   digitHighlightBackground = "linear-gradient(rgba(255,255,255,.5), rgba(255,255,255,0))",
+  digitSplitLineColor = "transparent",
   digitNumberTextShadow,
+  digitNumberFontWeight = 900,
+  digitNumberOffsetY = 0,
   showLabel = true,
   labelText = "Total Media:",
+  minDigits = 4,
+  animateOnMount = false,
+  animateChanges = true,
+  animationTrigger = null,
 }: RolodexCounterProps) {
   const rootClassName = ["rolodexCounter", className].filter(Boolean).join(" ");
   const formatted = useMemo(() => {
     const v = Math.max(0, Math.floor(value));
-    // Always pad to 4 digits
-    return String(v).padStart(4, '0');
-  }, [value]);
+    return String(v).padStart(Math.max(1, minDigits), '0');
+  }, [minDigits, value]);
 
   const chars = useMemo(() => formatted.split(""), [formatted]);
+
+  // Build wheels: repeat 0-9 a few times so it can "spin" before landing.
+  const repeats = clamp(extraSpins, 1, 6) + 1; // +1 so we always have the final range
+  const targetIndexes = useMemo(
+    () =>
+      chars.map((ch) => {
+        if (!/\d/.test(ch)) return -1;
+
+        const digit = Number(ch);
+        // Land in the LAST cycle so it always rolls "down" into place.
+        // Example: repeats=3 => wheel length 30. final cycle starts at 20.
+        const base = (repeats - 1) * 10;
+        return base + digit;
+      }),
+    [chars, repeats]
+  );
 
   // Track if this is the first mount and previous value to control animation
   const isFirstMount = useRef(true);
   const prevValue = useRef(value);
+  const prevAnimationTrigger = useRef(animationTrigger);
 
   // For each digit, we animate the "wheel index" down to target.
   // We store the current index we want to display.
-  const [indexes, setIndexes] = useState<number[]>(() =>
-    chars.map((ch) => (/\d/.test(ch) ? 0 : -1))
-  );
+  const [indexes, setIndexes] = useState<number[]>(() => {
+    if (!animateOnMount) return targetIndexes;
+    return targetIndexes.map((idx) => (idx < 0 ? -1 : Math.max(0, idx - 2)));
+  });
 
-  // Build wheels: repeat 0-9 a few times so it can "spin" before landing.
-  const repeats = clamp(extraSpins, 1, 6) + 1; // +1 so we always have the final range
   const wheelDigits = useMemo(() => {
     const arr: number[] = [];
     for (let r = 0; r < repeats; r++) {
@@ -107,7 +138,9 @@ export function RolodexCounter({
   useEffect(() => {
     // Only animate when the value actually changes, not when size/styling props change
     const valueChanged = prevValue.current !== value;
+    const triggerChanged = prevAnimationTrigger.current !== animationTrigger;
     prevValue.current = value;
+    prevAnimationTrigger.current = animationTrigger;
 
     // Respect reduced motion (nice touch for accessibility)
     const reduce =
@@ -115,26 +148,23 @@ export function RolodexCounter({
       window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    // Create target indexes.
-    const next = chars.map((ch) => {
-      if (!/\d/.test(ch)) return -1;
+    const next = targetIndexes;
 
-      const digit = Number(ch);
-      // Land in the LAST cycle so it always rolls "down" into place.
-      // Example: repeats=3 => wheel length 30. final cycle starts at 20.
-      const base = (repeats - 1) * 10;
-      return base + digit;
-    });
-
-    // On first mount, set to target immediately without animation
+    // On first mount, either set to target immediately or roll into place.
     if (isFirstMount.current) {
       isFirstMount.current = false;
+      if (animateOnMount && !reduce) {
+        const start = next.map((idx) => (idx < 0 ? -1 : Math.max(0, idx - 2)));
+        setIndexes(start);
+        const raf = requestAnimationFrame(() => setIndexes(next));
+        return () => cancelAnimationFrame(raf);
+      }
       setIndexes(next);
       return;
     }
 
-    // If value didn't change (only styling props changed), update indexes without animation
-    if (!valueChanged) {
+    // If value didn't change and there was no explicit trigger, update indexes without animation.
+    if ((!valueChanged && !triggerChanged) || !animateChanges) {
       setIndexes(next);
       return;
     }
@@ -157,7 +187,7 @@ export function RolodexCounter({
     // Kick animation on next frame so the transition triggers reliably.
     const raf = requestAnimationFrame(() => setIndexes(next));
     return () => cancelAnimationFrame(raf);
-  }, [chars, repeats, value]);
+  }, [animationTrigger, animateChanges, animateOnMount, targetIndexes, value]);
 
   return (
     <div
@@ -233,7 +263,7 @@ export function RolodexCounter({
               width: digitWidth,
               height: digitHeight,
               overflow: "hidden",
-              borderRadius: 7,
+              borderRadius: digitTileRadius,
               ...getBackgroundLayerStyle(digitTileBackground),
               boxShadow: digitTileShadow,
               border: `1px solid ${digitTileBorder}`,
@@ -258,6 +288,21 @@ export function RolodexCounter({
               }}
             />
             <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: "50%",
+                height: 1,
+                transform: "translateY(-0.5px)",
+                background: digitSplitLineColor,
+                boxShadow: digitSplitLineColor === "transparent" ? "none" : "0 1px 0 rgba(255,255,255,0.22)",
+                pointerEvents: "none",
+                zIndex: 2,
+              }}
+            />
+            <div
               style={{
                 willChange: "transform",
                 transform: `translateY(${translateY}px)`,
@@ -274,11 +319,13 @@ export function RolodexCounter({
                     alignItems: "center",
                     justifyContent: "center",
                     color: digitNumberColor,
-                    fontWeight: 900,
+                    fontWeight: digitNumberFontWeight,
                     fontSize: numberFontSize,
+                    lineHeight: 1,
                     letterSpacing: 0.5,
                     textShadow: digitNumberTextShadow || `0 1px 0 ${digitNumberColor}4D`,
                     fontVariantNumeric: "tabular-nums",
+                    transform: `translateY(${digitNumberOffsetY}px)`,
                   }}
                 >
                   {d}
