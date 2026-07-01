@@ -342,7 +342,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.46";
+const APP_VERSION = "10.1.47";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -645,6 +645,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.1.47",
+    date: "2026-07-01",
+    notes: [
+      "Fixed mobile Books Home average rating clipping and kept Games platform filters closed by default.",
+    ],
+  },
   {
     version: "10.1.46",
     date: "2026-06-23",
@@ -3441,7 +3448,7 @@ export default function Page() {
   const [movieStatusOpen, setMovieStatusOpen] = useState<boolean>(true);
   const [seriesOpen, setSeriesOpen] = useState<boolean>(false);
   const [genreOpen, setGenreOpen] = useState<boolean>(false);
-  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(true);
+  const [gamePlatformOpen, setGamePlatformOpen] = useState<boolean>(false);
   const [gameOwnershipOpen, setGameOwnershipOpen] = useState<boolean>(false);
   const [gameFormatOpen, setGameFormatOpen] = useState<boolean>(false);
   const [gameYearPlayedOpen, setGameYearPlayedOpen] = useState<boolean>(false);
@@ -17000,7 +17007,7 @@ export default function Page() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
               <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>Statistics</h2>
             </div>
-            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 0 : 14 }}>
+            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 10 : 14 }}>
               {[
                 ["Movies", moviesHomeData.stats.movies],
                 ["Watched", moviesHomeData.stats.watched],
@@ -17162,7 +17169,7 @@ export default function Page() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
               <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>Statistics</h2>
             </div>
-            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 0 : 14 }}>
+            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 10 : 14 }}>
               {[
                 ["Shows", tvHomeData.stats.shows],
                 ["Watched", tvHomeData.stats.watched],
@@ -17360,7 +17367,7 @@ export default function Page() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
               <h2 style={{ margin: 0, fontSize: isMobileLayout ? 16 : 18, lineHeight: 1, fontWeight: 950, color: gamesHomeTextColor }}>Statistics</h2>
             </div>
-            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 0 : 14 }}>
+            <div style={{ border: gamesHomePanelBorder, background: gamesHomePanelBg, borderRadius: 14, padding: 10, display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 8, paddingRight: isMobileLayout ? 10 : 14 }}>
               {[
                 ["Books", booksHomeData.stats.books],
                 ["Completed", booksHomeData.stats.completed],
@@ -19522,7 +19529,7 @@ export default function Page() {
                     setGameFormatFilter(null);
                     setGameYearPlayedFilter(null);
                     setGameGenreFilter(null);
-                    setGamePlatformOpen(true);
+                    setGamePlatformOpen(false);
                     setGameOwnershipOpen(false);
                     setGameFormatOpen(false);
                     setGameYearPlayedOpen(false);
