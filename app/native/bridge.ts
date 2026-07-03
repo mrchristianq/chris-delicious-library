@@ -4,6 +4,7 @@ type Row = Record<string, string>;
 
 export type NativeSnapshot = {
   tvRows: Row[];
+  tvEpisodeRows?: Row[];
   bookRows: Row[];
   movieRows: Row[];
   gameRows: Row[];
@@ -80,6 +81,7 @@ export type NativeAssetBytes = {
 
 export type NativeSeedSnapshot = {
   tvRows: Row[];
+  tvEpisodeRows?: Row[];
   bookRows: Row[];
   movieRows: Row[];
   gameRows: Row[];
@@ -148,6 +150,7 @@ export async function nativeReadSnapshot(): Promise<NativeSnapshot> {
   return {
     ...snapshot,
     tvRows: await hydrateNativeAssetUrls(snapshot.tvRows),
+    tvEpisodeRows: snapshot.tvEpisodeRows || [],
     bookRows: await hydrateNativeAssetUrls(snapshot.bookRows),
     movieRows: await hydrateNativeAssetUrls(snapshot.movieRows),
     gameRows: await hydrateNativeAssetUrls(snapshot.gameRows),
@@ -235,6 +238,11 @@ export async function nativeOpenExternalUrl(url: string): Promise<void> {
 export async function nativeResolveIgdbUrl(query: string, year?: string): Promise<string> {
   const { invoke } = await getTauriCore();
   return await invoke("resolve_igdb_url", { query, year: year || null });
+}
+
+export async function nativeLoadTvEpisodes(tmdbId: string, title?: string): Promise<Row[]> {
+  const { invoke } = await getTauriCore();
+  return await invoke<Row[]>("load_tv_episodes", { tmdbId, title: title || "" });
 }
 
 export async function nativeDiscoverIgdbGames(genreIds: number[] = []): Promise<Record<string, unknown>[]> {

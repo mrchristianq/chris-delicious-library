@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 import { handleExternalLinkClick, openExternalUrl } from "../native/externalLinks";
@@ -19,9 +19,31 @@ type TVDetailsPageProps = {
   relatedShows?: Record<string, unknown>[];
   relatedShowsLabel?: string;
   recommendedShows?: Record<string, unknown>[];
+  episodeRows?: TVEpisodeRow[];
+  onRefreshEpisodes?: (item: Record<string, unknown>, force?: boolean) => Promise<TVEpisodeRow[]>;
+  onUpdateEpisodeProgress?: (episode: TVEpisodeRow, watched: boolean) => Promise<void>;
+  onBulkUpdateEpisodeProgress?: (episodes: TVEpisodeRow[], watched: boolean) => Promise<void>;
   suppressRemoteRelatedCovers?: boolean;
   onSelectRelated?: (item: Record<string, unknown>) => void;
   highlightColor?: string;
+};
+
+type TVEpisodeRow = Record<string, string> & {
+  EpisodeKey?: string;
+  ShowTMDB_ID?: string;
+  ShowTitle?: string;
+  SeasonNumber?: string;
+  SeasonTitle?: string;
+  SeasonPosterURL?: string;
+  EpisodeNumber?: string;
+  EpisodeTitle?: string;
+  AirDate?: string;
+  StillURL?: string;
+  Overview?: string;
+  Runtime?: string;
+  Watched?: string;
+  WatchedAt?: string;
+  UpdatedAt?: string;
 };
 
 type PaletteState = {
@@ -244,14 +266,17 @@ const PANEL_STYLE: React.CSSProperties = {
 export function TVDetailsPage({
   item, isMobileLayout, usePageBackground = false,
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
-  relatedShows, relatedShowsLabel, recommendedShows, onSelectRelated, highlightColor,
+  relatedShows, relatedShowsLabel, recommendedShows, episodeRows = [], onRefreshEpisodes,
+  onUpdateEpisodeProgress, onBulkUpdateEpisodeProgress, onSelectRelated, highlightColor,
   suppressRemoteRelatedCovers = false,
 }: TVDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
   const [failedCastPhotoUrls, setFailedCastPhotoUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
-  const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
+  const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout, {
+    fitMode: "width",
+  });
   const coverUrl = getDisplayCoverUrl(item);
   const backdropUrl = getDisplayBackdropUrl(item);
 
@@ -353,6 +378,40 @@ export function TVDetailsPage({
     return { background: "rgba(255,255,255,0.88)", border: "1px solid rgba(255,255,255,0.4)", color: "#111" };
   })();
 
+  const ratingFacts = [
+    tmdbRating ? { label: "TMDB RATING", value: tmdbRating } : null,
+    myRating ? { label: "MY RATING", value: myRating } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
+
+  const [episodeLoading, setEpisodeLoading] = useState(false);
+  const [episodeError, setEpisodeError] = useState<string | null>(null);
+  const [episodeSavingKey, setEpisodeSavingKey] = useState<string | null>(null);
+  const [expandedSeason, setExpandedSeason] = useState<string>("");
+  const episodeInitialSeasonSetRef = useRef("");
+  const showEpisodeKey = safeStr((item as Record<string, unknown>).tmdbId || (item as Record<string, unknown>).TMDB_ID || title);
+  const episodeKey = (episode: TVEpisodeRow) =>
+    safeStr(episode.EpisodeKey) ||
+    `${safeStr(episode.ShowTMDB_ID || showEpisodeKey)}:s${safeStr(episode.SeasonNumber)}:e${safeStr(episode.EpisodeNumber)}`;
+  const isEpisodeWatched = (episode: TVEpisodeRow) => {
+    const value = safeStr(episode.Watched).toLowerCase();
+    return value === "true" || value === "yes" || value === "1" || value === "watched";
+  };
+  const episodeAirTime = (episode: TVEpisodeRow) => {
+    const raw = safeStr(episode.AirDate);
+    if (!raw) return Number.POSITIVE_INFINITY;
+    const parsed = Date.parse(`${raw}T00:00:00`);
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  };
+  const sortedEpisodes = useMemo(() => {
+    return [...episodeRows].sort((a, b) => {
+      const seasonDelta = Number(safeStr(a.SeasonNumber) || 0) - Number(safeStr(b.SeasonNumber) || 0);
+      if (seasonDelta) return seasonDelta;
+      return Number(safeStr(a.EpisodeNumber) || 0) - Number(safeStr(b.EpisodeNumber) || 0);
+    });
+  }, [episodeRows]);
+  const releasedEpisodes = sortedEpisodes.filter((episode) => episodeAirTime(episode) <= Date.now());
+  const watchedEpisodeCount = sortedEpisodes.filter(isEpisodeWatched).length;
+  const totalEpisodeCount = sortedEpisodes.length || Number(numberOfEpisodes || 0);
   const detailFacts = [
     caughtUp ? { label: "CAUGHT UP", value: caughtUp } : null,
     tvShowStatus ? { label: "SHOW STATUS", value: tvShowStatus } : null,
@@ -361,13 +420,90 @@ export function TVDetailsPage({
     creator ? { label: "CREATOR", value: creator, half: true } : null,
     dateCompleted ? { label: "COMPLETED", value: dateCompleted, half: true } : null,
     numberOfSeasons ? { label: "SEASONS", value: numberOfSeasons, half: true } : null,
-    numberOfEpisodes ? { label: "EPISODES", value: numberOfEpisodes, half: true } : null,
+    totalEpisodeCount ? { label: "TOTAL EPISODES", value: String(totalEpisodeCount), half: true } : null,
+    totalEpisodeCount || watchedEpisodeCount ? { label: "EPISODES WATCHED", value: String(watchedEpisodeCount), half: true } : null,
   ].filter(Boolean) as { label: string; value: string; half?: boolean }[];
-
-  const ratingFacts = [
-    tmdbRating ? { label: "TMDB RATING", value: tmdbRating } : null,
-    myRating ? { label: "MY RATING", value: myRating } : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+  const nextEpisodes = releasedEpisodes.filter((episode) => !isEpisodeWatched(episode)).slice(0, isMobileLayout ? 4 : 6);
+  const episodesBySeason = useMemo(() => {
+    const groups = new Map<string, TVEpisodeRow[]>();
+    for (const episode of sortedEpisodes) {
+      const season = safeStr(episode.SeasonNumber) || "0";
+      groups.set(season, [...(groups.get(season) || []), episode]);
+    }
+    return Array.from(groups.entries()).sort((a, b) => Number(a[0]) - Number(b[0]));
+  }, [sortedEpisodes]);
+  useEffect(() => {
+    if (!showEpisodeKey) return;
+    if (episodeInitialSeasonSetRef.current !== showEpisodeKey) {
+      episodeInitialSeasonSetRef.current = showEpisodeKey;
+      const firstUnwatched = episodesBySeason.find(([, rows]) => rows.some((episode) => !isEpisodeWatched(episode)));
+      setExpandedSeason(firstUnwatched?.[0] || episodesBySeason[episodesBySeason.length - 1]?.[0] || "");
+    }
+  }, [episodesBySeason, showEpisodeKey]);
+  useEffect(() => {
+    if (!onRefreshEpisodes || !showEpisodeKey) return;
+    if (episodeRows.length) return;
+    let cancelled = false;
+    setEpisodeLoading(true);
+    setEpisodeError(null);
+    onRefreshEpisodes(item, false)
+      .catch((error) => {
+        if (!cancelled) setEpisodeError(error?.message || "Failed to load episodes.");
+      })
+      .finally(() => {
+        if (!cancelled) setEpisodeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [episodeRows.length, item, onRefreshEpisodes, showEpisodeKey]);
+  const toggleEpisodeWatched = async (episode: TVEpisodeRow, nextWatched: boolean) => {
+    if (!onUpdateEpisodeProgress) return;
+    const key = episodeKey(episode);
+    setEpisodeSavingKey(key);
+    setEpisodeError(null);
+    try {
+      await onUpdateEpisodeProgress(episode, nextWatched);
+    } catch (error: any) {
+      setEpisodeError(error?.message || "Failed to save episode progress.");
+    } finally {
+      setEpisodeSavingKey(null);
+    }
+  };
+  const bulkSetWatched = async (episodes: TVEpisodeRow[], watched: boolean) => {
+    if (!onBulkUpdateEpisodeProgress || !episodes.length) return;
+    setEpisodeSavingKey("bulk");
+    setEpisodeError(null);
+    try {
+      await onBulkUpdateEpisodeProgress(episodes, watched);
+    } catch (error: any) {
+      setEpisodeError(error?.message || "Failed to save episode progress.");
+    } finally {
+      setEpisodeSavingKey(null);
+    }
+  };
+  const watchedToggleStyle = (watched: boolean, size = 28): CSSProperties => ({
+    width: size,
+    height: size,
+    borderRadius: "50%",
+    border: `1px solid ${watched ? "rgba(255,255,255,0.48)" : "rgba(255,255,255,0.56)"}`,
+    background: watched
+      ? "rgba(255,255,255,0.42)"
+      : "rgba(255,255,255,0.20)",
+    color: "#ffffff",
+    boxShadow: watched
+      ? "0 1px 5px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.28)"
+      : "inset 0 1px 0 rgba(255,255,255,0.22)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    fontSize: Math.max(11, Math.round(size * 0.48)),
+    fontWeight: 800,
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  });
 
   const POSTER_W = isMobileLayout ? 120 : scaledPx(190, detailScale);
   const LEFT_COL_W = isMobileLayout ? POSTER_W + 28 : POSTER_W + scaledPx(44, detailScale);
@@ -397,13 +533,23 @@ export function TVDetailsPage({
     <div style={{
       opacity: ready ? 1 : 0,
       transition: "opacity 260ms ease",
-      height: isMobileLayout ? "auto" : "100vh",
+      height: "auto",
       minHeight: "100vh",
       background: usePageBackground ? "transparent" : `linear-gradient(160deg, ${mixHex(palette.start, "#06080f", 0.08)} 0%, ${palette.start} 30%, ${mixHex(palette.end, palette.start, 0.18)} 58%, ${palette.end} 100%)`,
       color: palette.text,
       position: "relative",
-      overflow: isMobileLayout ? "hidden auto" : "hidden",
+      overflowX: "hidden",
+      overflowY: "visible",
     }}>
+      <style jsx global>{`
+        .tvEpisodeWatchNextRow {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .tvEpisodeWatchNextRow::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       {/* Ambient blur */}
       {backdropUrl ? (
         <div aria-hidden style={{
@@ -419,7 +565,7 @@ export function TVDetailsPage({
         position: "relative",
         zIndex: 1,
         width: "100%",
-        height: isMobileLayout ? "auto" : "100%",
+        height: "auto",
         display: isMobileLayout ? "block" : "flex",
         justifyContent: isMobileLayout ? undefined : "center",
         alignItems: isMobileLayout ? undefined : "flex-start",
@@ -692,6 +838,262 @@ export function TVDetailsPage({
                   </div>
                 </>
               ) : null}
+            </>
+          ) : null}
+
+          {/* Episode tracker */}
+          {onRefreshEpisodes ? sectionBox(
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                {sectionLabel("EPISODES")}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setEpisodeLoading(true);
+                    setEpisodeError(null);
+                    try {
+                      await onRefreshEpisodes(item, true);
+                    } catch (error: any) {
+                      setEpisodeError(error?.message || "Failed to refresh episodes.");
+                    } finally {
+                      setEpisodeLoading(false);
+                    }
+                  }}
+                  disabled={episodeLoading}
+                  style={{
+                    border: `1px solid ${palette.surfaceBorder}`,
+                    borderRadius: 999,
+                    background: palette.chip,
+                    color: palette.text,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "7px 11px",
+                    cursor: episodeLoading ? "default" : "pointer",
+                    opacity: episodeLoading ? 0.6 : 1,
+                  }}
+                >
+                  {episodeLoading ? "Refreshing..." : "Refresh Episodes"}
+                </button>
+              </div>
+
+              {episodeError ? (
+                <div style={{
+                  marginBottom: 10,
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  background: "rgba(254, 226, 226, 0.16)",
+                  border: "1px solid rgba(248, 113, 113, 0.34)",
+                  color: "#fecaca",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}>
+                  {episodeError}
+                </div>
+              ) : null}
+
+              {nextEpisodes.length > 0 ? (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: palette.text, marginBottom: 8 }}>Watch Next</div>
+                  <div
+                    className="tvEpisodeWatchNextRow"
+                    style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}
+                  >
+                    {nextEpisodes.map((episode) => {
+                      const still = safeStr(episode.StillURL);
+                      const key = episodeKey(episode);
+                      const savingThisEpisode = episodeSavingKey === key || episodeSavingKey === "bulk";
+                      return (
+                        <button
+                          key={`next-${key}`}
+                          type="button"
+                          onClick={() => toggleEpisodeWatched(episode, true)}
+                          disabled={savingThisEpisode}
+                          style={{
+                            width: isMobileLayout ? 190 : 230,
+                            flex: "0 0 auto",
+                            border: 0,
+                            background: "transparent",
+                            padding: 0,
+                            color: palette.text,
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{
+                            position: "relative",
+                            height: isMobileLayout ? 96 : 116,
+                            borderRadius: 14,
+                            overflow: "hidden",
+                            background: palette.chip,
+                            border: `1px solid ${palette.surfaceBorder}`,
+                          }}>
+                            {still ? (
+                              <img src={still} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            ) : (
+                              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: palette.mutedText, fontSize: 12, fontWeight: 800 }}>
+                                No Still
+                              </div>
+                            )}
+                            <span style={{
+                              position: "absolute",
+                              right: 8,
+                              bottom: 8,
+                              ...watchedToggleStyle(false, 26),
+                            }} />
+                          </div>
+                          <div style={{ marginTop: 7, fontSize: 10, fontWeight: 900, color: palette.mutedText, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                            S{episode.SeasonNumber} E{episode.EpisodeNumber}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 850, lineHeight: 1.2, color: palette.text }}>
+                            {safeStr(episode.EpisodeTitle) || `Episode ${episode.EpisodeNumber}`}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: palette.text }}>All Episodes</div>
+                <button
+                  type="button"
+                  onClick={() => bulkSetWatched(releasedEpisodes, true)}
+                  disabled={!releasedEpisodes.length || Boolean(episodeSavingKey)}
+                  style={{
+                    border: `1px solid ${palette.surfaceBorder}`,
+                    borderRadius: 999,
+                    background: palette.chip,
+                    color: palette.text,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "7px 10px",
+                    cursor: releasedEpisodes.length ? "pointer" : "default",
+                    opacity: releasedEpisodes.length ? 1 : 0.5,
+                  }}
+                >
+                  Mark Released Watched
+                </button>
+              </div>
+
+              {episodeLoading && !sortedEpisodes.length ? (
+                <div style={{ color: palette.mutedText, fontSize: 13, fontWeight: 700, padding: "12px 0" }}>Loading episodes...</div>
+              ) : sortedEpisodes.length ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {episodesBySeason.map(([season, rows]) => {
+                    const watchedCount = rows.filter(isEpisodeWatched).length;
+                    const complete = watchedCount > 0 && watchedCount === rows.length;
+                    const open = expandedSeason === season;
+                    const poster = safeStr(rows[0]?.SeasonPosterURL);
+                    return (
+                      <div key={`season-${season}`} style={{
+                        borderRadius: 16,
+                        overflow: "hidden",
+                        border: `1px solid ${complete ? rgba(highlightColor || "#ff9934", 0.55) : palette.surfaceBorder}`,
+                        background: complete ? rgba(highlightColor || "#ff9934", 0.22) : palette.surface,
+                      }}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setExpandedSeason(open ? "" : season)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setExpandedSeason(open ? "" : season);
+                            }
+                          }}
+                          style={{
+                            width: "100%",
+                            display: "grid",
+                            gridTemplateColumns: "44px 1fr auto",
+                            alignItems: "center",
+                            gap: 12,
+                            border: 0,
+                            background: "transparent",
+                            padding: 10,
+                            color: palette.text,
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ width: 44, height: 64, borderRadius: 8, overflow: "hidden", background: palette.chip }}>
+                            {poster ? <img src={poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 900 }}>Season {season}</div>
+                            <div style={{ marginTop: 2, fontSize: 11, fontWeight: 750, color: palette.mutedText }}>
+                              {watchedCount} of {rows.length} watched
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void bulkSetWatched(rows, !complete);
+                              }}
+                              disabled={false}
+                              style={watchedToggleStyle(complete, 28)}
+                              aria-label={complete ? `Mark season ${season} unwatched` : `Mark season ${season} watched`}
+                            >
+                              {complete ? "✓" : ""}
+                            </button>
+                            <span style={{ fontSize: 18, fontWeight: 900, transform: open ? "rotate(90deg)" : "none", transition: "transform 120ms ease" }}>›</span>
+                          </div>
+                        </div>
+
+                        {open ? (
+                          <div style={{ borderTop: `1px solid ${palette.surfaceBorder}` }}>
+                            {rows.map((episode) => {
+                              const watched = isEpisodeWatched(episode);
+                              const key = episodeKey(episode);
+                              const savingThisEpisode = episodeSavingKey === key || episodeSavingKey === "bulk";
+                              const still = safeStr(episode.StillURL);
+                              return (
+                                <div key={key} style={{
+                                  display: "grid",
+                                  gridTemplateColumns: isMobileLayout ? "84px 1fr 32px" : "128px 1fr 36px",
+                                  gap: 12,
+                                  alignItems: "center",
+                                  padding: "10px 12px",
+                                  borderBottom: `1px solid ${palette.surfaceBorder}`,
+                                }}>
+                                  <div style={{ height: isMobileLayout ? 48 : 72, borderRadius: 10, overflow: "hidden", background: palette.chip }}>
+                                    {still ? <img src={still} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                                  </div>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontSize: 10, fontWeight: 900, color: palette.mutedText, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                      Episode {episode.EpisodeNumber}
+                                    </div>
+                                    <div style={{ fontSize: 13, fontWeight: 850, color: palette.text, lineHeight: 1.25 }}>
+                                      {safeStr(episode.EpisodeTitle) || `Episode ${episode.EpisodeNumber}`}
+                                    </div>
+                                    <div style={{ marginTop: 3, fontSize: 11, fontWeight: 700, color: palette.mutedText }}>
+                                      {formatMmDdYyyy(episode.AirDate)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleEpisodeWatched(episode, !watched)}
+                                    disabled={savingThisEpisode}
+                                    style={watchedToggleStyle(watched, 28)}
+                                  >
+                                    {watched ? "✓" : ""}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: palette.mutedText, fontSize: 13, fontWeight: 700, padding: "12px 0" }}>
+                  No episodes cached yet.
+                </div>
+              )}
             </>
           ) : null}
 

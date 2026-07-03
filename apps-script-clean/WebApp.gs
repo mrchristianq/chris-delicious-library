@@ -1,50 +1,15 @@
-// Google Apps Script - Save this in your Apps Script editor
-// This handles saving settings to the Google Sheet
+/***********************
+ * WebApp.gs
+ * Clean web-app bridge for Chris' Delicious Library.
+ *
+ * This is the ONLY Apps Script file that should define doPost(),
+ * doOptions(), and createCORSResponse().
+ *
+ * Keep spreadsheet menus in Menu.gs.
+ * Keep direct ChangeLog append helper in ChangeLogBridge.gs.
+ ***********************/
 
-const CDL_WEBAPP_BUILD = "10.2.10-tv-episode-progress";
-
-function onOpen() {
-  safeCall_("addTmdbMenu_", typeof addTmdbMenu_ === "function" ? addTmdbMenu_ : null);
-  safeCall_("addMoviesMenu_", typeof addMoviesMenu_ === "function" ? addMoviesMenu_ : null);
-  safeCall_("addIgdbMenu_", typeof addIgdbMenu_ === "function" ? addIgdbMenu_ : null);
-  safeCall_("addBooksMenu_", typeof addBooksMenu_ === "function" ? addBooksMenu_ : null);
-
-  // Fallback menu so it's obvious this web-app script is loaded if no known builders exist.
-  const hasAnyKnownBuilder =
-    typeof addTmdbMenu_ === "function" ||
-    typeof addMoviesMenu_ === "function" ||
-    typeof addIgdbMenu_ === "function" ||
-    typeof addBooksMenu_ === "function";
-  if (!hasAnyKnownBuilder) {
-    const ui = SpreadsheetApp.getUi();
-    ui.createMenu("Library Tools")
-      .addItem("Menu Setup Help", "showLibraryMenuSetupHelp_")
-      .addToUi();
-  }
-}
-
-function onInstall(e) {
-  onOpen(e);
-}
-
-function safeCall_(name, fn) {
-  try {
-    if (typeof fn === "function") {
-      fn();
-    } else {
-      console.log(name + " not found (function missing).");
-    }
-  } catch (err) {
-    console.log(name + " failed: " + (err && err.message ? err.message : err));
-  }
-}
-
-function showLibraryMenuSetupHelp_() {
-  SpreadsheetApp.getUi().alert(
-    "Library row/sheet processor menu functions were not found in this file.\n\n" +
-    "Re-add your previous menu builders (for example addTmdbMenu_, addMoviesMenu_, addIgdbMenu_, addBooksMenu_) or restore an earlier script version, then reload the sheet."
-  );
-}
+const CDL_WEBAPP_BUILD = "10.2.10-clean-webapp";
 
 function doPost(e) {
   try {
@@ -1004,62 +969,6 @@ function isFalsyGameCheckboxValue_(normalized) {
     normalized === "not completed" ||
     normalized === "not backlog"
   );
-}
-
-function appendChangeLogRows_(payload) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName("ChangeLog");
-  if (!sheet) {
-    sheet = ss.insertSheet("ChangeLog");
-  }
-
-  const headers = ["Timestamp", "Source", "Sheet", "Title", "Row", "Field", "Old Value", "New Value", "User", "Function"];
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
-  } else {
-    const lastCol = Math.max(sheet.getLastColumn(), headers.length);
-    const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
-      return String(h || "").trim();
-    });
-    const missing = headers.some(function(header, idx) {
-      return String(currentHeaders[idx] || "").trim() !== header;
-    });
-    if (missing) {
-      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    }
-  }
-
-  const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
-  if (rows.length) {
-    const normalizedRows = rows.map(function(row) {
-      const record = row || {};
-      return [
-        String(record["Timestamp"] || new Date().toISOString()).trim(),
-        String(record["Source"] || "CDL App").trim(),
-        String(record["Sheet"] || "").trim(),
-        String(record["Title"] || "").trim(),
-        String(record["Row"] || "").trim(),
-        String(record["Field"] || "").trim(),
-        String(record["Old Value"] || "").trim(),
-        String(record["New Value"] || "").trim(),
-        String(record["User"] || "app").trim(),
-        String(record["Function"] || "").trim(),
-      ];
-    });
-
-    const startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, normalizedRows.length, headers.length).setValues(normalizedRows);
-  }
-
-  const maxDataRows = 2000;
-  const lastRow = sheet.getLastRow();
-  const dataRowCount = Math.max(0, lastRow - 1);
-  if (dataRowCount > maxDataRows) {
-    const overflow = dataRowCount - maxDataRows;
-    sheet.deleteRows(2, overflow);
-  }
-
-  return createCORSResponse("Success");
 }
 
 function ensureTvEpisodesSheet_() {

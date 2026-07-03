@@ -60,6 +60,8 @@ struct LibraryDb {
 struct NativeSeedSnapshot {
     #[serde(rename = "tvRows")]
     tv_rows: Vec<Row>,
+    #[serde(rename = "tvEpisodeRows", default)]
+    tv_episode_rows: Vec<Row>,
     #[serde(rename = "bookRows")]
     book_rows: Vec<Row>,
     #[serde(rename = "movieRows")]
@@ -74,6 +76,8 @@ struct NativeSeedSnapshot {
 struct NativeSnapshot {
     #[serde(rename = "tvRows")]
     tv_rows: Vec<Row>,
+    #[serde(rename = "tvEpisodeRows")]
+    tv_episode_rows: Vec<Row>,
     #[serde(rename = "bookRows")]
     book_rows: Vec<Row>,
     #[serde(rename = "movieRows")]
@@ -360,6 +364,20 @@ fn row_key(media_type: &str, row: &Row) -> String {
             .or_else_nonempty(value_for("ISBN"))
             .or_else_nonempty(value_for("Title")),
         "tv" | "movie" => value_for("TMDB_ID").or_else_nonempty(value_for("Title")),
+        "tvEpisode" => {
+            let explicit = value_for("EpisodeKey");
+            if !explicit.is_empty() {
+                return explicit;
+            }
+            let show_id = value_for("ShowTMDB_ID").or_else_nonempty(value_for("ShowTitle"));
+            let season = value_for("SeasonNumber");
+            let episode = value_for("EpisodeNumber");
+            if show_id.is_empty() || season.is_empty() || episode.is_empty() {
+                value_for("EpisodeTMDB_ID").or_else_nonempty(value_for("EpisodeTitle"))
+            } else {
+                format!("{show_id}:s{season}:e{episode}")
+            }
+        }
         "game" => {
             let base = value_for("IGDB_ID").or_else_nonempty(value_for("Title"));
             let platform = value_for("Platform");
@@ -557,6 +575,178 @@ fn read_env_file_value(key: &str) -> Option<String> {
     }
 
     None
+}
+
+fn tmdb_credential() -> NativeResult<(Option<String>, Option<String>)> {
+    let bearer = std::env::var("TMDB_BEARER_TOKEN")
+        .ok()
+        .or_else(|| std::env::var("TMDB_API_READ_ACCESS_TOKEN").ok())
+        .or_else(|| read_env_file_value("TMDB_BEARER_TOKEN"))
+        .or_else(|| read_env_file_value("TMDB_API_READ_ACCESS_TOKEN"))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let api_key = std::env::var("TMDB_API_KEY")
+        .ok()
+        .or_else(|| read_env_file_value("TMDB_API_KEY"))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if bearer.is_none() && api_key.is_none() {
+        return Err(NativeError::Message(
+            "TMDB credentials are not configured.".to_string(),
+        ));
+    }
+    Ok((bearer, api_key))
+}
+
+fn tmdb_get_json(client: &Client, path: &str) -> NativeResult<Value> {
+    let (bearer, api_key) = tmdb_credential()?;
+    let separator = if path.contains('?') { "&" } else { "?" };
+    let url = if bearer.is_some() {
+        format!("https://api.themoviedb.org/3{path}{separator}language=en-US")
+    } else {
+        format!(
+            "https://api.themoviedb.org/3{path}{separator}language=en-US&api_key={}",
+            api_key.unwrap_or_default()
+        )
+    };
+    let mut req = client.get(url);
+    if let Some(token) = bearer {
+        req = req.bearer_auth(token);
+    }
+    let res = req.send()?;
+    let status = res.status();
+    let json: Value = res.json().unwrap_or(Value::Null);
+    if !status.is_success() {
+        let message = as_trimmed_string(json.get("status_message"));
+        return Err(NativeError::Message(if message.is_empty() {
+            format!("TMDB request failed: HTTP {status}")
+        } else {
+            message
+        }));
+    }
+    Ok(json)
+}
+
+fn tmdb_image_url(base: &str, path: Option<&Value>) -> String {
+    let value = as_trimmed_string(path);
+    if value.is_empty() {
+        String::new()
+    } else if value.starts_with("http://") || value.starts_with("https://") {
+        value
+    } else if value.starts_with('/') {
+        format!("{base}{value}")
+    } else {
+        format!("{base}/{value}")
+    }
+}
+
+#[tauri::command]
+fn load_tv_episodes(tmdb_id: String, title: Option<String>) -> NativeResult<Vec<Row>> {
+    let tmdb_id = tmdb_id.trim().to_string();
+    if tmdb_id.is_empty() {
+        return Err(NativeError::Message("tmdbId is required.".to_string()));
+    }
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    let details = tmdb_get_json(&client, &format!("/tv/{}", tmdb_id))?;
+    let show_title = as_trimmed_string(details.get("name"))
+        .or_else_nonempty(title.unwrap_or_default().trim().to_string());
+    let seasons = details
+        .get("seasons")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut season_numbers: Vec<i64> = seasons
+        .iter()
+        .filter_map(|season| season.get("season_number").and_then(Value::as_i64))
+        .filter(|season| *season > 0)
+        .collect();
+    season_numbers.sort_unstable();
+
+    let mut rows = Vec::new();
+    for season_number in season_numbers {
+        let season_json = tmdb_get_json(
+            &client,
+            &format!("/tv/{}/season/{}", tmdb_id, season_number),
+        )?;
+        let season_title = as_trimmed_string(season_json.get("name"))
+            .or_else_nonempty(format!("Season {season_number}"));
+        let season_poster_url = tmdb_image_url(
+            "https://image.tmdb.org/t/p/w500",
+            season_json.get("poster_path"),
+        );
+        let episodes = season_json
+            .get("episodes")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for episode in episodes {
+            let episode_number = episode
+                .get("episode_number")
+                .and_then(Value::as_i64)
+                .unwrap_or_default();
+            if episode_number <= 0 {
+                continue;
+            }
+            let mut row = Row::new();
+            row.insert(
+                "EpisodeKey".to_string(),
+                Value::String(format!("{tmdb_id}:s{season_number}:e{episode_number}")),
+            );
+            row.insert("ShowTMDB_ID".to_string(), Value::String(tmdb_id.clone()));
+            row.insert("ShowTitle".to_string(), Value::String(show_title.clone()));
+            row.insert(
+                "SeasonNumber".to_string(),
+                Value::String(season_number.to_string()),
+            );
+            row.insert("SeasonTitle".to_string(), Value::String(season_title.clone()));
+            row.insert(
+                "SeasonPosterURL".to_string(),
+                Value::String(season_poster_url.clone()),
+            );
+            row.insert(
+                "EpisodeNumber".to_string(),
+                Value::String(episode_number.to_string()),
+            );
+            row.insert(
+                "EpisodeTMDB_ID".to_string(),
+                Value::String(as_trimmed_string(episode.get("id"))),
+            );
+            row.insert(
+                "EpisodeTitle".to_string(),
+                Value::String(
+                    as_trimmed_string(episode.get("name"))
+                        .or_else_nonempty(format!("Episode {episode_number}")),
+                ),
+            );
+            row.insert(
+                "AirDate".to_string(),
+                Value::String(as_trimmed_string(episode.get("air_date"))),
+            );
+            row.insert(
+                "StillURL".to_string(),
+                Value::String(tmdb_image_url(
+                    "https://image.tmdb.org/t/p/w780",
+                    episode.get("still_path"),
+                )),
+            );
+            row.insert(
+                "Overview".to_string(),
+                Value::String(as_trimmed_string(episode.get("overview"))),
+            );
+            row.insert(
+                "Runtime".to_string(),
+                Value::String(as_trimmed_string(episode.get("runtime"))),
+            );
+            row.insert("Watched".to_string(), Value::String(String::new()));
+            row.insert("WatchedAt".to_string(), Value::String(String::new()));
+            row.insert("UpdatedAt".to_string(), Value::String(Utc::now().to_rfc3339()));
+            row.insert("Source".to_string(), Value::String("TMDB".to_string()));
+            rows.push(row);
+        }
+    }
+    Ok(rows)
 }
 
 fn config_value(key: &str) -> Option<String> {
@@ -771,7 +961,9 @@ fn upload_bytes_to_r2(
 }
 
 fn media_type_for_action(action: &str) -> &'static str {
-    if action.contains("Book") {
+    if action == "upsertTvEpisodeRows" || action == "updateTvEpisodeProgress" {
+        "tvEpisode"
+    } else if action.contains("Book") {
         "book"
     } else if action.contains("Show") {
         "tv"
@@ -819,6 +1011,20 @@ fn matches_sheet_match(media_type: &str, row: &Row, match_value: Option<&Value>)
         "tv" | "movie" => {
             let tmdb_id = row_value(&["TMDB_ID", "tmdbId"]);
             (!tmdb_id.is_empty() && tmdb_id == match_field("tmdbId")) || title_match
+        }
+        "tvEpisode" => {
+            let row_key = row_value(&["EpisodeKey", "episodeKey"]);
+            let match_key = match_field("episodeKey");
+            let row_show_id = row_value(&["ShowTMDB_ID", "showTmdbId"]);
+            let row_season = row_value(&["SeasonNumber", "seasonNumber"]);
+            let row_episode = row_value(&["EpisodeNumber", "episodeNumber"]);
+            (!row_key.is_empty() && row_key == match_key)
+                || (
+                    !row_show_id.is_empty()
+                        && row_show_id == match_field("showTmdbId")
+                        && row_season == match_field("seasonNumber")
+                        && row_episode == match_field("episodeNumber")
+                )
         }
         "game" => {
             let igdb_id = row_value(&["IGDB_ID", "igdbId"]);
@@ -917,6 +1123,55 @@ fn persist_sheet_write_locally(
                 )?;
                 return Ok(item_key);
             }
+        }
+    }
+
+    if action == "upsertTvEpisodeRows" {
+        if let Some(Value::Array(rows)) = payload.get("rows") {
+            let mut first_key = String::new();
+            for value in rows {
+                let Some(row_obj) = value.as_object() else {
+                    continue;
+                };
+                let row = row_obj.clone();
+                let item_key = row_key("tvEpisode", &row);
+                if item_key.is_empty() {
+                    continue;
+                }
+                if first_key.is_empty() {
+                    first_key = item_key.clone();
+                }
+                conn.execute(
+                    "INSERT INTO media_items (media_type, item_key, row_json, local_updated_at, sync_status)
+                     VALUES ('tvEpisode', ?1, ?2, ?3, 'pending')
+                     ON CONFLICT(media_type, item_key) DO UPDATE SET
+                       row_json = excluded.row_json,
+                       local_updated_at = excluded.local_updated_at,
+                       deleted_at = NULL,
+                       sync_status = 'pending'",
+                    params![&item_key, serde_json::to_string(&row)?, now],
+                )?;
+            }
+            return Ok(if first_key.is_empty() {
+                action.to_string()
+            } else {
+                first_key
+            });
+        }
+    }
+
+    if action == "updateTvEpisodeProgress" {
+        if let Some((item_key, mut row)) =
+            find_matching_item(conn, "tvEpisode", payload.get("match"))?
+        {
+            merge_updates(&mut row, payload.get("updates"));
+            conn.execute(
+                "UPDATE media_items
+                 SET row_json = ?2, local_updated_at = ?3, deleted_at = NULL, sync_status = 'pending'
+                 WHERE media_type = 'tvEpisode' AND item_key = ?1",
+                params![&item_key, serde_json::to_string(&row)?, now],
+            )?;
+            return Ok(item_key);
         }
     }
 
@@ -1106,6 +1361,7 @@ fn read_snapshot(app: AppHandle, state: State<LibraryDb>) -> NativeResult<Native
 
     Ok(NativeSnapshot {
         tv_rows: load_rows(&conn, "tv")?,
+        tv_episode_rows: load_rows(&conn, "tvEpisode")?,
         book_rows: load_rows(&conn, "book")?,
         movie_rows: load_rows(&conn, "movie")?,
         game_rows: load_rows(&conn, "game")?,
@@ -1127,6 +1383,7 @@ fn seed_snapshot(
 
     for (media_type, rows) in [
         ("tv", snapshot.tv_rows),
+        ("tvEpisode", snapshot.tv_episode_rows),
         ("book", snapshot.book_rows),
         ("movie", snapshot.movie_rows),
         ("game", snapshot.game_rows),
@@ -2551,6 +2808,7 @@ pub fn run() {
             read_roadmap,
             save_roadmap,
             open_external_url,
+            load_tv_episodes,
             resolve_igdb_url,
             discover_igdb_games
         ])

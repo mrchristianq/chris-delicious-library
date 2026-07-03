@@ -30,6 +30,7 @@ import {
   nativeQueueSheetWrite,
   nativeCacheRemoteMedia,
   nativeDiscoverIgdbGames,
+  nativeLoadTvEpisodes,
   nativeReadCacheStatus,
   nativeReadSnapshot,
   nativeSeedSnapshot,
@@ -153,6 +154,26 @@ type Show = {
   recommendedTitles?: string;
   recommendationsLastChecked?: string;
   recommendationsHidden?: string;
+};
+
+type TVEpisodeRow = Row & {
+  EpisodeKey?: string;
+  ShowTMDB_ID?: string;
+  ShowTitle?: string;
+  SeasonNumber?: string;
+  SeasonTitle?: string;
+  SeasonPosterURL?: string;
+  EpisodeNumber?: string;
+  EpisodeTMDB_ID?: string;
+  EpisodeTitle?: string;
+  AirDate?: string;
+  StillURL?: string;
+  Overview?: string;
+  Runtime?: string;
+  Watched?: string;
+  WatchedAt?: string;
+  UpdatedAt?: string;
+  Source?: string;
 };
 
 type Book = {
@@ -342,7 +363,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.1.47";
+const APP_VERSION = "10.2.10";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -645,6 +666,90 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.2.10",
+    date: "2026-07-03",
+    notes: [
+      "Tightened light-mode cover shadows so each cover has a closer contact shadow without forming row-wide bands.",
+    ],
+  },
+  {
+    version: "10.2.9",
+    date: "2026-07-03",
+    notes: [
+      "Serialized TV episode progress writes per episode so rapid season on/off clicks cannot race Google Sheet readback.",
+    ],
+  },
+  {
+    version: "10.2.8",
+    date: "2026-07-03",
+    notes: [
+      "Allowed season watched toggles to reverse immediately even while the previous season write batch is still syncing.",
+    ],
+  },
+  {
+    version: "10.2.7",
+    date: "2026-07-03",
+    notes: [
+      "Made the season watched control instantly mark or unmark every episode in that season while the Sheet writes verify in order.",
+    ],
+  },
+  {
+    version: "10.2.6",
+    date: "2026-07-03",
+    notes: [
+      "Polished TV episode watched controls, added episode watched totals to TV details, and made episode progress feel instant while Sheet verification runs.",
+    ],
+  },
+  {
+    version: "10.2.5",
+    date: "2026-07-03",
+    notes: [
+      "Added clean modular Apps Script replacement files so the web app bridge, menus, and ChangeLog helper do not duplicate each other.",
+    ],
+  },
+  {
+    version: "10.2.4",
+    date: "2026-07-03",
+    notes: [
+      "Added an Apps Script deployment fingerprint and hardened TV episode checkbox readback verification.",
+    ],
+  },
+  {
+    version: "10.2.3",
+    date: "2026-07-03",
+    notes: [
+      "Fixed TV episode watched-state updates and season accordion collapse behavior.",
+    ],
+  },
+  {
+    version: "10.2.2",
+    date: "2026-07-02",
+    notes: [
+      "Fixed TV episode tracker clipping and hid the Watch Next scrollbar while preserving horizontal scrolling.",
+    ],
+  },
+  {
+    version: "10.2.1",
+    date: "2026-07-02",
+    notes: [
+      "Improved TV episode watched controls and made TV episode progress verification tolerant of Sheet checkbox values.",
+    ],
+  },
+  {
+    version: "10.2.0",
+    date: "2026-07-02",
+    notes: [
+      "Added TMDB-powered TV episode tracking with season lists, watch-next episodes, bulk watched actions, and Google Sheets/native sync plumbing.",
+    ],
+  },
+  {
+    version: "10.1.48",
+    date: "2026-07-01",
+    notes: [
+      "Tightened light-mode cover shadows so each cover has clearer separation without row-level shadow bands.",
+    ],
+  },
   {
     version: "10.1.47",
     date: "2026-07-01",
@@ -3083,6 +3188,7 @@ function getPersistedStandardSortViewLabel(nav: "home" | "books" | "movies" | "t
 export default function Page() {
   const isNativeApp = isNativeRuntime();
   const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
+  const tvEpisodesCsvUrl = process.env.NEXT_PUBLIC_TV_EPISODES_SHEET_CSV_URL;
   const booksCsvUrl = process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL;
   const moviesCsvUrl = process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
   const gamesCsvUrl = process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
@@ -3189,6 +3295,27 @@ export default function Page() {
   const [startupLockVisible, setStartupLockVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tvRows, setTvRows] = useState<Row[]>([]);
+  const [tvEpisodeRows, setTvEpisodeRows] = useState<TVEpisodeRow[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem("cdlTvEpisodeRows") || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const tvEpisodeRowsRef = useRef<TVEpisodeRow[]>([]);
+  const tvEpisodeWriteTokensRef = useRef<Record<string, string>>({});
+  const tvEpisodeWriteQueuesRef = useRef<Record<string, Promise<void>>>({});
+  useEffect(() => {
+    tvEpisodeRowsRef.current = tvEpisodeRows;
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("cdlTvEpisodeRows", JSON.stringify(tvEpisodeRows));
+    } catch {
+      // Local episode cache is best-effort.
+    }
+  }, [tvEpisodeRows]);
   const [bookRows, setBookRows] = useState<Row[]>([]);
   const [movieRows, setMovieRows] = useState<Row[]>([]);
   const [gameRows, setGameRows] = useState<Row[]>([]);
@@ -3751,7 +3878,11 @@ export default function Page() {
   const COVER_STAGE_BACKGROUND = isDarkShelfMode ? "#1a1d22" : "#ececec";
   const coverSurfaceBoxShadow = isDarkShelfMode
     ? "0 0 6px 0 rgba(0, 0, 0, 0.6)"
-    : undefined;
+    : [
+        "0 1px 1px rgba(18, 24, 36, 0.2)",
+        "0 3px 3px rgba(18, 24, 36, 0.34)",
+        "0 7px 6px -5px rgba(18, 24, 36, 0.26)",
+      ].join(", ");
   const isElectricBlueSidebarTheme = false;
   const activeSidebarHighlightColors =
     shelfThemeMode === "dark"
@@ -6514,13 +6645,13 @@ export default function Page() {
 
   const handleBookDetailsSyncCoverToR2 = handleDetailsSyncCoverToR2;
 
-  const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string) => {
+  const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string): Promise<string> => {
     if (isNativeApp) {
       const queuedWriteId = await nativeQueueSheetWrite({ url, payload, fallbackMessage });
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         setSyncState("saving");
         setSyncMsg("Change queued for sync");
-        return;
+        return JSON.stringify({ status: "Queued" });
       }
       const result = await nativeSyncNow(queuedWriteId);
       const syncedIds = Array.isArray(result.syncedIds) ? result.syncedIds : [];
@@ -6553,7 +6684,7 @@ export default function Page() {
       if (result.pushed || result.skipped) {
         setLastSyncAt(Date.now());
       }
-      return;
+      return JSON.stringify({ status: "Success" });
     }
 
     if (isStaticSiteBuild) {
@@ -6574,6 +6705,7 @@ export default function Page() {
         fallbackMessage;
       throw new Error(errorMessage);
     }
+    return typeof data.result === "string" ? data.result : JSON.stringify(data);
   }, [isNativeApp, isStaticSiteBuild]);
 
   const normalizeSheetFieldKey = useCallback((value: string) => safeStr(value).toLowerCase().replace(/[^a-z0-9]+/g, ""), []);
@@ -6642,6 +6774,286 @@ export default function Page() {
       }
     },
     [postSheetWrite]
+  );
+
+  const getTvEpisodeKey = useCallback((row: Partial<TVEpisodeRow>): string => {
+    const explicit = safeStr(row.EpisodeKey);
+    if (explicit) return explicit;
+    const showId = safeStr(row.ShowTMDB_ID || row.ShowTitle);
+    const season = safeStr(row.SeasonNumber);
+    const episode = safeStr(row.EpisodeNumber);
+    return showId && season && episode ? `${showId}:s${season}:e${episode}` : "";
+  }, []);
+
+  const mergeTvEpisodeRows = useCallback(
+    (metadataRows: TVEpisodeRow[], existingRows: TVEpisodeRow[] = tvEpisodeRows) => {
+      const existingByKey = new Map(existingRows.map((row) => [getTvEpisodeKey(row), row]));
+      return metadataRows.map((row) => {
+        const key = getTvEpisodeKey(row);
+        const existing = key ? existingByKey.get(key) : undefined;
+        return {
+          ...row,
+          EpisodeKey: key || safeStr(row.EpisodeKey),
+          Watched: safeStr(existing?.Watched) || safeStr(row.Watched),
+          WatchedAt: safeStr(existing?.WatchedAt) || safeStr(row.WatchedAt),
+        };
+      });
+    },
+    [getTvEpisodeKey, tvEpisodeRows]
+  );
+
+  const refreshTvEpisodesForShow = useCallback(
+    async (show: Record<string, unknown>, force = false) => {
+      const tmdbId = safeStr(show.tmdbId || show.TMDB_ID);
+      const showTitle = safeStr(show.title || show.Title);
+      if (!tmdbId) {
+        throw new Error("This show needs a TMDB ID before episodes can be loaded.");
+      }
+
+      const existingForShow = tvEpisodeRows.filter((row) => safeStr(row.ShowTMDB_ID) === tmdbId);
+      const newestUpdatedAt = existingForShow
+        .map((row) => Date.parse(safeStr(row.UpdatedAt)))
+        .filter((value) => Number.isFinite(value))
+        .sort((a, b) => b - a)[0];
+      const stale = !newestUpdatedAt || Date.now() - newestUpdatedAt > 7 * 24 * 60 * 60 * 1000;
+      if (!force && existingForShow.length && !stale) return existingForShow;
+
+      let rows: TVEpisodeRow[] = [];
+      if (isNativeApp) {
+        rows = (await nativeLoadTvEpisodes(tmdbId, showTitle)) as TVEpisodeRow[];
+      } else {
+        const params = new URLSearchParams({ tmdbId, title: showTitle });
+        const response = await fetch(`/api/tv-episodes?${params.toString()}`, { cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.ok) {
+          throw new Error(safeStr(payload?.error) || "Failed to load TV episodes.");
+        }
+        rows = Array.isArray(payload.rows) ? payload.rows : [];
+      }
+
+      const mergedRows = mergeTvEpisodeRows(rows);
+      setTvEpisodeRows((prev) => {
+        const nextByKey = new Map(prev.map((row) => [getTvEpisodeKey(row), row]));
+        for (const row of mergedRows) {
+          const key = getTvEpisodeKey(row);
+          if (key) nextByKey.set(key, row);
+        }
+        return Array.from(nextByKey.values());
+      });
+
+      if (showsWriteUrl && mergedRows.length && (typeof navigator === "undefined" || navigator.onLine !== false)) {
+        postSheetWrite(
+          showsWriteUrl,
+          { action: "upsertTvEpisodeRows", rows: mergedRows },
+          "Failed to cache TV episodes"
+        ).catch((error) => {
+          console.warn("[TV Episodes] Metadata sheet upsert failed (non-blocking):", error);
+        });
+      }
+
+      return mergedRows;
+    },
+    [getTvEpisodeKey, isNativeApp, mergeTvEpisodeRows, postSheetWrite, showsWriteUrl, tvEpisodeRows]
+  );
+
+  const queueTvEpisodeProgressWrite = useCallback(
+    async (params: {
+      episode: TVEpisodeRow;
+      key: string;
+      watched: boolean;
+      updates: { Watched: string; WatchedAt: string; UpdatedAt: string };
+      writeToken: string;
+    }) => {
+      if (!showsWriteUrl) {
+        throw new Error("Shows write URL is not configured.");
+      }
+
+      const previousWrite = tvEpisodeWriteQueuesRef.current[params.key];
+      const writePromise = (async () => {
+        if (previousWrite) {
+          try {
+            await previousWrite;
+          } catch {
+            // A newer user action should still get a chance to become the saved state.
+          }
+        }
+
+        if (tvEpisodeWriteTokensRef.current[params.key] !== params.writeToken) {
+          return null;
+        }
+
+        let responseText = "";
+        try {
+          responseText = await postSheetWrite(
+            showsWriteUrl,
+            {
+              action: "updateTvEpisodeProgress",
+              match: {
+                episodeKey: params.key,
+                showTmdbId: safeStr(params.episode.ShowTMDB_ID),
+                seasonNumber: safeStr(params.episode.SeasonNumber),
+                episodeNumber: safeStr(params.episode.EpisodeNumber),
+              },
+              updates: params.updates,
+            },
+            "Failed to save episode progress"
+          );
+        } catch (error) {
+          if (tvEpisodeWriteTokensRef.current[params.key] !== params.writeToken) {
+            return null;
+          }
+          throw error;
+        }
+
+        if (tvEpisodeWriteTokensRef.current[params.key] !== params.writeToken) {
+          return null;
+        }
+
+        try {
+          const parsed = JSON.parse(responseText);
+          if (parsed && String(parsed.status || "").toLowerCase() === "success") {
+            return {
+              Watched: safeStr(parsed.Watched || params.updates.Watched) || params.updates.Watched,
+              WatchedAt: params.watched ? safeStr(parsed.WatchedAt || params.updates.WatchedAt) : "",
+              UpdatedAt: safeStr(parsed.UpdatedAt || params.updates.UpdatedAt) || params.updates.UpdatedAt,
+            };
+          }
+        } catch {
+          // Legacy Apps Script deployments return plain "Success"; keep the requested values.
+        }
+
+        return params.updates;
+      })();
+
+      tvEpisodeWriteQueuesRef.current[params.key] = writePromise.then(
+        () => undefined,
+        () => undefined
+      );
+
+      return writePromise;
+    },
+    [postSheetWrite, showsWriteUrl]
+  );
+
+  const updateTvEpisodeProgress = useCallback(
+    async (episode: TVEpisodeRow, watched: boolean) => {
+      if (!showsWriteUrl) {
+        throw new Error("Shows write URL is not configured.");
+      }
+      const key = getTvEpisodeKey(episode);
+      if (!key) {
+        throw new Error("Unable to identify this episode row.");
+      }
+      const now = new Date().toISOString();
+      const writeToken = `${now}:${watched ? "watched" : "unwatched"}:${Math.random().toString(36).slice(2)}`;
+      const updates = {
+        Watched: watched ? "TRUE" : "FALSE",
+        WatchedAt: watched ? now : "",
+        UpdatedAt: now,
+      };
+      tvEpisodeWriteTokensRef.current[key] = writeToken;
+      let previousRow: TVEpisodeRow | null = null;
+      setTvEpisodeRows((prev) =>
+        prev.map((row) => {
+          if (getTvEpisodeKey(row) !== key) return row;
+          previousRow = row;
+          return { ...row, ...updates };
+        })
+      );
+      try {
+        const confirmedUpdates = await queueTvEpisodeProgressWrite({
+          episode,
+          key,
+          watched,
+          updates,
+          writeToken,
+        });
+        if (confirmedUpdates) {
+          setTvEpisodeRows((prev) =>
+            prev.map((row) => (
+              getTvEpisodeKey(row) === key && tvEpisodeWriteTokensRef.current[key] === writeToken
+                ? { ...row, ...confirmedUpdates }
+                : row
+            ))
+          );
+        }
+      } catch (error) {
+        if (previousRow) {
+          setTvEpisodeRows((prev) =>
+            prev.map((row) => (
+              getTvEpisodeKey(row) === key && tvEpisodeWriteTokensRef.current[key] === writeToken
+                ? previousRow as TVEpisodeRow
+                : row
+            ))
+          );
+        }
+        throw error;
+      }
+    },
+    [getTvEpisodeKey, queueTvEpisodeProgressWrite, showsWriteUrl]
+  );
+
+  const bulkUpdateTvEpisodeProgress = useCallback(
+    async (episodes: TVEpisodeRow[], watched: boolean) => {
+      if (!showsWriteUrl) {
+        throw new Error("Shows write URL is not configured.");
+      }
+      const targets = episodes
+        .map((episode) => ({ episode, key: getTvEpisodeKey(episode) }))
+        .filter((target) => target.key);
+      if (!targets.length) return;
+
+      const now = new Date().toISOString();
+      const writeToken = `${now}:${watched ? "watched" : "unwatched"}:${Math.random().toString(36).slice(2)}`;
+      const updates = {
+        Watched: watched ? "TRUE" : "FALSE",
+        WatchedAt: watched ? now : "",
+        UpdatedAt: now,
+      };
+      const targetKeys = new Set(targets.map((target) => target.key));
+      for (const key of targetKeys) {
+        tvEpisodeWriteTokensRef.current[key] = writeToken;
+      }
+      let previousRows: TVEpisodeRow[] = [];
+      setTvEpisodeRows((prev) => {
+        previousRows = prev.filter((row) => targetKeys.has(getTvEpisodeKey(row)));
+        return prev.map((row) => (targetKeys.has(getTvEpisodeKey(row)) ? { ...row, ...updates } : row));
+      });
+
+      try {
+        for (const { episode, key } of targets) {
+          const confirmedUpdates = await queueTvEpisodeProgressWrite({
+            episode,
+            key,
+            watched,
+            updates,
+            writeToken,
+          });
+          if (!confirmedUpdates) continue;
+          setTvEpisodeRows((prev) =>
+            prev.map((row) => (
+              getTvEpisodeKey(row) === key && tvEpisodeWriteTokensRef.current[key] === writeToken
+                ? { ...row, ...confirmedUpdates }
+                : row
+            ))
+          );
+        }
+      } catch (error) {
+        if (previousRows.length) {
+          const previousByKey = new Map(previousRows.map((row) => [getTvEpisodeKey(row), row]));
+          setTvEpisodeRows((prev) =>
+            prev.map((row) => {
+              const key = getTvEpisodeKey(row);
+              return tvEpisodeWriteTokensRef.current[key] === writeToken
+                ? previousByKey.get(key) || row
+                : row;
+            })
+          );
+        }
+        throw error;
+      }
+    },
+    [getTvEpisodeKey, queueTvEpisodeProgressWrite, showsWriteUrl]
   );
 
   const verifySavedFieldsFromCsv = useCallback(
@@ -8532,6 +8944,7 @@ export default function Page() {
             if (cancelled) return;
             const hasRows =
               snapshot.tvRows.length ||
+              (snapshot.tvEpisodeRows || []).length ||
               snapshot.bookRows.length ||
               snapshot.movieRows.length ||
               snapshot.gameRows.length ||
@@ -8545,6 +8958,7 @@ export default function Page() {
             }
 
             setTvRows(snapshot.tvRows);
+            setTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
             setBookRows(snapshot.bookRows);
             setMovieRows(snapshot.movieRows);
             setGameRows(snapshot.gameRows);
@@ -8588,6 +9002,7 @@ export default function Page() {
           if (cancelled) return false;
           const hasRows =
             snapshot.tvRows.length ||
+            (snapshot.tvEpisodeRows || []).length ||
             snapshot.bookRows.length ||
             snapshot.movieRows.length ||
               snapshot.gameRows.length ||
@@ -8599,6 +9014,7 @@ export default function Page() {
           }
 
           setTvRows(snapshot.tvRows);
+          setTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
           setBookRows(snapshot.bookRows);
           setMovieRows(snapshot.movieRows);
           setGameRows(snapshot.gameRows);
@@ -8644,13 +9060,15 @@ export default function Page() {
         moviesCsvUrl ? fetchCsv(moviesCsvUrl) : Promise.resolve(null),
         gamesCsvUrl ? fetchCsv(gamesCsvUrl) : Promise.resolve(null),
         settingsCsvUrl ? fetchCsv(settingsCsvUrl) : Promise.resolve(null),
+        tvEpisodesCsvUrl ? fetchCsv(tvEpisodesCsvUrl) : Promise.resolve(null),
       ])
       .then((results) => {
         console.log("[CSV LOAD] Starting CSV parsing...");
         if (cancelled) return;
 
-        const [tvRes, booksRes, moviesRes, gamesRes, settingsRes] = results;
+        const [tvRes, booksRes, moviesRes, gamesRes, settingsRes, tvEpisodesRes] = results;
         let nextTvRows: Row[] = [];
+        let nextTvEpisodeRows: TVEpisodeRow[] = [];
         let nextBookRows: Row[] = [];
         let nextMovieRows: Row[] = [];
         let nextGameRows: Row[] = [];
@@ -8663,6 +9081,17 @@ export default function Page() {
           setTvRows(data);
         } else if (tvRes && tvRes.status === "rejected") {
           setError(`TV CSV: ${tvRes.reason?.message || String(tvRes.reason)}`);
+        }
+
+        if (tvEpisodesRes && tvEpisodesRes.status === "fulfilled" && typeof tvEpisodesRes.value === "string") {
+          const parsed = Papa.parse<Row>(tvEpisodesRes.value, { header: true, skipEmptyLines: true });
+          const data = (parsed.data || [])
+            .map((r) => r as TVEpisodeRow)
+            .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])));
+          nextTvEpisodeRows = data;
+          setTvEpisodeRows(data);
+        } else if (tvEpisodesRes && tvEpisodesRes.status === "rejected") {
+          console.warn("TV Episodes CSV:", tvEpisodesRes.reason?.message || String(tvEpisodesRes.reason));
         }
 
         if (booksRes && booksRes.status === "fulfilled" && typeof booksRes.value === "string") {
@@ -8753,6 +9182,7 @@ export default function Page() {
         if (isNativeApp) {
           nativeSeedSnapshot({
             tvRows: nextTvRows,
+            tvEpisodeRows: tvEpisodesCsvUrl ? nextTvEpisodeRows : tvEpisodeRowsRef.current,
             bookRows: nextBookRows,
             movieRows: nextMovieRows,
             gameRows: nextGameRows,
@@ -8822,7 +9252,7 @@ export default function Page() {
       cancelled = true;
       if (webFollowupRefreshTimer) clearTimeout(webFollowupRefreshTimer);
     };
-  }, [tvCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp]);
+  }, [tvCsvUrl, tvEpisodesCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp]);
 
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
@@ -14379,7 +14809,7 @@ export default function Page() {
         .map((key) => wishlistItemsByKey.get(key))
         .filter(Boolean) as Array<(Book & { __type: "book" }) | (Game & { __type: "game" })>;
 
-      const writes: Promise<void>[] = [];
+      const writes: Promise<string>[] = [];
       orderedItems.forEach((item, index) => {
         const orderValue = String(index + 1);
         const itemTitle = safeStr(item.title);
@@ -23612,6 +24042,10 @@ export default function Page() {
               relatedShows={tvRelated.shows}
               relatedShowsLabel={tvRelated.label}
               recommendedShows={shouldUseOnlineRecommendations ? tvRecommendations : []}
+              episodeRows={tvEpisodeRows.filter((row) => safeStr(row.ShowTMDB_ID) === safeStr(tvDetailItem.tmdbId || tvDetailItem.TMDB_ID))}
+              onRefreshEpisodes={refreshTvEpisodesForShow}
+              onUpdateEpisodeProgress={updateTvEpisodeProgress}
+              onBulkUpdateEpisodeProgress={bulkUpdateTvEpisodeProgress}
               suppressRemoteRelatedCovers={suppressRemoteRelatedCovers}
               onSelectRelated={(s) => {
                 if (Boolean((s as any)?.__isRecommendation)) {
@@ -26613,7 +27047,9 @@ export default function Page() {
         }
         .case {
           position: relative;
-          filter: drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34));
+          filter: ${isDarkShelfMode
+            ? "drop-shadow(9px 12px 9px rgba(0, 0, 0, 0.34))"
+            : "none"};
         }
         .glossyTileHighlight {
           position: relative;
