@@ -363,7 +363,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.2.10";
+const APP_VERSION = "10.2.18";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -666,6 +666,62 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "10.2.18",
+    date: "2026-07-06",
+    notes: [
+      "Restored conservative TV Watchlist episode remaining label sizing so the full text fits under covers.",
+    ],
+  },
+  {
+    version: "10.2.17",
+    date: "2026-07-06",
+    notes: [
+      "Reduced the TV Watchlist episode remaining label by one pixel after increasing its visible fit sizing.",
+    ],
+  },
+  {
+    version: "10.2.16",
+    date: "2026-07-06",
+    notes: [
+      "Made the TV Watchlist episode remaining label visibly larger by loosening the fit-to-cover clamp.",
+    ],
+  },
+  {
+    version: "10.2.15",
+    date: "2026-07-06",
+    notes: [
+      "Raised the TV Watchlist episode remaining label by one more pixel.",
+    ],
+  },
+  {
+    version: "10.2.14",
+    date: "2026-07-06",
+    notes: [
+      "Increased the TV Watchlist episode remaining label by one pixel while preserving fit-to-cover sizing.",
+    ],
+  },
+  {
+    version: "10.2.13",
+    date: "2026-07-05",
+    notes: [
+      "Fit TV Watchlist episode remaining labels and show counts from total episodes when progress rows are not cached yet.",
+    ],
+  },
+  {
+    version: "10.2.12",
+    date: "2026-07-05",
+    notes: [
+      "Made TV Watchlist episode remaining labels larger and count all cached released episodes.",
+    ],
+  },
+  {
+    version: "10.2.11",
+    date: "2026-07-03",
+    notes: [
+      "Added released episode remaining counts under TV Watchlist covers.",
+    ],
+  },
   {
     version: "10.2.10",
     date: "2026-07-03",
@@ -2753,6 +2809,17 @@ function isTvWatchedStatus(show: Pick<Show, "watchStatus" | "showStatus" | "watc
   const watchStatus = normalizeStatusToken(show.watchStatus || show.showStatus);
   const watched = normalizeStatusToken(show.watched);
   return Boolean(safeStr(show.dateCompleted)) || WATCHED_STATUS_VALUES.has(watchStatus) || WATCHED_STATUS_VALUES.has(watched);
+}
+
+function isTvEpisodeWatchedValue(value?: string): boolean {
+  const watched = normalizeStatusToken(value);
+  return (
+    watched === "true" ||
+    watched === "yes" ||
+    watched === "1" ||
+    watched === "watched" ||
+    watched === "completed"
+  );
 }
 
 function isTvAbandonedStatus(show: Pick<Show, "watchStatus" | "showStatus" | "watched">): boolean {
@@ -15591,6 +15658,60 @@ export default function Page() {
     };
   }, [allShows, allBooks, allMovies, allGames, hasOwnedOwnership, hasWishlistOwnership, isMovieWatched, normalizeStatus]);
 
+  const tvEpisodeProgressByShowId = useMemo(() => {
+    const today = todayMidnight();
+    const progress: Record<string, { released: number; watched: number }> = {};
+
+    for (const row of tvEpisodeRows) {
+      const showId = safeStr(row.ShowTMDB_ID);
+      const showTitle = safeStr(row.ShowTitle).toLowerCase();
+      const keys = [showId ? `id:${showId}` : "", showTitle ? `title:${showTitle}` : ""].filter(Boolean);
+      if (!keys.length) continue;
+
+      const airDate = parseReleaseDateForComparison(row.AirDate);
+      if (!airDate || airDate > today) continue;
+
+      for (const key of keys) {
+        if (!progress[key]) {
+          progress[key] = { released: 0, watched: 0 };
+        }
+
+        progress[key].released += 1;
+
+        if (isTvEpisodeWatchedValue(row.Watched)) {
+          progress[key].watched += 1;
+        }
+      }
+    }
+
+    return progress;
+  }, [tvEpisodeRows]);
+
+  const getTvWatchlistEpisodesRemainingLabel = useCallback(
+    (show: Partial<Show> | Record<string, unknown>) => {
+      const showRecord = show as Record<string, unknown>;
+      const showId = safeStr(showRecord.tmdbId || showRecord.TMDB_ID);
+      const showTitle = safeStr(showRecord.title || showRecord.Title).toLowerCase();
+      const progress =
+        (showId ? tvEpisodeProgressByShowId[`id:${showId}`] : null) ||
+        (showTitle ? tvEpisodeProgressByShowId[`title:${showTitle}`] : null);
+
+      if (!progress) {
+        const totalEpisodes = Math.max(
+          0,
+          Math.floor(Number(safeStr(showRecord.numberOfEpisodes || showRecord.NumberOfEpisodes || showRecord.Episodes)))
+        );
+        return totalEpisodes > 0
+          ? `${totalEpisodes} Episode${totalEpisodes === 1 ? "" : "s"} Remaining`
+          : "";
+      }
+
+      const count = Math.max(0, progress.released - progress.watched);
+      return `${count} Episode${count === 1 ? "" : "s"} Remaining`;
+    },
+    [tvEpisodeProgressByShowId]
+  );
+
   const postersPerShelf = useMemo(() => {
     const size = isSimpleShelfPresentation
       ? simpleShelfPosterSize
@@ -15730,6 +15851,7 @@ export default function Page() {
         return (
           (isUpcomingView ? emptyScale.upcomingSpace : 0) +
           (nav === "completed" ? emptyScale.completedSpace : 0) +
+          (nav === "watchlist-tv" ? emptyScale.completedSpace : 0) +
           (coverTitlesVisible ? emptyScale.titleSpace : 0)
         );
       }
@@ -15741,6 +15863,7 @@ export default function Page() {
           maxSpace,
           (isUpcomingView ? metadataLayout.upcomingSpace : 0) +
             (nav === "completed" ? metadataLayout.completedSpace : 0) +
+            (nav === "watchlist-tv" ? metadataLayout.completedSpace : 0) +
             (coverTitlesVisible ? metadataLayout.titleSpace : 0)
         );
       }, 0);
@@ -25501,8 +25624,25 @@ export default function Page() {
                       const metadataLayout = getShelfMetadataLayout(caseWidth);
                       const upcomingMetadataSpace = isUpcomingView && upcomingLabel ? metadataLayout.upcomingSpace : 0;
                       const completedMetadataSpace = reserveCompletedDateSpace ? metadataLayout.completedSpace : 0;
+                      const tvWatchlistEpisodesRemainingLabel =
+                        nav === "watchlist-tv" ? getTvWatchlistEpisodesRemainingLabel(show) : "";
+                      const tvWatchlistEpisodesFontSize = tvWatchlistEpisodesRemainingLabel
+                        ? Math.max(
+                            7.5,
+                            Math.min(
+                              metadataLayout.secondaryFontSize + 2,
+                              ((caseWidth - 2) / Math.max(tvWatchlistEpisodesRemainingLabel.length, 1)) * 1.45
+                            )
+                          )
+                        : metadataLayout.secondaryFontSize;
+                      const tvWatchlistEpisodesMetadataSpace =
+                        nav === "watchlist-tv" ? metadataLayout.completedSpace : 0;
                       const titleMetadataSpace = coverTitlesVisible ? metadataLayout.titleSpace : 0;
-                      const lowerMetadataSpace = upcomingMetadataSpace + completedMetadataSpace + titleMetadataSpace;
+                      const lowerMetadataSpace =
+                        upcomingMetadataSpace +
+                        completedMetadataSpace +
+                        tvWatchlistEpisodesMetadataSpace +
+                        titleMetadataSpace;
                       const isWishlistCase =
                         nav === "wishlist" ||
                         nav === "now-playing" ||
@@ -26045,12 +26185,37 @@ export default function Page() {
                             </div>
                           ) : null}
 
+                          {tvWatchlistEpisodesRemainingLabel ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: "absolute",
+                                top: caseHeight + upcomingMetadataSpace + completedMetadataSpace + metadataLayout.topGap,
+                                left: 1,
+                                width: Math.max(0, caseWidth - 2),
+                                textAlign: "center",
+                                pointerEvents: "none",
+                                zIndex: 10,
+                                fontSize: tvWatchlistEpisodesFontSize,
+                                fontWeight: 750,
+                                lineHeight: `${metadataLayout.secondaryLineHeight + 2}px`,
+                                color: isDarkShelfMode ? "rgba(200, 215, 236, 0.84)" : "rgba(95, 106, 122, 0.88)",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                padding: 0,
+                              }}
+                            >
+                              {tvWatchlistEpisodesRemainingLabel}
+                            </div>
+                          ) : null}
+
                           {coverTitlesVisible && show.title ? (
                             <div
                               title={show.title}
                               style={{
                                 position: "absolute",
-                                top: caseHeight + upcomingMetadataSpace + completedMetadataSpace + metadataLayout.topGap,
+                                top: caseHeight + upcomingMetadataSpace + completedMetadataSpace + tvWatchlistEpisodesMetadataSpace + metadataLayout.topGap,
                                 left: 0,
                                 width: caseWidth,
                                 textAlign: "center",

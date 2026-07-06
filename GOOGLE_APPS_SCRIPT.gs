@@ -1,7 +1,7 @@
 // Google Apps Script - Save this in your Apps Script editor
 // This handles saving settings to the Google Sheet
 
-const CDL_WEBAPP_BUILD = "10.2.10-tv-episode-progress";
+const CDL_WEBAPP_BUILD = "10.2.18-tv-episode-progress";
 
 function onOpen() {
   safeCall_("addTmdbMenu_", typeof addTmdbMenu_ === "function" ? addTmdbMenu_ : null);

@@ -9,7 +9,7 @@
  * Keep direct ChangeLog append helper in ChangeLogBridge.gs.
  ***********************/
 
-const CDL_WEBAPP_BUILD = "10.2.10-clean-webapp";
+const CDL_WEBAPP_BUILD = "10.2.18-clean-webapp";
 
 function doPost(e) {
   try {

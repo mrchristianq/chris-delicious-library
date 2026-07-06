@@ -31,4 +31,4 @@ Use Apps Script search and confirm:
 - `function safeCall_` appears once, only in `Menu.gs`.
 - `function appendChangeLogRows_` appears once, only in `ChangeLogBridge.gs`.
 
-After deploy, test the web app with the action `debugWebAppVersion`. The response should include `10.2.10-clean-webapp`.
+After deploy, test the web app with the action `debugWebAppVersion`. The response should include `10.2.18-clean-webapp`.
