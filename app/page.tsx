@@ -363,7 +363,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "10.2.18";
+const APP_VERSION = "11.0.0";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -666,6 +666,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.0",
+    date: "2026-07-06",
+    notes: [
+      "Promoted TV Watchlist episode remaining labels and TV episode tracking polish to the next major release.",
+    ],
+  },
   {
     version: "10.2.18",
     date: "2026-07-06",
