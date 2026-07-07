@@ -63,8 +63,22 @@ function formatDateForInput(dateStr: string): string {
   return "";
 }
 
-const WATCH_STATUS_OPTIONS = ["Watched", "Started", "Backlog", "Pending Digital Release", "Abandoned"] as const;
+const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Started", "Backlog", "Pending Digital Release", "Abandoned"] as const;
+const TV_WATCH_STATUS_OPTIONS = ["Completed", "Abandoned", "Started", "Backlog", "Watch Next", "Paused", "Pending Return"] as const;
 const GAME_STATUS_OPTIONS = ["Backlog", "Playing", "Completed", "On Hold"] as const;
+
+function normalizeTvWatchStatusForSheet(value: string): string {
+  const raw = safeStr(value);
+  if (!raw) return "";
+
+  const normalized = raw.toLowerCase().replace(/\s+/g, " ");
+  if (normalized === "watched" || normalized === "complete" || normalized === "done") return "Completed";
+  if (normalized === "watching" || normalized === "currently watching" || normalized === "in progress") return "Started";
+  if (normalized === "pending digital release") return "Backlog";
+
+  const allowed = TV_WATCH_STATUS_OPTIONS.find((option) => option.toLowerCase() === normalized);
+  return allowed || raw;
+}
 
 export function RateItModal({ open, onClose, onSave, item, mediaType, highlightColor = "#007AFF" }: RateItModalProps) {
   const [myRating, setMyRating] = useState("");
@@ -82,7 +96,8 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
     if (!open || !item) return;
 
     setMyRating(firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]));
-    setWatchStatus(firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]));
+    const initialWatchStatus = firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]);
+    setWatchStatus(mediaType === "tv" ? normalizeTvWatchStatusForSheet(initialWatchStatus) : initialWatchStatus);
     setWatchDate(formatDateForInput(firstNonEmpty(item, ["watchDate", "WatchDate"])));
     setDateCompleted(formatDateForInput(firstNonEmpty(item, ["completedDate", "dateCompleted", "Date Completed", "DateCompleted", "CompletedDate"])));
     setTags(firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]));
@@ -91,7 +106,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
     setYearPlayed(firstNonEmpty(item, ["yearPlayed", "Year Played", "YearPlayed"]));
     setBacklog(firstNonEmpty(item, ["backlog", "Backlog"]).toLowerCase() === "yes");
     setCompleted(firstNonEmpty(item, ["completed", "Completed"]).toLowerCase() === "yes");
-  }, [open, item]);
+  }, [open, item, mediaType]);
 
   const handleSave = async () => {
     const data: RatingData = {};
@@ -281,7 +296,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
                 }}
               >
                 <option value="">Select status...</option>
-                {WATCH_STATUS_OPTIONS.map((opt) => (
+                {MOVIE_WATCH_STATUS_OPTIONS.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
                   </option>
@@ -330,7 +345,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
                 }}
               >
                 <option value="">Select status...</option>
-                {WATCH_STATUS_OPTIONS.map((opt) => (
+                {TV_WATCH_STATUS_OPTIONS.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
                   </option>

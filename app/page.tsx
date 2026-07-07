@@ -363,7 +363,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.2";
+const APP_VERSION = "11.0.3";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -668,6 +668,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.3",
+    date: "2026-07-07",
+    notes: [
+      "Fixed TV show Rate It saves so watch statuses use the TV Shows sheet values and confirm through readback.",
+    ],
+  },
   {
     version: "11.0.2",
     date: "2026-07-06",
@@ -2460,7 +2467,24 @@ function normalizeShowWatchStatusForSheet(value?: string): string {
   const raw = safeStr(value);
   if (!raw) return "";
   const normalized = normalizeStatusToken(raw);
-  if (normalized === "currently watching" || normalized === "watching") return "Started";
+  if (
+    normalized === "currently watching" ||
+    normalized === "watching" ||
+    normalized === "in progress"
+  ) {
+    return "Started";
+  }
+  if (
+    normalized === "watched" ||
+    normalized === "complete" ||
+    normalized === "done"
+  ) {
+    return "Completed";
+  }
+  if (normalized === "pending digital release") return "Backlog";
+  const allowed = ["Completed", "Abandoned", "Started", "Backlog", "Watch Next", "Paused", "Pending Return"];
+  const allowedMatch = allowed.find((status) => normalizeStatusToken(status) === normalized);
+  if (allowedMatch) return allowedMatch;
   return raw;
 }
 
@@ -8814,15 +8838,63 @@ export default function Page() {
       } else if (rateItMediaType === "tv") {
         if (!showsWriteUrl) throw new Error("TV write URL is not configured.");
         const updates: Record<string, string> = {};
-        if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
-        if (data.watchStatus) updates["Watch Status"] = safeStr(data.watchStatus);
-        if (data.dateCompleted) updates["Date Completed"] = safeStr(data.dateCompleted);
-        await postSheetWrite(showsWriteUrl, { action: "updateShow", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save show rating");
+        const verifyFields: Record<string, string> = {};
+        if (data.myRating) {
+          const rating = safeStr(data.myRating);
+          updates["My Rating"] = rating;
+          updates.MyRating = rating;
+          verifyFields["My Rating"] = rating;
+        }
+        const normalizedWatchStatus = data.watchStatus
+          ? normalizeShowWatchStatusForSheet(safeStr(data.watchStatus))
+          : "";
+        if (normalizedWatchStatus) {
+          updates.WatchStatus = normalizedWatchStatus;
+          verifyFields.WatchStatus = normalizedWatchStatus;
+        }
+        if (data.dateCompleted) {
+          const completedDateForSheet = formatDateForSheetWrite(safeStr(data.dateCompleted));
+          updates["Completed Date"] = completedDateForSheet;
+          updates["Date Completed"] = completedDateForSheet;
+          updates["Completd Date"] = completedDateForSheet;
+          updates.CompletedDate = completedDateForSheet;
+          verifyFields.CompletedDate = completedDateForSheet;
+
+          if (!normalizedWatchStatus) {
+            updates.WatchStatus = "Completed";
+            verifyFields.WatchStatus = "Completed";
+          }
+        }
+        const matchTmdbId = safeStr(rateItItem.tmdbId || rateItItem.TMDB_ID);
+        const matchTitle = safeStr(rateItItem.title || rateItItem.Title);
+        console.log("[RateIt Save] TV", {
+          title: matchTitle,
+          tmdbId: matchTmdbId,
+          updates,
+          verifyFields,
+        });
+        await postSheetWrite(
+          showsWriteUrl,
+          { action: "updateShow", match: { tmdbId: matchTmdbId, title: matchTitle }, updates },
+          "Failed to save show rating"
+        );
+        if (isBrowserLikelyOnline()) {
+          await verifySavedFieldsFromCsv({
+            sheetName: "Shows",
+            csvUrl: tvCsvUrl,
+            match: {
+              idField: "TMDB_ID",
+              idValue: matchTmdbId,
+              title: matchTitle,
+            },
+            verifyFields,
+          });
+        }
         setTvDetailItem((prev: any) => ({
           ...prev,
           ...updates,
           ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
-          ...(data.watchStatus ? { watchStatus: safeStr(data.watchStatus) } : {}),
+          ...(updates.WatchStatus ? { watchStatus: updates.WatchStatus } : {}),
           ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
         }));
       } else if (rateItMediaType === "book") {
@@ -8902,7 +8974,7 @@ export default function Page() {
       window.alert(e?.message || "Failed to save rating");
       throw e;
     }
-  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, triggerSaveToast]);
+  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, tvCsvUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, triggerSaveToast]);
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
