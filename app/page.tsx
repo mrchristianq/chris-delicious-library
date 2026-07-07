@@ -363,7 +363,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.0";
+const APP_VERSION = "11.0.1";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -444,6 +444,8 @@ const WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-mov
 const WATCHLIST_TV_SORT_FIELD_SETTING_KEY = "viewSortField:watchlist-tv";
 const WATCHLIST_TV_SORT_ORDER_SETTING_KEY = "viewSortOrder:watchlist-tv";
 const WATCHLIST_TV_MANUAL_ORDER_SETTING_KEY = "viewManualOrder:watchlist-tv";
+const TV_EPISODE_DAILY_REFRESH_LOCAL_KEY = "cdlTvEpisodeDailyRefreshDate";
+const TV_EPISODE_DAILY_REFRESH_DELAY_MS = 350;
 const LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN = /^view(?:ManualOrder|SortField|SortOrder|DisplayMode|ListColumns|ListSize|ListColumnWidths):/;
 const isLocalFirstViewSettingKey = (key: string) =>
   LOCAL_FIRST_VIEW_SETTING_KEY_PATTERN.test(safeStr(key));
@@ -666,6 +668,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.1",
+    date: "2026-07-06",
+    notes: [
+      "Added a once-daily background refresh for active TV show episode metadata so new episodes and seasons can appear automatically.",
+    ],
+  },
   {
     version: "11.0.0",
     date: "2026-07-06",
@@ -3381,6 +3390,7 @@ export default function Page() {
   const tvEpisodeRowsRef = useRef<TVEpisodeRow[]>([]);
   const tvEpisodeWriteTokensRef = useRef<Record<string, string>>({});
   const tvEpisodeWriteQueuesRef = useRef<Record<string, Promise<void>>>({});
+  const tvEpisodeDailyRefreshRunningRef = useRef(false);
   useEffect(() => {
     tvEpisodeRowsRef.current = tvEpisodeRows;
     if (typeof window === "undefined") return;
@@ -11084,6 +11094,90 @@ export default function Page() {
       return true;
     }) as Show[];
   }, [tvRows]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!allShows.length) return;
+    if (tvEpisodeDailyRefreshRunningRef.current) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+    const todayKey = new Date().toISOString().slice(0, 10);
+    try {
+      if (localStorage.getItem(TV_EPISODE_DAILY_REFRESH_LOCAL_KEY) === todayKey) return;
+    } catch {
+      // Daily refresh tracking is best-effort.
+    }
+
+    const refreshCandidates = allShows
+      .filter((show) => {
+        if (!safeStr(show.tmdbId)) return false;
+
+        const watchStatus = normalizeStatusToken(show.watchStatus || show.watched);
+        if (watchStatus === "completed" || watchStatus === "watched" || watchStatus === "abandoned") {
+          return false;
+        }
+
+        const showStatus = normalizeStatusToken(show.showStatus);
+        if (showStatus === "ended" || showStatus === "canceled") {
+          return false;
+        }
+
+        return true;
+      })
+      .reduce<Show[]>((unique, show) => {
+        const tmdbId = safeStr(show.tmdbId);
+        if (!tmdbId) return unique;
+        if (unique.some((existing) => safeStr(existing.tmdbId) === tmdbId)) return unique;
+        unique.push(show);
+        return unique;
+      }, []);
+
+    if (!refreshCandidates.length) {
+      try {
+        localStorage.setItem(TV_EPISODE_DAILY_REFRESH_LOCAL_KEY, todayKey);
+      } catch {
+        // Daily refresh tracking is best-effort.
+      }
+      return;
+    }
+
+    let cancelled = false;
+    tvEpisodeDailyRefreshRunningRef.current = true;
+
+    (async () => {
+      try {
+        for (let index = 0; index < refreshCandidates.length; index += 1) {
+          if (cancelled) return;
+          if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+          const show = refreshCandidates[index];
+          try {
+            await refreshTvEpisodesForShow(show, true);
+          } catch (error) {
+            console.warn("[TV Episodes] Daily refresh failed:", safeStr(show.title), error);
+          }
+
+          if (index < refreshCandidates.length - 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, TV_EPISODE_DAILY_REFRESH_DELAY_MS));
+          }
+        }
+
+        if (!cancelled) {
+          try {
+            localStorage.setItem(TV_EPISODE_DAILY_REFRESH_LOCAL_KEY, todayKey);
+          } catch {
+            // Daily refresh tracking is best-effort.
+          }
+        }
+      } finally {
+        tvEpisodeDailyRefreshRunningRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allShows, refreshTvEpisodesForShow]);
 
   const allBooks = useMemo(() => {
     return bookRows.map(rowToBook).filter(book => {
