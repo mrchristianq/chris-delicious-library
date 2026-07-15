@@ -1216,7 +1216,11 @@ function updateTvEpisodeProgress_(payload) {
   const updates = payload.updates || {};
   const episodeKey = String(match.episodeKey || "").trim() ||
     [match.showTmdbId, "s" + match.seasonNumber, "e" + match.episodeNumber].join(":");
-  const rowNum = findTvEpisodeRowByKey_(sheet, headerLookup, episodeKey);
+  let rowNum = findTvEpisodeRowByKey_(sheet, headerLookup, episodeKey);
+  if (rowNum === -1 && payload.episode) {
+    upsertTvEpisodeRows_({ rows: [payload.episode] });
+    rowNum = findTvEpisodeRowByKey_(sheet, headerLookup, episodeKey);
+  }
   if (rowNum === -1) {
     return createCORSResponse("Error: matching TV episode row not found");
   }

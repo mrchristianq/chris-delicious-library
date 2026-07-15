@@ -140,9 +140,15 @@ export async function POST(req: NextRequest) {
         : null;
     const action = String(normalizedPayloadRecord?.action || "").trim();
     const controller = new AbortController();
+    const timeoutMs =
+      action === "upsertTvEpisodeRows"
+        ? 60000
+        : action === "updateTvEpisodeProgressBulk"
+          ? 30000
+          : 15000;
     const timeoutId = setTimeout(
       () => controller.abort(),
-      action === "updateTvEpisodeProgressBulk" ? 30000 : 15000
+      timeoutMs
     );
 
     let responseText = "";

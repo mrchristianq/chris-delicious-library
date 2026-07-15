@@ -372,7 +372,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.23";
+const APP_VERSION = "11.0.24";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -695,6 +695,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.24",
+    date: "2026-07-15",
+    notes: [
+      "Prevented TV season progress saves from starting before every episode row exists in Google Sheets.",
+    ],
+  },
   {
     version: "11.0.23",
     date: "2026-07-15",
@@ -7175,6 +7182,50 @@ export default function Page() {
     [getTvEpisodeKey, tvEpisodeRows]
   );
 
+  const ensureTvEpisodeRowsExistForProgress = useCallback(
+    async (episodes: TVEpisodeRow[]) => {
+      if (!showsWriteUrl) {
+        throw new Error("Shows write URL is not configured.");
+      }
+
+      const rowsByKey = new Map<string, TVEpisodeRow>();
+      for (const episode of episodes) {
+        const key = getTvEpisodeKey(episode);
+        if (!key) continue;
+        rowsByKey.set(key, { ...episode, EpisodeKey: key });
+      }
+      const rows = Array.from(rowsByKey.values());
+      if (!rows.length) {
+        throw new Error("Unable to identify the TV episode rows before saving progress.");
+      }
+
+      const responseText = await postSheetWrite(
+        showsWriteUrl,
+        { action: "upsertTvEpisodeRows", rows },
+        "Failed to prepare TV episode rows for progress"
+      );
+
+      try {
+        const parsed = JSON.parse(responseText);
+        const status = safeStr(parsed?.status).toLowerCase();
+        const updated = Number(parsed?.updated);
+        if (status && status !== "success" && status !== "queued") {
+          throw new Error(safeStr(parsed?.error) || "TV episode row preparation failed.");
+        }
+        if (Number.isFinite(updated) && updated < rows.length) {
+          throw new Error(`Google Sheets prepared only ${updated} of ${rows.length} TV episode rows.`);
+        }
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          // Older Apps Script deployments may return plain "Success".
+          return;
+        }
+        throw error;
+      }
+    },
+    [getTvEpisodeKey, postSheetWrite, showsWriteUrl]
+  );
+
   const refreshTvEpisodesForShow = useCallback(
     async (show: Record<string, unknown>, force = false) => {
       const tmdbId = safeStr(show.tmdbId || show.TMDB_ID);
@@ -7255,6 +7306,12 @@ export default function Page() {
           return null;
         }
 
+        await ensureTvEpisodeRowsExistForProgress([params.episode]);
+
+        if (tvEpisodeWriteTokensRef.current[params.key] !== params.writeToken) {
+          return null;
+        }
+
         let responseText = "";
         let lastWriteError: unknown = null;
         const retryDelaysMs = [350, 900];
@@ -7273,6 +7330,7 @@ export default function Page() {
                   seasonNumber: safeStr(params.episode.SeasonNumber),
                   episodeNumber: safeStr(params.episode.EpisodeNumber),
                 },
+                episode: { ...params.episode, EpisodeKey: params.key },
                 updates: params.updates,
               },
               "Failed to save episode progress"
@@ -7322,7 +7380,7 @@ export default function Page() {
 
       return writePromise;
     },
-    [postSheetWrite, showsWriteUrl]
+    [ensureTvEpisodeRowsExistForProgress, postSheetWrite, showsWriteUrl]
   );
 
   const queueTvEpisodeProgressBulkWrite = useCallback(
@@ -7355,6 +7413,17 @@ export default function Page() {
         if (previousWrites.length) {
           await Promise.allSettled(previousWrites);
         }
+
+        if (targetKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
+          return new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
+        }
+
+        params.onProgress?.({
+          total: params.targets.length,
+          confirmed: 0,
+          message: "Preparing episode rows in Google Sheets...",
+        });
+        await ensureTvEpisodeRowsExistForProgress(params.targets.map((target) => target.episode));
 
         if (targetKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
           return new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
@@ -7407,6 +7476,7 @@ export default function Page() {
                         seasonNumber: safeStr(episode.SeasonNumber),
                         episodeNumber: safeStr(episode.EpisodeNumber),
                       },
+                      episode: { ...episode, EpisodeKey: key },
                       updates: params.updates,
                     },
                     "Failed to save episode progress"
@@ -7492,7 +7562,7 @@ export default function Page() {
 
       return bulkWritePromise;
     },
-    [postSheetWrite, showsWriteUrl]
+    [ensureTvEpisodeRowsExistForProgress, postSheetWrite, showsWriteUrl]
   );
 
   const updateTvEpisodeProgress = useCallback(
