@@ -372,7 +372,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.21";
+const APP_VERSION = "11.0.23";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -695,6 +695,20 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.23",
+    date: "2026-07-15",
+    notes: [
+      "Clarified TV episode confirmation progress so it counts episode changes instead of queued season jobs.",
+    ],
+  },
+  {
+    version: "11.0.22",
+    date: "2026-07-15",
+    notes: [
+      "Routed TV episode confirmation saves through the deployed per-episode Apps Script action.",
+    ],
+  },
   {
     version: "11.0.21",
     date: "2026-07-15",
@@ -7377,20 +7391,29 @@ export default function Page() {
               break;
             }
             try {
-              responseText = await postSheetWrite(
-                showsWriteUrl,
-                {
-                  action: "updateTvEpisodeProgressBulk",
-                  episodes: chunk.map(({ episode, key }) => ({
-                    episodeKey: key,
-                    showTmdbId: safeStr(episode.ShowTMDB_ID),
-                    seasonNumber: safeStr(episode.SeasonNumber),
-                    episodeNumber: safeStr(episode.EpisodeNumber),
-                  })),
-                  updates: params.updates,
-                },
-                "Failed to save episode progress"
-              );
+              const responseTexts: string[] = [];
+              for (const { episode, key } of chunk) {
+                if (tvEpisodeWriteTokensRef.current[key] !== params.writeToken) {
+                  continue;
+                }
+                responseTexts.push(
+                  await postSheetWrite(
+                    showsWriteUrl,
+                    {
+                      action: "updateTvEpisodeProgress",
+                      match: {
+                        episodeKey: key,
+                        showTmdbId: safeStr(episode.ShowTMDB_ID),
+                        seasonNumber: safeStr(episode.SeasonNumber),
+                        episodeNumber: safeStr(episode.EpisodeNumber),
+                      },
+                      updates: params.updates,
+                    },
+                    "Failed to save episode progress"
+                  )
+                );
+              }
+              responseText = responseTexts.join("\n");
               lastWriteError = null;
               break;
             } catch (error) {
@@ -7413,25 +7436,21 @@ export default function Page() {
             continue;
           }
 
-          let parsed: any = null;
-          try {
-            parsed = JSON.parse(responseText);
-          } catch {
-            throw new Error("TV episode bulk save did not return confirmed rows. Redeploy the updated Apps Script WebApp.gs.");
+          const responseLines = responseText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+          const failedLine = responseLines.find((line) => /^error:/i.test(line));
+          if (failedLine) {
+            throw new Error(failedLine);
           }
 
-          if (!parsed || String(parsed.status || "").toLowerCase() !== "success") {
-            throw new Error(safeStr(parsed?.message) || "TV episode bulk save was not confirmed.");
-          }
-
-          const confirmedRows = Array.isArray(parsed.confirmed) ? parsed.confirmed : [];
-          for (const row of confirmedRows) {
-            const key = safeStr(row?.EpisodeKey || row?.episodeKey);
-            if (!key) continue;
+          for (const { key } of chunk) {
+            if (tvEpisodeWriteTokensRef.current[key] !== params.writeToken) continue;
             confirmedByKey.set(key, {
-              Watched: safeStr(row?.Watched || params.updates.Watched) || params.updates.Watched,
-              WatchedAt: params.watched ? safeStr(row?.WatchedAt || params.updates.WatchedAt) : "",
-              UpdatedAt: safeStr(row?.UpdatedAt || params.updates.UpdatedAt) || params.updates.UpdatedAt,
+              Watched: params.updates.Watched,
+              WatchedAt: params.watched ? params.updates.WatchedAt : "",
+              UpdatedAt: params.updates.UpdatedAt,
             });
           }
 

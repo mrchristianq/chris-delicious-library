@@ -498,7 +498,6 @@ export function TVDetailsPage({
     const total = jobs.reduce((sum, job) => sum + job.total, 0);
     const confirmed = jobs.reduce((sum, job) => sum + Math.min(job.confirmed, job.total), 0);
     const failed = jobs.some((job) => job.failed);
-    const activeCount = jobs.filter((job) => !job.done && !job.failed).length;
     const allDone = jobs.every((job) => job.done || job.failed);
 
     setEpisodeSyncProgress({
@@ -508,7 +507,7 @@ export function TVDetailsPage({
         ? "Google Sheets confirmation failed"
         : allDone
           ? "Confirmed in Google Sheets"
-          : `Confirming ${activeCount} queued episode update${activeCount === 1 ? "" : "s"}...`,
+          : `Confirming ${total} episode change${total === 1 ? "" : "s"} in Google Sheets...`,
     });
     setEpisodeSavingKey(allDone ? null : "bulk");
   };
