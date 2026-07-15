@@ -402,6 +402,9 @@ export function TVDetailsPage({
   const [expandedSeason, setExpandedSeason] = useState<string>("");
   const episodeInitialSeasonSetRef = useRef("");
   const episodeSyncJobRef = useRef(0);
+  const episodeSyncJobsRef = useRef<
+    Record<number, TVEpisodeBulkSaveProgress & { done?: boolean; failed?: boolean }>
+  >({});
   const showEpisodeKey = safeStr((item as Record<string, unknown>).tmdbId || (item as Record<string, unknown>).TMDB_ID || title);
   const episodeKey = (episode: TVEpisodeRow) =>
     safeStr(episode.EpisodeKey) ||
@@ -484,46 +487,79 @@ export function TVDetailsPage({
       setEpisodeSavingKey(null);
     }
   };
+  const refreshEpisodeSyncProgress = () => {
+    const jobs = Object.values(episodeSyncJobsRef.current);
+    if (!jobs.length) {
+      setEpisodeSyncProgress(null);
+      setEpisodeSavingKey(null);
+      return;
+    }
+
+    const total = jobs.reduce((sum, job) => sum + job.total, 0);
+    const confirmed = jobs.reduce((sum, job) => sum + Math.min(job.confirmed, job.total), 0);
+    const failed = jobs.some((job) => job.failed);
+    const activeCount = jobs.filter((job) => !job.done && !job.failed).length;
+    const allDone = jobs.every((job) => job.done || job.failed);
+
+    setEpisodeSyncProgress({
+      total,
+      confirmed,
+      message: failed
+        ? "Google Sheets confirmation failed"
+        : allDone
+          ? "Confirmed in Google Sheets"
+          : `Confirming ${activeCount} queued episode update${activeCount === 1 ? "" : "s"}...`,
+    });
+    setEpisodeSavingKey(allDone ? null : "bulk");
+  };
   const bulkSetWatched = async (episodes: TVEpisodeRow[], watched: boolean) => {
     if (!onBulkUpdateEpisodeProgress || !episodes.length) return;
     const syncJob = episodeSyncJobRef.current + 1;
     episodeSyncJobRef.current = syncJob;
-    setEpisodeSavingKey("bulk");
-    setEpisodeError(null);
-    setEpisodeSyncProgress({
+    episodeSyncJobsRef.current[syncJob] = {
       total: episodes.length,
       confirmed: 0,
       message: watched ? "Marking episodes watched..." : "Marking episodes unwatched...",
-    });
+    };
+    setEpisodeSavingKey("bulk");
+    setEpisodeError(null);
+    refreshEpisodeSyncProgress();
     try {
       await onBulkUpdateEpisodeProgress(episodes, watched, (progress) => {
-        if (episodeSyncJobRef.current === syncJob) {
-          setEpisodeSyncProgress(progress);
-        }
+        episodeSyncJobsRef.current[syncJob] = {
+          ...episodeSyncJobsRef.current[syncJob],
+          ...progress,
+        };
+        refreshEpisodeSyncProgress();
       });
-      if (episodeSyncJobRef.current === syncJob) {
-        setEpisodeSyncProgress({
-          total: episodes.length,
-          confirmed: episodes.length,
-          message: "Confirmed in Google Sheets",
-        });
-        window.setTimeout(() => {
-          if (episodeSyncJobRef.current === syncJob) {
-            setEpisodeSyncProgress(null);
-          }
-        }, 1600);
-      }
+      episodeSyncJobsRef.current[syncJob] = {
+        ...episodeSyncJobsRef.current[syncJob],
+        total: episodes.length,
+        confirmed: episodes.length,
+        message: "Confirmed in Google Sheets",
+        done: true,
+      };
+      refreshEpisodeSyncProgress();
+      window.setTimeout(() => {
+        const jobs = Object.values(episodeSyncJobsRef.current);
+        if (jobs.length && jobs.every((job) => job.done && !job.failed)) {
+          episodeSyncJobsRef.current = {};
+          refreshEpisodeSyncProgress();
+        }
+      }, 1600);
     } catch (error: any) {
       setEpisodeError(error?.message || "Failed to save episode progress.");
-      if (episodeSyncJobRef.current === syncJob) {
-        setEpisodeSyncProgress((prev) => ({
-          total: prev?.total || episodes.length,
-          confirmed: prev?.confirmed || 0,
-          message: "Google Sheets confirmation failed",
-        }));
-      }
+      episodeSyncJobsRef.current[syncJob] = {
+        ...episodeSyncJobsRef.current[syncJob],
+        total: episodeSyncJobsRef.current[syncJob]?.total || episodes.length,
+        confirmed: episodeSyncJobsRef.current[syncJob]?.confirmed || 0,
+        message: "Google Sheets confirmation failed",
+        failed: true,
+      };
+      refreshEpisodeSyncProgress();
     } finally {
-      if (episodeSyncJobRef.current === syncJob) {
+      const jobs = Object.values(episodeSyncJobsRef.current);
+      if (!jobs.some((job) => !job.done && !job.failed)) {
         setEpisodeSavingKey(null);
       }
     }

@@ -372,7 +372,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.20";
+const APP_VERSION = "11.0.21";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -695,6 +695,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.21",
+    date: "2026-07-15",
+    notes: [
+      "Fixed TV episode watched queue confirmation so multi-season saves cannot wait on themselves and progress stays accurate.",
+    ],
+  },
   {
     version: "11.0.20",
     date: "2026-07-15",
@@ -7326,10 +7333,11 @@ export default function Page() {
         message: "Queued for Google Sheets confirmation...",
       });
 
+      const previousWrites = targetKeys
+        .map((key) => tvEpisodeWriteQueuesRef.current[key])
+        .filter(Boolean);
+
       const bulkWritePromise = tvEpisodeBulkWriteQueueRef.current.catch(() => undefined).then(async () => {
-        const previousWrites = targetKeys
-          .map((key) => tvEpisodeWriteQueuesRef.current[key])
-          .filter(Boolean);
         if (previousWrites.length) {
           await Promise.allSettled(previousWrites);
         }
