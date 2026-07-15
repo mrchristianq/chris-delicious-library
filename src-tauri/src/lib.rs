@@ -961,7 +961,10 @@ fn upload_bytes_to_r2(
 }
 
 fn media_type_for_action(action: &str) -> &'static str {
-    if action == "upsertTvEpisodeRows" || action == "updateTvEpisodeProgress" {
+    if action == "upsertTvEpisodeRows"
+        || action == "updateTvEpisodeProgress"
+        || action == "updateTvEpisodeProgressBulk"
+    {
         "tvEpisode"
     } else if action.contains("Book") {
         "book"
@@ -1173,6 +1176,38 @@ fn persist_sheet_write_locally(
             )?;
             return Ok(item_key);
         }
+    }
+
+    if action == "updateTvEpisodeProgressBulk" {
+        let Some(Value::Array(episodes)) = payload.get("episodes") else {
+            return Ok(action.to_string());
+        };
+        let mut first_key = String::new();
+        for episode in episodes {
+            let Some(episode_obj) = episode.as_object() else {
+                continue;
+            };
+            let match_value = Value::Object(episode_obj.clone());
+            if let Some((item_key, mut row)) =
+                find_matching_item(conn, "tvEpisode", Some(&match_value))?
+            {
+                merge_updates(&mut row, payload.get("updates"));
+                conn.execute(
+                    "UPDATE media_items
+                     SET row_json = ?2, local_updated_at = ?3, deleted_at = NULL, sync_status = 'pending'
+                     WHERE media_type = 'tvEpisode' AND item_key = ?1",
+                    params![&item_key, serde_json::to_string(&row)?, now],
+                )?;
+                if first_key.is_empty() {
+                    first_key = item_key;
+                }
+            }
+        }
+        return Ok(if first_key.is_empty() {
+            action.to_string()
+        } else {
+            first_key
+        });
     }
 
     if action.starts_with("update") {

@@ -355,14 +355,14 @@ The app intentionally tolerates multiple possible column names because the sprea
 Most writes follow this path:
 
 1. User edits a field in the app.
-2. `app/page.tsx` builds an action payload such as `updateMovie`, `updateBook`, `updateShow`, `updateGame`, `addBook`, or `updateTvEpisodeProgress`.
+2. `app/page.tsx` builds an action payload such as `updateMovie`, `updateBook`, `updateShow`, `updateGame`, `addBook`, `updateTvEpisodeProgress`, or `updateTvEpisodeProgressBulk`.
 3. Web mode calls `postSheetWrite()`.
 4. `postSheetWrite()` posts to `/api/sheets-write`.
 5. `/api/sheets-write` validates that the target URL is a Google Apps Script URL, normalizes known fields, and forwards the payload to Apps Script as text JSON.
 6. Apps Script `doPost(e)` routes by `payload.action`.
 7. The specific Apps Script handler finds the row, writes cells, stamps timestamp columns, and returns a success/error response.
 8. For normal media edits, the app performs CSV readback verification before reporting success.
-9. For TV episode progress, Apps Script verifies the written `Watched` value before returning success.
+9. For TV episode progress, Apps Script verifies the written `Watched` value before returning success. Bulk season/show progress saves verify every affected episode before returning success.
 10. ChangeLog entries are appended for changes that should be auditable.
 
 Native mode changes the middle:
@@ -394,6 +394,7 @@ Native mode changes the middle:
 - `appendChangeLogRows`
 - `upsertTvEpisodeRows`
 - `updateTvEpisodeProgress`
+- `updateTvEpisodeProgressBulk`
 - `debugWebAppVersion`
 
 Important Apps Script rules:
@@ -442,14 +443,14 @@ The UI updates optimistically for instant feedback, then rolls back if the write
 
 ### Progress write reliability
 
-Episode progress writes use `updateTvEpisodeProgress`. The Apps Script handler:
+Single episode progress writes use `updateTvEpisodeProgress`. Season and multi-episode progress writes use `updateTvEpisodeProgressBulk` so large seasons are saved as one locked batch instead of many independent requests. The Apps Script handlers:
 
 - Finds the episode by `EpisodeKey` or show/season/episode.
 - Writes `Watched`, `WatchedAt`, and `UpdatedAt`.
 - Appends ChangeLog rows for `Watched` and `WatchedAt`.
 - Flushes the spreadsheet.
 - Reads back `Watched`.
-- Returns JSON with the confirmed value.
+- Returns JSON with the confirmed value. Bulk writes return a `confirmed` row for every requested episode, and the app treats missing confirmations as a failed save.
 
 ## 11. Metadata Providers
 

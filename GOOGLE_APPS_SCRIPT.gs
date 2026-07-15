@@ -1,7 +1,7 @@
 // Google Apps Script - Save this in your Apps Script editor
 // This handles saving settings to the Google Sheet
 
-const CDL_WEBAPP_BUILD = "11.0.2-design-document";
+const CDL_WEBAPP_BUILD = "11.0.18-bulk-tv-progress";
 
 function onOpen() {
   safeCall_("addTmdbMenu_", typeof addTmdbMenu_ === "function" ? addTmdbMenu_ : null);
@@ -97,6 +97,9 @@ function doPost(e) {
     }
     if (action === "updateTvEpisodeProgress") {
       return updateTvEpisodeProgress_(payload);
+    }
+    if (action === "updateTvEpisodeProgressBulk") {
+      return updateTvEpisodeProgressBulk_(payload);
     }
     if (action === "debugWebAppVersion") {
       return createCORSResponse(JSON.stringify({
@@ -1287,6 +1290,174 @@ function updateTvEpisodeProgress_(payload) {
     WatchedAt: watchedAt,
     UpdatedAt: updatedAt,
   }));
+}
+
+function updateTvEpisodeProgressBulk_(payload) {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+
+  try {
+    const sheet = ensureTvEpisodesSheet_();
+    const headerLookup = buildTvEpisodeHeaderLookup_(sheet);
+    const episodes = Array.isArray(payload && payload.episodes) ? payload.episodes : [];
+    const updates = payload.updates || {};
+
+    if (!episodes.length) {
+      return createCORSResponse("Error: no TV episode progress rows provided");
+    }
+    if (!headerLookup.EpisodeKey || !headerLookup.Watched) {
+      return createCORSResponse("Error: TV Episodes sheet is missing required columns");
+    }
+
+    const now = new Date().toISOString();
+    const watched = String(updates.Watched || "").trim();
+    const watchedAt = String(updates.WatchedAt || "").trim();
+    const updatedAt = String(updates.UpdatedAt || now).trim();
+    const normalizedExpectedWatched = normalizeTvEpisodeWatchedValue_(watched);
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+
+    if (lastRow < 2) {
+      return createCORSResponse("Error: TV Episodes sheet has no data rows");
+    }
+
+    const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    const rowByEpisodeKey = {};
+
+    for (var i = 0; i < values.length; i++) {
+      const key = String(values[i][headerLookup.EpisodeKey - 1] || "").trim();
+      if (key && rowByEpisodeKey[key] === undefined) {
+        rowByEpisodeKey[key] = i;
+      }
+    }
+
+    const requestedKeys = [];
+    episodes.forEach(function(rawEpisode) {
+      const episode = rawEpisode || {};
+      const explicitKey = String(episode.episodeKey || episode.EpisodeKey || "").trim();
+      const fallbackKey = [
+        episode.showTmdbId || episode.ShowTMDB_ID,
+        "s" + (episode.seasonNumber || episode.SeasonNumber),
+        "e" + (episode.episodeNumber || episode.EpisodeNumber),
+      ].join(":");
+      const key = explicitKey || fallbackKey;
+      if (key && requestedKeys.indexOf(key) === -1) {
+        requestedKeys.push(key);
+      }
+    });
+
+    const missing = [];
+    const confirmed = [];
+    const changeLogRows = [];
+    let updated = 0;
+
+    requestedKeys.forEach(function(episodeKey) {
+      const rowIndex = rowByEpisodeKey[episodeKey];
+      if (rowIndex === undefined) {
+        missing.push(episodeKey);
+        return;
+      }
+
+      const row = values[rowIndex];
+      const rowNum = rowIndex + 2;
+      const oldWatched = headerLookup.Watched ? row[headerLookup.Watched - 1] : "";
+      const oldWatchedAt = headerLookup.WatchedAt ? row[headerLookup.WatchedAt - 1] : "";
+
+      if (headerLookup.Watched) row[headerLookup.Watched - 1] = watched;
+      if (headerLookup.WatchedAt) row[headerLookup.WatchedAt - 1] = watchedAt;
+      if (headerLookup.UpdatedAt) row[headerLookup.UpdatedAt - 1] = updatedAt;
+      if (headerLookup.LastModifiedAt) row[headerLookup.LastModifiedAt - 1] = now;
+      if (headerLookup.ClientUpdatedAt) row[headerLookup.ClientUpdatedAt - 1] = String(payload.clientUpdatedAt || "").trim();
+
+      const title = headerLookup.ShowTitle ? row[headerLookup.ShowTitle - 1] : "";
+      const season = headerLookup.SeasonNumber ? row[headerLookup.SeasonNumber - 1] : "";
+      const episode = headerLookup.EpisodeNumber ? row[headerLookup.EpisodeNumber - 1] : "";
+      const episodeTitle = headerLookup.EpisodeTitle ? row[headerLookup.EpisodeTitle - 1] : "";
+      const logTitle = String(title || "") + " S" + season + "E" + episode + " " + String(episodeTitle || "");
+
+      if (String(oldWatched || "").trim() !== watched) {
+        changeLogRows.push({
+          Timestamp: now,
+          Source: "CDL App",
+          Sheet: "TV Episodes",
+          Title: logTitle,
+          Row: String(rowNum),
+          Field: "Watched",
+          "Old Value": oldWatched,
+          "New Value": watched,
+          User: "app",
+          Function: "updateTvEpisodeProgressBulk_",
+        });
+      }
+      if (String(oldWatchedAt || "").trim() !== watchedAt) {
+        changeLogRows.push({
+          Timestamp: now,
+          Source: "CDL App",
+          Sheet: "TV Episodes",
+          Title: logTitle,
+          Row: String(rowNum),
+          Field: "WatchedAt",
+          "Old Value": oldWatchedAt,
+          "New Value": watchedAt,
+          User: "app",
+          Function: "updateTvEpisodeProgressBulk_",
+        });
+      }
+
+      updated++;
+    });
+
+    if (missing.length) {
+      return createCORSResponse(
+        "Error: matching TV episode rows not found for " +
+          missing.slice(0, 10).join(", ") +
+          (missing.length > 10 ? "..." : "")
+      );
+    }
+
+    sheet.getRange(2, 1, values.length, lastCol).setValues(values);
+    SpreadsheetApp.flush();
+
+    const watchedValues = sheet.getRange(2, headerLookup.Watched, lastRow - 1, 1).getValues();
+    requestedKeys.forEach(function(episodeKey) {
+      const rowIndex = rowByEpisodeKey[episodeKey];
+      if (rowIndex === undefined) return;
+      const actualWatched = tvEpisodeCellText_(watchedValues[rowIndex][0]);
+      const normalizedActualWatched = normalizeTvEpisodeWatchedValue_(actualWatched);
+      if (normalizedActualWatched === normalizedExpectedWatched) {
+        confirmed.push({
+          EpisodeKey: episodeKey,
+          Row: rowIndex + 2,
+          Watched: normalizedActualWatched,
+          WatchedAt: watchedAt,
+          UpdatedAt: updatedAt,
+        });
+      }
+    });
+
+    if (confirmed.length !== requestedKeys.length) {
+      return createCORSResponse(
+        "Error: TV episode bulk write verification failed. Confirmed " +
+          confirmed.length +
+          " of " +
+          requestedKeys.length +
+          "."
+      );
+    }
+
+    if (changeLogRows.length) {
+      appendChangeLogRows_({ rows: changeLogRows });
+    }
+
+    return createCORSResponse(JSON.stringify({
+      status: "Success",
+      build: CDL_WEBAPP_BUILD,
+      updated: updated,
+      confirmed: confirmed,
+    }));
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // Add CORS headers to the response

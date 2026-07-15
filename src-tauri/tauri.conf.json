@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Chris' Delicious Library",
-  "version": "11.0.17",
+  "version": "11.0.18",
   "identifier": "com.chrisdelicious.library",
   "build": {
     "beforeDevCommand": "NEXT_PUBLIC_NATIVE_APP=true npm run dev",
