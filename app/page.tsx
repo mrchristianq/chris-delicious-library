@@ -176,6 +176,14 @@ type TVEpisodeRow = Row & {
   Source?: string;
 };
 
+type TVEpisodeBulkSaveProgress = {
+  total: number;
+  confirmed: number;
+  chunkIndex?: number;
+  chunkCount?: number;
+  message?: string;
+};
+
 type Book = {
   title: string;
   posterUrl: string;
@@ -364,7 +372,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.18";
+const APP_VERSION = "11.0.20";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -672,6 +680,8 @@ const DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK = {
 const LEGACY_DARK_HIGHLIGHT_MONO = "#5d6066";
 const HOME_ACTIVE_PILL_BACKGROUND = "rgba(112, 121, 132, 0.72)";
 const HOME_ACTIVE_PILL_BORDER = "rgba(83, 92, 104, 0.24)";
+const TV_EPISODE_BULK_CHUNK_SIZE = 1;
+const TV_EPISODE_BULK_CHUNK_GAP_MS = 40;
 type MediaCoverSizePctState = {
   tv: number;
   movies: number;
@@ -685,6 +695,20 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.20",
+    date: "2026-07-15",
+    notes: [
+      "Changed TV episode bulk saves to confirm one episode per Google Sheets write for exact live progress.",
+    ],
+  },
+  {
+    version: "11.0.19",
+    date: "2026-07-15",
+    notes: [
+      "Chunked and serialized large TV episode watched saves with live Google Sheets confirmation progress.",
+    ],
+  },
   {
     version: "11.0.18",
     date: "2026-07-14",
@@ -3566,6 +3590,7 @@ export default function Page() {
   const tvEpisodeRowsRef = useRef<TVEpisodeRow[]>([]);
   const tvEpisodeWriteTokensRef = useRef<Record<string, string>>({});
   const tvEpisodeWriteQueuesRef = useRef<Record<string, Promise<void>>>({});
+  const tvEpisodeBulkWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const tvEpisodeDailyRefreshRunningRef = useRef(false);
   useEffect(() => {
     tvEpisodeRowsRef.current = tvEpisodeRows;
@@ -7285,6 +7310,7 @@ export default function Page() {
       watched: boolean;
       updates: { Watched: string; WatchedAt: string; UpdatedAt: string };
       writeToken: string;
+      onProgress?: (progress: TVEpisodeBulkSaveProgress) => void;
     }) => {
       if (!showsWriteUrl) {
         throw new Error("Shows write URL is not configured.");
@@ -7294,91 +7320,137 @@ export default function Page() {
       }
 
       const targetKeys = params.targets.map((target) => target.key);
-      const previousWrites = targetKeys
-        .map((key) => tvEpisodeWriteQueuesRef.current[key])
-        .filter(Boolean);
-      if (previousWrites.length) {
-        await Promise.allSettled(previousWrites);
-      }
+      params.onProgress?.({
+        total: params.targets.length,
+        confirmed: 0,
+        message: "Queued for Google Sheets confirmation...",
+      });
 
-      if (targetKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
-        return new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
-      }
-
-      const bulkWritePromise = (async () => {
-        let responseText = "";
-        let lastWriteError: unknown = null;
-        const retryDelaysMs = [500, 1200];
-        for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
-          if (targetKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
-            return new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
-          }
-          try {
-            responseText = await postSheetWrite(
-              showsWriteUrl,
-              {
-                action: "updateTvEpisodeProgressBulk",
-                episodes: params.targets.map(({ episode, key }) => ({
-                  episodeKey: key,
-                  showTmdbId: safeStr(episode.ShowTMDB_ID),
-                  seasonNumber: safeStr(episode.SeasonNumber),
-                  episodeNumber: safeStr(episode.EpisodeNumber),
-                })),
-                updates: params.updates,
-              },
-              "Failed to save episode progress"
-            );
-            lastWriteError = null;
-            break;
-          } catch (error) {
-            lastWriteError = error;
-            if (targetKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
-              return new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
-            }
-            const retryDelay = retryDelaysMs[attempt];
-            if (retryDelay == null) {
-              throw error;
-            }
-            await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          }
-        }
-        if (lastWriteError) {
-          throw lastWriteError;
+      const bulkWritePromise = tvEpisodeBulkWriteQueueRef.current.catch(() => undefined).then(async () => {
+        const previousWrites = targetKeys
+          .map((key) => tvEpisodeWriteQueuesRef.current[key])
+          .filter(Boolean);
+        if (previousWrites.length) {
+          await Promise.allSettled(previousWrites);
         }
 
-        let parsed: any = null;
-        try {
-          parsed = JSON.parse(responseText);
-        } catch {
-          throw new Error("TV episode bulk save did not return confirmed rows. Redeploy the updated Apps Script WebApp.gs.");
+        if (targetKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
+          return new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
         }
 
-        if (!parsed || String(parsed.status || "").toLowerCase() !== "success") {
-          throw new Error(safeStr(parsed?.message) || "TV episode bulk save was not confirmed.");
-        }
-
-        const confirmedRows = Array.isArray(parsed.confirmed) ? parsed.confirmed : [];
         const confirmedByKey = new Map<string, { Watched: string; WatchedAt: string; UpdatedAt: string }>();
-        for (const row of confirmedRows) {
-          const key = safeStr(row?.EpisodeKey || row?.episodeKey);
-          if (!key) continue;
-          confirmedByKey.set(key, {
-            Watched: safeStr(row?.Watched || params.updates.Watched) || params.updates.Watched,
-            WatchedAt: params.watched ? safeStr(row?.WatchedAt || params.updates.WatchedAt) : "",
-            UpdatedAt: safeStr(row?.UpdatedAt || params.updates.UpdatedAt) || params.updates.UpdatedAt,
-          });
+        const chunks: Array<Array<{ episode: TVEpisodeRow; key: string }>> = [];
+        for (let i = 0; i < params.targets.length; i += TV_EPISODE_BULK_CHUNK_SIZE) {
+          chunks.push(params.targets.slice(i, i + TV_EPISODE_BULK_CHUNK_SIZE));
         }
 
-        if (confirmedByKey.size !== params.targets.length) {
-          const missingKeys = targetKeys.filter((key) => !confirmedByKey.has(key));
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+          const chunk = chunks[chunkIndex];
+          const chunkKeys = chunk.map((target) => target.key);
+          if (chunkKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
+            continue;
+          }
+
+          params.onProgress?.({
+            total: params.targets.length,
+            confirmed: confirmedByKey.size,
+            chunkIndex: chunkIndex + 1,
+            chunkCount: chunks.length,
+            message: `Confirming batch ${chunkIndex + 1} of ${chunks.length}...`,
+          });
+
+          let responseText = "";
+          let lastWriteError: unknown = null;
+          const retryDelaysMs = [500, 1200, 2200];
+          for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+            if (chunkKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
+              lastWriteError = null;
+              responseText = "";
+              break;
+            }
+            try {
+              responseText = await postSheetWrite(
+                showsWriteUrl,
+                {
+                  action: "updateTvEpisodeProgressBulk",
+                  episodes: chunk.map(({ episode, key }) => ({
+                    episodeKey: key,
+                    showTmdbId: safeStr(episode.ShowTMDB_ID),
+                    seasonNumber: safeStr(episode.SeasonNumber),
+                    episodeNumber: safeStr(episode.EpisodeNumber),
+                  })),
+                  updates: params.updates,
+                },
+                "Failed to save episode progress"
+              );
+              lastWriteError = null;
+              break;
+            } catch (error) {
+              lastWriteError = error;
+              if (chunkKeys.some((key) => tvEpisodeWriteTokensRef.current[key] !== params.writeToken)) {
+                lastWriteError = null;
+                break;
+              }
+              const retryDelay = retryDelaysMs[attempt];
+              if (retryDelay == null) {
+                throw error;
+              }
+              await new Promise((resolve) => setTimeout(resolve, retryDelay));
+            }
+          }
+          if (lastWriteError) {
+            throw lastWriteError;
+          }
+          if (!responseText) {
+            continue;
+          }
+
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(responseText);
+          } catch {
+            throw new Error("TV episode bulk save did not return confirmed rows. Redeploy the updated Apps Script WebApp.gs.");
+          }
+
+          if (!parsed || String(parsed.status || "").toLowerCase() !== "success") {
+            throw new Error(safeStr(parsed?.message) || "TV episode bulk save was not confirmed.");
+          }
+
+          const confirmedRows = Array.isArray(parsed.confirmed) ? parsed.confirmed : [];
+          for (const row of confirmedRows) {
+            const key = safeStr(row?.EpisodeKey || row?.episodeKey);
+            if (!key) continue;
+            confirmedByKey.set(key, {
+              Watched: safeStr(row?.Watched || params.updates.Watched) || params.updates.Watched,
+              WatchedAt: params.watched ? safeStr(row?.WatchedAt || params.updates.WatchedAt) : "",
+              UpdatedAt: safeStr(row?.UpdatedAt || params.updates.UpdatedAt) || params.updates.UpdatedAt,
+            });
+          }
+
+          params.onProgress?.({
+            total: params.targets.length,
+            confirmed: confirmedByKey.size,
+            chunkIndex: chunkIndex + 1,
+            chunkCount: chunks.length,
+            message: `Confirmed ${confirmedByKey.size} of ${params.targets.length} in Google Sheets`,
+          });
+
+          if (chunkIndex < chunks.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, TV_EPISODE_BULK_CHUNK_GAP_MS));
+          }
+        }
+
+        const activeTargetKeys = targetKeys.filter((key) => tvEpisodeWriteTokensRef.current[key] === params.writeToken);
+        const missingKeys = activeTargetKeys.filter((key) => !confirmedByKey.has(key));
+        if (missingKeys.length) {
           throw new Error(
-            `TV episode bulk save confirmed ${confirmedByKey.size} of ${params.targets.length} episodes` +
-              (missingKeys.length ? `; missing ${missingKeys.slice(0, 5).join(", ")}${missingKeys.length > 5 ? "..." : ""}` : "")
+            `TV episode bulk save confirmed ${confirmedByKey.size} of ${activeTargetKeys.length} active episodes` +
+              `; missing ${missingKeys.slice(0, 5).join(", ")}${missingKeys.length > 5 ? "..." : ""}`
           );
         }
 
         return confirmedByKey;
-      })();
+      });
 
       for (const key of targetKeys) {
         tvEpisodeWriteQueuesRef.current[key] = bulkWritePromise.then(
@@ -7386,6 +7458,10 @@ export default function Page() {
           () => undefined
         );
       }
+      tvEpisodeBulkWriteQueueRef.current = bulkWritePromise.then(
+        () => undefined,
+        () => undefined
+      );
 
       return bulkWritePromise;
     },
@@ -7451,7 +7527,11 @@ export default function Page() {
   );
 
   const bulkUpdateTvEpisodeProgress = useCallback(
-    async (episodes: TVEpisodeRow[], watched: boolean) => {
+    async (
+      episodes: TVEpisodeRow[],
+      watched: boolean,
+      onProgress?: (progress: TVEpisodeBulkSaveProgress) => void
+    ) => {
       if (!showsWriteUrl) {
         throw new Error("Shows write URL is not configured.");
       }
@@ -7484,6 +7564,7 @@ export default function Page() {
           watched,
           updates,
           writeToken,
+          onProgress,
         });
         confirmedKeys = new Set(confirmedUpdatesByKey.keys());
         setTvEpisodeRows((prev) =>

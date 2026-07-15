@@ -134,16 +134,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const normalizedPayloadRecord =
+      normalizedPayload && typeof normalizedPayload === "object"
+        ? (normalizedPayload as Record<string, unknown>)
+        : null;
+    const action = String(normalizedPayloadRecord?.action || "").trim();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      action === "updateTvEpisodeProgressBulk" ? 30000 : 15000
+    );
 
     let responseText = "";
     let upstreamStatus = 500;
     try {
-      const normalizedPayloadRecord =
-        normalizedPayload && typeof normalizedPayload === "object"
-          ? (normalizedPayload as Record<string, unknown>)
-          : null;
       console.log("[sheets-write] Forwarding write to:", url);
       console.log("[sheets-write] Payload action:", normalizedPayloadRecord?.action);
       console.log("[sheets-write] Payload match:", normalizedPayloadRecord?.match);
@@ -173,9 +177,6 @@ export async function POST(req: NextRequest) {
       lowerText.includes("error:");
     if (upstreamStatus < 200 || upstreamStatus >= 300 || looksLikeError) {
       const normalizedError = looksLikeHtml ? stripHtml(responseText) : responseText;
-      const action = normalizedPayload && typeof normalizedPayload === "object"
-        ? String((normalizedPayload as Record<string, unknown>).action || "").trim()
-        : "";
       const isAddAction = /^add[A-Z]/.test(action);
       const errorWithHint =
         isAddAction && /key is required/i.test(normalizedError)

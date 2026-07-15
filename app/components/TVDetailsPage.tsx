@@ -22,10 +22,22 @@ type TVDetailsPageProps = {
   episodeRows?: TVEpisodeRow[];
   onRefreshEpisodes?: (item: Record<string, unknown>, force?: boolean) => Promise<TVEpisodeRow[]>;
   onUpdateEpisodeProgress?: (episode: TVEpisodeRow, watched: boolean) => Promise<void>;
-  onBulkUpdateEpisodeProgress?: (episodes: TVEpisodeRow[], watched: boolean) => Promise<void>;
+  onBulkUpdateEpisodeProgress?: (
+    episodes: TVEpisodeRow[],
+    watched: boolean,
+    onProgress?: (progress: TVEpisodeBulkSaveProgress) => void
+  ) => Promise<void>;
   suppressRemoteRelatedCovers?: boolean;
   onSelectRelated?: (item: Record<string, unknown>) => void;
   highlightColor?: string;
+};
+
+type TVEpisodeBulkSaveProgress = {
+  total: number;
+  confirmed: number;
+  chunkIndex?: number;
+  chunkCount?: number;
+  message?: string;
 };
 
 type TVEpisodeRow = Record<string, string> & {
@@ -386,8 +398,10 @@ export function TVDetailsPage({
   const [episodeLoading, setEpisodeLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | null>(null);
   const [episodeSavingKey, setEpisodeSavingKey] = useState<string | null>(null);
+  const [episodeSyncProgress, setEpisodeSyncProgress] = useState<TVEpisodeBulkSaveProgress | null>(null);
   const [expandedSeason, setExpandedSeason] = useState<string>("");
   const episodeInitialSeasonSetRef = useRef("");
+  const episodeSyncJobRef = useRef(0);
   const showEpisodeKey = safeStr((item as Record<string, unknown>).tmdbId || (item as Record<string, unknown>).TMDB_ID || title);
   const episodeKey = (episode: TVEpisodeRow) =>
     safeStr(episode.EpisodeKey) ||
@@ -472,14 +486,46 @@ export function TVDetailsPage({
   };
   const bulkSetWatched = async (episodes: TVEpisodeRow[], watched: boolean) => {
     if (!onBulkUpdateEpisodeProgress || !episodes.length) return;
+    const syncJob = episodeSyncJobRef.current + 1;
+    episodeSyncJobRef.current = syncJob;
     setEpisodeSavingKey("bulk");
     setEpisodeError(null);
+    setEpisodeSyncProgress({
+      total: episodes.length,
+      confirmed: 0,
+      message: watched ? "Marking episodes watched..." : "Marking episodes unwatched...",
+    });
     try {
-      await onBulkUpdateEpisodeProgress(episodes, watched);
+      await onBulkUpdateEpisodeProgress(episodes, watched, (progress) => {
+        if (episodeSyncJobRef.current === syncJob) {
+          setEpisodeSyncProgress(progress);
+        }
+      });
+      if (episodeSyncJobRef.current === syncJob) {
+        setEpisodeSyncProgress({
+          total: episodes.length,
+          confirmed: episodes.length,
+          message: "Confirmed in Google Sheets",
+        });
+        window.setTimeout(() => {
+          if (episodeSyncJobRef.current === syncJob) {
+            setEpisodeSyncProgress(null);
+          }
+        }, 1600);
+      }
     } catch (error: any) {
       setEpisodeError(error?.message || "Failed to save episode progress.");
+      if (episodeSyncJobRef.current === syncJob) {
+        setEpisodeSyncProgress((prev) => ({
+          total: prev?.total || episodes.length,
+          confirmed: prev?.confirmed || 0,
+          message: "Google Sheets confirmation failed",
+        }));
+      }
     } finally {
-      setEpisodeSavingKey(null);
+      if (episodeSyncJobRef.current === syncJob) {
+        setEpisodeSavingKey(null);
+      }
     }
   };
   const watchedToggleStyle = (watched: boolean, size = 28): CSSProperties => ({
@@ -888,6 +934,37 @@ export function TVDetailsPage({
                   fontWeight: 700,
                 }}>
                   {episodeError}
+                </div>
+              ) : null}
+
+              {episodeSyncProgress ? (
+                <div style={{
+                  marginBottom: 12,
+                  padding: "9px 10px",
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.10)",
+                  border: `1px solid ${palette.surfaceBorder}`,
+                  color: palette.text,
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, fontWeight: 850 }}>
+                    <span>{episodeSyncProgress.message || "Saving episode progress..."}</span>
+                    <span>{Math.min(episodeSyncProgress.confirmed, episodeSyncProgress.total)} / {episodeSyncProgress.total}</span>
+                  </div>
+                  <div style={{
+                    height: 6,
+                    marginTop: 7,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    background: "rgba(255,255,255,0.15)",
+                  }}>
+                    <div style={{
+                      width: `${episodeSyncProgress.total ? Math.min(100, Math.round((episodeSyncProgress.confirmed / episodeSyncProgress.total) * 100)) : 0}%`,
+                      height: "100%",
+                      borderRadius: 999,
+                      background: highlightColor || "#ff9934",
+                      transition: "width 160ms ease",
+                    }} />
+                  </div>
                 </div>
               ) : null}
 
