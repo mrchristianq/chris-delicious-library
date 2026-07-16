@@ -397,7 +397,6 @@ export function TVDetailsPage({
 
   const [episodeLoading, setEpisodeLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | null>(null);
-  const [episodeSavingKey, setEpisodeSavingKey] = useState<string | null>(null);
   const [episodeSyncProgress, setEpisodeSyncProgress] = useState<TVEpisodeBulkSaveProgress | null>(null);
   const [expandedSeason, setExpandedSeason] = useState<string>("");
   const episodeInitialSeasonSetRef = useRef("");
@@ -474,24 +473,10 @@ export function TVDetailsPage({
       cancelled = true;
     };
   }, [episodeRows.length, item, onRefreshEpisodes, showEpisodeKey]);
-  const toggleEpisodeWatched = async (episode: TVEpisodeRow, nextWatched: boolean) => {
-    if (!onUpdateEpisodeProgress) return;
-    const key = episodeKey(episode);
-    setEpisodeSavingKey(key);
-    setEpisodeError(null);
-    try {
-      await onUpdateEpisodeProgress(episode, nextWatched);
-    } catch (error: any) {
-      setEpisodeError(error?.message || "Failed to save episode progress.");
-    } finally {
-      setEpisodeSavingKey(null);
-    }
-  };
   const refreshEpisodeSyncProgress = () => {
     const jobs = Object.values(episodeSyncJobsRef.current);
     if (!jobs.length) {
       setEpisodeSyncProgress(null);
-      setEpisodeSavingKey(null);
       return;
     }
 
@@ -509,7 +494,49 @@ export function TVDetailsPage({
           ? "Confirmed in Google Sheets"
           : `Confirming ${total} episode change${total === 1 ? "" : "s"} in Google Sheets...`,
     });
-    setEpisodeSavingKey(allDone ? null : "bulk");
+  };
+  const clearCompletedEpisodeSyncJobsSoon = () => {
+    window.setTimeout(() => {
+      const jobs = Object.values(episodeSyncJobsRef.current);
+      if (jobs.length && jobs.every((job) => job.done && !job.failed)) {
+        episodeSyncJobsRef.current = {};
+        refreshEpisodeSyncProgress();
+      }
+    }, 1600);
+  };
+  const toggleEpisodeWatched = async (episode: TVEpisodeRow, nextWatched: boolean) => {
+    if (!onUpdateEpisodeProgress) return;
+    const syncJob = episodeSyncJobRef.current + 1;
+    episodeSyncJobRef.current = syncJob;
+    episodeSyncJobsRef.current[syncJob] = {
+      total: 1,
+      confirmed: 0,
+      message: "Queued for Google Sheets confirmation...",
+    };
+    setEpisodeError(null);
+    refreshEpisodeSyncProgress();
+    try {
+      await onUpdateEpisodeProgress(episode, nextWatched);
+      episodeSyncJobsRef.current[syncJob] = {
+        ...episodeSyncJobsRef.current[syncJob],
+        total: 1,
+        confirmed: 1,
+        message: "Confirmed in Google Sheets",
+        done: true,
+      };
+      refreshEpisodeSyncProgress();
+      clearCompletedEpisodeSyncJobsSoon();
+    } catch (error: any) {
+      setEpisodeError(error?.message || "Failed to save episode progress.");
+      episodeSyncJobsRef.current[syncJob] = {
+        ...episodeSyncJobsRef.current[syncJob],
+        total: 1,
+        confirmed: 0,
+        message: "Google Sheets confirmation failed",
+        failed: true,
+      };
+      refreshEpisodeSyncProgress();
+    }
   };
   const bulkSetWatched = async (episodes: TVEpisodeRow[], watched: boolean) => {
     if (!onBulkUpdateEpisodeProgress || !episodes.length) return;
@@ -520,7 +547,6 @@ export function TVDetailsPage({
       confirmed: 0,
       message: watched ? "Marking episodes watched..." : "Marking episodes unwatched...",
     };
-    setEpisodeSavingKey("bulk");
     setEpisodeError(null);
     refreshEpisodeSyncProgress();
     try {
@@ -539,13 +565,7 @@ export function TVDetailsPage({
         done: true,
       };
       refreshEpisodeSyncProgress();
-      window.setTimeout(() => {
-        const jobs = Object.values(episodeSyncJobsRef.current);
-        if (jobs.length && jobs.every((job) => job.done && !job.failed)) {
-          episodeSyncJobsRef.current = {};
-          refreshEpisodeSyncProgress();
-        }
-      }, 1600);
+      clearCompletedEpisodeSyncJobsSoon();
     } catch (error: any) {
       setEpisodeError(error?.message || "Failed to save episode progress.");
       episodeSyncJobsRef.current[syncJob] = {
@@ -556,11 +576,6 @@ export function TVDetailsPage({
         failed: true,
       };
       refreshEpisodeSyncProgress();
-    } finally {
-      const jobs = Object.values(episodeSyncJobsRef.current);
-      if (!jobs.some((job) => !job.done && !job.failed)) {
-        setEpisodeSavingKey(null);
-      }
     }
   };
   const watchedToggleStyle = (watched: boolean, size = 28): CSSProperties => ({
@@ -1013,13 +1028,11 @@ export function TVDetailsPage({
                     {nextEpisodes.map((episode) => {
                       const still = safeStr(episode.StillURL);
                       const key = episodeKey(episode);
-                      const savingThisEpisode = episodeSavingKey === key || episodeSavingKey === "bulk";
                       return (
                         <button
                           key={`next-${key}`}
                           type="button"
                           onClick={() => toggleEpisodeWatched(episode, true)}
-                          disabled={savingThisEpisode}
                           style={{
                             width: isMobileLayout ? 190 : 230,
                             flex: "0 0 auto",
@@ -1071,7 +1084,7 @@ export function TVDetailsPage({
                 <button
                   type="button"
                   onClick={() => bulkSetWatched(releasedEpisodes, true)}
-                  disabled={!releasedEpisodes.length || Boolean(episodeSavingKey)}
+                  disabled={!releasedEpisodes.length}
                   style={{
                     border: `1px solid ${palette.surfaceBorder}`,
                     borderRadius: 999,
@@ -1159,7 +1172,6 @@ export function TVDetailsPage({
                             {rows.map((episode) => {
                               const watched = isEpisodeWatched(episode);
                               const key = episodeKey(episode);
-                              const savingThisEpisode = episodeSavingKey === key || episodeSavingKey === "bulk";
                               const still = safeStr(episode.StillURL);
                               return (
                                 <div key={key} style={{
@@ -1187,7 +1199,6 @@ export function TVDetailsPage({
                                   <button
                                     type="button"
                                     onClick={() => toggleEpisodeWatched(episode, !watched)}
-                                    disabled={savingThisEpisode}
                                     style={watchedToggleStyle(watched, 28)}
                                   >
                                     {watched ? "✓" : ""}

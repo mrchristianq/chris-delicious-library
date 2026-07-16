@@ -372,7 +372,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.24";
+const APP_VERSION = "11.0.25";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -695,6 +695,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "11.0.25",
+    date: "2026-07-15",
+    notes: [
+      "Kept episode controls responsive while earlier Google Sheets confirmations continue in the background.",
+    ],
+  },
   {
     version: "11.0.24",
     date: "2026-07-15",
@@ -7293,14 +7300,13 @@ export default function Page() {
       }
 
       const previousWrite = tvEpisodeWriteQueuesRef.current[params.key];
+      const previousBulkWrite = tvEpisodeBulkWriteQueueRef.current;
       const writePromise = (async () => {
-        if (previousWrite) {
-          try {
-            await previousWrite;
-          } catch {
-            // A newer user action should still get a chance to become the saved state.
-          }
-        }
+        await Promise.allSettled(
+          [previousBulkWrite, previousWrite].filter(
+            (write): write is Promise<void> => Boolean(write)
+          )
+        );
 
         if (tvEpisodeWriteTokensRef.current[params.key] !== params.writeToken) {
           return null;
