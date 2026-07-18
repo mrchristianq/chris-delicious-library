@@ -373,7 +373,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.18";
+const APP_VERSION = "12.0.19";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -696,6 +696,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.19",
+    date: "2026-07-18",
+    notes: [
+      "Removed the persistent blue selection outline from covers opened in the quick-details sidebar.",
+    ],
+  },
   {
     version: "12.0.18",
     date: "2026-07-18",
@@ -27147,7 +27154,6 @@ export default function Page() {
                         ? 0
                         : 0;
                       const isWishlistDragActive = Boolean(isWishlistCase && wishlistPointerDrag?.active);
-                      const isSidebarSelected = sidebarSelectedItemKey === itemKey;
                       const isDragHoverTarget = Boolean(
                         isWishlistDragActive && wishlistDragHoverKey === itemKey && !isWishlistPointerDragging
                       );
@@ -27200,12 +27206,8 @@ export default function Page() {
                             "--dragPushX": `${dragPushX.toFixed(2)}px`,
                             "--dragPushY": `${dragPushY.toFixed(2)}px`,
                             "--dragScale": dragScale.toFixed(3),
-                            outline: sandboxMode
-                              ? "1px dashed rgba(255, 214, 102, 0.3)"
-                              : isSidebarSelected
-                                ? `2px solid ${sidebarDetailAccent}`
-                                : "none",
-                            outlineOffset: isSidebarSelected ? 3 : 0,
+                            outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.3)" : "none",
+                            outlineOffset: 0,
                           } as CSSProperties}
                           draggable={false}
                           onPointerDown={wishlistDragEnabled ? (event) => handleWishlistCasePointerDown(event, itemKey) : undefined}
