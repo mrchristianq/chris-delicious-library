@@ -28,6 +28,7 @@ type RolodexCounterProps = {
   numberFontSize?: number;    // font size for numbers inside tiles
   extraSpins?: number;        // how many full 0-9 cycles before landing (e.g., 1-3)
   durationMs?: number;        // animation duration
+  initialDurationMs?: number; // optional longer duration for the first mounted roll
   showCommas?: boolean;       // 5,620 style
   className?: string;
   labelFontSize?: number;     // font size for "Total:" label
@@ -64,6 +65,7 @@ export function RolodexCounter({
   numberFontSize = 22,
   extraSpins = 4,
   durationMs = 1200,
+  initialDurationMs,
   showCommas = false,
   className = "",
   labelFontSize = 16,
@@ -124,8 +126,11 @@ export function RolodexCounter({
   // We store the current index we want to display.
   const [indexes, setIndexes] = useState<number[]>(() => {
     if (!animateOnMount) return targetIndexes;
-    return targetIndexes.map((idx) => (idx < 0 ? -1 : Math.max(0, idx - 2)));
+    return targetIndexes.map((idx) => (idx < 0 ? -1 : idx % 10));
   });
+  const [activeDurationMs, setActiveDurationMs] = useState(
+    animateOnMount ? initialDurationMs ?? durationMs : durationMs
+  );
 
   const wheelDigits = useMemo(() => {
     const arr: number[] = [];
@@ -154,7 +159,8 @@ export function RolodexCounter({
     if (isFirstMount.current) {
       isFirstMount.current = false;
       if (animateOnMount && !reduce) {
-        const start = next.map((idx) => (idx < 0 ? -1 : Math.max(0, idx - 2)));
+        const start = next.map((idx) => (idx < 0 ? -1 : idx % 10));
+        setActiveDurationMs(initialDurationMs ?? durationMs);
         setIndexes(start);
         const raf = requestAnimationFrame(() => setIndexes(next));
         return () => cancelAnimationFrame(raf);
@@ -182,12 +188,13 @@ export function RolodexCounter({
       return idx - jitter;
     });
 
+    setActiveDurationMs(durationMs);
     setIndexes(start);
 
     // Kick animation on next frame so the transition triggers reliably.
     const raf = requestAnimationFrame(() => setIndexes(next));
     return () => cancelAnimationFrame(raf);
-  }, [animationTrigger, animateChanges, animateOnMount, targetIndexes, value]);
+  }, [animationTrigger, animateChanges, animateOnMount, durationMs, initialDurationMs, targetIndexes, value]);
 
   return (
     <div
@@ -306,7 +313,7 @@ export function RolodexCounter({
               style={{
                 willChange: "transform",
                 transform: `translateY(${translateY}px)`,
-                transition: `transform ${durationMs}ms cubic-bezier(.25,.46,.45,.94) ${delayMs}ms`,
+                transition: `transform ${activeDurationMs}ms cubic-bezier(.25,.46,.45,.94) ${delayMs}ms`,
               }}
             >
               {wheelDigits.map((d, j) => (

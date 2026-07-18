@@ -23,6 +23,7 @@ import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
 import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
 import { RateItModal } from "./components/RateItModal";
 import { RolodexCounter } from "./components/RolodexCounter";
+import { MediaDetailsSidebar } from "./components/MediaDetailsSidebar";
 import { COVER_IMAGE_RADIUS_STYLE } from "./components/coverStyles";
 import {
   isNativeRuntime,
@@ -372,7 +373,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "11.0.25";
+const APP_VERSION = "12.0.17";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -695,6 +696,148 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.17",
+    date: "2026-07-18",
+    notes: [
+      "Made the sidebar sync module visibly translucent while keeping its status text and controls crisp.",
+    ],
+  },
+  {
+    version: "12.0.16",
+    date: "2026-07-18",
+    notes: [
+      "Added a little more breathing room between the five quick-details action icons.",
+    ],
+  },
+  {
+    version: "12.0.15",
+    date: "2026-07-18",
+    notes: [
+      "Added the subtle outer white halo from the rating reference around each colored sidebar score ring.",
+    ],
+  },
+  {
+    version: "12.0.14",
+    date: "2026-07-18",
+    notes: [
+      "Shortened the quick-details toolbar label from Full Details to Details.",
+    ],
+  },
+  {
+    version: "12.0.13",
+    date: "2026-07-18",
+    notes: [
+      "Changed sidebar rating rings to continuous score-colored tracks with dark-to-light progress gradients.",
+    ],
+  },
+  {
+    version: "12.0.12",
+    date: "2026-07-18",
+    notes: [
+      "Added a matching Delete action to the quick-details toolbar with confirmation and the existing Google Sheets deletion flow.",
+    ],
+  },
+  {
+    version: "12.0.11",
+    date: "2026-07-18",
+    notes: [
+      "Redesigned quick-details ratings as compact adaptive orange and green score panels with percentage-sensitive rings.",
+    ],
+  },
+  {
+    version: "12.0.10",
+    date: "2026-07-18",
+    notes: [
+      "Aligned the quick-details status dropdown with the bottom edge of the sidebar cover artwork.",
+    ],
+  },
+  {
+    version: "12.0.9",
+    date: "2026-07-18",
+    notes: [
+      "Softened the sidebar sync module with a more translucent glass surface while preserving full-opacity status controls and text.",
+    ],
+  },
+  {
+    version: "12.0.8",
+    date: "2026-07-18",
+    notes: [
+      "Moved the quick-details sidebar Details grid directly below the description and above Cast and Similar.",
+    ],
+  },
+  {
+    version: "12.0.7",
+    date: "2026-07-18",
+    notes: [
+      "Removed the light strip below game artwork in the quick-details sidebar by allowing game covers to use their natural aspect-ratio height.",
+    ],
+  },
+  {
+    version: "12.0.6",
+    date: "2026-07-17",
+    notes: [
+      "Refined the quick-details inspector with a taller, lower-aligned poster, smaller uniformly sized square actions, a shorter rating band, and compact five-item Cast and Similar rows.",
+      "Added a persistent header control that switches single-click behavior between the quick-details sidebar and the full details view.",
+    ],
+  },
+  {
+    version: "12.0.5",
+    date: "2026-07-17",
+    notes: [
+      "Rebuilt the quick-details inspector to match the Apple-style reference with a poster-anchored header, top-aligned actions, compact status control, larger portrait cast cards, and icon-led detail cells.",
+    ],
+  },
+  {
+    version: "12.0.4",
+    date: "2026-07-17",
+    notes: [
+      "Compacted the quick-details inspector by aligning status and actions with the cover, centering separated rating gauges, and refining cast portrait sizing.",
+    ],
+  },
+  {
+    version: "12.0.3",
+    date: "2026-07-17",
+    notes: [
+      "Redesigned the sidebar sync control as a compact search-width status bar with an inline timestamp, clear state icon, divider, and dedicated refresh action.",
+    ],
+  },
+  {
+    version: "12.0.2",
+    date: "2026-07-17",
+    notes: [
+      "New movies added to Backlog, or moved into Backlog, now go to the front of the persisted Movie Watchlist without changing the order of existing movies.",
+    ],
+  },
+  {
+    version: "12.0.1",
+    date: "2026-07-17",
+    notes: [
+      "Refined the quick-details inspector with portrait cast cards, native-style status controls, circular user and personal ratings, and media-specific detail fields.",
+    ],
+  },
+  {
+    version: "12.0.0",
+    date: "2026-07-17",
+    notes: [
+      "Added a responsive quick-details inspector: single-click media covers for a resizable desktop sidebar or mobile sheet, then double-click or choose Full Details for the complete page.",
+      "Added direct status updates with the existing Google Sheets confirmation flow, related titles, cast, notes, ratings, and persistent desktop panel sizing.",
+    ],
+  },
+  {
+    version: "11.0.27",
+    date: "2026-07-17",
+    notes: [
+      "Extended the initial Library sidebar rolodex animation to a smooth multi-revolution three-second roll while keeping later selections quick.",
+    ],
+  },
+  {
+    version: "11.0.26",
+    date: "2026-07-16",
+    notes: [
+      "Added TV episodes watched to TV Statistics and Year in Review, with air dates used for imported history and WatchedAt used going forward.",
+    ],
+  },
   {
     version: "11.0.25",
     date: "2026-07-15",
@@ -3901,6 +4044,7 @@ export default function Page() {
   const [nowPlayingManualOrderKeys, setNowPlayingManualOrderKeys] = useState<string[]>([]);
   const [playNextManualOrderKeys, setPlayNextManualOrderKeys] = useState<string[]>([]);
   const [watchlistMoviesManualOrderKeys, setWatchlistMoviesManualOrderKeys] = useState<string[]>([]);
+  const previousWatchlistMovieKeysRef = useRef<Set<string> | null>(null);
   const [watchlistTvManualOrderKeys, setWatchlistTvManualOrderKeys] = useState<string[]>([]);
   const [draggingWishlistKey, setDraggingWishlistKey] = useState<string | null>(null);
   const [wishlistPointerDrag, setWishlistPointerDrag] = useState<WishlistPointerDrag | null>(null);
@@ -4586,6 +4730,7 @@ export default function Page() {
           numberFontSize={15}
           extraSpins={2}
           durationMs={520}
+          initialDurationMs={sidebarCountsInitialAnimation ? 3000 : undefined}
           digitTileBackground={
             active
               ? `linear-gradient(180deg, ${activeColor} 0%, ${activeColor} 48%, rgba(0,0,0,0.22) 50%, ${activeColor} 52%, ${activeColor} 100%)`
@@ -4971,6 +5116,19 @@ export default function Page() {
   const [gameDetailItem, setGameDetailItem] = useState<any>(null);
   const [gameDetailsEditOpen, setGameDetailsEditOpen] = useState(false);
   const [gameDetailEditItem, setGameDetailEditItem] = useState<any>(null);
+  const [detailsOpenMode, setDetailsOpenMode] = useState<"sidebar" | "full">(() => {
+    if (typeof window === "undefined") return "sidebar";
+    return window.localStorage.getItem("cdl:details-open-mode") === "full" ? "full" : "sidebar";
+  });
+  const [sidebarDetailItem, setSidebarDetailItem] = useState<any>(null);
+  const [sidebarDetailWidth, setSidebarDetailWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 380;
+    const stored = Number(window.localStorage.getItem("cdl:details-sidebar-width"));
+    return Number.isFinite(stored) ? Math.max(330, Math.min(520, stored)) : 380;
+  });
+  const [sidebarDetailSaveState, setSidebarDetailSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [sidebarDetailSaveError, setSidebarDetailSaveError] = useState("");
+  const sidebarSelectedItemKey = sidebarDetailItem ? getMediaItemKey(sidebarDetailItem) : "";
   const [saveToast, setSaveToast] = useState(false);
   const [lastSheetSaveAt, setLastSheetSaveAt] = useState<number | null>(null);
   const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -5088,7 +5246,22 @@ export default function Page() {
     setBookDetailPalette(null);
     setMovieDetailItem(null);
     setMovieDetailPalette(null);
+    setSidebarDetailItem(null);
+    setSidebarDetailSaveState("idle");
+    setSidebarDetailSaveError("");
   }, [nav, selectedSmartListId]);
+
+  useEffect(() => {
+    if (!sidebarDetailItem) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSidebarDetailItem(null);
+      setSidebarDetailSaveState("idle");
+      setSidebarDetailSaveError("");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarDetailItem]);
 
   const applyDebugHeaderOffset = useCallback(() => {
     const { x, y } = debugHeaderOffsetRef.current;
@@ -5229,8 +5402,11 @@ export default function Page() {
     setModalOpen(false);
   }, []);
 
-  const openSelectedItem = useCallback((item: any) => {
+  const openFullSelectedItem = useCallback((item: any) => {
     const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    setSidebarDetailItem(null);
+    setSidebarDetailSaveState("idle");
+    setSidebarDetailSaveError("");
     const mediaType = getMediaType(nextItem);
     if (mediaType === "book") {
       openBookDetailItem(nextItem);
@@ -5273,6 +5449,18 @@ export default function Page() {
     setModalItem(nextItem);
     setModalOpen(true);
   }, [coverOverrides, openBookDetailItem, clearAllDetailItems]);
+
+  const openSelectedItem = useCallback((item: any) => {
+    if (detailsOpenMode === "full") {
+      openFullSelectedItem(item);
+      return;
+    }
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    clearAllDetailItems();
+    setSidebarDetailItem(nextItem);
+    setSidebarDetailSaveState("idle");
+    setSidebarDetailSaveError("");
+  }, [clearAllDetailItems, coverOverrides, detailsOpenMode, openFullSelectedItem]);
 
   const openBookEditModalFromDetails = useCallback((item: any) => {
     const nextItem = buildItemWithCoverSelection(item, coverOverrides);
@@ -9207,8 +9395,8 @@ export default function Page() {
   const finalizeAddAndOpen = useCallback((newItem: Record<string, unknown>) => {
     setIsAddingNewItem(false);
     setAddNewItemType(null);
-    openSelectedItem(newItem);
-  }, [openSelectedItem]);
+    openFullSelectedItem(newItem);
+  }, [openFullSelectedItem]);
 
   const openAddFlowFromMovieRecommendation = useCallback((item: Record<string, unknown>) => {
     const prefill: Record<string, unknown> = {
@@ -14654,6 +14842,80 @@ export default function Page() {
     [saveSetting]
   );
 
+  useEffect(() => {
+    const currentKeys = Array.from(watchlistMovieItemsByKey.keys());
+    if (!currentKeys.length) return;
+
+    const currentKeySet = new Set(currentKeys);
+    const previousKeys = previousWatchlistMovieKeysRef.current;
+    previousWatchlistMovieKeysRef.current = currentKeySet;
+
+    // The first populated load establishes the baseline. Only movies that
+    // enter Backlog after that point should move to the front.
+    if (!previousKeys) return;
+
+    const newlyBackloggedKeys = currentKeys.filter((key) => {
+      if (previousKeys.has(key)) return false;
+      const movie = watchlistMovieItemsByKey.get(key);
+      const status = normalizeStatusToken(
+        safeStr(movie?.watchStatus || movie?.watched || movie?.status || movie?.movieStatus)
+      );
+      return status === "backlog";
+    });
+    if (!newlyBackloggedKeys.length) return;
+
+    const persistedKeys = (() => {
+      const raw = safeStr(getSetting(WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY, ""));
+      if (!raw) return [] as string[];
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map((entry) => safeStr(entry)).filter(Boolean) : [];
+      } catch {
+        return [] as string[];
+      }
+    })();
+
+    const normalizedExistingKeys = [
+      ...watchlistMoviesManualOrderKeys,
+      ...persistedKeys,
+      ...resolvedWatchlistMovieManualOrderKeys,
+      ...currentKeys,
+    ]
+      .map((rawKey) =>
+        watchlistMovieItemsByKey.has(rawKey)
+          ? rawKey
+          : (watchlistMovieAliasKeyToKey.get(rawKey) || rawKey)
+      )
+      .filter((key) => currentKeySet.has(key));
+
+    const nextOrder = Array.from(
+      new Set([...newlyBackloggedKeys, ...normalizedExistingKeys])
+    );
+
+    setWatchlistMoviesManualOrderKeys(nextOrder);
+    saveSetting(
+      WATCHLIST_MOVIES_MANUAL_ORDER_SETTING_KEY,
+      JSON.stringify(nextOrder),
+      "View Sorting",
+      "Manual order keys for Movie Watchlist view"
+    );
+    persistBacklogSortSettings("watchlist-movies", MANUAL_SORT_FIELD, "Asc");
+
+    if (nav === "watchlist-movies") {
+      setSortField(MANUAL_SORT_FIELD);
+      setSortOrder("Asc");
+    }
+  }, [
+    getSetting,
+    nav,
+    persistBacklogSortSettings,
+    resolvedWatchlistMovieManualOrderKeys,
+    saveSetting,
+    watchlistMovieAliasKeyToKey,
+    watchlistMovieItemsByKey,
+    watchlistMoviesManualOrderKeys,
+  ]);
+
   const persistStandardViewSortSettings = useCallback(
     (
       view: "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this",
@@ -17804,6 +18066,9 @@ export default function Page() {
           }
           openSelectedItem(item);
         }}
+        onDoubleClick={() => {
+          if (!isRecommendation) openFullSelectedItem(item);
+        }}
         style={{
           width,
           flex: `0 0 ${width}px`,
@@ -17816,6 +18081,12 @@ export default function Page() {
           color: gamesHomeTextColor,
           cursor: "pointer",
           textAlign: "center",
+          outline:
+            sidebarSelectedItemKey === getMediaItemKey(item)
+              ? `2px solid ${gamesHomeAccentColor}`
+              : "none",
+          outlineOffset: 3,
+          borderRadius: variant === "large" ? 18 : 12,
           transform: isHovered
             ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
             : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
@@ -17979,6 +18250,58 @@ export default function Page() {
       )}
     </section>
   );
+  const renderDetailsOpenModeButton = () => {
+    const opensSidebar = detailsOpenMode === "sidebar";
+    const toggleDetailsOpenMode = () => {
+      const nextMode = opensSidebar ? "full" : "sidebar";
+      setDetailsOpenMode(nextMode);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("cdl:details-open-mode", nextMode);
+      }
+      setSidebarDetailItem(null);
+      setSidebarDetailSaveState("idle");
+      setSidebarDetailSaveError("");
+    };
+
+    return (
+      <button
+        type="button"
+        onClick={toggleDetailsOpenMode}
+        title={opensSidebar ? "Single click opens the details sidebar" : "Single click opens full details"}
+        aria-label={opensSidebar ? "Details mode: sidebar" : "Details mode: full page"}
+        aria-pressed={opensSidebar}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 30,
+          minWidth: 24,
+          padding: "5px 8px",
+          background: isSimpleHeaderTheme
+            ? opensSidebar
+              ? "rgba(96, 107, 123, 0.12)"
+              : simpleHeaderBackground
+            : "rgba(28, 18, 10, 0.52)",
+          border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
+          borderRadius: 9,
+          color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+          boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+          cursor: "pointer",
+        }}
+      >
+        {opensSidebar ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="4" width="18" height="16" rx="2.5" />
+            <path d="M15 4v16" />
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+          </svg>
+        )}
+      </button>
+    );
+  };
   const renderMediaHomeHeaderActions = (itemCount: number) => {
     if (isMobileLayout) return null;
     return (
@@ -18127,6 +18450,7 @@ export default function Page() {
             <line x1="17" y1="18" x2="21" y2="18"></line>
           </svg>
         </button>
+        {renderDetailsOpenModeButton()}
         <button
           onClick={() => {
             setSortPopupOpen(false);
@@ -18319,6 +18643,9 @@ export default function Page() {
           }
           openSelectedItem(item);
         }}
+        onDoubleClick={() => {
+          if (!isRecommendation) openFullSelectedItem(item);
+        }}
         style={{
           width,
           flex: `0 0 ${width}px`,
@@ -18331,6 +18658,12 @@ export default function Page() {
           color: gamesHomeTextColor,
           cursor: "pointer",
           textAlign: "center",
+          outline:
+            sidebarSelectedItemKey === getMediaItemKey(item)
+              ? `2px solid ${moviesHomeAccentColor}`
+              : "none",
+          outlineOffset: 3,
+          borderRadius: variant === "large" ? 18 : 12,
           transform: isHovered
             ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
             : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
@@ -18576,6 +18909,9 @@ export default function Page() {
           }
           openSelectedItem(item);
         }}
+        onDoubleClick={() => {
+          if (!isRecommendation) openFullSelectedItem(item);
+        }}
         style={{
           width,
           flex: `0 0 ${width}px`,
@@ -18588,6 +18924,12 @@ export default function Page() {
           color: gamesHomeTextColor,
           cursor: "pointer",
           textAlign: "center",
+          outline:
+            sidebarSelectedItemKey === getMediaItemKey(item)
+              ? `2px solid ${activeSidebarHighlightColors.tv || DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv}`
+              : "none",
+          outlineOffset: 3,
+          borderRadius: variant === "large" ? 18 : 12,
           transform: isHovered
             ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
             : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
@@ -18750,6 +19092,9 @@ export default function Page() {
           }
           openSelectedItem(item);
         }}
+        onDoubleClick={() => {
+          if (!isRecommendation) openFullSelectedItem(item);
+        }}
         style={{
           width,
           flex: `0 0 ${width}px`,
@@ -18762,6 +19107,12 @@ export default function Page() {
           color: gamesHomeTextColor,
           cursor: "pointer",
           textAlign: "center",
+          outline:
+            sidebarSelectedItemKey === getMediaItemKey(item)
+              ? `2px solid ${activeSidebarHighlightColors.books || DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books}`
+              : "none",
+          outlineOffset: 3,
+          borderRadius: variant === "large" ? 18 : 12,
           transform: isHovered
             ? "translate3d(0, 0, 0) perspective(900px) rotateY(var(--tiltY, 0deg)) rotateX(var(--tiltX, 0deg))"
             : "translate3d(0, 0, 0) perspective(900px) rotateY(0deg) rotateX(0deg)",
@@ -19017,6 +19368,7 @@ export default function Page() {
             const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
             const visibleMetaColumns = columns.filter((key) => key !== "cover" && key !== "title").slice(0, 5);
             const isAudiobook = isAudiobookItem(item);
+            const isSidebarSelected = sidebarSelectedItemKey === getMediaItemKey(item);
             return (
               <div
                 key={`list-mobile-${getMediaItemKey(item)}-${index}`}
@@ -19024,6 +19376,9 @@ export default function Page() {
                 tabIndex={listEditMode ? undefined : 0}
                 onClick={() => {
                   if (!listEditMode) openSelectedItem(item);
+                }}
+                onDoubleClick={() => {
+                  if (!listEditMode) openFullSelectedItem(item);
                 }}
                 onKeyDown={(event) => {
                   if (!listEditMode && (event.key === "Enter" || event.key === " ")) {
@@ -19033,7 +19388,7 @@ export default function Page() {
                 }}
                 style={{
                   width: "100%",
-                  border: rowBorder,
+                  border: isSidebarSelected ? `2px solid ${sidebarDetailAccent}` : rowBorder,
                   borderRadius: 12,
                   background: rowBackground,
                   color: textColor,
@@ -19233,6 +19588,7 @@ export default function Page() {
             const statusIndicator = getStatusIndicator(item);
             const statusIconSrc = statusIndicator ? getStatusIconSrc(statusIndicator.key) : "";
             const isAudiobook = isAudiobookItem(item);
+            const isSidebarSelected = sidebarSelectedItemKey === getMediaItemKey(item);
             return (
               <div
                 key={`list-row-${getMediaItemKey(item)}-${index}`}
@@ -19240,6 +19596,9 @@ export default function Page() {
                 tabIndex={listEditMode ? undefined : 0}
                 onClick={() => {
                   if (!listEditMode) openSelectedItem(item);
+                }}
+                onDoubleClick={() => {
+                  if (!listEditMode) openFullSelectedItem(item);
                 }}
                 onKeyDown={(event) => {
                   if (!listEditMode && (event.key === "Enter" || event.key === " ")) {
@@ -19255,7 +19614,11 @@ export default function Page() {
                   minHeight: desktopRowMinHeight,
                   border: "none",
                   borderBottom: rowBorder,
-                  background: index % 2 === 0 ? rowBackground : "transparent",
+                  background: isSidebarSelected
+                    ? `color-mix(in srgb, ${sidebarDetailAccent} 14%, transparent)`
+                    : index % 2 === 0
+                      ? rowBackground
+                      : "transparent",
                   color: textColor,
                   cursor: listEditMode ? "default" : "pointer",
                   textAlign: "left",
@@ -19265,7 +19628,11 @@ export default function Page() {
                   event.currentTarget.style.background = isSimpleHeaderTheme ? "rgba(88, 142, 236, 0.12)" : "rgba(100, 150, 230, 0.16)";
                 }}
                 onMouseLeave={(event) => {
-                  event.currentTarget.style.background = index % 2 === 0 ? rowBackground : "transparent";
+                  event.currentTarget.style.background = isSidebarSelected
+                    ? `color-mix(in srgb, ${sidebarDetailAccent} 14%, transparent)`
+                    : index % 2 === 0
+                      ? rowBackground
+                      : "transparent";
                 }}
               >
                 {columns.map((columnKey) => {
@@ -20021,6 +20388,172 @@ export default function Page() {
     );
   };
 
+  const getSidebarStatusOptions = (item: any): string[] => {
+    const mediaType = getMediaType(item);
+    if (mediaType === "book") return readingStatuses;
+    if (mediaType === "movie") return ["Watched", "Started", "Backlog", "Pending Digital Release", "Abandoned"];
+    if (mediaType === "tv") return watchStatuses;
+    if (mediaType === "game") return gameStatusOptions;
+    return [];
+  };
+
+  const getSidebarRelatedItems = (item: any): any[] => {
+    const mediaType = getMediaType(item);
+    const pool =
+      mediaType === "book"
+        ? allBooks
+        : mediaType === "movie"
+          ? allMovies
+          : mediaType === "tv"
+            ? allShows
+            : allGames;
+    const itemKey = getMediaItemKey(item);
+    const itemGenres = new Set(
+      safeStr(item?.genres || item?.Genres || item?.genre || item?.Genre || item?.categories)
+        .toLowerCase()
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    );
+    return pool
+      .filter((candidate: any) => getMediaItemKey(candidate) !== itemKey)
+      .map((candidate: any) => {
+        const candidateGenres = safeStr(
+          candidate?.genres || candidate?.Genres || candidate?.genre || candidate?.Genre || candidate?.categories
+        )
+          .toLowerCase()
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        const genreMatches = candidateGenres.filter((genre) => itemGenres.has(genre)).length;
+        const rating = Number(candidate?.myRating || candidate?.MyRating || candidate?.["My Rating"] || 0);
+        return { candidate, score: genreMatches * 10 + (Number.isFinite(rating) ? rating : 0) };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((entry) => entry.candidate);
+  };
+
+  const openSidebarEdit = (item: any) => {
+    const mediaType = getMediaType(item);
+    if (mediaType === "book") {
+      openBookEditModalFromDetails(item);
+      return;
+    }
+    if (mediaType === "movie") {
+      openMovieEditModalFromDetails(item);
+      return;
+    }
+    if (mediaType === "tv") {
+      openTVEditModalFromDetails(item);
+      return;
+    }
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    setGameDetailItem(nextItem);
+    setGameDetailEditItem(nextItem);
+    setGameDetailsEditOpen(true);
+  };
+
+  const openSidebarRate = (item: any) => {
+    const mediaType = getMediaType(item);
+    const accent =
+      mediaType === "book"
+        ? sidebarHighlightColorsLight.books
+        : mediaType === "movie"
+          ? sidebarHighlightColorsLight.movies
+          : mediaType === "tv"
+            ? sidebarHighlightColorsLight.tv
+            : sidebarHighlightColorsLight.games;
+    handleOpenRateIt(item, mediaType, accent);
+  };
+
+  const deleteSidebarItem = async (item: any) => {
+    const title = safeStr(item?.title || item?.Title) || "this item";
+    if (!window.confirm(`Delete "${title}" from your library? This cannot be undone.`)) return;
+    setSidebarDetailSaveState("saving");
+    setSidebarDetailSaveError("");
+    try {
+      await handleDeleteLibraryItem(item);
+      closeSidebarDetails();
+    } catch (deleteError: any) {
+      setSidebarDetailSaveState("error");
+      setSidebarDetailSaveError(deleteError?.message || "Google Sheets did not confirm this deletion.");
+    }
+  };
+
+  const handleSidebarStatusChange = async (item: any, nextStatus: string) => {
+    if (sidebarDetailSaveState === "saving") return;
+    const mediaType = getMediaType(item);
+    const previousItem = item;
+    const nextItem =
+      mediaType === "movie" || mediaType === "tv"
+        ? { ...item, watchStatus: nextStatus, WatchStatus: nextStatus, watched: nextStatus, Watched: nextStatus }
+        : { ...item, status: nextStatus, Status: nextStatus };
+    const updates = buildListSaveBaseUpdates(item);
+    if (mediaType === "movie" || mediaType === "tv") updates.watchStatus = nextStatus;
+    else updates.status = nextStatus;
+
+    setSidebarDetailItem(nextItem);
+    setSidebarDetailSaveState("saving");
+    setSidebarDetailSaveError("");
+    try {
+      if (mediaType === "book") await handleSaveBookEdits(item, updates);
+      else if (mediaType === "movie") await handleSaveMovieEdits(item, updates);
+      else if (mediaType === "tv") await handleSaveShowEdits(item, updates);
+      else await handleSaveGameEdits(item, updates);
+      setSidebarDetailSaveState("saved");
+      triggerSaveToast();
+      window.setTimeout(() => setSidebarDetailSaveState("idle"), 2400);
+    } catch (saveError: any) {
+      setSidebarDetailItem(previousItem);
+      setSidebarDetailSaveState("error");
+      setSidebarDetailSaveError(saveError?.message || "Google Sheets did not confirm this change.");
+    }
+  };
+
+  const beginSidebarDetailResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarDetailWidth;
+    const handleMove = (moveEvent: PointerEvent) => {
+      setSidebarDetailWidth(Math.max(330, Math.min(520, startWidth + startX - moveEvent.clientX)));
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      setSidebarDetailWidth((currentWidth) => {
+        window.localStorage.setItem("cdl:details-sidebar-width", String(currentWidth));
+        return currentWidth;
+      });
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp, { once: true });
+  };
+
+  const closeSidebarDetails = () => {
+    setSidebarDetailItem(null);
+    setSidebarDetailSaveState("idle");
+    setSidebarDetailSaveError("");
+  };
+
+  const sidebarDetailsVisible = Boolean(
+    sidebarDetailItem &&
+      !bookDetailItem &&
+      !movieDetailItem &&
+      !tvDetailItem &&
+      !gameDetailItem &&
+      !mobileLandingVisible
+  );
+  const sidebarDetailMediaType: MediaType = sidebarDetailItem ? getMediaType(sidebarDetailItem) : "movie";
+  const sidebarDetailAccent =
+    sidebarDetailMediaType === "book"
+      ? sidebarHighlightColorsLight.books
+      : sidebarDetailMediaType === "movie"
+        ? sidebarHighlightColorsLight.movies
+        : sidebarDetailMediaType === "tv"
+          ? sidebarHighlightColorsLight.tv
+          : sidebarHighlightColorsLight.games;
   return (
     <div
       style={{
@@ -20901,7 +21434,12 @@ export default function Page() {
           margin: 0,
           padding: 0,
           display: "grid",
-          gridTemplateColumns: isMobileLayout ? "1fr" : `${SIDEBAR_WIDTH}px 1fr`,
+          gridTemplateColumns:
+            isMobileLayout
+              ? "1fr"
+              : sidebarDetailsVisible
+                ? `${SIDEBAR_WIDTH}px minmax(0, 1fr) ${sidebarDetailWidth}px`
+                : `${SIDEBAR_WIDTH}px minmax(0, 1fr)`,
           gap: 0,
           alignItems: "stretch",
         }}
@@ -23393,21 +23931,17 @@ export default function Page() {
 
             {/* Synced Module at Bottom */}
             {nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons" ? null : (
-            <div style={{ padding: "0 4px", marginTop: "auto", marginBottom: 12 }}>
+            <div style={{ padding: 0, marginTop: "auto", marginBottom: 12 }}>
               <div
-                className={`sidebarModuleCard${isElectricBlueSidebarTheme ? " neon" : ""}`}
                 style={{
-                  background: sidebarModuleCardBackground,
-                  borderRadius: 16,
-                  boxShadow: sidebarModuleCardShadow,
-                  border: sidebarModuleCardBorder,
-                  borderBottom: sidebarModuleCardBorderBottom,
-                  padding: "12px",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
                 }}
               >
               <div
                 style={{
-                  marginBottom: 8,
+                  marginBottom: 9,
                   padding: "0 2px",
                 }}
               >
@@ -23438,119 +23972,122 @@ export default function Page() {
               </div>
               <div
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "stretch",
-                  justifyContent: "flex-start",
-                  gap: 7,
-                  padding: "10px 12px",
-                  borderRadius: 9,
-                  background: isElectricBlueSidebarTheme
-                    ? "linear-gradient(180deg, rgba(33, 67, 122, 0.46) 0%, rgba(19, 37, 76, 0.5) 100%)"
-                    : "linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)",
-                  border: isElectricBlueSidebarTheme
-                    ? "1px solid rgba(186, 223, 255, 0.7)"
-                    : "1px solid rgba(92, 60, 56, 0.2)",
-                  boxShadow: isElectricBlueSidebarTheme
-                    ? "0 0 0 1px rgba(126, 191, 255, 0.24), 0 8px 16px rgba(3, 10, 22, 0.32), inset 0 1px 2px rgba(210, 236, 255, 0.34)"
-                    : "0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.4)",
-                  position: "relative",
+                  display: "grid",
+                  gridTemplateColumns: "24px minmax(0, 1fr) 42px",
+                  alignItems: "center",
+                  minHeight: 50,
+                  padding: "0 0 0 13px",
+                  borderRadius: 11,
+                  background: isDarkSidebarTheme
+                    ? "rgba(28, 39, 58, 0.48)"
+                    : "rgba(255, 255, 255, 0.38)",
+                  border: isDarkSidebarTheme
+                    ? "1px solid rgba(255, 255, 255, 0.11)"
+                    : "1px solid rgba(28, 39, 52, 0.065)",
+                  boxShadow: isDarkSidebarTheme
+                    ? "0 3px 10px rgba(0, 0, 0, 0.18)"
+                    : "0 2px 8px rgba(31, 42, 55, 0.075)",
+                  opacity: 0.78,
+                  overflow: "hidden",
+                  backdropFilter: "blur(14px)",
+                  WebkitBackdropFilter: "blur(14px)",
                 }}
               >
                 <span
                   style={{
-                    position: "absolute",
-                    left: 12,
-                    top: 10 + syncIconTop,
-                    width: syncIconSize,
-                    height: syncIconSize,
+                    width: 20,
+                    height: 20,
                     borderRadius: 999,
                     background:
                       syncState === "saving"
-                        ? "#d08a2c"
+                        ? "#d89232"
                         : syncState === "ok"
-                        ? "#2f8f5b"
+                        ? "#2f9b55"
                         : syncState === "error"
-                        ? "#b23b3b"
-                        : "rgba(0,0,0,0.35)",
-                    opacity: 0.95,
-                    flex: "0 0 auto",
-                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.25)",
-                    border: "1.5px solid rgba(255, 255, 255, 0.6)",
+                        ? "#c74a4a"
+                        : "#8a929d",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#fff",
+                    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
                   }}
-                />
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, marginLeft: syncIconSize + 10, flex: "1 1 auto" }}>
-                  <div style={{ minWidth: 0, position: "relative" }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-                      <div style={{ color: currentTheme.syncedTextColor, fontSize: 14, fontWeight: 500, fontFamily: sidebarSectionFontFamily }}>
-                        {syncState === "saving"
-                          ? "Syncing"
-                          : syncState === "ok"
-                          ? "Synced"
-                          : syncState === "error"
-                          ? "Error"
-                          : "Idle"}
-                      </div>
-                      <div style={{ color: isDarkSidebarTheme ? "rgba(223, 236, 255, 0.9)" : "rgba(0,0,0,0.6)", fontSize: 10, fontWeight: 500, whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
-                      </div>
-                    </div>
-                  </div>
+                >
+                  {syncState === "ok" ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="m6 12 4 4 8-9" />
+                    </svg>
+                  ) : syncState === "error" ? (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
+                      <path d="m7 7 10 10M17 7 7 17" />
+                    </svg>
+                  ) : syncState === "saving" ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M20 7v5h-5M4 17v-5h5M6.1 8.2A7 7 0 0 1 18 7M17.9 15.8A7 7 0 0 1 6 17" />
+                    </svg>
+                  ) : (
+                    <span style={{ width: 5, height: 5, borderRadius: 999, background: "currentColor" }} />
+                  )}
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 9,
+                    minWidth: 0,
+                    paddingLeft: 8,
+                    paddingRight: 8,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ color: currentTheme.syncedTextColor, fontSize: 12, fontWeight: 700, fontFamily: sidebarSectionFontFamily }}>
+                    {syncState === "saving"
+                      ? "Syncing"
+                      : syncState === "ok"
+                      ? "Synced"
+                      : syncState === "error"
+                      ? "Error"
+                      : "Idle"}
+                  </span>
+                  <span
+                    style={{
+                      color: isDarkSidebarTheme ? "rgba(223, 236, 255, 0.7)" : "rgba(38, 46, 58, 0.58)",
+                      fontSize: 10.5,
+                      fontWeight: 500,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {lastSyncAt ? formatLastSync(lastSyncAt) : "—"}
+                  </span>
                 </div>
-
-                <div style={{ display: "flex", gap: 6, width: "100%" }}>
                   <button
                     onClick={() => {
                       void refreshLibraryData();
                     }}
                     style={{
-                      border: isElectricBlueSidebarTheme ? "1px solid rgba(151, 196, 255, 0.62)" : "1px solid rgba(0,0,0,0.18)",
-                      background: isElectricBlueSidebarTheme ? "rgba(18, 43, 82, 0.9)" : "rgba(255,255,255,0.85)",
-                      color: isElectricBlueSidebarTheme ? "rgba(224, 239, 255, 0.98)" : "#754738",
-                      borderRadius: 999,
-                      padding: "5px 6px",
+                      alignSelf: "stretch",
+                      border: "none",
+                      borderLeft: isDarkSidebarTheme
+                        ? "1px solid rgba(255, 255, 255, 0.14)"
+                        : "1px solid rgba(31, 42, 55, 0.09)",
+                      background: "transparent",
+                      color: isDarkSidebarTheme ? "rgba(230, 239, 252, 0.88)" : "#4d5968",
+                      borderRadius: 0,
+                      padding: 0,
                       cursor: "pointer",
-                      fontSize: 13,
-                      fontWeight: 500,
-                      flex: "1 1 0",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      minWidth: 0,
-                      minHeight: 28,
                     }}
                     title="Re-sync (re-fetch CSV)"
+                    aria-label="Refresh library sync"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 2v6h-6M3 22v-6h6M3 12c0-4.418 3.582-8 8-8 3.5 0 6.456 2.272 7.619 5.362M21 12c0 4.418-3.582 8-8 8-3.5 0-6.456-2.272-7.619-5.362" />
                     </svg>
                   </button>
-                  {isNativeApp ? (
-                    <button
-                      disabled={nativeCacheRunning}
-                      onClick={() => {
-                        void cacheNativeArtworkBatch();
-                      }}
-                      style={{
-                        border: isElectricBlueSidebarTheme ? "1px solid rgba(151, 196, 255, 0.62)" : "1px solid rgba(0,0,0,0.18)",
-                        background: isElectricBlueSidebarTheme ? "rgba(18, 43, 82, 0.9)" : "rgba(255,255,255,0.85)",
-                        color: isElectricBlueSidebarTheme ? "rgba(224, 239, 255, 0.98)" : "#754738",
-                        borderRadius: 999,
-                        padding: "5px 8px",
-                        cursor: nativeCacheRunning ? "default" : "pointer",
-                        fontSize: 10,
-                        fontWeight: 800,
-                        flex: "1 1 0",
-                        minWidth: 0,
-                        minHeight: 28,
-                        opacity: nativeCacheRunning ? 0.65 : 1,
-                      }}
-                      title="Cache the next artwork batches for offline use"
-                    >
-                      {nativeCacheRunning ? "Caching" : "Cache"}
-                    </button>
-                  ) : null}
-                </div>
               </div>
               {isNativeApp && nativeCacheStatus ? (
                 <button
@@ -24161,6 +24698,7 @@ export default function Page() {
               movies={allMovies}
               shows={allShows}
               games={allGames}
+              tvEpisodes={tvEpisodeRows}
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
               themeMode={shelfThemeMode}
@@ -26158,8 +26696,9 @@ export default function Page() {
                         <line x1="4" y1="18" x2="11" y2="18"></line>
                         <circle cx="14" cy="18" r="2"></circle>
                         <line x1="17" y1="18" x2="21" y2="18"></line>
-                        </svg>
-                      </button>
+                      </svg>
+                    </button>
+                    {renderDetailsOpenModeButton()}
                     {nav === "smart-custom" && activeSmartList ? (
                       <button
                         type="button"
@@ -26567,6 +27106,7 @@ export default function Page() {
                         ? 0
                         : 0;
                       const isWishlistDragActive = Boolean(isWishlistCase && wishlistPointerDrag?.active);
+                      const isSidebarSelected = sidebarSelectedItemKey === itemKey;
                       const isDragHoverTarget = Boolean(
                         isWishlistDragActive && wishlistDragHoverKey === itemKey && !isWishlistPointerDragging
                       );
@@ -26619,13 +27159,22 @@ export default function Page() {
                             "--dragPushX": `${dragPushX.toFixed(2)}px`,
                             "--dragPushY": `${dragPushY.toFixed(2)}px`,
                             "--dragScale": dragScale.toFixed(3),
-                            outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.3)" : "none",
+                            outline: sandboxMode
+                              ? "1px dashed rgba(255, 214, 102, 0.3)"
+                              : isSidebarSelected
+                                ? `2px solid ${sidebarDetailAccent}`
+                                : "none",
+                            outlineOffset: isSidebarSelected ? 3 : 0,
                           } as CSSProperties}
                           draggable={false}
                           onPointerDown={wishlistDragEnabled ? (event) => handleWishlistCasePointerDown(event, itemKey) : undefined}
                           onClick={() => {
                             if (suppressCaseClickRef.current) return;
                             openSelectedItem(show);
+                          }}
+                          onDoubleClick={() => {
+                            if (suppressCaseClickRef.current) return;
+                            openFullSelectedItem(show);
                           }}
                           onMouseMove={handleCaseMouseMove}
                           onMouseLeave={handleCaseMouseLeave}
@@ -27159,7 +27708,54 @@ export default function Page() {
           </>
           )}
         </main>
+        {sidebarDetailsVisible && !isMobileLayout && sidebarDetailItem ? (
+          <MediaDetailsSidebar
+            item={sidebarDetailItem}
+            mediaType={sidebarDetailMediaType}
+            coverUrl={getNativeDetailCoverUrl(sidebarDetailItem)}
+            width={sidebarDetailWidth}
+            isMobile={false}
+            isDark={!simpleSidebarIsLight}
+            accentColor={sidebarDetailAccent}
+            statusOptions={getSidebarStatusOptions(sidebarDetailItem)}
+            relatedItems={getSidebarRelatedItems(sidebarDetailItem)}
+            saveState={sidebarDetailSaveState}
+            saveError={sidebarDetailSaveError}
+            getCoverUrl={getNativeDetailCoverUrl}
+            onClose={closeSidebarDetails}
+            onOpenFull={openFullSelectedItem}
+            onEdit={openSidebarEdit}
+            onRate={openSidebarRate}
+            onDelete={deleteSidebarItem}
+            onStatusChange={handleSidebarStatusChange}
+            onSelectRelated={openSelectedItem}
+            onResizeStart={beginSidebarDetailResize}
+          />
+        ) : null}
       </div>
+      {sidebarDetailsVisible && isMobileLayout && sidebarDetailItem ? (
+        <MediaDetailsSidebar
+          item={sidebarDetailItem}
+          mediaType={sidebarDetailMediaType}
+          coverUrl={getNativeDetailCoverUrl(sidebarDetailItem)}
+          width={sidebarDetailWidth}
+          isMobile
+          isDark={!simpleSidebarIsLight}
+          accentColor={sidebarDetailAccent}
+          statusOptions={getSidebarStatusOptions(sidebarDetailItem)}
+          relatedItems={getSidebarRelatedItems(sidebarDetailItem)}
+          saveState={sidebarDetailSaveState}
+          saveError={sidebarDetailSaveError}
+          getCoverUrl={getNativeDetailCoverUrl}
+          onClose={closeSidebarDetails}
+          onOpenFull={openFullSelectedItem}
+          onEdit={openSidebarEdit}
+          onRate={openSidebarRate}
+          onDelete={deleteSidebarItem}
+          onStatusChange={handleSidebarStatusChange}
+          onSelectRelated={openSelectedItem}
+        />
+      ) : null}
 
       <input
         ref={sidebarIconFileInputRef}

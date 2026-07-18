@@ -85,6 +85,19 @@ type ShowStatsItem = {
   R2CoverUrl?: string;
 };
 
+type TVEpisodeStatsItem = {
+  ShowTitle?: string;
+  SeasonNumber?: string;
+  SeasonPosterURL?: string;
+  EpisodeNumber?: string;
+  EpisodeTitle?: string;
+  AirDate?: string;
+  StillURL?: string;
+  Runtime?: string;
+  Watched?: string;
+  WatchedAt?: string;
+};
+
 type GameStatsItem = {
   title?: string;
   releaseDate?: string;
@@ -147,6 +160,7 @@ type StatisticsViewProps = {
   movies: MovieStatsItem[];
   shows: ShowStatsItem[];
   games: GameStatsItem[];
+  tvEpisodes?: TVEpisodeStatsItem[];
   coverOverrides?: Record<string, string>;
   onExit?: () => void;
   themeMode?: "light" | "dark" | "classic";
@@ -253,6 +267,9 @@ const STATUS_LABELS: Record<StatusBucket, string> = {
 
 const DONUT_COLORS = ["#ffcf5c", "#6de7ff", "#ff7baf", "#7df592", "#9fa7ff", "#ff9756", "#8fe2d3"];
 const ALL_STATS_YEARS = "all" as const;
+// Episode progress imported before this release uses AirDate for historical
+// reporting. New watched activity after the cutover uses WatchedAt.
+const TV_EPISODE_WATCHED_AT_CUTOVER_MS = Date.parse("2026-07-16T17:15:21Z");
 const UNRATED_TOKENS = new Set([
   "na",
   "n/a",
@@ -1377,6 +1394,7 @@ export function StatisticsView({
   movies,
   shows,
   games,
+  tvEpisodes = [],
   coverOverrides = {},
   onExit,
   themeMode = "dark",
@@ -1680,9 +1698,49 @@ export function StatisticsView({
     return [...mappedBooks, ...mappedMovies, ...mappedShows, ...mappedGames];
   }, [books, coverOverrides, games, movies, shows]);
 
+  const watchedEpisodeStatsItems = useMemo<UnifiedStatsItem[]>(() => {
+    return tvEpisodes
+      .filter((episode) => isTruthyToken(episode.Watched))
+      .map((episode) => {
+        const showTitle = safeText(episode.ShowTitle) || "Untitled Show";
+        const seasonNumber = safeText(episode.SeasonNumber) || "?";
+        const episodeNumber = safeText(episode.EpisodeNumber) || "?";
+        const episodeTitle = safeText(episode.EpisodeTitle) || `Episode ${episodeNumber}`;
+        const airDate = parseDateValue(episode.AirDate);
+        const watchedAt = parseDateValue(episode.WatchedAt);
+        const watchedAtTimestamp = Date.parse(safeText(episode.WatchedAt));
+        const watchedAfterCutover =
+          Number.isFinite(watchedAtTimestamp) && watchedAtTimestamp > TV_EPISODE_WATCHED_AT_CUTOVER_MS;
+        const activityDate = watchedAfterCutover ? (watchedAt || airDate) : (airDate || watchedAt);
+
+        return {
+          mediaType: "tv",
+          title: `${showTitle} - S${seasonNumber}E${episodeNumber} ${episodeTitle}`,
+          activityDate,
+          releaseDate: airDate,
+          completionDate: activityDate,
+          playedYears: [],
+          statusBucket: "completed",
+          primaryStatusToken: "watched",
+          rating: null,
+          externalRating: null,
+          genres: [],
+          platforms: [],
+          formats: [],
+          tags: [],
+          authors: [],
+          directors: [],
+          coverUrl: pickCoverUrl([episode.SeasonPosterURL, episode.StillURL]),
+          audiobookMinutes: 0,
+          runtimeMinutes: parseRuntimeToMinutes(episode.Runtime),
+          gameplayHours: 0,
+        };
+      });
+  }, [tvEpisodes]);
+
   const reviewYearOptions = useMemo(() => {
     const years = new Set<number>([currentYear]);
-    unifiedItems.forEach((item) => {
+    [...unifiedItems, ...watchedEpisodeStatsItems].forEach((item) => {
       const anchorDate = item.activityDate || item.completionDate || item.releaseDate;
       if (anchorDate) {
         years.add(anchorDate.getUTCFullYear());
@@ -1690,7 +1748,7 @@ export function StatisticsView({
       item.playedYears.forEach((year) => years.add(year));
     });
     return [...years].sort((a, b) => b - a);
-  }, [currentYear, unifiedItems]);
+  }, [currentYear, unifiedItems, watchedEpisodeStatsItems]);
 
   const selectedStatsYear: StatsYearFilter =
     statsYear === ALL_STATS_YEARS
@@ -1707,6 +1765,13 @@ export function StatisticsView({
     ? reviewYear
     : (reviewYearOptions[0] || currentYear);
   const previousReviewYear = selectedReviewYear - 1;
+
+  const watchedEpisodeItemsInStatsScope = useMemo(() => {
+    if (selectedStatsYear === ALL_STATS_YEARS) return watchedEpisodeStatsItems;
+    return watchedEpisodeStatsItems.filter(
+      (item) => item.activityDate?.getUTCFullYear() === selectedStatsYear
+    );
+  }, [selectedStatsYear, watchedEpisodeStatsItems]);
 
   const baseFilteredItems = useMemo(() => {
     if (filter === "all") return unifiedItems;
@@ -2037,6 +2102,12 @@ export function StatisticsView({
 
     const yearItems = unifiedItems.filter((item) => isInYear(item, selectedReviewYear));
     const previousYearItems = unifiedItems.filter((item) => isInYear(item, previousReviewYear));
+    const watchedEpisodeItems = watchedEpisodeStatsItems.filter(
+      (item) => item.activityDate?.getUTCFullYear() === selectedReviewYear
+    );
+    const watchedEpisodeItemsPrev = watchedEpisodeStatsItems.filter(
+      (item) => item.activityDate?.getUTCFullYear() === previousReviewYear
+    );
     const completedThisYear = unifiedItems.filter(
       (item) =>
         item.completionDate?.getUTCFullYear() === selectedReviewYear &&
@@ -2163,6 +2234,8 @@ export function StatisticsView({
     return {
       yearItems,
       previousYearItems,
+      watchedEpisodeItems,
+      watchedEpisodeItemsPrev,
       mediaCounts,
       watchedMovieItems,
       moviesWatched,
@@ -2191,7 +2264,7 @@ export function StatisticsView({
       topRatedItems,
       bottomRatedItems,
     };
-  }, [previousReviewYear, selectedReviewYear, unifiedItems]);
+  }, [previousReviewYear, selectedReviewYear, unifiedItems, watchedEpisodeStatsItems]);
 
   const yearReviewMetrics = useMemo<SummaryMetric[]>(() => {
     const gameDelta = yearReview.completedGames - yearReview.completedGamesPrev;
@@ -2199,11 +2272,11 @@ export function StatisticsView({
     const abandonedRate = yearReview.yearItems.length ? (yearReview.abandonedCount / yearReview.yearItems.length) * 100 : 0;
     const previousBooks = yearReview.completedBooksPrev;
     const previousMovies = yearReview.previousYearItems.filter((item) => item.mediaType === "movie").length;
-    const previousTv = yearReview.previousYearItems.filter((item) => item.mediaType === "tv").length;
+    const previousTvEpisodes = yearReview.watchedEpisodeItemsPrev.length;
     const previousGames = yearReview.previousYearItems.filter((item) => item.mediaType === "game").length;
     const bookDelta = yearReview.completedBooks - previousBooks;
     const movieDelta = yearReview.mediaCounts.movie - previousMovies;
-    const tvDelta = yearReview.mediaCounts.tv - previousTv;
+    const tvEpisodeDelta = yearReview.watchedEpisodeItems.length - previousTvEpisodes;
     const gamesDelta = yearReview.mediaCounts.game - previousGames;
     const ratedItems = yearReview.yearItems.filter((item) => typeof item.rating === "number");
     const ratedCoverage = yearReview.yearItems.length ? (ratedItems.length / yearReview.yearItems.length) * 100 : 0;
@@ -2221,7 +2294,7 @@ export function StatisticsView({
     const abandonedItems = yearReview.abandonedTaggedItems;
     const booksLoggedItems = yearReview.completedBookItems;
     const moviesLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "movie");
-    const tvLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "tv");
+    const tvEpisodeWatchedItems = yearReview.watchedEpisodeItems;
     const gamesLoggedItems = yearReview.yearItems.filter((item) => item.mediaType === "game");
     const moviesWatchedItems = yearReview.watchedMovieItems;
     const audiobookItems = yearReview.audiobookItems;
@@ -2245,11 +2318,11 @@ export function StatisticsView({
         : bookDelta < 0
           ? `down ${Math.abs(bookDelta)} vs ${previousReviewYear}`
           : `same as ${previousReviewYear}`;
-    const tvDeltaLabel =
-      tvDelta > 0
-        ? `up ${tvDelta} vs ${previousReviewYear}`
-        : tvDelta < 0
-          ? `down ${Math.abs(tvDelta)} vs ${previousReviewYear}`
+    const tvEpisodeDeltaLabel =
+      tvEpisodeDelta > 0
+        ? `up ${tvEpisodeDelta} vs ${previousReviewYear}`
+        : tvEpisodeDelta < 0
+          ? `down ${Math.abs(tvEpisodeDelta)} vs ${previousReviewYear}`
           : `same as ${previousReviewYear}`;
     const movieDeltaLabel =
       movieDelta > 0
@@ -2363,14 +2436,14 @@ export function StatisticsView({
         items: booksLoggedItems,
       },
       {
-        id: `YR_${selectedReviewYear}_TV_LOGGED`,
-        label: "TV Logged",
-        value: `${yearReview.mediaCounts.tv}`,
-        subLabel: tvDeltaLabel,
+        id: `YR_${selectedReviewYear}_TV_EPISODES_WATCHED`,
+        label: "TV Episodes Watched",
+        value: `${yearReview.watchedEpisodeItems.length}`,
+        subLabel: tvEpisodeDeltaLabel,
         accent: "var(--stats-accent-1)",
-        summary: `Counts all TV entries logged in ${selectedReviewYear}.`,
-        calculation: "Filter year items where mediaType == tv.",
-        items: tvLoggedItems,
+        summary: `Counts TV episodes watched in ${selectedReviewYear}. Historical imported progress uses the episode air date; activity after the migration cutover uses WatchedAt.`,
+        calculation: "Count watched TV episode rows using AirDate before the migration cutover and WatchedAt after it.",
+        items: tvEpisodeWatchedItems,
       },
       {
         id: `YR_${selectedReviewYear}_AVERAGE_RATING`,
@@ -4264,35 +4337,59 @@ export function StatisticsView({
               </button>
             </div>
             <div className="highlightItem">
-              <div className="highlightLabel">Busiest month</div>
-              <button
-                type="button"
-                className="highlightValueButton"
-                onClick={() =>
-                  openStatisticDetail({
-                    id: `HIGHLIGHT_BUSIEST_MONTH_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
-                    title: "Busiest month",
-                    value:
-                      highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
-                        ? highlightStats.bestMonth.label
-                        : "-",
-                    summary: "Month with the highest completion count in the current stats scope.",
-                    calculation:
-                      "Group monthlySeries by month key using completionDate and choose highest total (excluding protected month keys).",
-                    items:
-                      highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
-                        ? filteredItems.filter((item) => {
-                            if (!item.completionDate) return false;
-                            return toMonthKey(item.completionDate) === highlightStats.bestMonth?.key;
-                          })
-                        : [],
-                  })
-                }
-              >
-                {highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
-                  ? highlightStats.bestMonth.label
-                  : "-"}
-              </button>
+              <div className="highlightLabel">{filter === "tv" ? "Episodes watched" : "Busiest month"}</div>
+              {filter === "tv" ? (
+                <button
+                  type="button"
+                  className="highlightValueButton"
+                  onClick={() =>
+                    openStatisticDetail({
+                      id: `HIGHLIGHT_TV_EPISODES_WATCHED_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                      title:
+                        selectedStatsYear === ALL_STATS_YEARS
+                          ? "TV Episodes Watched"
+                          : `TV Episodes Watched in ${selectedStatsYear}`,
+                      value: `${watchedEpisodeItemsInStatsScope.length}`,
+                      summary:
+                        "Historical imported progress uses each episode's air date. New watched activity uses WatchedAt.",
+                      calculation:
+                        "Count watched TV episode rows using AirDate before the migration cutover and WatchedAt after it.",
+                      items: watchedEpisodeItemsInStatsScope,
+                    })
+                  }
+                >
+                  {watchedEpisodeItemsInStatsScope.length}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="highlightValueButton"
+                  onClick={() =>
+                    openStatisticDetail({
+                      id: `HIGHLIGHT_BUSIEST_MONTH_${filter.toUpperCase()}_${selectedStatsYear === ALL_STATS_YEARS ? "ALL_YEARS" : selectedStatsYear}`,
+                      title: "Busiest month",
+                      value:
+                        highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
+                          ? highlightStats.bestMonth.label
+                          : "-",
+                      summary: "Month with the highest completion count in the current stats scope.",
+                      calculation:
+                        "Group monthlySeries by month key using completionDate and choose highest total (excluding protected month keys).",
+                      items:
+                        highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
+                          ? filteredItems.filter((item) => {
+                              if (!item.completionDate) return false;
+                              return toMonthKey(item.completionDate) === highlightStats.bestMonth?.key;
+                            })
+                          : [],
+                    })
+                  }
+                >
+                  {highlightStats.bestMonth && !isExcludedBusiestMonthKey(highlightStats.bestMonth.key)
+                    ? highlightStats.bestMonth.label
+                    : "-"}
+                </button>
+              )}
             </div>
             <div className="highlightItem">
               <div className="highlightLabel">Leading genre</div>
