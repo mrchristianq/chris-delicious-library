@@ -373,7 +373,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.17";
+const APP_VERSION = "12.0.18";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -696,6 +696,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.18",
+    date: "2026-07-18",
+    notes: [
+      "Fixed movie metadata sync using TV status normalization, which could convert Watched to the invalid Movies value Completed.",
+      "Movie writes now preserve and canonicalize Watch Status independently from TMDB release status.",
+    ],
+  },
   {
     version: "12.0.17",
     date: "2026-07-18",
@@ -2833,6 +2841,32 @@ function normalizeShowWatchStatusForSheet(value?: string): string {
   const allowedMatch = allowed.find((status) => normalizeStatusToken(status) === normalized);
   if (allowedMatch) return allowedMatch;
   return raw;
+}
+
+function normalizeMovieWatchStatusForSheet(value?: string, fallbackValue?: string): string {
+  const normalizeCandidate = (candidate?: string): string => {
+    const raw = safeStr(candidate);
+    if (!raw) return "";
+    const normalized = normalizeStatusToken(raw);
+    if (
+      normalized === "currently watching" ||
+      normalized === "watching" ||
+      normalized === "in progress"
+    ) {
+      return "Started";
+    }
+    if (
+      normalized === "completed" ||
+      normalized === "complete" ||
+      normalized === "done"
+    ) {
+      return "Watched";
+    }
+    const allowed = ["Watched", "Backlog", "Abandoned", "Started", "Pending Digital Release"];
+    return allowed.find((status) => normalizeStatusToken(status) === normalized) || "";
+  };
+
+  return normalizeCandidate(value) || normalizeCandidate(fallbackValue);
 }
 
 // Helper function to generate cover URL from title (served from /public/covers/)
@@ -8660,7 +8694,10 @@ export default function Page() {
     const matchTitle = safeStr(updates.title) || safeStr(item?.title);
     const fallbackTmdbId = safeStr(item?.tmdbId);
     const fallbackTitle = safeStr(item?.title);
-    const normalizedWatchStatus = normalizeShowWatchStatusForSheet(updates.watchStatus);
+    const currentWatchStatus = safeStr(
+      item?.watchStatus || item?.watched || item?.["Watch Status"] || item?.WatchStatus || item?.Watched
+    );
+    const normalizedWatchStatus = normalizeMovieWatchStatusForSheet(updates.watchStatus, currentWatchStatus);
 
     if (!matchTmdbId && !matchTitle) {
       throw new Error("Unable to identify this movie row to update.");
@@ -8678,9 +8715,13 @@ export default function Page() {
         MyRating: safeStr(updates.myRating),
         TMDB_Rating: safeStr(updates.tmdbRating),
         TMDB_ID: safeStr(updates.tmdbId),
-        "Watch Status": normalizedWatchStatus,
-        WatchStatus: normalizedWatchStatus,
-        Watched: normalizedWatchStatus,
+        ...(normalizedWatchStatus
+          ? {
+              "Watch Status": normalizedWatchStatus,
+              WatchStatus: normalizedWatchStatus,
+              Watched: normalizedWatchStatus,
+            }
+          : {}),
         WatchDate: safeStr(updates.watchDate),
         Tags: safeStr(updates.tags),
         ReleaseDate: safeStr(updates.releaseDate),
@@ -8699,7 +8740,7 @@ export default function Page() {
       Title: safeStr(updates.title),
       Year: safeStr(updates.year),
       TMDB_ID: safeStr(updates.tmdbId),
-      "Watch Status": normalizedWatchStatus,
+      ...(normalizedWatchStatus ? { "Watch Status": normalizedWatchStatus } : {}),
       WatchDate: safeStr(updates.watchDate),
       Tags: safeStr(updates.tags),
       Status: safeStr(updates.status),
@@ -8779,8 +8820,8 @@ export default function Page() {
       myRating: safeStr(updates.myRating),
       tmdbRating: safeStr(updates.tmdbRating),
       tmdbId: safeStr(updates.tmdbId),
-      watched: normalizedWatchStatus,
-      watchStatus: normalizedWatchStatus,
+      watched: normalizedWatchStatus || safeStr(prev.watched || prev.Watched),
+      watchStatus: normalizedWatchStatus || safeStr(prev.watchStatus || prev.WatchStatus),
       watchDate: safeStr(updates.watchDate),
       tags: safeStr(updates.tags),
       tag: safeStr(updates.tags),
@@ -8825,8 +8866,8 @@ export default function Page() {
           MyRating: safeStr(updates.myRating),
           TMDB_Rating: safeStr(updates.tmdbRating),
           TMDB_ID: safeStr(updates.tmdbId) || rowTmdbId,
-          "Watch Status": normalizedWatchStatus,
-          WatchStatus: normalizedWatchStatus,
+          "Watch Status": normalizedWatchStatus || safeStr(row["Watch Status"]),
+          WatchStatus: normalizedWatchStatus || safeStr(row.WatchStatus),
           WatchDate: safeStr(updates.watchDate),
           Tags: safeStr(updates.tags),
           Tag: safeStr(updates.tags),
