@@ -373,7 +373,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.20";
+const APP_VERSION = "12.0.21";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -608,6 +608,7 @@ const NATIVE_STATUS_ICON_CACHE_LOCAL_KEY = "cdlNativeStatusIconCache";
 const STATUS_ICON_SETTING_PREFIX = "statusIcon:";
 const MOBILE_ONLY_COVER_SCALE_LOCAL_KEY = "cdlMobileCoverScalePct";
 const MOBILE_COVER_SCALE_BY_GROUP_LOCAL_KEY = "cdlMobileCoverScaleByGroup";
+const MOBILE_VIEW_PREFERENCES_LOCAL_KEY = "cdlMobileViewPreferences";
 const POPUP_OVERLAY_Z_INDEX = 2147483000;
 const POPUP_PANEL_Z_INDEX = 2147483200;
 const POPUP_FAQ_Z_INDEX = 2147483300;
@@ -696,6 +697,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.21",
+    date: "2026-07-19",
+    notes: [
+      "Saved mobile cover size, sorting, and secondary filters independently for every library page and quick-link view.",
+      "Added page-appropriate sorting plus missing Games status and Books genre controls to the mobile Filter panel.",
+    ],
+  },
   {
     version: "12.0.20",
     date: "2026-07-19",
@@ -3655,6 +3664,27 @@ function useElementWidth<T extends HTMLElement>() {
 type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
 type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync" | "themes" | "icons">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
+type MobileViewFilterKey =
+  | "bookFormat"
+  | "bookSeries"
+  | "bookGenre"
+  | "movieTag"
+  | "movieGenre"
+  | "tvWatchStatus"
+  | "tvShowStatus"
+  | "tvTag"
+  | "gamePlatform"
+  | "gameStatus"
+  | "gameOwnership"
+  | "gameFormat"
+  | "gameYearPlayed"
+  | "gameGenre";
+type MobileViewPreferences = {
+  coverScalePct?: number;
+  sortField?: string;
+  sortOrder?: "Asc" | "Desc";
+  filters?: Partial<Record<MobileViewFilterKey, string | null>>;
+};
 type BookQuickLinkKey = "home" | "wishlist" | "library" | "completed" | "upcoming";
 type MovieQuickLinkKey = "home" | "library" | "watched" | "started" | "backlog" | "abandoned" | "upcoming";
 type TvQuickLinkKey = "home" | "library" | "backlog" | "watching" | "watched" | "abandoned" | "upcoming";
@@ -4077,8 +4107,57 @@ export default function Page() {
     (nav === "movies" && movieUpcomingFilter) ||
     (nav === "tv" && tvViewMode === "upcoming") ||
     (nav === "games" && gameViewMode === "upcoming");
+  const activeViewPreferenceKey = useMemo(() => {
+    if (nav === "books") {
+      if (bookHomeMode) return "books:home";
+      if (bookUpcomingFilter) return "books:upcoming";
+      if (wishlistFilter) return "books:wishlist";
+      if (normalizeStatus(readingStatusFilter || undefined) === "completed") return "books:completed";
+      return "books:library";
+    }
+    if (nav === "movies") {
+      if (movieHomeMode) return "movies:home";
+      if (movieUpcomingFilter) return "movies:upcoming";
+      if (movieWatchFilter === "Watched") return "movies:watched";
+      if (movieWatchFilter === "Started") return "movies:started";
+      if (movieWatchFilter === "Backlog") return "movies:backlog";
+      if (movieWatchFilter === "Abandoned") return "movies:abandoned";
+      return "movies:library";
+    }
+    if (nav === "tv") {
+      if (tvHomeMode) return "tv:home";
+      return `tv:${tvViewMode === "custom" ? "library" : tvViewMode}`;
+    }
+    if (nav === "games") {
+      return `games:${gameViewMode === "custom" ? "library" : gameViewMode}`;
+    }
+    if (nav === "smart-custom") {
+      return activeSmartList ? `smart-custom:${activeSmartList.id}` : "smart-custom";
+    }
+    return nav;
+  }, [
+    activeSmartList,
+    bookHomeMode,
+    bookUpcomingFilter,
+    gameViewMode,
+    movieHomeMode,
+    movieUpcomingFilter,
+    movieWatchFilter,
+    nav,
+    readingStatusFilter,
+    tvHomeMode,
+    tvViewMode,
+    wishlistFilter,
+  ]);
   const [sortField, setSortField] = useState<string>("ReleaseDate");
   const [sortOrder, setSortOrder] = useState<"Asc" | "Desc">("Desc");
+  const mobileViewPreferenceLabel = activeViewPreferenceKey
+    .split(":")
+    .map((part) => part.replace(/-/g, " "))
+    .join(" · ")
+    .toUpperCase();
+  const [mobileViewPreferences, setMobileViewPreferences] = useState<Record<string, MobileViewPreferences>>({});
+  const [mobileViewPreferencesLoaded, setMobileViewPreferencesLoaded] = useState(false);
   const [displayModeNonce, setDisplayModeNonce] = useState(0);
   const [listColumnsNonce, setListColumnsNonce] = useState(0);
   const [listSizeNonce, setListSizeNonce] = useState(0);
@@ -4127,6 +4206,41 @@ export default function Page() {
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileFullLibraryOpen, setMobileFullLibraryOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(MOBILE_VIEW_PREFERENCES_LOCAL_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          setMobileViewPreferences(parsed as Record<string, MobileViewPreferences>);
+        }
+      }
+    } catch {}
+    setMobileViewPreferencesLoaded(true);
+  }, []);
+
+  const persistMobileViewPreference = useCallback(
+    (patch: Partial<MobileViewPreferences>) => {
+      const viewKey = activeViewPreferenceKey;
+      setMobileViewPreferences((prev) => {
+        const current = prev[viewKey] || {};
+        const nextEntry: MobileViewPreferences = {
+          ...current,
+          ...patch,
+          filters: patch.filters
+            ? { ...(current.filters || {}), ...patch.filters }
+            : current.filters,
+        };
+        const next = { ...prev, [viewKey]: nextEntry };
+        try {
+          localStorage.setItem(MOBILE_VIEW_PREFERENCES_LOCAL_KEY, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    },
+    [activeViewPreferenceKey]
+  );
 
   const clearAllFilters = useCallback(() => {
     setQuery("");
@@ -5086,7 +5200,9 @@ export default function Page() {
     games: 100,
   });
   const mobileCoverScaleGroup = getCoverScaleGroupForNav(nav) || getCoverScaleGroupForNav(lastLibraryNav) || "home";
-  const mobileCoverScalePct = mobileCoverScaleByGroup[mobileCoverScaleGroup];
+  const mobileCoverScalePct =
+    mobileViewPreferences[activeViewPreferenceKey]?.coverScalePct ??
+    mobileCoverScaleByGroup[mobileCoverScaleGroup];
   const mobileCoverScaleFactor = isMobileLayout ? mobileCoverScalePct / 100 : 1;
   const mobileShelfWidthForDefaultCoverSizing = stageWidth > 0 ? stageWidth : viewportW;
   const mobileUsableWidthForDefaultCoverSizing = Math.max(0, mobileShelfWidthForDefaultCoverSizing - shelfSidePadding * 2);
@@ -11691,16 +11807,67 @@ export default function Page() {
     saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.games, defaults.games, "Cover Sizes", "Game Cover Size (%)");
     saveSetting(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, defaults.audiobooks, "Cover Sizes", "Audiobook Cover Size (%)");
   }, [saveSetting]);
-  const updateMobileCoverScalePct = useCallback((group: CoverScaleGroupKey, value: number) => {
+  const updateMobileCoverScalePct = useCallback((value: number) => {
     const nextValue = Math.max(50, Math.min(250, Math.round(value)));
-    setMobileCoverScaleByGroup((prev) => {
-      const next = { ...prev, [group]: nextValue };
-      try {
-        localStorage.setItem(MOBILE_COVER_SCALE_BY_GROUP_LOCAL_KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-  }, []);
+    persistMobileViewPreference({ coverScalePct: nextValue });
+  }, [persistMobileViewPreference]);
+
+  const updateMobileViewFilter = useCallback(
+    (key: MobileViewFilterKey, value: string | null) => {
+      if (key === "bookFormat") setFormatFilter(value);
+      if (key === "bookSeries") setSeriesFilter(value);
+      if (key === "bookGenre") setGenreFilter(value);
+      if (key === "movieTag") setMovieTagFilter(value);
+      if (key === "movieGenre") setMovieGenreFilter(value);
+      if (key === "tvWatchStatus") setWatchFilter(value);
+      if (key === "tvShowStatus") setShowFilter(value);
+      if (key === "tvTag") setTagFilter(value);
+      if (key === "gamePlatform") setGamePlatformFilter(value);
+      if (key === "gameStatus") setGameStatusFilter(value);
+      if (key === "gameOwnership") setGameOwnershipFilter(value);
+      if (key === "gameFormat") setGameFormatFilter(value);
+      if (key === "gameYearPlayed") setGameYearPlayedFilter(value);
+      if (key === "gameGenre") setGameGenreFilter(value);
+      persistMobileViewPreference({ filters: { [key]: value } });
+    },
+    [persistMobileViewPreference]
+  );
+
+  useEffect(() => {
+    if (!isMobileLayout || !mobileViewPreferencesLoaded) return;
+    const preferences = mobileViewPreferences[activeViewPreferenceKey];
+    if (!preferences) return;
+
+    if (preferences.sortField) setSortField(preferences.sortField);
+    if (preferences.sortOrder) setSortOrder(preferences.sortOrder);
+
+    const filters = preferences.filters || {};
+    if (nav === "books") {
+      setFormatFilter(filters.bookFormat ?? null);
+      setSeriesFilter(filters.bookSeries ?? null);
+      setGenreFilter(filters.bookGenre ?? null);
+    } else if (nav === "movies") {
+      setMovieTagFilter(filters.movieTag ?? null);
+      setMovieGenreFilter(filters.movieGenre ?? null);
+    } else if (nav === "tv") {
+      setWatchFilter(filters.tvWatchStatus ?? null);
+      setShowFilter(filters.tvShowStatus ?? null);
+      setTagFilter(filters.tvTag ?? null);
+    } else if (nav === "games") {
+      setGamePlatformFilter(filters.gamePlatform ?? null);
+      setGameStatusFilter(filters.gameStatus ?? null);
+      setGameOwnershipFilter(filters.gameOwnership ?? null);
+      setGameFormatFilter(filters.gameFormat ?? null);
+      setGameYearPlayedFilter(filters.gameYearPlayed ?? null);
+      setGameGenreFilter(filters.gameGenre ?? null);
+    }
+  }, [
+    activeViewPreferenceKey,
+    isMobileLayout,
+    mobileViewPreferences,
+    mobileViewPreferencesLoaded,
+    nav,
+  ]);
   const updateCoverScaleForGroup = useCallback((group: CoverScaleGroupKey, value: number) => {
     const scalePct = Math.max(0, Math.min(200, Math.round(value)));
     const settingKey = COVER_SCALE_SETTING_KEYS[group];
@@ -13383,6 +13550,18 @@ export default function Page() {
     return counts;
   }, [allGames, gamePlatformOptions]);
 
+  const gameStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const option of gameStatusOptions) counts[option] = 0;
+    allGames.forEach((game) => {
+      const value = safeStr(game.status);
+      if (!value) return;
+      if (counts[value] === undefined) counts[value] = 0;
+      counts[value] += 1;
+    });
+    return counts;
+  }, [allGames, gameStatusOptions]);
+
   const gameOwnershipCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const option of gameOwnershipOptions) counts[option] = 0;
@@ -15041,6 +15220,9 @@ export default function Page() {
           : nextFieldRaw;
 
       setSortField(nextField);
+      if (isMobileLayout) {
+        persistMobileViewPreference({ sortField: nextField, sortOrder });
+      }
 
       if (nav === "smart-custom") {
         if (!activeSmartList) return;
@@ -15114,10 +15296,12 @@ export default function Page() {
     },
     [
       activeSmartList,
+      isMobileLayout,
       persistActiveSmartListSortDefaults,
       manualSortableSmartListId,
       nav,
       persistBacklogSortSettings,
+      persistMobileViewPreference,
       persistStandardViewSortSettings,
       resolvedNowPlayingManualOrderKeys,
       resolvedPlayNextManualOrderKeys,
@@ -15135,6 +15319,9 @@ export default function Page() {
   const handleSortOrderChange = useCallback(
     (nextOrder: "Asc" | "Desc") => {
       setSortOrder(nextOrder);
+      if (isMobileLayout) {
+        persistMobileViewPreference({ sortField, sortOrder: nextOrder });
+      }
       if (nav === "smart-custom") {
         persistActiveSmartListSortDefaults(sortField, nextOrder);
         return;
@@ -15156,7 +15343,7 @@ export default function Page() {
         persistStandardViewSortSettings(nav, sortField, nextOrder);
       }
     },
-    [nav, persistActiveSmartListSortDefaults, persistBacklogSortSettings, persistStandardViewSortSettings, sortField]
+    [isMobileLayout, nav, persistActiveSmartListSortDefaults, persistBacklogSortSettings, persistMobileViewPreference, persistStandardViewSortSettings, sortField]
   );
 
   const activeBookQuickLink: BookQuickLinkKey =
@@ -20892,7 +21079,7 @@ export default function Page() {
                       <button
                         key={`mobile-movie-tag-${tag}`}
                         type="button"
-                        onClick={() => setMovieTagFilter(active ? null : tag)}
+                        onClick={() => updateMobileViewFilter("movieTag", active ? null : tag)}
                         style={{
                           border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
                           background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
@@ -20917,7 +21104,7 @@ export default function Page() {
                       <button
                         key={`mobile-movie-genre-${genre}`}
                         type="button"
-                        onClick={() => setMovieGenreFilter(active ? null : genre)}
+                        onClick={() => updateMobileViewFilter("movieGenre", active ? null : genre)}
                         style={{
                           border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
                           background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
@@ -20938,12 +21125,23 @@ export default function Page() {
             ) : null}
             {mobileSidebarShowsMediaFiltersOnly && nav === "games" ? (
               <>
+                <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {gameStatusOptions.map((option) => {
+                    const active = gameStatusFilter === option;
+                    return (
+                      <button key={`mobile-game-status-${option}`} type="button" onClick={() => updateMobileViewFilter("gameStatus", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {option} ({gameStatusCounts[option] ?? 0})
+                      </button>
+                    );
+                  })}
+                </div>
                 <div style={mobilePanelSectionHeadingStyle}>PLATFORM</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
                   {gamePlatformOptions.map((option) => {
                     const active = gamePlatformFilter === option;
                     return (
-                      <button key={`mobile-game-platform-${option}`} type="button" onClick={() => setGamePlatformFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-game-platform-${option}`} type="button" onClick={() => updateMobileViewFilter("gamePlatform", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {option} ({gamePlatformCounts[option] ?? 0})
                       </button>
                     );
@@ -20954,7 +21152,7 @@ export default function Page() {
                   {gameOwnershipOptions.map((option) => {
                     const active = gameOwnershipFilter === option;
                     return (
-                      <button key={`mobile-game-ownership-${option}`} type="button" onClick={() => setGameOwnershipFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-game-ownership-${option}`} type="button" onClick={() => updateMobileViewFilter("gameOwnership", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {option} ({gameOwnershipCounts[option] ?? 0})
                       </button>
                     );
@@ -20965,7 +21163,7 @@ export default function Page() {
                   {gameFormatOptions.map((option) => {
                     const active = gameFormatFilter === option;
                     return (
-                      <button key={`mobile-game-format-${option}`} type="button" onClick={() => setGameFormatFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-game-format-${option}`} type="button" onClick={() => updateMobileViewFilter("gameFormat", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {option} ({gameFormatCounts[option] ?? 0})
                       </button>
                     );
@@ -20976,7 +21174,7 @@ export default function Page() {
                   {gameYearPlayedOptions.map((option) => {
                     const active = gameYearPlayedFilter === option;
                     return (
-                      <button key={`mobile-game-year-${option}`} type="button" onClick={() => setGameYearPlayedFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-game-year-${option}`} type="button" onClick={() => updateMobileViewFilter("gameYearPlayed", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {option} ({gameYearPlayedCounts[option] ?? 0})
                       </button>
                     );
@@ -20987,7 +21185,7 @@ export default function Page() {
                   {gameGenres.map((option) => {
                     const active = gameGenreFilter === option;
                     return (
-                      <button key={`mobile-game-genre-${option}`} type="button" onClick={() => setGameGenreFilter(active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-game-genre-${option}`} type="button" onClick={() => updateMobileViewFilter("gameGenre", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {option} ({gameGenreCounts[option] ?? 0})
                       </button>
                     );
@@ -21002,7 +21200,7 @@ export default function Page() {
                   {watchStatuses.map((status) => {
                     const active = watchFilter === status;
                     return (
-                      <button key={`mobile-tv-watch-status-${status}`} type="button" onClick={() => setWatchFilter(active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-tv-watch-status-${status}`} type="button" onClick={() => updateMobileViewFilter("tvWatchStatus", active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {status}
                       </button>
                     );
@@ -21013,7 +21211,7 @@ export default function Page() {
                   {showStatuses.map((status) => {
                     const active = showFilter === status;
                     return (
-                      <button key={`mobile-tv-show-status-${status}`} type="button" onClick={() => setShowFilter(active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-tv-show-status-${status}`} type="button" onClick={() => updateMobileViewFilter("tvShowStatus", active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {status}
                       </button>
                     );
@@ -21024,7 +21222,7 @@ export default function Page() {
                   {tvTags.map((tag) => {
                     const active = tagFilter === tag;
                     return (
-                      <button key={`mobile-tv-tag-${tag}`} type="button" onClick={() => setTagFilter(active ? null : tag)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <button key={`mobile-tv-tag-${tag}`} type="button" onClick={() => updateMobileViewFilter("tvTag", active ? null : tag)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                         {tag} ({tvTagCounts[tag] ?? 0})
                       </button>
                     );
@@ -21035,7 +21233,7 @@ export default function Page() {
             <div style={mobilePanelCardStyle}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <span style={mobilePanelSectionHeadingStyle}>
-                  {`${mobileCoverScaleGroup === "home" ? "HOME" : mobileCoverScaleGroup === "tv" ? "TV" : mobileCoverScaleGroup.toUpperCase()} COVER SIZE`}
+                  {`${mobileViewPreferenceLabel} COVER SIZE`}
                 </span>
                 <span style={{ fontSize: 11, fontWeight: 800, color: mobilePanelTextColor }}>
                   {`${mobileCoverScalePct}%`}
@@ -21047,13 +21245,12 @@ export default function Page() {
                 max={250}
                 step={1}
                 value={mobileCoverScalePct}
-                onChange={(event) => updateMobileCoverScalePct(mobileCoverScaleGroup, Number(event.target.value))}
-                aria-label={`Scale ${mobileCoverScaleGroup} covers for mobile view`}
+                onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
+                aria-label={`Scale ${activeViewPreferenceKey} covers for mobile view`}
                 style={{ width: "100%" }}
               />
             </div>
-            {!mobileSidebarShowsMediaFiltersOnly ? (
-              <>
+            <>
                 <div style={mobilePanelSectionHeadingStyle}>SORT</div>
                 <label
                   style={{
@@ -21071,6 +21268,43 @@ export default function Page() {
                     onChange={(e) => handleSortFieldChange(e.target.value)}
                     style={mobilePanelSelectStyle}
                   >
+                    {nav === "books" ? (
+                      <>
+                        <option value="Title">Title</option>
+                        <option value="ReleaseDate">Release Date</option>
+                        <option value="CompletedDate">Completed Date</option>
+                        <option value="MyRatingSort">My Rating</option>
+                        <option value="ExternalRatingSort">User Rating</option>
+                      </>
+                    ) : null}
+                    {nav === "movies" ? (
+                      <>
+                        <option value="Title">Title</option>
+                        <option value="ReleaseDate">Release Date</option>
+                        <option value="CompletedDate">Watch Date</option>
+                        <option value="MyRatingSort">My Rating</option>
+                        <option value="ExternalRatingSort">User Rating</option>
+                      </>
+                    ) : null}
+                    {nav === "tv" ? (
+                      <>
+                        <option value="Title">Title</option>
+                        <option value="CompletedDate">Date Completed</option>
+                        <option value="LastAirDate">Last Air Date</option>
+                        <option value="FirstAirDate">First Air Date</option>
+                        <option value="MyRatingSort">My Rating</option>
+                        <option value="ExternalRatingSort">User Rating</option>
+                      </>
+                    ) : null}
+                    {nav === "games" ? (
+                      <>
+                        <option value="Title">Title</option>
+                        <option value="ReleaseDate">Release Date</option>
+                        <option value="CompletedDate">Date Completed</option>
+                        <option value="MyRatingSort">My Rating</option>
+                        <option value="ExternalRatingSort">User Rating</option>
+                      </>
+                    ) : null}
                     {(nav === "home" || nav === "upcoming" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
                       <>
                         <option value="Title">Title</option>
@@ -21104,8 +21338,7 @@ export default function Page() {
                     <option value="Desc">Desc</option>
                   </select>
                 </label>
-              </>
-            ) : null}
+            </>
             {nav === "books" ? (
               <>
                 <div style={mobilePanelSectionHeadingStyle}>BOOK FILTERS</div>
@@ -21143,7 +21376,7 @@ export default function Page() {
                         <button
                           key={`mobile-book-format-${format}`}
                           type="button"
-                          onClick={() => setFormatFilter(active ? null : format)}
+                          onClick={() => updateMobileViewFilter("bookFormat", active ? null : format)}
                           style={{
                             border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
                             background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
@@ -21168,7 +21401,7 @@ export default function Page() {
                         <button
                           key={`mobile-book-series-${series}`}
                           type="button"
-                          onClick={() => setSeriesFilter(active ? null : series)}
+                          onClick={() => updateMobileViewFilter("bookSeries", active ? null : series)}
                           style={{
                             border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
                             background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
@@ -21181,6 +21414,31 @@ export default function Page() {
                           }}
                         >
                           {series} ({seriesCounts[series] ?? 0})
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Genres</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", paddingRight: 2 }}>
+                    {bookGenres.map((genre) => {
+                      const active = genreFilter === genre;
+                      return (
+                        <button
+                          key={`mobile-book-genre-${genre}`}
+                          type="button"
+                          onClick={() => updateMobileViewFilter("bookGenre", active ? null : genre)}
+                          style={{
+                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
+                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
+                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
+                            borderRadius: 999,
+                            padding: "5px 9px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {genre} ({genreCounts[genre] ?? 0})
                         </button>
                       );
                     })}
@@ -25923,7 +26181,7 @@ export default function Page() {
                 </div>
                 <div style={{ border: "1px solid rgba(145, 160, 182, 0.42)", borderRadius: 14, background: "rgba(255,255,255,0.68)", padding: "10px 9px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, minWidth: 0, minHeight: 74 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>{`${mobileCoverScaleGroup === "home" ? "HOME" : mobileCoverScaleGroup === "tv" ? "TV" : mobileCoverScaleGroup.toUpperCase()} COVER SIZE`}</span>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>{`${mobileViewPreferenceLabel} COVER SIZE`}</span>
                     <span style={{ fontSize: 12, fontWeight: 900, color: "#1f2c3f" }}>{mobileCoverScalePct}%</span>
                   </div>
                   <input
@@ -25932,8 +26190,8 @@ export default function Page() {
                     max={250}
                     step={1}
                     value={mobileCoverScalePct}
-                    onChange={(event) => updateMobileCoverScalePct(mobileCoverScaleGroup, Number(event.target.value))}
-                    aria-label={`Scale ${mobileCoverScaleGroup} covers for mobile view`}
+                    onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
+                    aria-label={`Scale ${activeViewPreferenceKey} covers for mobile view`}
                     style={{ width: "100%" }}
                   />
                 </div>
