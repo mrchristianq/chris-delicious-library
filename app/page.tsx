@@ -373,7 +373,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.19";
+const APP_VERSION = "12.0.20";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -696,6 +696,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.20",
+    date: "2026-07-19",
+    notes: [
+      "Removed the pale frame around square quick-details artwork and simplified the details-mode control to one color-changing sidebar icon.",
+    ],
+  },
   {
     version: "12.0.19",
     date: "2026-07-18",
@@ -18325,28 +18332,22 @@ export default function Page() {
           height: 30,
           minWidth: 24,
           padding: "5px 8px",
-          background: isSimpleHeaderTheme
-            ? opensSidebar
-              ? "rgba(96, 107, 123, 0.12)"
-              : simpleHeaderBackground
-            : "rgba(28, 18, 10, 0.52)",
+          background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
           border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
           borderRadius: 9,
-          color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
+          color: opensSidebar
+            ? "#4f7cff"
+            : isSimpleHeaderTheme
+              ? "#111827"
+              : "rgba(250, 242, 230, 0.76)",
           boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
           cursor: "pointer",
         }}
       >
-        {opensSidebar ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <rect x="3" y="4" width="18" height="16" rx="2.5" />
-            <path d="M15 4v16" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
-          </svg>
-        )}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="3" y="4" width="18" height="16" rx="2.5" />
+          <path d="M15 4v16" />
+        </svg>
       </button>
     );
   };

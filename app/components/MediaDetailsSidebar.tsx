@@ -611,18 +611,16 @@ export function MediaDetailsSidebar({
             <div
               style={{
                 width: isMobile ? 122 : 136,
-                minHeight:
-                  !coverUrl
-                    ? 196
-                    : mediaType === "game"
-                      ? undefined
-                      : mediaType === "book" && /audio/i.test(first(item, ["types", "type", "Type"]))
-                        ? 122
-                        : 196,
+                minHeight: coverUrl ? undefined : 196,
                 marginTop: 52,
+                alignSelf: "start",
                 borderRadius: 10,
                 overflow: "hidden",
-                background: isDark ? "rgba(255,255,255,0.06)" : "rgba(20,30,45,0.05)",
+                background: coverUrl
+                  ? "transparent"
+                  : isDark
+                    ? "rgba(255,255,255,0.06)"
+                    : "rgba(20,30,45,0.05)",
                 boxShadow: "0 8px 18px rgba(15,23,42,0.18)",
                 display: "grid",
                 placeItems: "center",
