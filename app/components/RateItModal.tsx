@@ -1,6 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import {
+  BOOK_STATUS_OPTIONS,
+  GAME_STATUS_OPTIONS,
+  MOVIE_WATCH_STATUS_OPTIONS,
+  TV_WATCH_STATUS_OPTIONS,
+  normalizeBookStatusForSheet,
+  normalizeGameStatusForSheet,
+  normalizeMovieWatchStatusForSheetValue,
+  normalizeTvWatchStatusForSheetValue,
+} from "../lib/mediaStatusOptions";
 
 type RateItModalProps = {
   open: boolean;
@@ -20,8 +30,6 @@ type RatingData = {
   status?: string;
   hoursPlayed?: string;
   yearPlayed?: string;
-  backlog?: string;
-  completed?: string;
 };
 
 function safeStr(v: unknown): string {
@@ -63,23 +71,6 @@ function formatDateForInput(dateStr: string): string {
   return "";
 }
 
-const MOVIE_WATCH_STATUS_OPTIONS = ["Watched", "Started", "Backlog", "Pending Digital Release", "Abandoned"] as const;
-const TV_WATCH_STATUS_OPTIONS = ["Completed", "Abandoned", "Started", "Backlog", "Watch Next", "Paused", "Pending Return"] as const;
-const GAME_STATUS_OPTIONS = ["Backlog", "Playing", "Completed", "On Hold"] as const;
-
-function normalizeTvWatchStatusForSheet(value: string): string {
-  const raw = safeStr(value);
-  if (!raw) return "";
-
-  const normalized = raw.toLowerCase().replace(/\s+/g, " ");
-  if (normalized === "watched" || normalized === "complete" || normalized === "done") return "Completed";
-  if (normalized === "watching" || normalized === "currently watching" || normalized === "in progress") return "Started";
-  if (normalized === "pending digital release") return "Backlog";
-
-  const allowed = TV_WATCH_STATUS_OPTIONS.find((option) => option.toLowerCase() === normalized);
-  return allowed || raw;
-}
-
 export function RateItModal({ open, onClose, onSave, item, mediaType, highlightColor = "#007AFF" }: RateItModalProps) {
   const [myRating, setMyRating] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
@@ -89,23 +80,28 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
   const [status, setStatus] = useState("");
   const [hoursPlayed, setHoursPlayed] = useState("");
   const [yearPlayed, setYearPlayed] = useState("");
-  const [backlog, setBacklog] = useState(false);
-  const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
     if (!open || !item) return;
 
     setMyRating(firstNonEmpty(item, ["myRating", "My Rating", "MyRating"]));
     const initialWatchStatus = firstNonEmpty(item, ["watchStatus", "Watch Status", "WatchStatus", "watched", "Watched"]);
-    setWatchStatus(mediaType === "tv" ? normalizeTvWatchStatusForSheet(initialWatchStatus) : initialWatchStatus);
+    setWatchStatus(
+      mediaType === "tv"
+        ? normalizeTvWatchStatusForSheetValue(initialWatchStatus)
+        : normalizeMovieWatchStatusForSheetValue(initialWatchStatus)
+    );
     setWatchDate(formatDateForInput(firstNonEmpty(item, ["watchDate", "WatchDate"])));
     setDateCompleted(formatDateForInput(firstNonEmpty(item, ["completedDate", "dateCompleted", "Date Completed", "DateCompleted", "CompletedDate"])));
     setTags(firstNonEmpty(item, ["tags", "Tags", "tag", "Tag"]));
-    setStatus(firstNonEmpty(item, ["status", "Status", "gameStatus", "GameStatus"]));
+    const initialStatus = firstNonEmpty(item, ["status", "Status", "gameStatus", "GameStatus"]);
+    setStatus(
+      mediaType === "book"
+        ? normalizeBookStatusForSheet(initialStatus)
+        : normalizeGameStatusForSheet(initialStatus)
+    );
     setHoursPlayed(firstNonEmpty(item, ["hoursPlayed", "Hours Played", "HoursPlayed"]));
     setYearPlayed(firstNonEmpty(item, ["yearPlayed", "Year Played", "YearPlayed"]));
-    setBacklog(firstNonEmpty(item, ["backlog", "Backlog"]).toLowerCase() === "yes");
-    setCompleted(firstNonEmpty(item, ["completed", "Completed"]).toLowerCase() === "yes");
   }, [open, item, mediaType]);
 
   const handleSave = async () => {
@@ -121,6 +117,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
       if (dateCompleted) data.dateCompleted = dateCompleted;
     }
     if (mediaType === "book") {
+      if (status) data.status = status;
       if (dateCompleted) data.dateCompleted = dateCompleted;
       if (tags) data.tags = tags;
     }
@@ -129,8 +126,6 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
       if (hoursPlayed) data.hoursPlayed = hoursPlayed;
       if (dateCompleted) data.dateCompleted = dateCompleted;
       if (yearPlayed) data.yearPlayed = yearPlayed;
-      data.backlog = backlog ? "Yes" : "";
-      data.completed = completed ? "Yes" : "";
     }
 
     try {
@@ -373,9 +368,35 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
           </>
         ) : null}
 
-        {/* Book: Completed Date & Tags */}
+        {/* Book: Status, Completed Date & Tags */}
         {isBook ? (
           <>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#000" }}>
+                Status
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  border: `1px solid rgba(0,0,0,0.1)`,
+                  fontSize: 13,
+                  backgroundColor: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">Select status...</option>
+                {BOOK_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#000" }}>
                 Completed Date
@@ -415,7 +436,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
           </>
         ) : null}
 
-        {/* Game: Status, Hours Played, Dates, Checkboxes */}
+        {/* Game: Status, Hours Played and Dates */}
         {isGame ? (
           <>
             <div style={{ marginBottom: 20 }}>
@@ -503,26 +524,6 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
               />
             </div>
 
-            <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#000" }}>
-                <input
-                  type="checkbox"
-                  checked={backlog}
-                  onChange={(e) => setBacklog(e.target.checked)}
-                  style={{ cursor: "pointer" }}
-                />
-                Backlog
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#000" }}>
-                <input
-                  type="checkbox"
-                  checked={completed}
-                  onChange={(e) => setCompleted(e.target.checked)}
-                  style={{ cursor: "pointer" }}
-                />
-                Completed
-              </label>
-            </div>
           </>
         ) : null}
 
@@ -556,7 +557,7 @@ export function RateItModal({ open, onClose, onSave, item, mediaType, highlightC
               color: "#fff",
             }}
           >
-            {isBook ? "Mark As Completed" : "Save Rating"}
+            Save Rating
           </button>
         </div>
       </div>

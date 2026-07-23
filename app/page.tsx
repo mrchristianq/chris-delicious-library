@@ -39,6 +39,12 @@ import {
   nativeSyncNow,
 } from "./native/bridge";
 import { BUNDLED_ICON_DATA_URLS } from "./native/bundledIcons";
+import {
+  normalizeBookStatusForSheet,
+  normalizeGameStatusForSheet,
+  normalizeMovieWatchStatusForSheetValue,
+  normalizeTvWatchStatusForSheetValue,
+} from "./lib/mediaStatusOptions";
 
 type Row = Record<string, string>;
 type CoverCandidate = { label: string; url: string };
@@ -373,7 +379,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.21";
+const APP_VERSION = "12.0.23";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -697,6 +703,21 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.23",
+    date: "2026-07-23",
+    notes: [
+      "Aligned Rate It statuses with each media sheet and added confirmed readback for Books and Games.",
+      "Removed conflicting game status flags and added a proper Books status selector.",
+    ],
+  },
+  {
+    version: "12.0.22",
+    date: "2026-07-23",
+    notes: [
+      "Fixed the mobile Books Completed page crashing when its page-specific settings were resolved.",
+    ],
+  },
   {
     version: "12.0.21",
     date: "2026-07-19",
@@ -2842,54 +2863,11 @@ function normalizeOwnership(value?: string): string {
 }
 
 function normalizeShowWatchStatusForSheet(value?: string): string {
-  const raw = safeStr(value);
-  if (!raw) return "";
-  const normalized = normalizeStatusToken(raw);
-  if (
-    normalized === "currently watching" ||
-    normalized === "watching" ||
-    normalized === "in progress"
-  ) {
-    return "Started";
-  }
-  if (
-    normalized === "watched" ||
-    normalized === "complete" ||
-    normalized === "done"
-  ) {
-    return "Completed";
-  }
-  if (normalized === "pending digital release") return "Backlog";
-  const allowed = ["Completed", "Abandoned", "Started", "Backlog", "Watch Next", "Paused", "Pending Return"];
-  const allowedMatch = allowed.find((status) => normalizeStatusToken(status) === normalized);
-  if (allowedMatch) return allowedMatch;
-  return raw;
+  return normalizeTvWatchStatusForSheetValue(value);
 }
 
 function normalizeMovieWatchStatusForSheet(value?: string, fallbackValue?: string): string {
-  const normalizeCandidate = (candidate?: string): string => {
-    const raw = safeStr(candidate);
-    if (!raw) return "";
-    const normalized = normalizeStatusToken(raw);
-    if (
-      normalized === "currently watching" ||
-      normalized === "watching" ||
-      normalized === "in progress"
-    ) {
-      return "Started";
-    }
-    if (
-      normalized === "completed" ||
-      normalized === "complete" ||
-      normalized === "done"
-    ) {
-      return "Watched";
-    }
-    const allowed = ["Watched", "Backlog", "Abandoned", "Started", "Pending Digital Release"];
-    return allowed.find((status) => normalizeStatusToken(status) === normalized) || "";
-  };
-
-  return normalizeCandidate(value) || normalizeCandidate(fallbackValue);
+  return normalizeMovieWatchStatusForSheetValue(value) || normalizeMovieWatchStatusForSheetValue(fallbackValue);
 }
 
 // Helper function to generate cover URL from title (served from /public/covers/)
@@ -4112,7 +4090,7 @@ export default function Page() {
       if (bookHomeMode) return "books:home";
       if (bookUpcomingFilter) return "books:upcoming";
       if (wishlistFilter) return "books:wishlist";
-      if (normalizeStatus(readingStatusFilter || undefined) === "completed") return "books:completed";
+      if ((readingStatusFilter || "").trim().toLowerCase() === "completed") return "books:completed";
       return "books:library";
     }
     if (nav === "movies") {
@@ -8061,8 +8039,19 @@ export default function Page() {
 
       const normalizeComparableValue = (fieldName: string, value: string): string => {
         const trimmed = safeStr(value);
-        if (!trimmed) return "";
         const normalizedField = normalizeSheetFieldKey(fieldName);
+
+        if (normalizedField === "backlog" || normalizedField === "completed") {
+          const lowered = trimmed.toLowerCase();
+          if (!lowered || lowered === "false" || lowered === "no" || lowered === "0" || lowered === "unchecked") {
+            return "no";
+          }
+          if (lowered === "true" || lowered === "yes" || lowered === "1" || lowered === "checked") {
+            return "yes";
+          }
+        }
+
+        if (!trimmed) return "";
 
         if (
           normalizedField === "watchstatus" ||
@@ -9674,14 +9663,16 @@ export default function Page() {
         if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
         const updates: Record<string, string> = {};
         const verifyFields: Record<string, string> = {};
+        let normalizedMovieWatchStatus = "";
         if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
         if (data.myRating) verifyFields["My Rating"] = safeStr(data.myRating);
         if (data.watchStatus) {
-          const watchStatus = safeStr(data.watchStatus);
-          updates["Watch Status"] = watchStatus;
-          updates.WatchStatus = watchStatus;
-          updates.Watched = watchStatus;
-          verifyFields["Watch Status"] = watchStatus;
+          normalizedMovieWatchStatus = normalizeMovieWatchStatusForSheet(safeStr(data.watchStatus));
+          if (!normalizedMovieWatchStatus) throw new Error("Select a valid movie watch status.");
+          updates["Watch Status"] = normalizedMovieWatchStatus;
+          updates.WatchStatus = normalizedMovieWatchStatus;
+          updates.Watched = normalizedMovieWatchStatus;
+          verifyFields["Watch Status"] = normalizedMovieWatchStatus;
         }
         if (data.watchDate) {
           const watchDateForSheet = formatDateForSheetWrite(safeStr(data.watchDate));
@@ -9702,22 +9693,26 @@ export default function Page() {
           "Failed to save movie rating"
         );
         if (isBrowserLikelyOnline()) {
-          await verifySavedFieldsFromCsv({
-            sheetName: "Movies",
-            csvUrl: moviesCsvUrl,
-            match: {
-              idField: "TMDB_ID",
-              idValue: matchTmdbId,
-              title: matchTitle,
-            },
-            verifyFields,
-          });
+          try {
+            await verifySavedFieldsFromCsv({
+              sheetName: "Movies",
+              csvUrl: moviesCsvUrl,
+              match: {
+                idField: "TMDB_ID",
+                idValue: matchTmdbId,
+                title: matchTitle,
+              },
+              verifyFields,
+            });
+          } catch (verifyError: any) {
+            throw new Error(`Google Sheet did not confirm the movie update. ${verifyError?.message || "Verification failed."}`);
+          }
         }
         setMovieDetailItem((prev: any) => ({
           ...prev,
           ...updates,
           ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
-          ...(data.watchStatus ? { watchStatus: safeStr(data.watchStatus) } : {}),
+          ...(normalizedMovieWatchStatus ? { watchStatus: normalizedMovieWatchStatus } : {}),
           ...(data.watchDate ? { watchDate: safeStr(data.watchDate) } : {}),
         }));
       } else if (rateItMediaType === "tv") {
@@ -9733,6 +9728,9 @@ export default function Page() {
         const normalizedWatchStatus = data.watchStatus
           ? normalizeShowWatchStatusForSheet(safeStr(data.watchStatus))
           : "";
+        if (data.watchStatus && !normalizedWatchStatus) {
+          throw new Error("Select a valid TV watch status.");
+        }
         if (normalizedWatchStatus) {
           updates.WatchStatus = normalizedWatchStatus;
           verifyFields.WatchStatus = normalizedWatchStatus;
@@ -9764,16 +9762,20 @@ export default function Page() {
           "Failed to save show rating"
         );
         if (isBrowserLikelyOnline()) {
-          await verifySavedFieldsFromCsv({
-            sheetName: "Shows",
-            csvUrl: tvCsvUrl,
-            match: {
-              idField: "TMDB_ID",
-              idValue: matchTmdbId,
-              title: matchTitle,
-            },
-            verifyFields,
-          });
+          try {
+            await verifySavedFieldsFromCsv({
+              sheetName: "Shows",
+              csvUrl: tvCsvUrl,
+              match: {
+                idField: "TMDB_ID",
+                idValue: matchTmdbId,
+                title: matchTitle,
+              },
+              verifyFields,
+            });
+          } catch (verifyError: any) {
+            throw new Error(`Google Sheet did not confirm the show update. ${verifyError?.message || "Verification failed."}`);
+          }
         }
         setTvDetailItem((prev: any) => ({
           ...prev,
@@ -9785,24 +9787,67 @@ export default function Page() {
       } else if (rateItMediaType === "book") {
         if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
         const updates: Record<string, string> = {};
-        // Mark As Completed flow for books:
-        // persist rating/date/tag and force Status -> Completed.
-        updates["Status"] = "Completed";
+        const verifyFields: Record<string, string> = {};
+        const normalizedBookStatus = data.status
+          ? normalizeBookStatusForSheet(safeStr(data.status))
+          : "";
+        if (data.status && !normalizedBookStatus) {
+          throw new Error("Select a valid book status.");
+        }
+        if (normalizedBookStatus) {
+          updates.Status = normalizedBookStatus;
+          verifyFields.Status = normalizedBookStatus;
+        }
         if (data.myRating) {
-          updates["My Rating"] = safeStr(data.myRating);
-          updates["MyRating"] = safeStr(data.myRating);
+          const rating = safeStr(data.myRating);
+          updates["My Rating"] = rating;
+          updates.MyRating = rating;
+          verifyFields["My Rating"] = rating;
         }
         if (data.dateCompleted) {
-          updates["Completed Date"] = safeStr(data.dateCompleted);
-          updates["Date Completed"] = safeStr(data.dateCompleted);
-          updates["CompletedDate"] = safeStr(data.dateCompleted);
+          const completedDateForSheet = formatDateForSheetWrite(safeStr(data.dateCompleted));
+          updates["Completed Date"] = completedDateForSheet;
+          updates["Date Completed"] = completedDateForSheet;
+          updates.CompletedDate = completedDateForSheet;
+          verifyFields.CompletedDate = completedDateForSheet;
         }
-        if (data.tags) updates["Tag"] = safeStr(data.tags);
-        await postSheetWrite(booksWriteUrl, { action: "updateBook", match: { title: safeStr(rateItItem.title) }, updates }, "Failed to save book rating");
+        if (data.tags) {
+          const tags = safeStr(data.tags);
+          updates.Tag = tags;
+          updates.tags = tags;
+          verifyFields.tags = tags;
+        }
+        const bookMatch = buildBookSheetMatch(rateItItem);
+        const matchTitle = bookMatch.title;
+        const bookReadbackId =
+          (bookMatch.googleBooksVolumeId && { idField: "GoogleBooksVolumeId", idValue: bookMatch.googleBooksVolumeId }) ||
+          (bookMatch.openLibraryWorkKey && { idField: "OpenLibraryWorkKey", idValue: bookMatch.openLibraryWorkKey }) ||
+          (bookMatch.isbn && { idField: "isbn", idValue: bookMatch.isbn }) ||
+          (bookMatch.audibleAsin && { idField: "AudibleASIN", idValue: bookMatch.audibleAsin }) ||
+          (bookMatch.audnexusAsin && { idField: "AudnexusASIN", idValue: bookMatch.audnexusAsin }) ||
+          (bookMatch.hardcoverId && { idField: "HardcoverID", idValue: bookMatch.hardcoverId }) ||
+          {};
+        await postSheetWrite(
+          booksWriteUrl,
+          { action: "updateBook", match: bookMatch, updates },
+          "Failed to save book rating"
+        );
+        if (isBrowserLikelyOnline()) {
+          try {
+            await verifySavedFieldsFromCsv({
+              sheetName: "Books",
+              csvUrl: booksCsvUrl,
+              match: { ...bookReadbackId, title: matchTitle },
+              verifyFields,
+            });
+          } catch (verifyError: any) {
+            throw new Error(`Google Sheet did not confirm the book update. ${verifyError?.message || "Verification failed."}`);
+          }
+        }
         setBookDetailItem((prev: any) => ({
           ...prev,
           ...updates,
-          status: "Completed",
+          ...(normalizedBookStatus ? { status: normalizedBookStatus } : {}),
           myRating: safeStr(data.myRating || prev?.myRating || prev?.["My Rating"] || prev?.MyRating),
           completedDate: safeStr(data.dateCompleted || prev?.completedDate || prev?.["Completed Date"] || prev?.CompletedDate),
           tags: safeStr(data.tags || prev?.tags || prev?.Tag),
@@ -9814,52 +9859,120 @@ export default function Page() {
         }));
         setBookRows((prev) =>
           prev.map((row) => {
-            if (safeStr(row?.Title) !== safeStr(rateItItem.title)) return row;
+            const sameBook =
+              (bookMatch.googleBooksVolumeId && safeStr(row.GoogleBooksVolumeId) === bookMatch.googleBooksVolumeId) ||
+              (bookMatch.openLibraryWorkKey && safeStr(row.OpenLibraryWorkKey) === bookMatch.openLibraryWorkKey) ||
+              (bookMatch.isbn && safeStr(row.isbn || row.ISBN) === bookMatch.isbn) ||
+              (!bookMatch.googleBooksVolumeId &&
+                !bookMatch.openLibraryWorkKey &&
+                !bookMatch.isbn &&
+                safeStr(row.Title).toLowerCase() === matchTitle.toLowerCase());
+            if (!sameBook) return row;
             return {
               ...row,
-              Status: "Completed",
+              ...(normalizedBookStatus ? { Status: normalizedBookStatus } : {}),
               ...(data.myRating ? { "My Rating": safeStr(data.myRating), MyRating: safeStr(data.myRating) } : {}),
-              ...(data.dateCompleted ? { "Completed Date": safeStr(data.dateCompleted), "Date Completed": safeStr(data.dateCompleted), CompletedDate: safeStr(data.dateCompleted) } : {}),
-              ...(data.tags ? { Tag: safeStr(data.tags) } : {}),
+              ...(data.dateCompleted
+                ? {
+                    "Completed Date": updates.CompletedDate,
+                    "Date Completed": updates.CompletedDate,
+                    CompletedDate: updates.CompletedDate,
+                  }
+                : {}),
+              ...(data.tags ? { Tag: safeStr(data.tags), tags: safeStr(data.tags) } : {}),
             };
           })
         );
       } else if (rateItMediaType === "game") {
         if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
         const updates: Record<string, string> = {};
-        if (data.myRating) updates["My Rating"] = safeStr(data.myRating);
-        if (data.status) updates["Status"] = safeStr(data.status);
-        if (data.hoursPlayed) updates["Hours Played"] = safeStr(data.hoursPlayed);
-        if (data.dateCompleted) updates["Date Completed"] = safeStr(data.dateCompleted);
-        if (data.yearPlayed) updates["Year Played"] = safeStr(data.yearPlayed);
-        if (data.backlog !== undefined) updates["Backlog"] = data.backlog ? "Yes" : "";
-        if (data.completed !== undefined) updates["Completed"] = data.completed ? "Yes" : "";
+        const verifyFields: Record<string, string> = {};
+        if (data.myRating) {
+          updates["My Rating"] = safeStr(data.myRating);
+          verifyFields["My Rating"] = safeStr(data.myRating);
+        }
+        const normalizedGameStatus = data.status
+          ? normalizeGameStatusForSheet(safeStr(data.status))
+          : "";
+        if (data.status && !normalizedGameStatus) {
+          throw new Error("Select a valid game status.");
+        }
+        if (normalizedGameStatus) {
+          updates.Status = normalizedGameStatus;
+          updates.Backlog = ["Queued", "Replay", "Backlog"].includes(normalizedGameStatus) ? "Yes" : "No";
+          updates.Completed = normalizedGameStatus === "Completed" ? "Yes" : "No";
+          verifyFields.Status = normalizedGameStatus;
+          verifyFields.Backlog = updates.Backlog;
+          verifyFields.Completed = updates.Completed;
+        }
+        if (data.hoursPlayed) {
+          updates["Hours Played"] = safeStr(data.hoursPlayed);
+          verifyFields["Hours Played"] = safeStr(data.hoursPlayed);
+        }
+        if (data.dateCompleted) {
+          const completedDateForSheet = formatDateForSheetWrite(safeStr(data.dateCompleted));
+          updates["Date Completed"] = completedDateForSheet;
+          verifyFields["Date Completed"] = completedDateForSheet;
+        }
+        if (data.yearPlayed) {
+          updates["Year Played"] = safeStr(data.yearPlayed);
+          verifyFields["Year Played"] = safeStr(data.yearPlayed);
+        }
+        const matchIgdbId = safeStr(rateItItem.igdbId || rateItItem.IGDB_ID);
+        const matchTitle = safeStr(rateItItem.title || rateItItem.name);
+        const matchPlatform = safeStr(rateItItem.platform || rateItItem.Platform || rateItItem.__renderPlatform);
         await postSheetWrite(gamesWriteUrl, {
           action: "updateGame",
           match: {
-            igdbId: safeStr(rateItItem.igdbId || rateItItem.IGDB_ID),
-            title: safeStr(rateItItem.title || rateItItem.name),
-            platform: safeStr(rateItItem.platform || rateItItem.Platform || rateItItem.__renderPlatform),
+            igdbId: matchIgdbId,
+            title: matchTitle,
+            platform: matchPlatform,
           },
           updates,
         }, "Failed to save game rating");
+        if (isBrowserLikelyOnline()) {
+          try {
+            await verifySavedFieldsFromCsv({
+              sheetName: "Games",
+              csvUrl: gamesCsvUrl,
+              match: {
+                idField: "IGDB_ID",
+                idValue: matchIgdbId,
+                title: matchTitle,
+                platform: matchPlatform,
+              },
+              verifyFields,
+            });
+          } catch (verifyError: any) {
+            throw new Error(`Google Sheet did not confirm the game update. ${verifyError?.message || "Verification failed."}`);
+          }
+        }
         setGameDetailItem((prev: any) => ({
           ...prev,
           ...updates,
           ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
-          ...(data.status ? { status: safeStr(data.status) } : {}),
+          ...(normalizedGameStatus
+            ? {
+                status: normalizedGameStatus,
+                gameStatus: normalizedGameStatus,
+                playStatus: normalizedGameStatus,
+                backlog: updates.Backlog,
+                completed: updates.Completed,
+              }
+            : {}),
           ...(data.hoursPlayed ? { hoursPlayed: safeStr(data.hoursPlayed) } : {}),
           ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
           ...(data.yearPlayed ? { yearPlayed: safeStr(data.yearPlayed) } : {}),
         }));
       }
+      setRefreshNonce((nonce) => nonce + 1);
       setRateItModalOpen(false);
       triggerSaveToast();
     } catch (e: any) {
       window.alert(e?.message || "Failed to save rating");
       throw e;
     }
-  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, tvCsvUrl, booksWriteUrl, gamesWriteUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, triggerSaveToast]);
+  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, tvCsvUrl, booksWriteUrl, booksCsvUrl, gamesWriteUrl, gamesCsvUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, buildBookSheetMatch, triggerSaveToast]);
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
