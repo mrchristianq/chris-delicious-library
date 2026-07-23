@@ -379,7 +379,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.23";
+const APP_VERSION = "12.0.29";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -633,6 +633,8 @@ const MEDIA_COVER_SIZE_SETTING_KEYS = {
   audiobooks: "mediaCoverSizePct:audiobooks",
 } as const;
 const SHELF_THEME_MODE_SETTING_KEY = "shelfThemeMode";
+const SHELF_HORIZONTAL_GAP_SETTING_KEY = "shelfHorizontalGapPx";
+const SHELF_VERTICAL_MARGIN_SETTING_KEY = "shelfVerticalMarginPx";
 const COVER_TITLES_VISIBLE_SETTING_KEY = "coverTitlesVisible";
 const DEFAULT_MEDIA_COVER_SIZE_PCT = {
   tv: 93,
@@ -703,6 +705,54 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.29",
+    date: "2026-07-23",
+    notes: [
+      "Prevented Rate It saves from opening incomplete Untitled details pages when rating from quick details.",
+      "Updated confirmed ratings and statuses in the active quick-details panel and library row without creating partial records.",
+      "Removed Pending Digital Release from the movie Rate It status choices while preserving it in normal movie editing.",
+    ],
+  },
+  {
+    version: "12.0.28",
+    date: "2026-07-23",
+    notes: [
+      "Refined Rate It stars to use fixed positions with fractional opacity and clearer Apple-style sizing.",
+      "Balanced every media status grid and made rating fields fill each row evenly without unused half-width space.",
+    ],
+  },
+  {
+    version: "12.0.27",
+    date: "2026-07-23",
+    notes: [
+      "Fixed completed-book cover badges so personal ratings remain on the app's 5.0-point book scale.",
+    ],
+  },
+  {
+    version: "12.0.26",
+    date: "2026-07-23",
+    notes: [
+      "Redesigned Rate It with a compact Apple-style rating card, community-average comparison chart, and direct status choices.",
+      "Added immediate saving feedback, verified Google Sheets confirmation, an inline failure state, haptics, and confirmation tones.",
+    ],
+  },
+  {
+    version: "12.0.25",
+    date: "2026-07-23",
+    notes: [
+      "Added universal horizontal and vertical cover-spacing controls to Settings for every theme.",
+      "Gave Wood Shelf 22px of built-in row clearance so its fixed shelf lip remains properly aligned.",
+    ],
+  },
+  {
+    version: "12.0.24",
+    date: "2026-07-23",
+    notes: [
+      "Added a desktop-only Wood Shelf theme for Cover view with stretchable wood row backs and fixed-height shelf lips.",
+      "Kept mobile, List view, cover sizing, sorting, and interactions unchanged.",
+    ],
+  },
   {
     version: "12.0.23",
     date: "2026-07-23",
@@ -2635,8 +2685,11 @@ function formatItemPersonalRatingBadge(item: any): string | null {
       item?.personalRating
   );
   if (rating === null) return null;
-  const tenScaleValue = mediaType === "book" && rating <= 5 ? rating * 2 : rating;
-  const rounded = Math.round(tenScaleValue * 10) / 10;
+  if (mediaType === "book") {
+    const fiveScaleValue = rating > 5 && rating <= 10 ? rating / 2 : Math.min(rating, 5);
+    return fiveScaleValue.toFixed(1);
+  }
+  const rounded = Math.round(rating * 10) / 10;
   return rounded % 1 === 0 ? `${rounded}` : `${rounded.toFixed(1)}`;
 }
 
@@ -3671,9 +3724,11 @@ type GameQuickLinkKey = "home" | "library" | "backlog" | "completed" | "abandone
 type GameViewMode = GameQuickLinkKey | "custom";
 type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "upcoming";
 type BuiltInSmartListKey = "year-this" | "current" | "completed" | "abandoned";
-type ShelfThemeMode = "light" | "dark" | "classic";
+type ShelfThemeMode = "light" | "dark" | "classic" | "wood";
+type ShelfSpacing = { horizontal: number; vertical: number };
+const DEFAULT_SHELF_SPACING: ShelfSpacing = { horizontal: 14, vertical: 0 };
 const normalizeShelfThemeMode = (value: unknown): ShelfThemeMode =>
-  value === "dark" || value === "classic" ? value : "light";
+  value === "dark" || value === "classic" || value === "wood" ? value : "light";
 type HighlightThemeMode = "light" | "dark";
 
 function isPersistedStandardSortView(nav: NavKey): nav is "home" | "books" | "movies" | "tv" | "games" | "current" | "completed" | "abandoned" | "year-this" {
@@ -4053,8 +4108,6 @@ export default function Page() {
   const [posterSizeMovies, setPosterSizeMovies] = useState<number>(108);
   const [posterSizeBooks, setPosterSizeBooks] = useState<number>(115);
   const [, setBookHeightMultiplier] = useState<number>(1.5);
-  const [coverGapSize, setCoverGapSize] = useState<number>(24);
-  const [tight, setTight] = useState<boolean>(true);
   const [watchFilter, setWatchFilter] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -4343,6 +4396,7 @@ export default function Page() {
   const [discoverSidebarHeaderFontWeight, setDiscoverSidebarHeaderFontWeight] = useState<string>("700");
   const [discoverSidebarIconSize, setDiscoverSidebarIconSize] = useState<number>(16);
   const [shelfThemeMode, setShelfThemeMode] = useState<ShelfThemeMode>("light");
+  const [shelfSpacing, setShelfSpacing] = useState<ShelfSpacing>(DEFAULT_SHELF_SPACING);
   const [sidebarSectionGap, setSidebarSectionGap] = useState<number>(3);
   const [librarySidebarItemGap, setLibrarySidebarItemGap] = useState<number>(0);
   const [smartListsSidebarItemGap, setSmartListsSidebarItemGap] = useState<number>(0);
@@ -5120,21 +5174,19 @@ export default function Page() {
   const SHELF_SIDE_PADDING = 10;
   const COVER_TITLE_LABEL_SPACE = 28;
   const COMPLETED_DATE_LABEL_SPACE = 18;
-  const RAW_COVER_STANDARD_GAP = 10;
+  const SIMPLE_SHELF_VERTICAL_PADDING = 7;
   const LIP_FROM_BOTTOM = 5;
+  const WOOD_SHELF_LIP_HEIGHT = 22;
+  const WOOD_SHELF_IMAGE = "/shelf-honey-oak.png";
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
   const SETTINGS_WINDOW_DEFAULT_HEIGHT = 680;
   const SETTINGS_WINDOW_MARGIN = 16;
   const SETTINGS_WINDOW_Z_INDEX = 9000;
   const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
-  const baseGap = tight ? Math.max(0, coverGapSize - 6) : coverGapSize;
-  const gap = isMobileLayout ? Math.max(0, baseGap - 4) : baseGap;
-  const shelfGap = isMacCoverMode || DISABLE_INSETS
-    ? RAW_COVER_STANDARD_GAP
-    : isSimpleShelfPresentation
-      ? Math.max(0, gap - (isMobileLayout ? 2 : 4))
-      : gap;
-  const simpleShelfVerticalPadding = isSimpleShelfPresentation ? Math.max(0, Math.round(shelfGap * 0.5)) : 0;
+  const shelfGap = shelfSpacing.horizontal;
+  const woodShelfVerticalClearance = shelfThemeMode === "wood" && !isMobileLayout ? 22 : 0;
+  const shelfVerticalMargin = shelfSpacing.vertical + woodShelfVerticalClearance;
+  const simpleShelfVerticalPadding = isSimpleShelfPresentation ? SIMPLE_SHELF_VERTICAL_PADDING : 0;
   const shelfSidePadding = isSimpleShelfPresentation ? shelfGap : SHELF_SIDE_PADDING;
   const shelfBottomOffset = isSimpleShelfPresentation ? simpleShelfVerticalPadding : LIP_FROM_BOTTOM;
   const statusDotPixelSize = useMemo(
@@ -9659,6 +9711,14 @@ export default function Page() {
     if (!rateItItem || !rateItMediaType) return;
 
     try {
+      const rateItItemKey = buildTypedItemKey(rateItItem, rateItMediaType);
+      const updateMatchingSidebarItem = (patch: Record<string, unknown>) => {
+        setSidebarDetailItem((prev: any) => {
+          if (!prev || buildTypedItemKey(prev, rateItMediaType) !== rateItItemKey) return prev;
+          return { ...prev, ...patch };
+        });
+      };
+
       if (rateItMediaType === "movie") {
         if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
         const updates: Record<string, string> = {};
@@ -9708,13 +9768,56 @@ export default function Page() {
             throw new Error(`Google Sheet did not confirm the movie update. ${verifyError?.message || "Verification failed."}`);
           }
         }
-        setMovieDetailItem((prev: any) => ({
-          ...prev,
+        const moviePatch = {
           ...updates,
-          ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
-          ...(normalizedMovieWatchStatus ? { watchStatus: normalizedMovieWatchStatus } : {}),
-          ...(data.watchDate ? { watchDate: safeStr(data.watchDate) } : {}),
-        }));
+          ...(data.myRating
+            ? {
+                myRating: safeStr(data.myRating),
+                MyRating: safeStr(data.myRating),
+                "My Rating": safeStr(data.myRating),
+              }
+            : {}),
+          ...(normalizedMovieWatchStatus
+            ? {
+                watched: normalizedMovieWatchStatus,
+                watchStatus: normalizedMovieWatchStatus,
+                WatchStatus: normalizedMovieWatchStatus,
+                Watched: normalizedMovieWatchStatus,
+                "Watch Status": normalizedMovieWatchStatus,
+              }
+            : {}),
+          ...(data.watchDate
+            ? {
+                watchDate: safeStr(data.watchDate),
+                WatchDate: updates.WatchDate,
+              }
+            : {}),
+        };
+        setMovieDetailItem((prev: any) => {
+          if (!prev || buildTypedItemKey(prev, "movie") !== rateItItemKey) return prev;
+          return { ...prev, ...moviePatch };
+        });
+        updateMatchingSidebarItem(moviePatch);
+        setMovieRows((prev) =>
+          prev.map((row) =>
+            buildTypedItemKey(row, "movie") === rateItItemKey
+              ? {
+                  ...row,
+                  ...(data.myRating
+                    ? { "My Rating": safeStr(data.myRating), MyRating: safeStr(data.myRating) }
+                    : {}),
+                  ...(normalizedMovieWatchStatus
+                    ? {
+                        "Watch Status": normalizedMovieWatchStatus,
+                        WatchStatus: normalizedMovieWatchStatus,
+                        Watched: normalizedMovieWatchStatus,
+                      }
+                    : {}),
+                  ...(data.watchDate ? { WatchDate: updates.WatchDate } : {}),
+                }
+              : row
+          )
+        );
       } else if (rateItMediaType === "tv") {
         if (!showsWriteUrl) throw new Error("TV write URL is not configured.");
         const updates: Record<string, string> = {};
@@ -9777,13 +9880,55 @@ export default function Page() {
             throw new Error(`Google Sheet did not confirm the show update. ${verifyError?.message || "Verification failed."}`);
           }
         }
-        setTvDetailItem((prev: any) => ({
-          ...prev,
+        const tvPatch = {
           ...updates,
-          ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
-          ...(updates.WatchStatus ? { watchStatus: updates.WatchStatus } : {}),
-          ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
-        }));
+          ...(data.myRating
+            ? {
+                myRating: safeStr(data.myRating),
+                MyRating: safeStr(data.myRating),
+                "My Rating": safeStr(data.myRating),
+              }
+            : {}),
+          ...(updates.WatchStatus
+            ? {
+                watched: updates.WatchStatus,
+                watchStatus: updates.WatchStatus,
+                WatchStatus: updates.WatchStatus,
+              }
+            : {}),
+          ...(data.dateCompleted
+            ? {
+                dateCompleted: safeStr(data.dateCompleted),
+                completedDate: safeStr(data.dateCompleted),
+                CompletedDate: updates.CompletedDate,
+              }
+            : {}),
+        };
+        setTvDetailItem((prev: any) => {
+          if (!prev || buildTypedItemKey(prev, "tv") !== rateItItemKey) return prev;
+          return { ...prev, ...tvPatch };
+        });
+        updateMatchingSidebarItem(tvPatch);
+        setTvRows((prev) =>
+          prev.map((row) =>
+            buildTypedItemKey(row, "tv") === rateItItemKey
+              ? {
+                  ...row,
+                  ...(data.myRating
+                    ? { "My Rating": safeStr(data.myRating), MyRating: safeStr(data.myRating) }
+                    : {}),
+                  ...(updates.WatchStatus ? { WatchStatus: updates.WatchStatus } : {}),
+                  ...(data.dateCompleted
+                    ? {
+                        "Completed Date": updates.CompletedDate,
+                        "Date Completed": updates.CompletedDate,
+                        CompletedDate: updates.CompletedDate,
+                      }
+                    : {}),
+                }
+              : row
+          )
+        );
       } else if (rateItMediaType === "book") {
         if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
         const updates: Record<string, string> = {};
@@ -9844,19 +9989,36 @@ export default function Page() {
             throw new Error(`Google Sheet did not confirm the book update. ${verifyError?.message || "Verification failed."}`);
           }
         }
-        setBookDetailItem((prev: any) => ({
-          ...prev,
+        const bookPatch = {
           ...updates,
           ...(normalizedBookStatus ? { status: normalizedBookStatus } : {}),
-          myRating: safeStr(data.myRating || prev?.myRating || prev?.["My Rating"] || prev?.MyRating),
-          completedDate: safeStr(data.dateCompleted || prev?.completedDate || prev?.["Completed Date"] || prev?.CompletedDate),
-          tags: safeStr(data.tags || prev?.tags || prev?.Tag),
-          Tag: safeStr(data.tags || prev?.Tag),
-          "My Rating": safeStr(data.myRating || prev?.["My Rating"] || prev?.MyRating),
-          MyRating: safeStr(data.myRating || prev?.MyRating || prev?.["My Rating"]),
-          "Completed Date": safeStr(data.dateCompleted || prev?.["Completed Date"] || prev?.CompletedDate),
-          CompletedDate: safeStr(data.dateCompleted || prev?.CompletedDate || prev?.["Completed Date"]),
-        }));
+          ...(data.myRating
+            ? {
+                myRating: safeStr(data.myRating),
+                "My Rating": safeStr(data.myRating),
+                MyRating: safeStr(data.myRating),
+              }
+            : {}),
+          ...(data.dateCompleted
+            ? {
+                completedDate: safeStr(data.dateCompleted),
+                dateCompleted: safeStr(data.dateCompleted),
+                "Completed Date": updates.CompletedDate,
+                CompletedDate: updates.CompletedDate,
+              }
+            : {}),
+          ...(data.tags
+            ? {
+                tags: safeStr(data.tags),
+                Tag: safeStr(data.tags),
+              }
+            : {}),
+        };
+        setBookDetailItem((prev: any) => {
+          if (!prev || buildTypedItemKey(prev, "book") !== rateItItemKey) return prev;
+          return { ...prev, ...bookPatch };
+        });
+        updateMatchingSidebarItem(bookPatch);
         setBookRows((prev) =>
           prev.map((row) => {
             const sameBook =
@@ -9947,10 +10109,15 @@ export default function Page() {
             throw new Error(`Google Sheet did not confirm the game update. ${verifyError?.message || "Verification failed."}`);
           }
         }
-        setGameDetailItem((prev: any) => ({
-          ...prev,
+        const gamePatch = {
           ...updates,
-          ...(data.myRating ? { myRating: safeStr(data.myRating) } : {}),
+          ...(data.myRating
+            ? {
+                myRating: safeStr(data.myRating),
+                MyRating: safeStr(data.myRating),
+                "My Rating": safeStr(data.myRating),
+              }
+            : {}),
           ...(normalizedGameStatus
             ? {
                 status: normalizedGameStatus,
@@ -9963,13 +10130,38 @@ export default function Page() {
           ...(data.hoursPlayed ? { hoursPlayed: safeStr(data.hoursPlayed) } : {}),
           ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
           ...(data.yearPlayed ? { yearPlayed: safeStr(data.yearPlayed) } : {}),
-        }));
+        };
+        setGameDetailItem((prev: any) => {
+          if (!prev || buildTypedItemKey(prev, "game") !== rateItItemKey) return prev;
+          return { ...prev, ...gamePatch };
+        });
+        updateMatchingSidebarItem(gamePatch);
+        setGameRows((prev) =>
+          prev.map((row) =>
+            buildTypedItemKey(row, "game") === rateItItemKey
+              ? {
+                  ...row,
+                  ...(data.myRating
+                    ? { "My Rating": safeStr(data.myRating), MyRating: safeStr(data.myRating) }
+                    : {}),
+                  ...(normalizedGameStatus
+                    ? {
+                        Status: normalizedGameStatus,
+                        Backlog: updates.Backlog,
+                        Completed: updates.Completed,
+                      }
+                    : {}),
+                  ...(data.hoursPlayed ? { "Hours Played": safeStr(data.hoursPlayed) } : {}),
+                  ...(data.dateCompleted ? { "Date Completed": updates["Date Completed"] } : {}),
+                  ...(data.yearPlayed ? { "Year Played": safeStr(data.yearPlayed) } : {}),
+                }
+              : row
+          )
+        );
       }
       setRefreshNonce((nonce) => nonce + 1);
-      setRateItModalOpen(false);
       triggerSaveToast();
     } catch (e: any) {
-      window.alert(e?.message || "Failed to save rating");
       throw e;
     }
   }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, tvCsvUrl, booksWriteUrl, booksCsvUrl, gamesWriteUrl, gamesCsvUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, buildBookSheetMatch, triggerSaveToast]);
@@ -11076,8 +11268,6 @@ export default function Page() {
     } catch {}
     setMobileCoverScaleByGroup(perGroupMobileCoverScale);
     setBookHeightMultiplier(getSetting("bookHeightMultiplier", 1.5));
-    setCoverGapSize(getSetting("coverGapSize", 24));
-    setTight(getSetting("tight", true));
 
     setPosterSizeGames(getSetting("posterSizeGames", 108));
     setMediaCoverSizePct({
@@ -11101,6 +11291,16 @@ export default function Page() {
     setRatingBadgeOffsetX(getSetting("ratingBadgeOffsetX", 0));
     setRatingBadgeOffsetY(getSetting("ratingBadgeOffsetY", 0));
     setShelfThemeMode(normalizeShelfThemeMode(getSetting(SHELF_THEME_MODE_SETTING_KEY, "light")));
+    setShelfSpacing({
+      horizontal: Math.max(
+        0,
+        Math.min(40, Math.round(Number(getSetting(SHELF_HORIZONTAL_GAP_SETTING_KEY, DEFAULT_SHELF_SPACING.horizontal))))
+      ),
+      vertical: Math.max(
+        0,
+        Math.min(60, Math.round(Number(getSetting(SHELF_VERTICAL_MARGIN_SETTING_KEY, DEFAULT_SHELF_SPACING.vertical))))
+      ),
+    });
     setCoverTitlesVisible(getSetting(COVER_TITLES_VISIBLE_SETTING_KEY, false));
 
     setIconSize(getSetting("iconSize", 16));
@@ -11866,6 +12066,47 @@ export default function Page() {
     setShelfThemeMode(nextMode);
     saveSetting(SHELF_THEME_MODE_SETTING_KEY, nextMode, "Themes", "Shelf Theme Mode");
   };
+  const updateShelfSpacing = useCallback(
+    (axis: "horizontal" | "vertical", value: number) => {
+      const max = axis === "horizontal" ? 40 : 60;
+      const nextValue = Math.max(0, Math.min(max, Math.round(value)));
+      setShelfSpacing((prev) => ({
+        ...prev,
+        [axis]: nextValue,
+      }));
+
+      const key =
+        axis === "horizontal"
+          ? SHELF_HORIZONTAL_GAP_SETTING_KEY
+          : SHELF_VERTICAL_MARGIN_SETTING_KEY;
+      if (debounceTimers.current[key]) clearTimeout(debounceTimers.current[key]);
+      debounceTimers.current[key] = setTimeout(() => {
+        saveSetting(
+          key,
+          nextValue,
+          "Display",
+          `${axis === "horizontal" ? "Horizontal Cover Gap" : "Vertical Row Margin"} (px)`
+        );
+        delete debounceTimers.current[key];
+      }, 150);
+    },
+    [saveSetting]
+  );
+  const resetShelfSpacing = useCallback(() => {
+    setShelfSpacing({ ...DEFAULT_SHELF_SPACING });
+    saveSetting(
+      SHELF_HORIZONTAL_GAP_SETTING_KEY,
+      DEFAULT_SHELF_SPACING.horizontal,
+      "Display",
+      "Horizontal Cover Gap (px)"
+    );
+    saveSetting(
+      SHELF_VERTICAL_MARGIN_SETTING_KEY,
+      DEFAULT_SHELF_SPACING.vertical,
+      "Display",
+      "Vertical Row Margin (px)"
+    );
+  }, [saveSetting]);
   const updateCoverTitlesVisible = (value: boolean) => {
     setCoverTitlesVisible(value);
     saveSetting(COVER_TITLES_VISIBLE_SETTING_KEY, value, "Themes", "Show item titles under covers");
@@ -15564,6 +15805,11 @@ export default function Page() {
     const stored = safeStr(getSetting(`${VIEW_DISPLAY_MODE_SETTING_PREFIX}${activeListViewKey}`, "cover"));
     return stored === "list" ? "list" : "cover";
   }, [activeListViewKey, displayModeNonce, getSetting]);
+  const isWoodShelfPresentation =
+    shelfThemeMode === "wood" && !isMobileLayout && activeDisplayMode === "cover";
+  const activeShelfBottomOffset = isWoodShelfPresentation
+    ? WOOD_SHELF_LIP_HEIGHT
+    : shelfBottomOffset;
 
   const activeListColumns = useMemo<ListColumnKey[]>(() => {
     if (!activeListViewKey) return defaultListColumns;
@@ -17414,11 +17660,12 @@ export default function Page() {
     if (currentShelf.length > 0) out.push(currentShelf);
 
     const headerOffset = 140;
-    const minShelves = Math.max(1, Math.ceil(Math.max(0, viewportH - headerOffset) / shelfRowHeight));
+    const effectiveShelfRowHeight = shelfRowHeight + shelfVerticalMargin;
+    const minShelves = Math.max(1, Math.ceil(Math.max(0, viewportH - headerOffset) / effectiveShelfRowHeight));
     while (out.length < minShelves) out.push([]);
 
     return out;
-  }, [shows, viewportH, shelfRowHeight, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout, nav]);
+  }, [shows, viewportH, shelfRowHeight, shelfVerticalMargin, stageWidth, shelfSidePadding, shelfGap, getItemVisualLayout, nav]);
 
   const shelfHeights = useMemo(() => {
     const getRowMetadataSpace = (shelfShows: any[]) => {
@@ -17445,7 +17692,7 @@ export default function Page() {
       }, 0);
     };
 
-    return shelves.map((shelfShows, shelfIndex) => {
+    const baseHeights = shelves.map((shelfShows, shelfIndex) => {
       const tvWatchlistSectionSpace =
         nav === "watchlist-tv" &&
         shelfShows.length > 0 &&
@@ -17483,7 +17730,8 @@ export default function Page() {
       }, 0);
       return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows));
     });
-  }, [coverTitlesVisible, getItemVisualLayout, getShelfMetadataLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.movies, nav, shelfRowHeight, shelves]);
+    return baseHeights.map((height) => height + shelfVerticalMargin);
+  }, [coverTitlesVisible, getItemVisualLayout, getShelfMetadataLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.movies, nav, shelfRowHeight, shelfVerticalMargin, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -17501,6 +17749,7 @@ export default function Page() {
     const localScroll = Math.max(0, windowScrollY - stageTopAbs);
     const viewH = Math.max(1, viewportH);
     const hasVariableRowHeights =
+      shelfVerticalMargin > 0 ||
       nav === "books" ||
       nav === "watchlist-tv" ||
       isUpcomingView ||
@@ -17555,7 +17804,7 @@ export default function Page() {
       padTop,
       padBottom,
     };
-  }, [isMobileLayout, isUpcomingView, nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelves.length, stageTopAbs, viewportH, windowScrollY]);
+  }, [isMobileLayout, isUpcomingView, nav, shelfHeights, shelfOffsets.totalHeight, shelfOffsets.offsets, shelfRowHeight, shelfVerticalMargin, shelves.length, stageTopAbs, viewportH, windowScrollY]);
 
   const visibleShelves = useMemo(
     () => shelves.slice(shelfRenderWindow.start, shelfRenderWindow.end),
@@ -23740,6 +23989,82 @@ export default function Page() {
                   </div>
                 </div>
 
+                {/* Theme spacing section */}
+                <div
+                  style={{
+                    borderRadius: 12,
+                    border: "1px solid rgba(74, 126, 212, 0.2)",
+                    background: "rgba(255,255,255,0.7)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(74, 126, 212, 0.14)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: "#4a7ed4", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                          Cover Spacing
+                        </div>
+                        <div style={{ marginTop: 2, fontSize: 9.5, color: "#7a7a80" }}>
+                          Applies to every theme
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetShelfSpacing}
+                        style={{
+                          border: "1px solid rgba(74, 126, 212, 0.32)",
+                          background: "rgba(74,126,212,0.08)",
+                          color: "#4a7ed4",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          borderRadius: 999,
+                          padding: "3px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                    {(
+                      [
+                        {
+                          label: "Horizontal",
+                          axis: "horizontal",
+                          value: shelfSpacing.horizontal,
+                          max: 40,
+                          help: "Space between covers",
+                        },
+                        {
+                          label: "Vertical",
+                          axis: "vertical",
+                          value: shelfSpacing.vertical,
+                          max: 60,
+                          help: "Space above each cover row",
+                        },
+                      ] as const
+                    ).map(({ label, axis, value, max, help }) => (
+                      <label key={axis} style={{ display: "grid", gridTemplateColumns: "64px 1fr 38px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
+                        <span>
+                          <span style={{ display: "block", fontWeight: 600 }}>{label}</span>
+                          <span style={{ display: "block", marginTop: 1, fontSize: 8.5, lineHeight: 1.15, color: "#8a8a8f" }}>{help}</span>
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={max}
+                          step={1}
+                          value={value}
+                          onChange={(e) => updateShelfSpacing(axis, Number(e.target.value))}
+                          style={{ width: "100%", accentColor: "#4a7ed4" }}
+                        />
+                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{value}px</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Logo section */}
                 <div
                   style={{
@@ -25121,7 +25446,7 @@ export default function Page() {
               tvEpisodes={tvEpisodeRows}
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
-              themeMode={shelfThemeMode}
+              themeMode={shelfThemeMode === "wood" ? "light" : shelfThemeMode}
               isMobileLayout={isMobileLayout}
               mediaTabColors={{
                 book: activeSidebarHighlightColors.books,
@@ -25147,6 +25472,17 @@ export default function Page() {
                 { key: "light", label: "Light", description: "Bright off-white shelves with crisp covers and dark titles.", shelfBg: "linear-gradient(180deg, #f6f5f3 0%, #e9e8e4 100%)", tileBg: "linear-gradient(135deg, #e6edf3 0%, #c6d4e3 100%)", titleColor: "rgba(48, 56, 70, 0.92)", accent: "#41b65c" },
                 { key: "dark", label: "Dark", description: "Deep slate shelves with soft halos around covers and light titles.", shelfBg: "linear-gradient(180deg, #1c2128 0%, #14181d 100%)", tileBg: "linear-gradient(135deg, #3a4554 0%, #1f2731 100%)", titleColor: "rgba(232, 236, 244, 0.86)", accent: "#5fb3ff" },
                 { key: "classic", label: "Classic", description: "Warm wood-tone shelves echoing the original Delicious Library look.", shelfBg: "linear-gradient(180deg, #8b6a44 0%, #614528 100%)", tileBg: "linear-gradient(135deg, #d6b58a 0%, #9a6f3e 100%)", titleColor: "rgba(247, 235, 215, 0.92)", accent: "#f0b463" },
+                ...(!isMobileLayout
+                  ? [{
+                      key: "wood" as ShelfThemeMode,
+                      label: "Wood Shelf",
+                      description: "Natural honey-oak shelves sized to each cover row.",
+                      shelfBg: `url(${WOOD_SHELF_IMAGE}) center / cover`,
+                      tileBg: "linear-gradient(135deg, #4d6f87 0%, #243746 100%)",
+                      titleColor: "rgba(255, 249, 236, 0.96)",
+                      accent: "#d99a47",
+                    }]
+                  : []),
               ];
               const preview = themeChoices.find((c) => c.key === shelfThemeMode) || themeChoices[0];
               const previewTextOnLight = "#2b3445";
@@ -25154,8 +25490,8 @@ export default function Page() {
               const previewMutedOnLight = "rgba(70, 78, 90, 0.72)";
               const previewMutedOnDark = "rgba(220, 226, 236, 0.66)";
               const previewIsDark = preview.key === "dark";
-              const previewPrimaryText = previewIsDark || preview.key === "classic" ? previewTextOnDark : previewTextOnLight;
-              const previewMutedText = previewIsDark || preview.key === "classic" ? previewMutedOnDark : previewMutedOnLight;
+              const previewPrimaryText = previewIsDark || preview.key === "classic" || preview.key === "wood" ? previewTextOnDark : previewTextOnLight;
+              const previewMutedText = previewIsDark || preview.key === "classic" || preview.key === "wood" ? previewMutedOnDark : previewMutedOnLight;
 
               type PreviewSample = { key: string; title: string; coverUrl: string; mediaType: "book" | "movie" | "tv" | "game" };
               const previewSamples: PreviewSample[] = [];
@@ -27256,14 +27592,20 @@ export default function Page() {
                     position: "relative",
                     height: shelfHeights[shelfIndex] || shelfRowHeight,
                     overflow: isUpcomingView ? "visible" : "hidden",
-                    backgroundImage: isSimpleShelfPresentation ? "none" : `url(${shelfTheme})`,
+                    backgroundImage: isWoodShelfPresentation
+                      ? `url(${WOOD_SHELF_IMAGE})`
+                      : isSimpleShelfPresentation
+                        ? "none"
+                        : `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
-                    backgroundSize: isElectricBlueShelfPresentation
-                      ? "calc(100% + 2px) calc(100% + 2px)"
-                      : isSimpleShelfPresentation
-                        ? "auto"
-                        : "100% 100%",
+                    backgroundSize: isWoodShelfPresentation
+                      ? "100% 100%"
+                      : isElectricBlueShelfPresentation
+                        ? "calc(100% + 2px) calc(100% + 2px)"
+                        : isSimpleShelfPresentation
+                          ? "auto"
+                          : "100% 100%",
                     backgroundColor: isElectricBlueShelfPresentation ? "rgba(5, 13, 30, 0.9)" : "transparent",
                     borderRadius: 0,
                     boxShadow: isElectricBlueShelfPresentation
@@ -27274,6 +27616,25 @@ export default function Page() {
                     outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.34)" : "none",
                   }}
                 >
+                  {isWoodShelfPresentation ? (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: WOOD_SHELF_LIP_HEIGHT,
+                        zIndex: 1,
+                        pointerEvents: "none",
+                        backgroundImage: `url(${WOOD_SHELF_IMAGE})`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "center bottom",
+                        backgroundSize: "100% 183px",
+                        boxShadow: "0 5px 9px rgba(66, 35, 12, 0.32), inset 0 1px 0 rgba(255, 225, 171, 0.45)",
+                      }}
+                    />
+                  ) : null}
                   {sandboxMode ? (
                     <div
                       aria-hidden
@@ -27558,7 +27919,7 @@ export default function Page() {
                             top: isWishlistPointerDragging ? dragTop : undefined,
                             bottom: isWishlistPointerDragging
                               ? undefined
-                              : shelfBottomOffset + lowerMetadataSpace,
+                              : activeShelfBottomOffset + lowerMetadataSpace,
                             width: caseWidth,
                             height: caseHeight,
                             overflow: "visible",
@@ -28754,6 +29115,7 @@ export default function Page() {
         item={rateItItem}
         mediaType={rateItMediaType || "movie"}
         highlightColor={rateItHighlightColor}
+        coverUrl={rateItItem ? getDisplayCoverUrl(rateItItem) : ""}
       />
 
       {/* Save toast */}
