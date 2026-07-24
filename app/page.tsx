@@ -379,7 +379,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.29";
+const APP_VERSION = "12.0.30";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -705,6 +705,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.30",
+    date: "2026-07-24",
+    notes: [
+      "Lowered covers slightly in the desktop Wood Shelf theme so they sit more naturally on the shelf lip.",
+      "Moved Upcoming timing and release dates onto the cover artwork in Wood Shelf view only.",
+    ],
+  },
   {
     version: "12.0.29",
     date: "2026-07-23",
@@ -15807,8 +15815,9 @@ export default function Page() {
   }, [activeListViewKey, displayModeNonce, getSetting]);
   const isWoodShelfPresentation =
     shelfThemeMode === "wood" && !isMobileLayout && activeDisplayMode === "cover";
+  const isWoodShelfUpcomingPresentation = isWoodShelfPresentation && isUpcomingView;
   const activeShelfBottomOffset = isWoodShelfPresentation
-    ? WOOD_SHELF_LIP_HEIGHT
+    ? Math.max(0, WOOD_SHELF_LIP_HEIGHT - 3)
     : shelfBottomOffset;
 
   const activeListColumns = useMemo<ListColumnKey[]>(() => {
@@ -17672,7 +17681,7 @@ export default function Page() {
       if (!shelfShows.length) {
         const emptyScale = getShelfMetadataLayout(shelfRowHeight * 0.67);
         return (
-          (isUpcomingView ? emptyScale.upcomingSpace : 0) +
+          (isUpcomingView && !isWoodShelfPresentation ? emptyScale.upcomingSpace : 0) +
           (nav === "completed" ? emptyScale.completedSpace : 0) +
           (nav === "watchlist-tv" ? emptyScale.completedSpace : 0) +
           (coverTitlesVisible ? emptyScale.titleSpace : 0)
@@ -17684,7 +17693,7 @@ export default function Page() {
         const metadataLayout = getShelfMetadataLayout(caseWidth);
         return Math.max(
           maxSpace,
-          (isUpcomingView ? metadataLayout.upcomingSpace : 0) +
+          (isUpcomingView && !isWoodShelfPresentation ? metadataLayout.upcomingSpace : 0) +
             (nav === "completed" ? metadataLayout.completedSpace : 0) +
             (nav === "watchlist-tv" ? metadataLayout.completedSpace : 0) +
             (coverTitlesVisible ? metadataLayout.titleSpace : 0)
@@ -17731,7 +17740,7 @@ export default function Page() {
       return Math.max(1, tallestCover + 15 + tvWatchlistSectionSpace + getRowMetadataSpace(shelfShows));
     });
     return baseHeights.map((height) => height + shelfVerticalMargin);
-  }, [coverTitlesVisible, getItemVisualLayout, getShelfMetadataLayout, isMobileLayout, isUpcomingView, mediaCoverSizePct.movies, nav, shelfRowHeight, shelfVerticalMargin, shelves]);
+  }, [coverTitlesVisible, getItemVisualLayout, getShelfMetadataLayout, isMobileLayout, isUpcomingView, isWoodShelfPresentation, mediaCoverSizePct.movies, nav, shelfRowHeight, shelfVerticalMargin, shelves]);
 
   const shelfOffsets = useMemo(() => {
     const offsets: number[] = [];
@@ -27838,7 +27847,10 @@ export default function Page() {
                       const reserveCompletedDateSpace = isCompletedView;
                       const showCompletedDateLabel = reserveCompletedDateSpace && Boolean(completedDateDisplay);
                       const metadataLayout = getShelfMetadataLayout(caseWidth);
-                      const upcomingMetadataSpace = isUpcomingView && upcomingLabel ? metadataLayout.upcomingSpace : 0;
+                      const upcomingMetadataSpace =
+                        isUpcomingView && upcomingLabel && !isWoodShelfUpcomingPresentation
+                          ? metadataLayout.upcomingSpace
+                          : 0;
                       const completedMetadataSpace = reserveCompletedDateSpace ? metadataLayout.completedSpace : 0;
                       const tvWatchlistEpisodesRemainingLabel =
                         nav === "watchlist-tv" ? getTvWatchlistEpisodesRemainingLabel(show) : "";
@@ -28332,7 +28344,70 @@ export default function Page() {
                             </div>
                           ) : null}
 
-                          {isUpcomingView && upcomingLabel ? (
+                          {isWoodShelfUpcomingPresentation && upcomingLabel ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: "absolute",
+                                left: 6,
+                                right: 6,
+                                bottom: 7,
+                                zIndex: 24,
+                                pointerEvents: "none",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                minHeight: Math.max(28, metadataLayout.primaryLineHeight + metadataLayout.secondaryLineHeight + 5),
+                                padding: "3px 5px 4px",
+                                borderRadius: 6,
+                                border: "1px solid rgba(255,255,255,0.22)",
+                                background:
+                                  "linear-gradient(180deg, rgba(20, 13, 7, 0.58) 0%, rgba(20, 13, 7, 0.82) 100%)",
+                                boxShadow: "0 2px 7px rgba(24, 12, 4, 0.34)",
+                                backdropFilter: "blur(3px)",
+                                color: "#fff",
+                                textAlign: "center",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "100%",
+                                  fontSize: showPendingDigitalReleaseLabel
+                                    ? metadataLayout.compactPrimaryFontSize
+                                    : metadataLayout.primaryFontSize,
+                                  fontWeight: 750,
+                                  lineHeight: `${metadataLayout.primaryLineHeight}px`,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  textShadow: "0 1px 2px rgba(0,0,0,0.7)",
+                                }}
+                              >
+                                {upcomingLabel}
+                              </div>
+                              {upcomingDateDisplay ? (
+                                <div
+                                  style={{
+                                    width: "100%",
+                                    marginTop: 1,
+                                    fontSize: metadataLayout.secondaryFontSize,
+                                    fontWeight: 650,
+                                    lineHeight: `${metadataLayout.secondaryLineHeight}px`,
+                                    color: "rgba(255,255,255,0.82)",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    textShadow: "0 1px 2px rgba(0,0,0,0.7)",
+                                  }}
+                                >
+                                  {upcomingDateDisplay}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {isUpcomingView && upcomingLabel && !isWoodShelfUpcomingPresentation ? (
                             <div
                               aria-hidden
                               style={{
