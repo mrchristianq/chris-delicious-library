@@ -379,7 +379,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.30";
+const APP_VERSION = "12.0.32";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -705,6 +705,30 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "12.0.33",
+    date: "2026-07-29",
+    notes: [
+      "Hardened movie status saves against slow Apps Script responses by extending the write window and confirming timed-out writes through authoritative Movies readback.",
+      "Removed duplicate movie watch-status aliases from update payloads so one status change writes one sheet field.",
+      "Changed the quick-details movie status control to save only Watch Status instead of rewriting the full movie row.",
+    ],
+  },
+  {
+    version: "12.0.32",
+    date: "2026-07-29",
+    notes: [
+      "Removed the retired built-in Smart List icon cards from the Icons page so it only manages current user-created Smart Lists.",
+    ],
+  },
+  {
+    version: "12.0.31",
+    date: "2026-07-29",
+    notes: [
+      "Replaced the retired mobile saved-view cards with the current user-created Smart Lists.",
+      "Added Smart List counts, matching cover previews, saved icons, and a New Smart List action to the mobile landing page.",
+    ],
+  },
   {
     version: "12.0.30",
     date: "2026-07-24",
@@ -8093,6 +8117,8 @@ export default function Page() {
       csvUrl?: string;
       match: { idField?: string; idValue?: string; fallbackIdValue?: string; title?: string; fallbackTitle?: string; platform?: string };
       verifyFields: Record<string, string>;
+      maxAttempts?: number;
+      retryDelayMs?: number;
     }) => {
       if (!params.csvUrl || !Object.keys(params.verifyFields).length) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false) return;
@@ -8153,7 +8179,8 @@ export default function Page() {
       };
 
       let lastError: Error | null = null;
-      const maxAttempts = 4;
+      const maxAttempts = Math.max(1, params.maxAttempts || 4);
+      const retryDelayMs = Math.max(100, params.retryDelayMs || 700);
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           const csvText = await fetch(params.csvUrl, { cache: "no-store" }).then((res) => res.text());
@@ -8199,7 +8226,7 @@ export default function Page() {
         } catch (error: any) {
           lastError = error instanceof Error ? error : new Error(String(error));
           if (attempt === maxAttempts - 1) break;
-          await new Promise((resolve) => setTimeout(resolve, 700));
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
         }
       }
 
@@ -8897,8 +8924,6 @@ export default function Page() {
         ...(normalizedWatchStatus
           ? {
               "Watch Status": normalizedWatchStatus,
-              WatchStatus: normalizedWatchStatus,
-              Watched: normalizedWatchStatus,
             }
           : {}),
         WatchDate: safeStr(updates.watchDate),
@@ -8958,13 +8983,20 @@ export default function Page() {
         .map((row) => [row.Field, row["New Value"]])
     );
 
+    let movieWriteTimedOut = false;
     try {
       await postSheetWrite(moviesWriteUrl, payload, "Failed to save movie edits");
     } catch (e: any) {
-      throw new Error(e?.message || "Failed to save movie edits");
+      movieWriteTimedOut = /Apps Script request timed out/i.test(safeStr(e?.message));
+      if (!movieWriteTimedOut || !moviesCsvUrl || !isBrowserLikelyOnline()) {
+        throw new Error(e?.message || "Failed to save movie edits");
+      }
+      console.warn("[Save] Movie write timed out; waiting for Google Sheets readback confirmation.", {
+        title: matchTitle,
+        fields: Object.keys(movieVerifyFields),
+      });
     }
 
-    const movieChangeLogOk = await appendChangeLogRowsBestEffort(moviesWriteUrl, movieChangeLogRows);
     const movieReadbackOnline = isBrowserLikelyOnline();
     if (movieReadbackOnline) {
       try {
@@ -8979,11 +9011,14 @@ export default function Page() {
             fallbackTitle,
           },
           verifyFields: movieVerifyFields,
+          maxAttempts: movieWriteTimedOut ? 12 : undefined,
+          retryDelayMs: movieWriteTimedOut ? 1000 : undefined,
         });
       } catch (verifyError: any) {
         throw new Error(`Google Sheet did not confirm the movie update. ${verifyError?.message || "Verification failed."}`);
       }
     }
+    const movieChangeLogOk = await appendChangeLogRowsBestEffort(moviesWriteUrl, movieChangeLogRows);
     console.log("[Save] Movies", {
       title: safeStr(updates.title) || safeStr(item?.title),
       row: "",
@@ -15265,8 +15300,8 @@ export default function Page() {
     activeSmartList, bookUpcomingFilter, deferredQuery, gameViewMode, movieUpcomingFilter, nowPlayingItems, nowPlayingItemsByKey, playNextItems, playNextItemsByKey, readingStatusFilter, resolvedNowPlayingManualOrderKeys, resolvedPlayNextManualOrderKeys, resolvedReadNextManualOrderKeys, resolvedWatchlistMovieManualOrderKeys, resolvedWatchlistTvManualOrderKeys, resolvedWishlistManualOrderKeys, seriesFilter, showFilter, smartListManualOrderKeysById, sortField, sortOrder, tagFilter, tvViewMode, watchFilter, watchlistMovieItems, watchlistMovieItemsByKey, watchlistTvItems, watchlistTvItemsByKey, wishlistBookItems, wishlistBookItemsByKey, wishlistFilter, wishlistItems, wishlistItemsByKey
   ]);
 
-  const customSmartListCounts = useMemo(() => {
-    const getCountForList = (list: SmartList) => {
+  const customSmartListItemsById = useMemo(() => {
+    const getItemsForList = (list: SmartList) => {
       const mediaSet = new Set(list.mediaTypes);
       const statusFilters = list.statuses || {};
       const yearFilters = list.yearFilters || {};
@@ -15310,9 +15345,9 @@ export default function Page() {
         });
       };
 
-      let total = 0;
+      const items: any[] = [];
       if (mediaSet.has("book")) {
-        total += indexedBooks.filter((book) => {
+        items.push(...indexedBooks.filter((book) => {
           if (
             hasYearFilter("book") &&
             !matchesYearFilter("book", {
@@ -15325,10 +15360,10 @@ export default function Page() {
           if (!matchesTagFilter("book", book.tagTokens)) return false;
           if (!hasStatusFilter("book")) return true;
           return matchesStatusFilter("book", safeStr(book.item.status));
-        }).length;
+        }).map((book) => ({ ...book.item, __type: "book" })));
       }
       if (mediaSet.has("tv")) {
-        total += indexedShows.filter((show) => {
+        items.push(...indexedShows.filter((show) => {
           if (
             hasYearFilter("tv") &&
             !matchesYearFilter("tv", {
@@ -15341,10 +15376,10 @@ export default function Page() {
           if (!matchesTagFilter("tv", show.tagTokens)) return false;
           if (!hasStatusFilter("tv")) return true;
           return matchesStatusFilter("tv", safeStr(show.item.watchStatus || show.item.showStatus || show.item.watched));
-        }).length;
+        }).map((show) => ({ ...show.item, __type: "tv" })));
       }
       if (mediaSet.has("movie")) {
-        total += indexedMovies.filter((movie) => {
+        items.push(...indexedMovies.filter((movie) => {
           if (
             hasYearFilter("movie") &&
             !matchesYearFilter("movie", {
@@ -15356,10 +15391,10 @@ export default function Page() {
           if (!matchesTagFilter("movie", movie.tagTokens)) return false;
           if (!hasStatusFilter("movie")) return true;
           return matchesStatusFilter("movie", safeStr(movie.item.watchStatus || movie.item.watched || movie.item.status || movie.item.movieStatus));
-        }).length;
+        }).map((movie) => ({ ...movie.item, __type: "movie" })));
       }
       if (mediaSet.has("game")) {
-        total += indexedGames.filter((game) => {
+        items.push(...indexedGames.filter((game) => {
           if (
             hasYearFilter("game") &&
             !matchesYearFilter("game", {
@@ -15372,17 +15407,25 @@ export default function Page() {
           if (!matchesTagFilter("game", game.tagTokens)) return false;
           if (!hasStatusFilter("game")) return true;
           return matchesStatusFilter("game", safeStr(game.item.status || game.item.playStatus || game.item.gameStatus || game.item.completed));
-        }).length;
+        }).map((game) => ({ ...game.item, __type: "game" })));
       }
-      return total;
+      return items;
     };
 
-    const counts: Record<string, number> = {};
+    const itemsById: Record<string, any[]> = {};
     customSmartLists.forEach((list) => {
-      counts[list.id] = getCountForList(list);
+      itemsById[list.id] = getItemsForList(list);
+    });
+    return itemsById;
+  }, [customSmartLists, indexedBooks, indexedGames, indexedMovies, indexedShows, normalizeStatus]);
+
+  const customSmartListCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    Object.entries(customSmartListItemsById).forEach(([listId, items]) => {
+      counts[listId] = items.length;
     });
     return counts;
-  }, [customSmartLists, indexedBooks, indexedGames, indexedMovies, indexedShows, normalizeStatus]);
+  }, [customSmartListItemsById]);
 
   const watchlistTvSectionCounts = useMemo(() => {
     const counts: Record<TvWatchlistSectionKey, number> = {
@@ -17845,12 +17888,6 @@ export default function Page() {
     { key: "watchlist-tv", label: "Watchlist TV", count: stats.watchlistTv },
     { key: "wishlist", label: "Wishlist Games", count: stats.wishlist },
   ];
-  const mobileSmartListMenuItems: Array<{ key: NavKey; label: string }> = [
-    { key: "year-this", label: "This Year" },
-    { key: "current", label: "Current" },
-    { key: "completed", label: "Completed" },
-    { key: "abandoned", label: "Abandoned" },
-  ];
   const mobileBottomDockVisible = isMobileLayout && nav !== "statistics" && nav !== "cover-sync";
   const mobileBlockingOverlayOpen =
     addModalOpen ||
@@ -17983,17 +18020,28 @@ export default function Page() {
       { key: "movies", label: "Movies", iconKey: "movies", iconFallback: "/icon-movies.png", navKey: "movies" as NavKey, items: allMovies },
       { key: "tv", label: "TV Shows", iconKey: "tv", iconFallback: "/icon-tv.png", navKey: "tv" as NavKey, items: allShows },
       { key: "games", label: "Games", iconKey: "games", iconFallback: "/icon-games.png", navKey: "games" as NavKey, items: allGames },
-      { key: "year-this", label: "This Year", iconKey: "year-this", iconFallback: "/icon-current.png", navKey: "year-this" as NavKey, items: allLibraryItems },
-      { key: "current", label: "Current", iconKey: "current", iconFallback: "/icon-current.png", navKey: "current" as NavKey, items: nowPlayingItems },
-      { key: "completed", label: "Completed", iconKey: "completed", iconFallback: "/icon-completed.png", navKey: "completed" as NavKey, items: allBooks },
-      { key: "abandoned", label: "Abandoned", iconKey: "abandoned", iconFallback: "/icon-abandoned.png", navKey: "abandoned" as NavKey, items: allLibraryItems },
     ];
     return cards.map((card) => ({
       ...card,
       icon: getSidebarIconSrc(card.iconKey, card.iconFallback),
       covers: buildMobileCardCovers(card.items || [], 3),
     }));
-  }, [allBooks, allGames, allMovies, allShows, buildMobileCardCovers, nowPlayingItems, getSidebarIconSrc]);
+  }, [allBooks, allGames, allMovies, allShows, buildMobileCardCovers, getSidebarIconSrc]);
+  const mobileLandingSmartListCards = useMemo(
+    () =>
+      customSmartLists.map((smartList) => {
+        const items = customSmartListItemsById[smartList.id] || [];
+        return {
+          key: `smart-list-${smartList.id}`,
+          label: smartList.name,
+          icon: safeStr(smartList.icon) || getDefaultSmartListIcon(smartList.mediaTypes),
+          covers: buildMobileCardCovers(items, 3),
+          count: items.length,
+          smartList,
+        };
+      }),
+    [buildMobileCardCovers, customSmartListItemsById, customSmartLists]
+  );
   const activeBookDetailKey =
     bookDetailItem && getMediaType(bookDetailItem) === "book" ? getMediaItemKey(bookDetailItem) : "";
   const activeBookDetailPalette =
@@ -21106,7 +21154,78 @@ export default function Page() {
     setSidebarDetailSaveError("");
     try {
       if (mediaType === "book") await handleSaveBookEdits(item, updates);
-      else if (mediaType === "movie") await handleSaveMovieEdits(item, updates);
+      else if (mediaType === "movie") {
+        if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
+        const normalizedStatus = normalizeMovieWatchStatusForSheet(nextStatus);
+        if (!normalizedStatus) throw new Error("Select a valid movie watch status.");
+
+        const matchTmdbId = safeStr(item?.tmdbId || item?.TMDB_ID);
+        const matchTitle = safeStr(item?.title || item?.Title);
+        const verifyFields = { "Watch Status": normalizedStatus };
+        let writeTimedOut = false;
+        try {
+          await postSheetWrite(
+            moviesWriteUrl,
+            {
+              action: "updateMovie",
+              match: { tmdbId: matchTmdbId, title: matchTitle },
+              updates: verifyFields,
+            },
+            "Failed to save movie status"
+          );
+        } catch (writeError: any) {
+          writeTimedOut = /Apps Script request timed out/i.test(safeStr(writeError?.message));
+          if (!writeTimedOut || !moviesCsvUrl || !isBrowserLikelyOnline()) {
+            throw writeError;
+          }
+        }
+
+        if (isBrowserLikelyOnline()) {
+          await verifySavedFieldsFromCsv({
+            sheetName: "Movies",
+            csvUrl: moviesCsvUrl,
+            match: {
+              idField: "TMDB_ID",
+              idValue: matchTmdbId,
+              title: matchTitle,
+            },
+            verifyFields,
+            maxAttempts: writeTimedOut ? 12 : undefined,
+            retryDelayMs: writeTimedOut ? 1000 : undefined,
+          });
+        }
+
+        const movieStatusLogRows = buildChangeLogRowsForSave({
+          sourceSheet: "Movies",
+          title: matchTitle,
+          row: "",
+          functionName: "handleSidebarStatusChange",
+          oldValues: {
+            "Watch Status": safeStr(
+              item?.watchStatus || item?.watched || item?.["Watch Status"] || item?.WatchStatus || item?.Watched
+            ),
+          },
+          newValues: verifyFields,
+        });
+        await appendChangeLogRowsBestEffort(moviesWriteUrl, movieStatusLogRows);
+
+        const itemKey = buildTypedItemKey(item, "movie");
+        setMovieRows((prev) =>
+          prev.map((row) =>
+            buildTypedItemKey(row, "movie") === itemKey
+              ? {
+                  ...row,
+                  watchStatus: normalizedStatus,
+                  WatchStatus: normalizedStatus,
+                  watched: normalizedStatus,
+                  Watched: normalizedStatus,
+                  "Watch Status": normalizedStatus,
+                }
+              : row
+          )
+        );
+        setRefreshNonce((nonce) => nonce + 1);
+      }
       else if (mediaType === "tv") await handleSaveShowEdits(item, updates);
       else await handleSaveGameEdits(item, updates);
       setSidebarDetailSaveState("saved");
@@ -25735,14 +25854,6 @@ export default function Page() {
                 { key: "icons", label: "Icons", fallback: "/icon-settings.png" },
                 { key: "r2-sync", label: "Activity Log", fallback: "/icon-statistics.png" },
               ];
-              // Built-in Smart Lists use the sidebar-icon system (keyed by
-              // their nav key), so they are managed exactly like sidebar icons.
-              const builtInSmartListCatalog: Array<{ key: string; label: string; fallback: string }> = [
-                { key: "year-this", label: builtInSmartListLabels["year-this"], fallback: "/icon-year.png" },
-                { key: "current", label: builtInSmartListLabels["current"], fallback: "/icon-current.png" },
-                { key: "completed", label: builtInSmartListLabels["completed"], fallback: "/icon-completed.png" },
-                { key: "abandoned", label: builtInSmartListLabels["abandoned"], fallback: "/icon-abandoned.png" },
-              ];
               const statusCatalog = statusIconOptions;
               const cardGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(auto-fill, minmax(140px, 1fr))" : "repeat(auto-fill, minmax(180px, 1fr))", gap: isMobileLayout ? 12 : 16 };
               return (
@@ -25902,53 +26013,9 @@ export default function Page() {
                       <section>
                         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
                           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Smart List Icons</div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: "rgba(80,90,105,0.6)" }}>One icon per Smart List — built-in lists plus any you create.</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: "rgba(80,90,105,0.6)" }}>One icon for each Smart List you create.</div>
                         </div>
                           <div style={cardGridStyle}>
-                            {builtInSmartListCatalog.map((entry) => {
-                              const url = getSidebarIconSrc(entry.key, entry.fallback);
-                              const isUploading = uploadingSidebarIconKey === entry.key || (iconCropEditor?.iconKind === "sidebar" && iconCropEditor.iconKey === entry.key && iconCropEditor.saving);
-                              const target: IconCropPickerTarget = { iconKind: "sidebar", iconKey: entry.key, iconLabel: entry.label };
-                              return (
-                                <button
-                                  key={`builtin-smartlist-icon-card-${entry.key}`}
-                                  type="button"
-                                  onClick={() => {
-                                    if (url) {
-                                      void openIconEditorWithUrl(target, url);
-                                    } else {
-                                      beginIconCrop(target);
-                                    }
-                                  }}
-                                  disabled={isUploading}
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    gap: 10,
-                                    padding: 14,
-                                    borderRadius: 14,
-                                    border: "1px solid rgba(150, 160, 175, 0.32)",
-                                    background: "rgba(255,255,255,0.86)",
-                                    boxShadow: "0 2px 6px rgba(40, 50, 70, 0.05)",
-                                    cursor: isUploading ? "wait" : "pointer",
-                                    opacity: isUploading ? 0.55 : 1,
-                                    transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
-                                  }}
-                                  title={isUploading ? "Saving…" : `Replace ${entry.label} icon`}
-                                  aria-label={`Replace ${entry.label} icon`}
-                                >
-                                  <div style={{ width: isMobileLayout ? 56 : 72, height: isMobileLayout ? 56 : 72, borderRadius: 12, background: "rgba(232, 237, 244, 0.6)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid rgba(0,0,0,0.04)" }}>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={url} alt="" width={isMobileLayout ? 48 : 60} height={isMobileLayout ? 48 : 60} style={{ display: "block", objectFit: "contain", maxWidth: "100%", maxHeight: "100%" }} />
-                                  </div>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1d2735", lineHeight: 1.15, textAlign: "center" }}>{entry.label}</div>
-                                  <div style={{ fontSize: 11, fontWeight: 600, color: sidebarIconOverrides[entry.key] ? "#2f8f5b" : "rgba(80, 90, 105, 0.7)" }}>
-                                    {sidebarIconOverrides[entry.key] ? "Custom" : "Default"}
-                                  </div>
-                                </button>
-                              );
-                            })}
                             {customSmartLists.map((list) => {
                               const iconUrl = safeStr(list.icon);
                               const hasCustom = iconUrl.includes("/icons/sidebar/smartlist-");
@@ -26486,6 +26553,167 @@ export default function Page() {
                 );
                 })()
               ))}
+              <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "2px 2px 0",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#415168", letterSpacing: "0.04em" }}>
+                    SMART LISTS
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenSmartListBuilder}
+                    style={{
+                      border: "1px solid rgba(120, 128, 140, 0.2)",
+                      borderRadius: 8,
+                      background: "rgba(248, 250, 253, 0.78)",
+                      color: "#34445a",
+                      padding: "7px 10px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      fontWeight: 750,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: "50%",
+                        background: "#1688f2",
+                        color: "#fff",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        lineHeight: 1,
+                      }}
+                    >
+                      +
+                    </span>
+                    New Smart List
+                  </button>
+                </div>
+                {mobileLandingSmartListCards.length ? (
+                  mobileLandingSmartListCards.map((card) => (
+                    <button
+                      key={`mobile-landing-${card.key}`}
+                      type="button"
+                      onClick={() => handleMobileSmartListSelect(card.smartList)}
+                      style={{
+                        border: "1px solid rgba(172, 178, 188, 0.34)",
+                        borderRadius: 18,
+                        background: "rgba(248, 250, 253, 0.86)",
+                        boxShadow: "0 12px 24px rgba(15, 23, 42, 0.12)",
+                        minHeight: 118,
+                        padding: 14,
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 8,
+                        alignItems: "center",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          gap: 4,
+                          minWidth: 104,
+                          width: 104,
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={card.icon}
+                          alt=""
+                          width={58}
+                          height={58}
+                          style={{ display: "block", objectFit: "contain" }}
+                        />
+                        <div
+                          style={{
+                            width: "100%",
+                            textAlign: "center",
+                            fontSize: 16,
+                            fontWeight: 800,
+                            color: "#0f172a",
+                            letterSpacing: "-0.01em",
+                            lineHeight: 1.08,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {card.label}
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 650, color: "#68778b" }}>
+                          {card.count} {card.count === 1 ? "item" : "items"}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-end",
+                          justifyContent: "flex-end",
+                          minHeight: 92,
+                          minWidth: 120,
+                          paddingRight: 4,
+                        }}
+                      >
+                        {card.covers.map((coverUrl, index) => (
+                          <div
+                            key={`${card.key}-cover-${index}`}
+                            style={{
+                              width: 68,
+                              height: 92,
+                              borderRadius: 14,
+                              overflow: "hidden",
+                              border: "1px solid rgba(255,255,255,0.65)",
+                              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.28)",
+                              marginLeft: index === 0 ? 0 : -30,
+                              background: "rgba(226, 232, 240, 0.65)",
+                            }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={coverUrl}
+                              alt=""
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div
+                    style={{
+                      border: "1px solid rgba(172, 178, 188, 0.28)",
+                      borderRadius: 14,
+                      background: "rgba(248, 250, 253, 0.62)",
+                      padding: "14px 16px",
+                      color: "#68778b",
+                      fontSize: 12,
+                      fontWeight: 650,
+                      textAlign: "center",
+                    }}
+                  >
+                    Create a Smart List to add it here.
+                  </div>
+                )}
+              </section>
               <div
                 style={{
                   border: "1px solid rgba(172, 178, 188, 0.34)",

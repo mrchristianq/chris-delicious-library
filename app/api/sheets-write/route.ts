@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
         ? 60000
         : action === "updateTvEpisodeProgressBulk"
           ? 30000
-          : 15000;
+          : 45000;
     const timeoutId = setTimeout(
       () => controller.abort(),
       timeoutMs
@@ -206,6 +206,6 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const isAbort = error instanceof Error && error.name === "AbortError";
     const msg = isAbort ? "Apps Script request timed out." : error instanceof Error ? error.message : "Write failed.";
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    return NextResponse.json({ ok: false, error: msg }, { status: isAbort ? 504 : 500 });
   }
 }
