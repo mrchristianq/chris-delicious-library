@@ -176,6 +176,7 @@ type StatisticsViewProps = {
   shows: ShowStatsItem[];
   games: GameStatsItem[];
   tvEpisodes?: TVEpisodeStatsItem[];
+  tvEpisodesStatus?: "loading" | "ready" | "error";
   coverOverrides?: Record<string, string>;
   onExit?: () => void;
   themeMode?: "light" | "dark" | "classic";
@@ -1248,7 +1249,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
         }
 
         .statDetailId {
-          font-size: 10px;
+          font-size: 12px;
           font-weight: 800;
           letter-spacing: 0.05em;
           text-transform: uppercase;
@@ -1257,14 +1258,14 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
 
         .statDetailHeaderMain h3 {
           margin: 6px 0 0 0;
-          font-size: 20px;
+          font-size: clamp(22px, 3vw, 28px);
           font-weight: 900;
           color: #20242b;
         }
 
         .statDetailValue {
           margin-top: 4px;
-          font-size: 28px;
+          font-size: clamp(30px, 4vw, 38px);
           line-height: 1;
           font-weight: 900;
           color: #2f7bd7;
@@ -1275,7 +1276,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(226, 229, 234, 0.94));
           color: #555d68;
           border-radius: 999px;
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 800;
           letter-spacing: 0.03em;
           padding: 7px 14px;
@@ -1301,7 +1302,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
         }
 
         .statDetailSummaryLabel {
-          font-size: 10px;
+          font-size: 12px;
           font-weight: 800;
           letter-spacing: 0.04em;
           text-transform: uppercase;
@@ -1310,7 +1311,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
 
         .statDetailSummaryCard p {
           margin: 7px 0 0 0;
-          font-size: 12px;
+          font-size: 14px;
           color: rgba(45, 54, 66, 0.88);
           line-height: 1.42;
         }
@@ -1319,7 +1320,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 800;
           letter-spacing: 0.03em;
           text-transform: uppercase;
@@ -1363,7 +1364,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
         }
 
         .statDetailItemMetricValue {
-          font-size: 20px;
+          font-size: 22px;
           font-weight: 900;
           color: #2f7bd7;
           line-height: 1;
@@ -1371,7 +1372,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
         }
 
         .statDetailItemMetricLabel {
-          font-size: 10px;
+          font-size: 12px;
           font-weight: 800;
           letter-spacing: 0.05em;
           text-transform: uppercase;
@@ -1380,7 +1381,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
 
         .statDetailItemsSortNote {
           margin-left: 8px;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 700;
           color: rgba(60, 72, 90, 0.6) !important;
           text-transform: none;
@@ -1449,7 +1450,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
         }
 
         .statDetailItemTitle {
-          font-size: 16px;
+          font-size: 18px;
           font-weight: 800;
           color: #232832;
           line-height: 1.3;
@@ -1467,7 +1468,7 @@ function StatDetailModal({ detail, onClose }: StatDetailModalProps) {
           border: 1px solid rgba(120, 166, 236, 0.34);
           border-radius: 999px;
           padding: 3px 9px;
-          font-size: 12px;
+          font-size: 13px;
           font-weight: 700;
           color: rgba(54, 75, 105, 0.9);
           background: rgba(239, 244, 250, 0.86);
@@ -1489,6 +1490,7 @@ export function StatisticsView({
   shows,
   games,
   tvEpisodes = [],
+  tvEpisodesStatus = "ready",
   coverOverrides = {},
   themeMode = "dark",
   mediaTabColors = {},
@@ -2645,6 +2647,8 @@ export function StatisticsView({
   }, [yearReview]);
 
   const wrappedSlides = useMemo<WrappedSlide[]>(() => {
+    const episodeHistoryReady = tvEpisodesStatus === "ready" || tvEpisodes.length > 0;
+    const episodeHistoryLoading = !episodeHistoryReady && tvEpisodesStatus === "loading";
     const featuredItems = [
       yearReview.topRated,
       yearReview.mostPlayedGame,
@@ -2825,19 +2829,29 @@ export function StatisticsView({
         id: "episodes",
         layout: "episodes",
         kicker: "Just One More Episode",
-        title: `${yearReview.watchedEpisodeItems.length} episodes watched`,
-        value: formatMinutesAsHours(
-          yearReview.watchedEpisodeItems.reduce((total, item) => total + item.runtimeMinutes, 0)
-        ),
-        note: "Cold opens, cliffhangers, and the occasional accidental marathon.",
+        title: episodeHistoryReady
+          ? `${yearReview.watchedEpisodeItems.length} episodes watched`
+          : episodeHistoryLoading
+            ? "Episode history is syncing"
+            : "Episode history is unavailable",
+        value: episodeHistoryReady
+          ? formatMinutesAsHours(
+              yearReview.watchedEpisodeItems.reduce((total, item) => total + item.runtimeMinutes, 0)
+            )
+          : "Waiting for Google Sheets",
+        note: episodeHistoryReady
+          ? "Cold opens, cliffhangers, and the occasional accidental marathon."
+          : episodeHistoryLoading
+            ? "Your watched episodes will appear as soon as the episode sheet finishes loading."
+            : "Refresh the library to reconnect the TV Episodes sheet before replaying Wrapped.",
         mediaType: "tv",
         coverUrl: yearReview.watchedEpisodeItems[0]?.coverUrl || null,
         backdropUrl: getBackdrop(yearReview.watchedEpisodeItems[0] || null, 7),
         covers: episodeCovers,
-        statPairs: [
+        statPairs: episodeHistoryReady ? [
           { label: "Episodes", value: `${yearReview.watchedEpisodeItems.length}` },
           { label: "Last Year", value: `${yearReview.watchedEpisodeItemsPrev.length}` },
-        ],
+        ] : [],
       },
       {
         id: "audio",
@@ -3017,7 +3031,7 @@ export function StatisticsView({
         ],
       },
     ];
-  }, [selectedReviewYear, yearReview]);
+  }, [selectedReviewYear, tvEpisodes.length, tvEpisodesStatus, yearReview]);
 
   const activeWrappedSlide = wrappedSlides[wrappedSlideIndex] || null;
   const wrappedBackdropFirst =
@@ -9736,6 +9750,208 @@ export function StatisticsView({
         .yearReviewConfetti i:nth-child(11) { left: 34%; top: 35%; background: #fdba74; transform: rotate(54deg); }
         .yearReviewConfetti i:nth-child(12) { left: 92%; top: 42%; background: #7dd3fc; transform: rotate(22deg); }
 
+        /* Final typography scale: make every Statistics surface easier to
+           scan while keeping long content contained inside its module. */
+        .statsTitle {
+          font-size: clamp(30px, 2.2vw, 36px);
+        }
+
+        .statsSubtitle {
+          font-size: 14px;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+
+        .statsExitButton,
+        .statsTab {
+          font-size: 14px;
+        }
+
+        .statsStage .statsYearPicker > span {
+          font-size: 11px;
+        }
+
+        .statsStage .statsYearPicker select {
+          font-size: 14px;
+          font-weight: 720;
+        }
+
+        .statsSummaryGrid::before {
+          font-size: 18px;
+        }
+
+        .metricCard {
+          grid-template-rows: auto minmax(48px, 1fr) auto;
+          min-width: 0;
+          min-height: 142px;
+        }
+
+        .metricLabel {
+          min-width: 0;
+          font-size: 13px;
+          line-height: 1.25;
+          overflow-wrap: anywhere;
+        }
+
+        .metricValue,
+        .metricValueCompact,
+        .metricValueHours {
+          min-width: 0;
+          max-width: 100%;
+          font-size: clamp(28px, 2.1vw, 34px);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .metricValueHours,
+        .metricValueCompact {
+          font-size: clamp(24px, 1.75vw, 29px);
+        }
+
+        .metricSubLabel {
+          font-size: 12.5px;
+          line-height: 1.3;
+          overflow-wrap: anywhere;
+        }
+
+        .cardHeader h2,
+        :global(.topRatedColumnHeader h3) {
+          min-width: 0;
+          font-size: 16px;
+          line-height: 1.25;
+          overflow-wrap: anywhere;
+        }
+
+        .cardHeader span,
+        :global(.topRatedColumnHeader span) {
+          font-size: 12px;
+          line-height: 1.25;
+        }
+
+        .cardEmpty,
+        .monthLabel,
+        .legendListItem,
+        .barRowLabel,
+        .highlightLabel {
+          font-size: 12.5px;
+          line-height: 1.3;
+        }
+
+        .monthCount,
+        .statusVerticalValue,
+        .ratingCount,
+        .ratingLabel,
+        .releaseMomentumValue,
+        .releasePeakValue,
+        .releaseLowValue {
+          font-size: 12px;
+        }
+
+        .donutCenterLabel {
+          font-size: 12px;
+        }
+
+        .donutCenterValue {
+          max-width: 90%;
+          font-size: 16px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .barRow {
+          grid-template-columns: minmax(76px, 104px) minmax(0, 1fr) auto;
+        }
+
+        .barRowLabel {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .barRowValue {
+          font-size: 14px;
+        }
+
+        .statusVerticalLabel,
+        .statusVerticalPct,
+        .releaseMomentumLabel,
+        .releaseLineYear,
+        .timelineYears {
+          font-size: 11px;
+          line-height: 1.2;
+        }
+
+        .releaseLineYear.major {
+          font-size: 14px;
+        }
+
+        .highlightValue,
+        .highlightValueButton {
+          max-width: 100%;
+          font-size: 20px;
+          line-height: 1.2;
+          overflow-wrap: anywhere;
+        }
+
+        .yearPaceSub,
+        .yearPaceDelta {
+          font-size: 14px;
+          white-space: normal;
+          overflow-wrap: anywhere;
+        }
+
+        :global(.topRatedStatsRow) {
+          font-size: clamp(16px, 1.25vw, 20px);
+        }
+
+        .wrappedKicker,
+        .wrappedSlideCount,
+        .wrappedHint,
+        .wrappedTrackLabel,
+        .wrappedControls button {
+          font-size: 13px;
+        }
+
+        .wrappedTitle {
+          max-width: 100%;
+          font-size: clamp(34px, 5.4cqw, 58px);
+          overflow-wrap: anywhere;
+        }
+
+        .wrappedValue {
+          max-width: 100%;
+          font-size: clamp(25px, 4cqw, 40px);
+          overflow-wrap: anywhere;
+        }
+
+        .wrappedNote {
+          max-width: min(760px, 100%);
+          font-size: 16px;
+          line-height: 1.45;
+          overflow-wrap: anywhere;
+        }
+
+        .wrappedMonthColumn small,
+        .wrappedRatingColumn small,
+        .wrappedMixRing > span,
+        .wrappedMixLegend small,
+        .wrappedPeopleMarquee small,
+        .wrappedStatPairs span {
+          font-size: 11px;
+          line-height: 1.2;
+        }
+
+        .wrappedEpisodeStill span {
+          font-size: 10px;
+        }
+
+        .wrappedStatPairs strong {
+          font-size: 21px;
+        }
+
         @media (max-width: 980px) {
           .highlightsGrid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9837,17 +10053,19 @@ export function StatisticsView({
           }
 
           .statsTitle {
-            font-size: 24px;
+            font-size: clamp(26px, 8vw, 32px);
           }
 
           .statsSubtitle {
-            font-size: 11px;
+            font-size: 13px;
           }
 
           .statsHeaderControls {
             width: 100%;
             min-width: 0;
             flex: 1 1 auto;
+            flex-direction: column;
+            align-items: stretch;
             justify-content: flex-start;
           }
 
@@ -9857,10 +10075,31 @@ export function StatisticsView({
             width: 100%;
           }
 
-          .statsTab {
+          .statsYearPicker {
+            width: 100%;
             min-width: 0;
+          }
+
+          .statsYearPicker select {
+            width: 100%;
+            min-height: 40px;
+            font-size: 14px;
+          }
+
+          .statsTab {
+            width: 100%;
+            min-width: 0;
+            min-height: 44px;
+            height: auto;
             padding: 6px 10px;
-            font-size: 11px;
+            font-size: 12.5px;
+            white-space: normal;
+            line-height: 1.15;
+          }
+
+          .statsTab:last-child {
+            width: 100%;
+            min-width: 0;
           }
 
           .genreOrbitBody {
@@ -9887,8 +10126,52 @@ export function StatisticsView({
           }
 
           .yearReviewTitle {
-            font-size: 52px;
+            font-size: clamp(48px, 16vw, 64px);
             line-height: 0.98;
+          }
+
+          .metricValue,
+          .metricValueCompact,
+          .metricValueHours {
+            font-size: clamp(24px, 8vw, 31px);
+            line-height: 1.05;
+            overflow: visible;
+            text-overflow: clip;
+            white-space: normal;
+            overflow-wrap: anywhere;
+          }
+
+          .metricLabel {
+            font-size: 12px;
+          }
+
+          .metricSubLabel {
+            font-size: 12px;
+          }
+
+          .monthChart {
+            min-width: 520px;
+          }
+
+          .statsCard:has(.monthChart) {
+            overflow-x: auto;
+          }
+
+          .statusVerticalLabel,
+          .statusVerticalPct,
+          .releaseMomentumLabel,
+          .releaseLineYear,
+          .timelineYears {
+            font-size: 10px;
+            overflow-wrap: anywhere;
+          }
+
+          .wrappedTitle {
+            font-size: clamp(30px, 10vw, 46px);
+          }
+
+          .wrappedValue {
+            font-size: clamp(24px, 8vw, 34px);
           }
 
           .yearReviewSubtitle {

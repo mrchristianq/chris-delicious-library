@@ -379,7 +379,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.0.0";
+const APP_VERSION = "13.0.2";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -705,6 +705,20 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.0.2",
+    date: "2026-08-02",
+    notes: [
+      "Made Statistics, Year in Review, Wrapped, chart, and detail text larger and clearer while keeping long content inside each module.",
+    ],
+  },
+  {
+    version: "13.0.1",
+    date: "2026-08-02",
+    notes: [
+      "Prevented Wrapped from reporting zero watched episodes while TV episode history is still loading from cache or Google Sheets.",
+    ],
+  },
   {
     version: "13.0.0",
     date: "2026-08-02",
@@ -3934,6 +3948,15 @@ export default function Page() {
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
+    }
+  });
+  const [tvEpisodeDataStatus, setTvEpisodeDataStatus] = useState<"loading" | "ready" | "error">(() => {
+    if (typeof window === "undefined") return "loading";
+    try {
+      const parsed = JSON.parse(localStorage.getItem("cdlTvEpisodeRows") || "[]");
+      return Array.isArray(parsed) && parsed.length > 0 ? "ready" : "loading";
+    } catch {
+      return "loading";
     }
   });
   const tvEpisodeRowsRef = useRef<TVEpisodeRow[]>([]);
@@ -10383,6 +10406,7 @@ export default function Page() {
 
             setTvRows(snapshot.tvRows);
             setTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
+            setTvEpisodeDataStatus("ready");
             setBookRows(snapshot.bookRows);
             setMovieRows(snapshot.movieRows);
             setGameRows(snapshot.gameRows);
@@ -10439,6 +10463,7 @@ export default function Page() {
 
           setTvRows(snapshot.tvRows);
           setTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
+          setTvEpisodeDataStatus("ready");
           setBookRows(snapshot.bookRows);
           setMovieRows(snapshot.movieRows);
           setGameRows(snapshot.gameRows);
@@ -10514,8 +10539,10 @@ export default function Page() {
             .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])));
           nextTvEpisodeRows = data;
           setTvEpisodeRows(data);
+          setTvEpisodeDataStatus("ready");
         } else if (tvEpisodesRes && tvEpisodesRes.status === "rejected") {
           console.warn("TV Episodes CSV:", tvEpisodesRes.reason?.message || String(tvEpisodesRes.reason));
+          if (tvEpisodeRowsRef.current.length === 0) setTvEpisodeDataStatus("error");
         }
 
         if (booksRes && booksRes.status === "fulfilled" && typeof booksRes.value === "string") {
@@ -25600,6 +25627,7 @@ export default function Page() {
               shows={allShows}
               games={allGames}
               tvEpisodes={tvEpisodeRows}
+              tvEpisodesStatus={tvEpisodeDataStatus}
               coverOverrides={coverOverrides}
               onExit={handleExitStatistics}
               themeMode={shelfThemeMode === "wood" ? "light" : shelfThemeMode}
