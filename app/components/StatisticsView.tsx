@@ -2647,7 +2647,7 @@ export function StatisticsView({
   }, [yearReview]);
 
   const wrappedSlides = useMemo<WrappedSlide[]>(() => {
-    const episodeHistoryReady = tvEpisodesStatus === "ready" || tvEpisodes.length > 0;
+    const episodeHistoryReady = tvEpisodesStatus === "ready";
     const episodeHistoryLoading = !episodeHistoryReady && tvEpisodesStatus === "loading";
     const featuredItems = [
       yearReview.topRated,

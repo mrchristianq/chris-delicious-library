@@ -183,6 +183,14 @@ type TVEpisodeRow = Row & {
   Source?: string;
 };
 
+function hasTvEpisodeProgressSnapshot(rows: TVEpisodeRow[]): boolean {
+  return rows.some((row) => {
+    const watched = String(row.Watched ?? "").trim();
+    const watchedAt = String(row.WatchedAt ?? "").trim();
+    return watched !== "" || watchedAt !== "";
+  });
+}
+
 type TVEpisodeBulkSaveProgress = {
   total: number;
   confirmed: number;
@@ -379,7 +387,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.0.2";
+const APP_VERSION = "13.0.3";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -705,6 +713,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.0.3",
+    date: "2026-08-02",
+    notes: [
+      "Stopped Wrapped from treating metadata-only or missing TV episode history as a confirmed zero watched episodes.",
+    ],
+  },
   {
     version: "13.0.2",
     date: "2026-08-02",
@@ -3954,7 +3969,7 @@ export default function Page() {
     if (typeof window === "undefined") return "loading";
     try {
       const parsed = JSON.parse(localStorage.getItem("cdlTvEpisodeRows") || "[]");
-      return Array.isArray(parsed) && parsed.length > 0 ? "ready" : "loading";
+      return Array.isArray(parsed) && hasTvEpisodeProgressSnapshot(parsed as TVEpisodeRow[]) ? "ready" : "loading";
     } catch {
       return "loading";
     }
@@ -10405,8 +10420,9 @@ export default function Page() {
             }
 
             setTvRows(snapshot.tvRows);
-            setTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
-            setTvEpisodeDataStatus("ready");
+            const snapshotEpisodeRows = (snapshot.tvEpisodeRows || []) as TVEpisodeRow[];
+            setTvEpisodeRows(snapshotEpisodeRows);
+            setTvEpisodeDataStatus(hasTvEpisodeProgressSnapshot(snapshotEpisodeRows) ? "ready" : "loading");
             setBookRows(snapshot.bookRows);
             setMovieRows(snapshot.movieRows);
             setGameRows(snapshot.gameRows);
@@ -10462,8 +10478,9 @@ export default function Page() {
           }
 
           setTvRows(snapshot.tvRows);
-          setTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
-          setTvEpisodeDataStatus("ready");
+          const snapshotEpisodeRows = (snapshot.tvEpisodeRows || []) as TVEpisodeRow[];
+          setTvEpisodeRows(snapshotEpisodeRows);
+          setTvEpisodeDataStatus(hasTvEpisodeProgressSnapshot(snapshotEpisodeRows) ? "ready" : "loading");
           setBookRows(snapshot.bookRows);
           setMovieRows(snapshot.movieRows);
           setGameRows(snapshot.gameRows);
@@ -10537,12 +10554,24 @@ export default function Page() {
           const data = (parsed.data || [])
             .map((r) => r as TVEpisodeRow)
             .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])));
-          nextTvEpisodeRows = data;
-          setTvEpisodeRows(data);
-          setTvEpisodeDataStatus("ready");
+          if (data.length > 0 && hasTvEpisodeProgressSnapshot(data)) {
+            nextTvEpisodeRows = data;
+            setTvEpisodeRows(data);
+            setTvEpisodeDataStatus("ready");
+          } else {
+            nextTvEpisodeRows = tvEpisodeRowsRef.current;
+            setTvEpisodeDataStatus(
+              hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current) ? "ready" : "error"
+            );
+          }
         } else if (tvEpisodesRes && tvEpisodesRes.status === "rejected") {
           console.warn("TV Episodes CSV:", tvEpisodesRes.reason?.message || String(tvEpisodesRes.reason));
-          if (tvEpisodeRowsRef.current.length === 0) setTvEpisodeDataStatus("error");
+          if (!hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current)) setTvEpisodeDataStatus("error");
+        } else if (!tvEpisodesCsvUrl) {
+          nextTvEpisodeRows = tvEpisodeRowsRef.current;
+          setTvEpisodeDataStatus(
+            hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current) ? "ready" : "error"
+          );
         }
 
         if (booksRes && booksRes.status === "fulfilled" && typeof booksRes.value === "string") {
