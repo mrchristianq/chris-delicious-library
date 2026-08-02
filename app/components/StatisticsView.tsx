@@ -60,6 +60,10 @@ type MovieStatsItem = {
   poster?: string;
   runtime?: string;
   director?: string;
+  backdropUrl?: string;
+  BackdropURL?: string;
+  r2BackdropUrl?: string;
+  R2BackdropUrl?: string;
 };
 
 type ShowStatsItem = {
@@ -83,6 +87,10 @@ type ShowStatsItem = {
   posterUrlFallback?: string;
   r2CoverUrl?: string;
   R2CoverUrl?: string;
+  backdropUrl?: string;
+  BackdropURL?: string;
+  r2BackdropUrl?: string;
+  R2BackdropUrl?: string;
 };
 
 type TVEpisodeStatsItem = {
@@ -130,6 +138,12 @@ type GameStatsItem = {
   HoursPlayed?: string;
   playtime?: string;
   Playtime?: string;
+  screenshotsUrl?: string;
+  ScreenshotsURL?: string;
+  backdropUrl?: string;
+  BackdropURL?: string;
+  r2BackdropUrl?: string;
+  R2BackdropUrl?: string;
 };
 
 type UnifiedStatsItem = {
@@ -150,6 +164,7 @@ type UnifiedStatsItem = {
   authors: string[];
   directors: string[];
   coverUrl: string | null;
+  backdropUrl: string | null;
   audiobookMinutes: number;
   runtimeMinutes: number;
   gameplayHours: number;
@@ -191,6 +206,50 @@ type SummaryMetric = {
   itemMetric?: StatItemMetric;
 };
 
+function StatisticsGlyph({ label, size = 18 }: { label: string; size?: number }) {
+  const normalized = label.toLowerCase();
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (normalized.includes("book")) {
+    return <svg {...common}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z"/></svg>;
+  }
+  if (normalized.includes("movie")) {
+    return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5 9 2m3 3 2-3m3 3 2-3M3 9h18"/></svg>;
+  }
+  if (normalized.includes("tv") || normalized.includes("episode")) {
+    return <svg {...common}><rect x="3" y="5" width="18" height="15" rx="2"/><path d="m8 2 4 3 4-3M8 17h8"/></svg>;
+  }
+  if (normalized.includes("game")) {
+    return <svg {...common}><path d="M8.5 7h7a5.5 5.5 0 0 1 5.2 7.3l-1 3a2 2 0 0 1-3.2.9L14.2 16H9.8l-2.3 2.2a2 2 0 0 1-3.2-.9l-1-3A5.5 5.5 0 0 1 8.5 7Z"/><path d="M7 11v4m-2-2h4m7-1h.01m2 2h.01"/></svg>;
+  }
+  if (normalized.includes("audio") || normalized.includes("hour")) {
+    return <svg {...common}><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M4 14a2 2 0 0 1 2-2h1v7H6a2 2 0 0 1-2-2zm16 0a2 2 0 0 0-2-2h-1v7h1a2 2 0 0 0 2-2z"/></svg>;
+  }
+  if (normalized.includes("rating") || normalized.includes("rated")) {
+    return <svg {...common}><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg>;
+  }
+  if (normalized.includes("completion") || normalized.includes("completed")) {
+    return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16.5 8"/></svg>;
+  }
+  if (normalized.includes("abandoned")) {
+    return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>;
+  }
+  if (normalized.includes("calendar") || normalized.includes("logged")) {
+    return <svg {...common}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/></svg>;
+  }
+  return <svg {...common}><path d="M5 20V10m7 10V4m7 16v-7"/></svg>;
+}
+
 type StatisticDetail = {
   id: string;
   title: string;
@@ -203,6 +262,26 @@ type StatisticDetail = {
 
 type WrappedSlide = {
   id: string;
+  layout:
+    | "intro"
+    | "spotlight"
+    | "filmstrip"
+    | "waveform"
+    | "gameplay"
+    | "completion"
+    | "genre"
+    | "calendar"
+    | "review"
+    | "ratings"
+    | "episodes"
+    | "bookstack"
+    | "mix"
+    | "versus"
+    | "tastegap"
+    | "people"
+    | "timeline"
+    | "queue"
+    | "finale";
   kicker: string;
   title: string;
   value: string;
@@ -212,6 +291,10 @@ type WrappedSlide = {
   preferTextOverlay?: boolean;
   coverUrl: string | null;
   backdropUrl: string | null;
+  covers?: string[];
+  statPairs?: Array<{ label: string; value: string }>;
+  chartValues?: number[];
+  progress?: number;
 };
 
 type MonthlyPoint = {
@@ -266,6 +349,18 @@ const STATUS_LABELS: Record<StatusBucket, string> = {
 };
 
 const DONUT_COLORS = ["#ffcf5c", "#6de7ff", "#ff7baf", "#7df592", "#9fa7ff", "#ff9756", "#8fe2d3"];
+const RATING_BUCKET_COLORS = [
+  "#ff7b7b",
+  "#ff8b72",
+  "#ff9d68",
+  "#ffb45f",
+  "#f5c85d",
+  "#c7cd63",
+  "#8fd06d",
+  "#62c987",
+  "#43bc9f",
+  "#38aeb2",
+];
 const ALL_STATS_YEARS = "all" as const;
 // Episode progress imported before this release uses AirDate for historical
 // reporting. New watched activity after the cutover uses WatchedAt.
@@ -282,20 +377,19 @@ const UNRATED_TOKENS = new Set([
   "unknown",
   "undefined",
 ]);
-const WRAPPED_AUDIO_TRACKS = [
+const WRAPPED_AUDIO_TRACKS: ReadonlyArray<{
+  title: string;
+  src: string;
+  creditUrl: string;
+  licenseCode: string;
+}> = [
   {
-    title: "Helix One",
-    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    title: "The Creator - Hey Pluto!",
+    src: "/audio/wrapped/the-creator-hey-pluto.mp3",
+    creditUrl: "https://uppbeat.io/t/hey-pluto/the-creator",
+    licenseCode: "DKEBXZONO4GTJOQE",
   },
-  {
-    title: "Helix Two",
-    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-  },
-  {
-    title: "Helix Three",
-    src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-  },
-] as const;
+];
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 
@@ -1396,7 +1490,6 @@ export function StatisticsView({
   games,
   tvEpisodes = [],
   coverOverrides = {},
-  onExit,
   themeMode = "dark",
   mediaTabColors = {},
   isMobileLayout = false,
@@ -1519,6 +1612,7 @@ export function StatisticsView({
         statusBucket,
         primaryStatusToken,
         coverUrl,
+        backdropUrl: null,
         audiobookMinutes,
         runtimeMinutes: 0,
         gameplayHours: 0,
@@ -1546,6 +1640,12 @@ export function StatisticsView({
         coverOverrides
       );
       const runtimeMinutes = parseRuntimeToMinutes(movie.runtime);
+      const backdropUrl = pickCoverUrl([
+        movie.r2BackdropUrl,
+        movie.R2BackdropUrl,
+        movie.backdropUrl,
+        movie.BackdropURL,
+      ]);
 
       return {
         mediaType: "movie",
@@ -1565,6 +1665,7 @@ export function StatisticsView({
         statusBucket,
         primaryStatusToken,
         coverUrl,
+        backdropUrl,
         audiobookMinutes: 0,
         runtimeMinutes,
         gameplayHours: 0,
@@ -1591,6 +1692,12 @@ export function StatisticsView({
         [show.r2CoverUrl, show.R2CoverUrl, show.posterUrl, show.metadataCoverUrl, show.posterUrlFallback],
         coverOverrides
       );
+      const backdropUrl = pickCoverUrl([
+        show.r2BackdropUrl,
+        show.R2BackdropUrl,
+        show.backdropUrl,
+        show.BackdropURL,
+      ]);
 
       return {
         mediaType: "tv",
@@ -1610,6 +1717,7 @@ export function StatisticsView({
         statusBucket,
         primaryStatusToken,
         coverUrl,
+        backdropUrl,
         audiobookMinutes: 0,
         runtimeMinutes,
         gameplayHours: 0,
@@ -1670,6 +1778,13 @@ export function StatisticsView({
         firstNonEmpty([game.hoursPlayed, game["Hours Played"], game.HoursPlayed, game.playtime, game.Playtime])
       );
       const playedYears = parseYearTokens(game.yearPlayed);
+      const backdropUrl = pickCoverUrl([
+        game.r2BackdropUrl,
+        game.R2BackdropUrl,
+        game.backdropUrl,
+        game.BackdropURL,
+        ...splitList(firstNonEmpty([game.screenshotsUrl, game.ScreenshotsURL])),
+      ]);
 
       return {
         mediaType: "game",
@@ -1689,6 +1804,7 @@ export function StatisticsView({
         statusBucket,
         primaryStatusToken,
         coverUrl,
+        backdropUrl,
         audiobookMinutes: 0,
         runtimeMinutes: 0,
         gameplayHours,
@@ -1731,6 +1847,7 @@ export function StatisticsView({
           authors: [],
           directors: [],
           coverUrl: pickCoverUrl([episode.SeasonPosterURL, episode.StillURL]),
+          backdropUrl: pickCoverUrl([episode.StillURL]),
           audiobookMinutes: 0,
           runtimeMinutes: parseRuntimeToMinutes(episode.Runtime),
           gameplayHours: 0,
@@ -2528,33 +2645,142 @@ export function StatisticsView({
   }, [yearReview]);
 
   const wrappedSlides = useMemo<WrappedSlide[]>(() => {
-    const featuredCovers = [
-      yearReview.topRated?.coverUrl || null,
-      yearReview.mostPlayedGame?.coverUrl || null,
-      yearReview.longestAudiobook?.coverUrl || null,
-      yearReview.lowestRated?.coverUrl || null,
-      yearReview.topRatedItems.find((item) => item.coverUrl)?.coverUrl || null,
-    ].filter((value): value is string => Boolean(value));
-    const fallbackBackdrop = featuredCovers[0] || null;
-    const getBackdrop = (coverUrl: string | null, offset = 0) =>
-      coverUrl || featuredCovers[offset % Math.max(1, featuredCovers.length)] || fallbackBackdrop;
+    const featuredItems = [
+      yearReview.topRated,
+      yearReview.mostPlayedGame,
+      yearReview.longestAudiobook,
+      yearReview.lowestRated,
+      ...yearReview.topRatedItems,
+    ].filter((item): item is UnifiedStatsItem => Boolean(item));
+    const featuredCovers = [...new Set(
+      [...featuredItems, ...yearReview.yearItems]
+        .map((item) => item.coverUrl)
+        .filter((value): value is string => Boolean(value))
+    )];
+    const backdropPool = [...new Set(
+      [...featuredItems, ...yearReview.yearItems]
+        .map((item) => item.backdropUrl)
+        .filter((value): value is string => Boolean(value))
+    )];
+    const getBackdrop = (item: UnifiedStatsItem | null, offset = 0) =>
+      item?.backdropUrl || backdropPool[offset % Math.max(1, backdropPool.length)] || null;
+    const movieCovers = yearReview.yearItems
+      .filter((item) => item.mediaType === "movie" && item.coverUrl)
+      .map((item) => item.coverUrl as string)
+      .slice(0, 7);
+    const monthValues = Array.from({ length: 12 }, (_, month) =>
+      yearReview.yearItems.filter((item) => {
+        const date = item.activityDate || item.completionDate;
+        return date?.getUTCMonth() === month;
+      }).length
+    );
+    const genreCounts = new Map<string, number>();
+    yearReview.yearItems.forEach((item) => {
+      item.genres.forEach((genre) => genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1));
+    });
+    const topGenres = getTopN(genreCounts, 5);
+    const ratingBuckets = Array.from({ length: 10 }, (_, index) =>
+      yearReview.yearItems.filter((item) => {
+        if (typeof item.rating !== "number") return false;
+        const score = Math.max(1, Math.min(10, Math.round(getComparablePersonalRating(item))));
+        return score === index + 1;
+      }).length
+    );
+    const completionProgress = yearReview.yearItems.length
+      ? Math.round((yearReview.completedTotal / yearReview.yearItems.length) * 100)
+      : 0;
+    const episodeCovers = yearReview.watchedEpisodeItems
+      .map((item) => item.backdropUrl || item.coverUrl)
+      .filter((value): value is string => Boolean(value))
+      .slice(0, 8);
+    const completedBookCovers = yearReview.completedBookItems
+      .map((item) => item.coverUrl)
+      .filter((value): value is string => Boolean(value))
+      .slice(0, 6);
+    const mediaMix = (["book", "movie", "tv", "game"] as StatsMediaType[]).map((mediaType) => ({
+      label: MEDIA_LABELS[mediaType],
+      value: yearReview.mediaCounts[mediaType],
+    }));
+    const creatorCounts = new Map<string, number>();
+    yearReview.yearItems.forEach((item) => {
+      [...item.authors, ...item.directors].forEach((creator) => {
+        const name = safeText(creator);
+        if (name) creatorCounts.set(name, (creatorCounts.get(name) || 0) + 1);
+      });
+    });
+    const topCreators = getTopN(creatorCounts, 5);
+    const decadeCounts = new Map<string, number>();
+    yearReview.yearItems.forEach((item) => {
+      const releaseYear = item.releaseDate?.getUTCFullYear();
+      if (!releaseYear) return;
+      const decade = `${Math.floor(releaseYear / 10) * 10}s`;
+      decadeCounts.set(decade, (decadeCounts.get(decade) || 0) + 1);
+    });
+    const releaseEras = [...decadeCounts.entries()]
+      .sort(([left], [right]) => Number.parseInt(left, 10) - Number.parseInt(right, 10))
+      .map(([label, value]) => ({ label, value }));
+    const ratingGapItem = yearReview.yearItems
+      .filter((item) => typeof item.rating === "number" && typeof item.externalRating === "number")
+      .map((item) => {
+        const personal = getComparablePersonalRating(item);
+        const external = item.mediaType === "book" && (item.externalRating || 0) <= 5
+          ? (item.externalRating || 0) * 2
+          : item.externalRating || 0;
+        return { item, personal, external, gap: personal - external };
+      })
+      .sort((left, right) => Math.abs(right.gap) - Math.abs(left.gap))[0] || null;
+    const unfinishedItems = yearReview.yearItems.filter(
+      (item) => item.statusBucket !== "completed" && item.statusBucket !== "abandoned"
+    );
+    const unfinishedCovers = unfinishedItems
+      .map((item) => item.coverUrl)
+      .filter((value): value is string => Boolean(value))
+      .slice(0, 7);
+    const unfinishedBuckets = [
+      { label: "In Progress", value: unfinishedItems.filter((item) => item.statusBucket === "inProgress").length },
+      { label: "Backlog", value: unfinishedItems.filter((item) => item.statusBucket === "backlog").length },
+      { label: "Wishlist", value: unfinishedItems.filter((item) => item.statusBucket === "wishlist").length },
+    ];
+    const paceDelta = yearReview.yearItems.length - yearReview.previousYearItems.length;
 
     return [
       {
         id: "intro",
+        layout: "intro",
         kicker: "CDL Wrapped",
-        title: `${selectedReviewYear} in one story`,
-        value: `${yearReview.yearItems.length} titles logged`,
-        note: `${yearReview.completedTotal} completed • ${yearReview.abandonedCount} abandoned`,
+        title: `This was your ${selectedReviewYear}`,
+        value: `${yearReview.yearItems.length} stories collected`,
+        note: "A year of watching, reading, listening, and playing.",
         coverUrl: yearReview.topRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRated?.coverUrl || null, 0),
+        backdropUrl: getBackdrop(yearReview.topRated, 0),
+        covers: featuredCovers.slice(0, 6),
+        statPairs: [
+          { label: "Completed", value: `${yearReview.completedTotal}` },
+          { label: "Rated", value: `${yearReview.topRatedItems.length}` },
+          { label: "Dropped", value: `${yearReview.abandonedCount}` },
+        ],
+      },
+      {
+        id: "media-mix",
+        layout: "mix",
+        kicker: "Your Media DNA",
+        title: "One library, four ways to escape",
+        value: `${yearReview.yearItems.length} total logs`,
+        note: "The shape of your year, measured in stories.",
+        coverUrl: null,
+        backdropUrl: null,
+        statPairs: mediaMix.map((entry) => ({ label: entry.label, value: `${entry.value}` })),
+        chartValues: mediaMix.map((entry) => entry.value),
       },
       {
         id: "favorite",
-        kicker: "Top Rated",
+        layout: "spotlight",
+        kicker: "The One You Loved Most",
         title: yearReview.topRated?.title || "No top-rated title yet",
         value: getPersonalRatingBadgeLabel(yearReview.topRated) || "-",
-        note: yearReview.topRated ? MEDIA_LABELS[yearReview.topRated.mediaType] : "Add ratings to unlock this card",
+        note: yearReview.topRated
+          ? `Your highest-rated ${MEDIA_LABELS[yearReview.topRated.mediaType].toLowerCase()} of the year`
+          : "Add ratings to unlock this moment",
         mediaType: yearReview.topRated?.mediaType,
         coverShape:
           yearReview.topRated?.mediaType === "book" &&
@@ -2562,76 +2788,196 @@ export function StatisticsView({
             ? "square"
             : "poster",
         coverUrl: yearReview.topRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRated?.coverUrl || null, 1),
+        backdropUrl: getBackdrop(yearReview.topRated, 1),
+      },
+      {
+        id: "taste-gap",
+        layout: "tastegap",
+        kicker: "You Went Your Own Way",
+        title: ratingGapItem?.item.title || "Your taste matched the crowd",
+        value: ratingGapItem ? `${Math.abs(ratingGapItem.gap).toFixed(1)} points apart` : "In sync",
+        note: ratingGapItem
+          ? ratingGapItem.gap >= 0
+            ? "You loved this one more than everyone else did."
+            : "The crowd was kinder to this one than you were."
+          : "Add more ratings to reveal your boldest disagreement.",
+        mediaType: ratingGapItem?.item.mediaType,
+        coverUrl: ratingGapItem?.item.coverUrl || null,
+        backdropUrl: getBackdrop(ratingGapItem?.item || null, 6),
+        statPairs: ratingGapItem ? [
+          { label: "Your Score", value: formatTopRatedScoreValue(ratingGapItem.item, "rating") },
+          { label: "Community", value: formatTopRatedScoreValue(ratingGapItem.item, "externalRating") },
+        ] : [],
       },
       {
         id: "watch-time",
-        kicker: "Screen Time",
-        title: "Movies Watched",
-        value: `${yearReview.moviesWatched}`,
-        note: `${formatMinutesAsHours(yearReview.movieMinutes)} total watch time`,
+        layout: "filmstrip",
+        kicker: "Your Movie Marathon",
+        title: `${yearReview.moviesWatched} movies, countless worlds`,
+        value: formatMinutesAsHours(yearReview.movieMinutes),
+        note: "That is how long you spent at the movies without leaving home.",
         mediaType: "movie",
-        preferTextOverlay: true,
         coverUrl: yearReview.topRatedItems.find((item) => item.mediaType === "movie" && item.coverUrl)?.coverUrl || null,
-        backdropUrl: getBackdrop(null, 2),
+        backdropUrl: getBackdrop(yearReview.watchedMovieItems.find((item) => item.backdropUrl) || null, 2),
+        covers: movieCovers,
+      },
+      {
+        id: "episodes",
+        layout: "episodes",
+        kicker: "Just One More Episode",
+        title: `${yearReview.watchedEpisodeItems.length} episodes watched`,
+        value: formatMinutesAsHours(
+          yearReview.watchedEpisodeItems.reduce((total, item) => total + item.runtimeMinutes, 0)
+        ),
+        note: "Cold opens, cliffhangers, and the occasional accidental marathon.",
+        mediaType: "tv",
+        coverUrl: yearReview.watchedEpisodeItems[0]?.coverUrl || null,
+        backdropUrl: getBackdrop(yearReview.watchedEpisodeItems[0] || null, 7),
+        covers: episodeCovers,
+        statPairs: [
+          { label: "Episodes", value: `${yearReview.watchedEpisodeItems.length}` },
+          { label: "Last Year", value: `${yearReview.watchedEpisodeItemsPrev.length}` },
+        ],
       },
       {
         id: "audio",
-        kicker: "Listening",
+        layout: "waveform",
+        kicker: "In Your Headphones",
         title: yearReview.longestAudiobook?.title || "Longest Audiobook",
         value: yearReview.longestAudiobook ? formatMinutesAsHours(yearReview.longestAudiobook.audiobookMinutes) : "0 hours",
-        note: `${yearReview.audiobookCount} audiobook entries completed`,
+        note: `${yearReview.audiobookCount} audiobooks carried you somewhere else`,
         mediaType: "book",
         coverShape: "square",
         coverUrl: yearReview.longestAudiobook?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.longestAudiobook?.coverUrl || null, 3),
+        backdropUrl: null,
+        chartValues: yearReview.audiobookItems.slice(0, 14).map((item) => item.audiobookMinutes),
+      },
+      {
+        id: "books-finished",
+        layout: "bookstack",
+        kicker: "Closed The Book On",
+        title: `${yearReview.completedBooks} books completed`,
+        value: yearReview.completedBooks === 1 ? "One great ending" : `${yearReview.completedBooks} endings reached`,
+        note: "Every final chapter earned its place on the stack.",
+        mediaType: "book",
+        coverUrl: yearReview.completedBookItems[0]?.coverUrl || null,
+        backdropUrl: null,
+        covers: completedBookCovers,
+        statPairs: [
+          { label: "This Year", value: `${yearReview.completedBooks}` },
+          { label: "Last Year", value: `${yearReview.completedBooksPrev}` },
+        ],
       },
       {
         id: "games",
-        kicker: "Play Session",
+        layout: "gameplay",
+        kicker: "Controller Down Eventually",
         title: yearReview.mostPlayedGame?.title || "Most Played Game",
-        value: formatHours(yearReview.gameHours),
-        note: `${yearReview.completedGames} games completed`,
+        value: yearReview.mostPlayedGame ? formatHours(yearReview.mostPlayedGame.gameplayHours) : "0 hours",
+        note: `${formatHours(yearReview.gameHours)} across all games • ${yearReview.completedGames} completed`,
         mediaType: "game",
         preferTextOverlay: true,
         coverUrl: yearReview.mostPlayedGame?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.mostPlayedGame?.coverUrl || null, 4),
+        backdropUrl: getBackdrop(yearReview.mostPlayedGame, 4),
+        statPairs: [
+          { label: "Total Playtime", value: formatHours(yearReview.gameHours) },
+          { label: "Games Finished", value: `${yearReview.completedGames}` },
+        ],
+      },
+      {
+        id: "pace",
+        layout: "versus",
+        kicker: "Compared With Last Year",
+        title: paceDelta === 0 ? "Same pace, different stories" : paceDelta > 0 ? "You logged more this year" : "You took it slower this year",
+        value: paceDelta === 0 ? "Even" : `${Math.abs(paceDelta)} ${paceDelta > 0 ? "ahead" : "behind"}`,
+        note: `${selectedReviewYear} versus ${selectedReviewYear - 1}, from first log to last.`,
+        coverUrl: null,
+        backdropUrl: null,
+        chartValues: [yearReview.previousYearItems.length, yearReview.yearItems.length],
+        statPairs: [
+          { label: `${selectedReviewYear - 1}`, value: `${yearReview.previousYearItems.length}` },
+          { label: `${selectedReviewYear}`, value: `${yearReview.yearItems.length}` },
+        ],
       },
       {
         id: "completion-rate",
-        kicker: "Consistency",
-        title: "Completion Rate",
-        value: yearReview.yearItems.length
-          ? `${Math.round((yearReview.completedTotal / yearReview.yearItems.length) * 100)}%`
-          : "0%",
+        layout: "completion",
+        kicker: "Finishing Energy",
+        title: "You actually finished things",
+        value: `${completionProgress}%`,
         note: `${yearReview.completedTotal} of ${yearReview.yearItems.length} logged titles completed`,
         coverUrl: yearReview.topRatedItems[1]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[1]?.coverUrl || null, 5),
+        backdropUrl: null,
+        progress: completionProgress,
+        statPairs: [
+          { label: "Completed", value: `${yearReview.completedTotal}` },
+          { label: "Still Waiting", value: `${Math.max(0, yearReview.yearItems.length - yearReview.completedTotal)}` },
+        ],
+      },
+      {
+        id: "unfinished-business",
+        layout: "queue",
+        kicker: "To Be Continued",
+        title: `${unfinishedItems.length} stories still calling`,
+        value: unfinishedItems.length ? "Your next favorite may be waiting" : "Queue cleared",
+        note: "A backlog is really just optimism with cover art.",
+        coverUrl: unfinishedItems[0]?.coverUrl || null,
+        backdropUrl: null,
+        covers: unfinishedCovers,
+        statPairs: unfinishedBuckets.map((entry) => ({ label: entry.label, value: `${entry.value}` })),
       },
       {
         id: "genre",
-        kicker: "Your Vibe",
-        title: yearReview.topGenre?.name || "Top Genre",
+        layout: "genre",
+        kicker: "Your Taste Had A Type",
+        title: yearReview.topGenre?.name || "A little of everything",
         value: yearReview.topGenre ? `${yearReview.topGenre.value} logs` : "-",
-        note: "Most frequent genre in your Year in Review",
+        note: "The genre that kept finding its way back to you.",
         coverUrl: yearReview.topRatedItems[2]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[2]?.coverUrl || null, 6),
+        backdropUrl: null,
+        statPairs: topGenres.map((genre) => ({ label: genre.name, value: `${genre.value}` })),
+      },
+      {
+        id: "creators",
+        layout: "people",
+        kicker: "Names Behind Your Year",
+        title: topCreators[0]?.name || "A cast of thousands",
+        value: topCreators[0] ? `${topCreators[0].value} appearances` : "New voices everywhere",
+        note: "The authors and directors who kept showing up in your library.",
+        coverUrl: null,
+        backdropUrl: null,
+        statPairs: topCreators.map((creator) => ({ label: creator.name, value: `${creator.value}` })),
       },
       {
         id: "busiest-month",
-        kicker: "Peak Month",
+        layout: "calendar",
+        kicker: "Your Main Character Month",
         title: yearReview.busiestMonth?.label || "No month data",
         value: `${yearReview.busiestMonth?.count || 0} logged`,
-        note: "Your most active month for logging titles",
+        note: "Apparently sleep was optional.",
         coverUrl: yearReview.topRatedItems[3]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[3]?.coverUrl || null, 7),
+        backdropUrl: null,
+        chartValues: monthValues,
+      },
+      {
+        id: "release-eras",
+        layout: "timeline",
+        kicker: "A Library Through Time",
+        title: releaseEras.length ? `${releaseEras.length} decades represented` : "Timeless taste",
+        value: [...releaseEras].sort((left, right) => right.value - left.value)[0]?.label || "All eras",
+        note: "Your year reached backward, forward, and everywhere in between.",
+        coverUrl: null,
+        backdropUrl: null,
+        chartValues: releaseEras.map((entry) => entry.value),
+        statPairs: releaseEras.map((entry) => ({ label: entry.label, value: `${entry.value}` })),
       },
       {
         id: "lowest-rated",
-        kicker: "Tough Watch",
+        layout: "review",
+        kicker: "The Plot Twist",
         title: yearReview.lowestRated?.title || "Lowest Rated",
         value: getPersonalRatingBadgeLabel(yearReview.lowestRated) || "-",
-        note: yearReview.lowestRated ? MEDIA_LABELS[yearReview.lowestRated.mediaType] : "No low-rated entries yet",
+        note: yearReview.lowestRated ? "Not every journey needed a sequel." : "Nothing landed at the bottom this year.",
         mediaType: yearReview.lowestRated?.mediaType,
         coverShape:
           yearReview.lowestRated?.mediaType === "book" &&
@@ -2641,25 +2987,34 @@ export function StatisticsView({
         preferTextOverlay:
           yearReview.lowestRated?.mediaType === "movie" || yearReview.lowestRated?.mediaType === "game",
         coverUrl: yearReview.lowestRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.lowestRated?.coverUrl || null, 8),
+        backdropUrl: getBackdrop(yearReview.lowestRated, 8),
       },
       {
         id: "ratings-depth",
-        kicker: "Critic Mode",
-        title: "Rated Titles",
-        value: `${yearReview.topRatedItems.length}`,
-        note: `${yearReview.bottomRatedItems.length} titles in bottom picks list`,
+        layout: "ratings",
+        kicker: "You Had Opinions",
+        title: "Your rating personality",
+        value: `${yearReview.yearItems.filter((item) => typeof item.rating === "number").length} ratings`,
+        note: "A completely scientific distribution of your feelings.",
         coverUrl: yearReview.topRatedItems[4]?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.topRatedItems[4]?.coverUrl || null, 9),
+        backdropUrl: null,
+        chartValues: ratingBuckets,
       },
       {
         id: "outro",
-        kicker: "See You Next Year",
-        title: `${selectedReviewYear} highlights complete`,
-        value: `${yearReview.topRatedItems.length} rated picks`,
-        note: `Busiest month: ${yearReview.busiestMonth?.label || "N/A"}`,
+        layout: "finale",
+        kicker: "That Was Your Year",
+        title: `${selectedReviewYear}, wrapped`,
+        value: `${yearReview.yearItems.length} memories saved`,
+        note: "Your library grew. Your backlog probably did too.",
         coverUrl: yearReview.lowestRated?.coverUrl || null,
-        backdropUrl: getBackdrop(yearReview.lowestRated?.coverUrl || null, 5),
+        backdropUrl: getBackdrop(yearReview.topRated, 5),
+        covers: featuredCovers.slice(0, 10),
+        statPairs: [
+          { label: "Top Genre", value: yearReview.topGenre?.name || "Mixed" },
+          { label: "Peak Month", value: yearReview.busiestMonth?.label || "-" },
+          { label: "Top Score", value: getPersonalRatingBadgeLabel(yearReview.topRated) || "-" },
+        ],
       },
     ];
   }, [selectedReviewYear, yearReview]);
@@ -2902,35 +3257,44 @@ export function StatisticsView({
   const statsThemeVars = useMemo(() => {
     const themeMap: Record<"light" | "dark" | "classic", Record<string, string>> = {
       light: {
-        "--stats-bg": "#ecececf0",
-        "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.84), rgba(16, 34, 70, 0.92))",
-        "--stats-border": "rgba(122, 156, 201, 0.38)",
-        "--stats-text": "rgba(233, 243, 255, 0.96)",
-        "--stats-muted": "rgba(191, 211, 240, 0.84)",
-        "--stats-heading-primary": "rgba(48, 78, 122, 0.96)",
-        "--stats-heading-secondary": "rgba(72, 101, 142, 0.95)",
-        "--stats-glow-1": "rgba(140, 158, 186, 0.18)",
-        "--stats-glow-2": "rgba(176, 188, 206, 0.14)",
+        "--stats-bg": "#f6f7fa",
+        "--stats-card": "rgba(255, 255, 255, 0.92)",
+        "--stats-surface-soft": "rgba(245, 247, 251, 0.96)",
+        "--stats-border": "rgba(31, 45, 72, 0.12)",
+        "--stats-text": "#17213a",
+        "--stats-muted": "#6e7990",
+        "--stats-heading-primary": "#17213a",
+        "--stats-heading-secondary": "#667189",
+        "--stats-shadow": "0 8px 24px rgba(39, 51, 78, 0.07)",
+        "--stats-track": "rgba(222, 227, 237, 0.78)",
+        "--stats-glow-1": "rgba(139, 92, 246, 0.12)",
+        "--stats-glow-2": "rgba(38, 197, 145, 0.1)",
       },
       dark: {
-        "--stats-bg": "#1b1f26f0",
-        "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.82), rgba(16, 34, 70, 0.9))",
-        "--stats-border": "rgba(125, 171, 242, 0.3)",
-        "--stats-text": "rgba(233, 243, 255, 0.96)",
-        "--stats-muted": "rgba(191, 211, 240, 0.8)",
-        "--stats-heading-primary": "rgba(222, 235, 252, 0.98)",
-        "--stats-heading-secondary": "rgba(192, 212, 242, 0.95)",
+        "--stats-bg": "#141820",
+        "--stats-card": "rgba(31, 36, 47, 0.94)",
+        "--stats-surface-soft": "rgba(38, 44, 57, 0.94)",
+        "--stats-border": "rgba(222, 230, 245, 0.12)",
+        "--stats-text": "#f5f7fb",
+        "--stats-muted": "#a8b1c2",
+        "--stats-heading-primary": "#f5f7fb",
+        "--stats-heading-secondary": "#b3bccd",
+        "--stats-shadow": "0 10px 28px rgba(0, 0, 0, 0.22)",
+        "--stats-track": "rgba(7, 11, 18, 0.48)",
         "--stats-glow-1": "rgba(78, 144, 250, 0.25)",
         "--stats-glow-2": "rgba(43, 218, 170, 0.19)",
       },
       classic: {
-        "--stats-bg": "#d8cdb8f0",
-        "--stats-card": "linear-gradient(156deg, rgba(30, 59, 106, 0.84), rgba(16, 34, 70, 0.92))",
-        "--stats-border": "rgba(140, 175, 228, 0.34)",
-        "--stats-text": "rgba(236, 243, 252, 0.96)",
-        "--stats-muted": "rgba(196, 212, 236, 0.82)",
-        "--stats-heading-primary": "rgba(236, 228, 210, 0.98)",
-        "--stats-heading-secondary": "rgba(222, 212, 193, 0.95)",
+        "--stats-bg": "#eee8dd",
+        "--stats-card": "rgba(255, 252, 246, 0.92)",
+        "--stats-surface-soft": "rgba(245, 239, 228, 0.94)",
+        "--stats-border": "rgba(74, 59, 40, 0.14)",
+        "--stats-text": "#29251f",
+        "--stats-muted": "#786f62",
+        "--stats-heading-primary": "#29251f",
+        "--stats-heading-secondary": "#716859",
+        "--stats-shadow": "0 8px 24px rgba(67, 51, 31, 0.09)",
+        "--stats-track": "rgba(211, 201, 184, 0.72)",
         "--stats-glow-1": "rgba(240, 183, 86, 0.14)",
         "--stats-glow-2": "rgba(139, 146, 13, 0.1)",
       },
@@ -2957,7 +3321,7 @@ export function StatisticsView({
     >
     <section
       ref={statsStageRef}
-      className={`statsRoot${isMobileLayout ? "" : " statsStage"}`}
+      className={`statsRoot statsTheme-${themeMode}${isMobileLayout ? "" : " statsStage"}`}
       style={
         isMobileLayout
           ? statsThemeVars
@@ -2968,23 +3332,26 @@ export function StatisticsView({
 
       <header className="statsHeader">
         <div className="statsHeaderIntro">
-          {onExit ? (
-            <button type="button" className="statsExitButton" onClick={onExit}>
-              Back to Library
-            </button>
-          ) : null}
-          <h1 className="statsTitle">Statistics</h1>
-          <p className="statsSubtitle">
-            {activeTab === "yearReview"
-              ? `Your ${selectedReviewYear} annual wrap-up with year-over-year comparisons.`
-              : filter === "all"
-              ? selectedStatsYear === ALL_STATS_YEARS
-                ? "High-level trends across your full library."
-                : `High-level trends across your full library in ${selectedStatsYear}.`
-              : selectedStatsYear === ALL_STATS_YEARS
-                ? `Focused stats for ${MEDIA_LABELS[filter]} across all years.`
-                : `Focused stats for ${MEDIA_LABELS[filter]} in ${selectedStatsYear}.`}
-          </p>
+          <div className="statsHeaderIcon" aria-hidden="true">
+            <span className="statsHeaderBar statsHeaderBarOne" />
+            <span className="statsHeaderBar statsHeaderBarTwo" />
+            <span className="statsHeaderBar statsHeaderBarThree" />
+            <span className="statsHeaderBar statsHeaderBarFour" />
+          </div>
+          <div className="statsHeaderCopy">
+            <h1 className="statsTitle">Statistics</h1>
+            <p className="statsSubtitle">
+              {activeTab === "yearReview"
+                ? `Your ${selectedReviewYear} annual wrap-up with year-over-year comparisons.`
+                : filter === "all"
+                ? selectedStatsYear === ALL_STATS_YEARS
+                  ? "High-level trends across your full library."
+                  : `High-level trends across your full library in ${selectedStatsYear}.`
+                : selectedStatsYear === ALL_STATS_YEARS
+                  ? `Focused stats for ${MEDIA_LABELS[filter]} across all years.`
+                  : `Focused stats for ${MEDIA_LABELS[filter]} in ${selectedStatsYear}.`}
+            </p>
+          </div>
         </div>
         <div className="statsHeaderControls">
           <div className="statsTabs" role="tablist" aria-label="Media filter">
@@ -3007,6 +3374,7 @@ export function StatisticsView({
                       : undefined
                   }
                 >
+                  {option.key === "yearReview" ? <StatisticsGlyph label="calendar" size={14} /> : null}
                   {option.label}
                 </button>
               );
@@ -3037,15 +3405,25 @@ export function StatisticsView({
       {activeTab === "yearReview" ? (
         <>
           <div className="yearReviewHero">
-            <div className="yearReviewHeroMain">
-              <span className="yearReviewEyebrow">Year in Review</span>
-              <h2 className="yearReviewTitle">{selectedReviewYear} Year in Review</h2>
+            <div className="yearReviewStoryGroup">
+              <div className="yearReviewHeroMain">
+                <span className="yearReviewEyebrow">Year in Review</span>
+                <h2 className="yearReviewTitle">{selectedReviewYear}</h2>
+              </div>
               <p className="yearReviewSubtitle">
-                Your media story for the year: what you watched, read, played, finished, and dropped.
+                <strong>Your media story for the year:</strong>
+                <span>what you watched, read, played, finished, and dropped.</span>
               </p>
+              <span className="yearReviewConfetti" aria-hidden="true">
+                {Array.from({ length: 12 }, (_, index) => <i key={index} />)}
+              </span>
             </div>
-            <div className="yearReviewHeroControls">
-              <div className="yearReviewHeroActions">
+
+            <div className="yearReviewFeature">
+              <div className="yearReviewFeatureCopy">
+                <span className="yearReviewFeatureEyebrow">CDL Wrapped v1</span>
+                <h3>Your Top Rated<br />of {selectedReviewYear}</h3>
+                <p>A video highlight of the year&apos;s best-loved titles.</p>
                 <button
                   type="button"
                   className="wrappedLaunchButton"
@@ -3054,19 +3432,37 @@ export function StatisticsView({
                     setIsWrappedOpen(true);
                   }}
                 >
-                  CDL Wrapped v1
+                  <span className="wrappedPlayGlyph" aria-hidden="true">▶</span>
+                  Play Wrapped Video
                 </button>
-                <label className="yearReviewPicker">
-                  <span>Year</span>
-                  <select value={selectedReviewYear} onChange={(event) => setReviewYear(Number(event.target.value))}>
-                    {reviewYearOptions.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </label>
               </div>
+              <button
+                type="button"
+                className="yearReviewFeaturePlay"
+                aria-label={`Play ${selectedReviewYear} Wrapped video`}
+                onClick={() => {
+                  setWrappedSlideIndex(0);
+                  setIsWrappedOpen(true);
+                }}
+              >
+                <span aria-hidden="true">▶</span>
+              </button>
+              <div className="yearReviewFilmstrip" aria-hidden="true">
+                <span /><span /><span /><span /><span />
+              </div>
+            </div>
+
+            <div className="yearReviewHeroControls">
+              <label className="yearReviewPicker">
+                <span>Year</span>
+                <select value={selectedReviewYear} onChange={(event) => setReviewYear(Number(event.target.value))}>
+                  {reviewYearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <span className="yearReviewPickerHint">Switch years to compare your trends and highlights.</span>
             </div>
           </div>
@@ -3108,7 +3504,7 @@ export function StatisticsView({
                   ["--metric-accent" as string]: metric.accent,
                 }}
               >
-                <div className="metricLabel">{metric.label}</div>
+                <div className="metricLabel"><span className="metricIcon"><StatisticsGlyph label={metric.label} size={17} /></span>{metric.label}</div>
                 <div
                   className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""} ${
                     String(metric.value).includes("hours") ? "metricValueHours" : ""
@@ -3152,7 +3548,7 @@ export function StatisticsView({
               }
             >
               <div className="cardHeader">
-                <h2>Storyline</h2>
+                <h2 className="cardTitleWithIcon"><StatisticsGlyph label="book" size={17} />Storyline</h2>
                 <span>{yearReview.yearItems.length} logged</span>
               </div>
               <div className="yearStoryBody">
@@ -3836,7 +4232,7 @@ export function StatisticsView({
               ["--metric-accent" as string]: metric.accent,
             }}
           >
-            <div className="metricLabel">{metric.label}</div>
+            <div className="metricLabel"><span className="metricIcon"><StatisticsGlyph label={metric.label} size={17} /></span>{metric.label}</div>
             <div
               className={`metricValue ${metric.id.includes("_AVERAGE_RATING") ? "metricValueCompact" : ""} ${
                 String(metric.value).includes("hours") ? "metricValueHours" : ""
@@ -3939,14 +4335,14 @@ export function StatisticsView({
           ) : null}
         </article>
 
-        <article className="statsCard statsCardCompactMini">
+        <article className="statsCard statsCardCompactMini genreOrbitCard">
           <div className="cardHeader">
             <h2>Genre Orbit</h2>
             <span>{topGenres.reduce((sum, genre) => sum + genre.value, 0)} entries</span>
           </div>
 
           {topGenres.length > 0 ? (
-            <>
+            <div className="genreOrbitBody">
               <div className="donutWrap">
                 <div className="donut" style={{ background: buildDonutGradient(topGenres) }}>
                   <div className="donutCenter">
@@ -3987,12 +4383,22 @@ export function StatisticsView({
                     }
                   >
                     <span className="legendSwatch" style={{ background: DONUT_COLORS[index % DONUT_COLORS.length] }} />
-                    <span className="legendName">{genre.name}</span>
+                    <span className="genreLegendCopy">
+                      <span className="legendName">{genre.name}</span>
+                      <span className="genreLegendTrack" aria-hidden="true">
+                        <span
+                          style={{
+                            width: `${Math.max(8, (genre.value / Math.max(1, topGenres[0]?.value || 1)) * 100)}%`,
+                            background: DONUT_COLORS[index % DONUT_COLORS.length],
+                          }}
+                        />
+                      </span>
+                    </span>
                     <span className="legendValue">{genre.value}</span>
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           ) : (
             <div className="cardEmpty">No genre metadata in this selection.</div>
           )}
@@ -4110,7 +4516,13 @@ export function StatisticsView({
                     }
                   >
                     <div className="ratingBarTrack scaledTrack">
-                      <div className={`ratingBar ${hasData ? "hasData" : "noData"}`} style={{ height: scaledHeight }} />
+                      <div
+                        className={`ratingBar ${hasData ? "hasData" : "noData"}`}
+                        style={{
+                          height: scaledHeight,
+                          background: hasData ? RATING_BUCKET_COLORS[Math.max(0, Math.min(9, bucketValue - 1))] : undefined,
+                        }}
+                      />
                     </div>
                     <div className="ratingCount">{bucket.value}</div>
                     <div className="ratingLabel">{bucket.name}</div>
@@ -4549,23 +4961,226 @@ export function StatisticsView({
               <div className="wrappedSlideCount">
                 {wrappedSlideIndex + 1} / {wrappedSlides.length}
               </div>
-              <div className="wrappedKicker">{activeWrappedSlide.kicker}</div>
-              <h3 className="wrappedTitle">{activeWrappedSlide.title}</h3>
-              <div className={`wrappedValue ${wrappedIsPlaying ? "isBeat" : ""}`}>{activeWrappedSlide.value}</div>
-              <p className="wrappedNote">{activeWrappedSlide.note}</p>
-              {activeWrappedSlide.coverUrl && !wrappedBackdropFirst ? (
-                <div
-                  key={activeWrappedSlide.id}
-                  className={`wrappedCoverFrame wrappedCoverSlideIn ${wrappedCoverShape === "square" ? "isSquare" : ""}`}
-                >
-                  <img
-                    src={activeWrappedSlide.coverUrl}
-                    alt={`${activeWrappedSlide.title} cover`}
-                    loading="lazy"
-                    style={COVER_IMAGE_RADIUS_STYLE}
-                  />
+              <div className={`wrappedScene wrappedScene-${activeWrappedSlide.layout}`} key={activeWrappedSlide.id}>
+                {activeWrappedSlide.layout === "intro" || activeWrappedSlide.layout === "finale" ? (
+                  <div className="wrappedMosaic" aria-hidden="true">
+                    {(activeWrappedSlide.covers || []).map((cover, index) => (
+                      <img key={`${cover}-${index}`} src={cover} alt="" loading="lazy" />
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "spotlight" ||
+                activeWrappedSlide.layout === "review" ||
+                activeWrappedSlide.layout === "gameplay" ||
+                activeWrappedSlide.layout === "tastegap" ? (
+                  activeWrappedSlide.coverUrl ? (
+                    <div className={`wrappedFeatureCover ${wrappedCoverShape === "square" ? "isSquare" : ""}`}>
+                      <img src={activeWrappedSlide.coverUrl} alt={`${activeWrappedSlide.title} cover`} loading="lazy" />
+                    </div>
+                  ) : null
+                ) : null}
+
+                {activeWrappedSlide.layout === "waveform" && activeWrappedSlide.coverUrl ? (
+                  <div className="wrappedAudioArtwork">
+                    <img src={activeWrappedSlide.coverUrl} alt={`${activeWrappedSlide.title} cover`} loading="lazy" />
+                    <span className="wrappedAudioDisc" aria-hidden="true" />
+                  </div>
+                ) : null}
+
+                <div className="wrappedSceneCopy">
+                  <div className="wrappedKicker">{activeWrappedSlide.kicker}</div>
+                  <h3 className="wrappedTitle">{activeWrappedSlide.title}</h3>
+                  <div className={`wrappedValue ${wrappedIsPlaying ? "isBeat" : ""}`}>{activeWrappedSlide.value}</div>
+                  <p className="wrappedNote">{activeWrappedSlide.note}</p>
                 </div>
-              ) : null}
+
+                {activeWrappedSlide.layout === "filmstrip" ? (
+                  <div className="wrappedFilmstrip" aria-label="Movies from this year">
+                    {(activeWrappedSlide.covers || []).map((cover, index) => (
+                      <div className="wrappedFilmFrame" key={`${cover}-${index}`}>
+                        <img src={cover} alt="" loading="lazy" />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "episodes" ? (
+                  <div className="wrappedEpisodeWall" aria-label="Episodes watched this year">
+                    {(activeWrappedSlide.covers || []).map((cover, index) => (
+                      <div className="wrappedEpisodeStill" key={`${cover}-${index}`}>
+                        <img src={cover} alt="" loading="lazy" />
+                        <span>S{Math.floor(index / 3) + 1} E{index + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "bookstack" ? (
+                  <div className="wrappedBookStack" aria-label="Books completed this year">
+                    {(activeWrappedSlide.covers || []).map((cover, index) => (
+                      <img key={`${cover}-${index}`} src={cover} alt="" loading="lazy" />
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "mix" ? (
+                  <div className="wrappedMixVisual" aria-label="Media mix">
+                    <div
+                      className="wrappedMixRing"
+                      style={
+                        {
+                          ["--wrapped-mix-a" as string]: `${((activeWrappedSlide.chartValues?.[0] || 0) / Math.max(1, ...(activeWrappedSlide.chartValues || []))) * 100}%`,
+                        } as CSSProperties
+                      }
+                    >
+                      <strong>{activeWrappedSlide.value.split(" ")[0]}</strong>
+                      <span>logs</span>
+                    </div>
+                    <div className="wrappedMixLegend">
+                      {(activeWrappedSlide.statPairs || []).map((stat, index) => (
+                        <div key={stat.label} className={`wrappedMixLegend-${index + 1}`}>
+                          <span />
+                          <strong>{stat.value}</strong>
+                          <small>{stat.label}</small>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "versus" ? (
+                  <div className="wrappedVersusVisual" aria-label="Year over year comparison">
+                    {(activeWrappedSlide.statPairs || []).map((stat, index) => {
+                      const values = activeWrappedSlide.chartValues || [];
+                      const height = 28 + ((values[index] || 0) / Math.max(1, ...values)) * 72;
+                      return (
+                        <div key={stat.label}>
+                          <strong>{stat.value}</strong>
+                          <span style={{ height: `${height}%` }} />
+                          <small>{stat.label}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "tastegap" ? (
+                  <div className="wrappedTasteScale" aria-label="Personal and community ratings">
+                    {(activeWrappedSlide.statPairs || []).map((stat, index) => (
+                      <div key={stat.label}>
+                        <span>{stat.label}</span>
+                        <strong>{stat.value}</strong>
+                        <i className={index === 0 ? "isPersonal" : "isCommunity"} />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "people" ? (
+                  <div className="wrappedPeopleMarquee" aria-label="Favorite creators">
+                    {(activeWrappedSlide.statPairs || []).map((stat, index) => (
+                      <div key={stat.label}>
+                        <span>{String(index + 1).padStart(2, "0")}</span>
+                        <strong>{stat.label}</strong>
+                        <small>{stat.value} titles</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "timeline" ? (
+                  <div className="wrappedEraTimeline" aria-label="Release decades represented">
+                    {(activeWrappedSlide.statPairs || []).map((stat, index) => {
+                      const values = activeWrappedSlide.chartValues || [];
+                      const size = 20 + ((values[index] || 0) / Math.max(1, ...values)) * 48;
+                      return (
+                        <div key={stat.label}>
+                          <span style={{ width: `${size}px`, height: `${size}px` }} />
+                          <strong>{stat.label}</strong>
+                          <small>{stat.value}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "queue" ? (
+                  <div className="wrappedQueueDeck" aria-label="Unfinished titles">
+                    {(activeWrappedSlide.covers || []).map((cover, index) => (
+                      <img key={`${cover}-${index}`} src={cover} alt="" loading="lazy" />
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "waveform" ? (
+                  <div className="wrappedWaveform" aria-hidden="true">
+                    {(activeWrappedSlide.chartValues?.length ? activeWrappedSlide.chartValues : [4, 8, 13, 7, 16, 10, 5, 12, 8, 14, 6, 9]).map((value, index, values) => (
+                      <span
+                        key={`${value}-${index}`}
+                        style={{ height: `${24 + (value / Math.max(1, ...values)) * 76}%` }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "completion" ? (
+                  <div className="wrappedCompletionVisual">
+                    <div
+                      className="wrappedCompletionRing"
+                      style={{ ["--wrapped-progress" as string]: `${activeWrappedSlide.progress || 0}%` } as CSSProperties}
+                    >
+                      <strong>{activeWrappedSlide.value}</strong>
+                      <span>complete</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "genre" ? (
+                  <div className="wrappedGenreField">
+                    {(activeWrappedSlide.statPairs || []).map((stat, index) => (
+                      <span key={stat.label} className={`wrappedGenreChip wrappedGenreChip-${index + 1}`}>
+                        <strong>{stat.label}</strong>
+                        <small>{stat.value} logs</small>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "calendar" ? (
+                  <div className="wrappedMonthChart" aria-label="Monthly activity">
+                    {(activeWrappedSlide.chartValues || []).map((value, index, values) => (
+                      <div className="wrappedMonthColumn" key={index}>
+                        <span style={{ height: `${12 + (value / Math.max(1, ...values)) * 88}%` }} />
+                        <small>{monthLabelFormatter.format(new Date(Date.UTC(2020, index, 1))).slice(0, 1)}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.layout === "ratings" ? (
+                  <div className="wrappedRatingChart" aria-label="Rating distribution">
+                    {(activeWrappedSlide.chartValues || []).map((value, index, values) => (
+                      <div className="wrappedRatingColumn" key={index}>
+                        <span style={{ height: `${8 + (value / Math.max(1, ...values)) * 92}%` }} />
+                        <small>{index + 1}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {activeWrappedSlide.statPairs?.length &&
+                !["genre", "mix", "versus", "tastegap", "people", "timeline"].includes(activeWrappedSlide.layout) ? (
+                  <div className="wrappedStatPairs">
+                    {activeWrappedSlide.statPairs.map((stat) => (
+                      <div key={stat.label}>
+                        <strong>{stat.value}</strong>
+                        <span>{stat.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <p className="wrappedHint">Use ← / → keys, side arrows, or Prev/Next buttons.</p>
             </div>
 
@@ -4614,13 +5229,15 @@ export function StatisticsView({
                 <button type="button" onClick={() => setWrappedMuted((current) => !current)}>
                   {wrappedMuted ? "Unmute" : "Mute"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setWrappedTrackIndex((current) => (current + 1) % WRAPPED_AUDIO_TRACKS.length)}
+                <a
+                  className="wrappedTrackLabel"
+                  href={WRAPPED_AUDIO_TRACKS[wrappedTrackIndex].creditUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Uppbeat license ${WRAPPED_AUDIO_TRACKS[wrappedTrackIndex].licenseCode}`}
                 >
-                  Next Track
-                </button>
-                <span className="wrappedTrackLabel">{WRAPPED_AUDIO_TRACKS[wrappedTrackIndex].title}</span>
+                  {WRAPPED_AUDIO_TRACKS[wrappedTrackIndex].title}
+                </a>
                 {wrappedPlaybackBlocked ? (
                   <span className="wrappedTrackLabel">Tap Play Music to start audio</span>
                 ) : null}
@@ -4954,6 +5571,7 @@ export function StatisticsView({
           text-align: center;
           gap: 10px;
           padding: 16px 30px 10px;
+          overflow: hidden;
         }
 
         .wrappedStoryBackdropFirst {
@@ -5091,6 +5709,691 @@ export function StatisticsView({
 
         .wrappedCoverSlideIn {
           animation: wrappedCoverSlideIn 1100ms cubic-bezier(0.2, 0.85, 0.2, 1);
+        }
+
+        .wrappedScene {
+          position: relative;
+          width: min(820px, calc(100% - 72px));
+          min-height: 540px;
+          display: grid;
+          align-items: center;
+          justify-items: center;
+          padding: 48px;
+          border-radius: 24px;
+          overflow: hidden;
+          isolation: isolate;
+          animation: wrappedSceneEnter 640ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .wrappedScene::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: -2;
+          pointer-events: none;
+        }
+
+        .wrappedSceneCopy {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          max-width: 690px;
+        }
+
+        .wrappedScene-intro,
+        .wrappedScene-finale {
+          grid-template-columns: minmax(0, 0.9fr) minmax(300px, 1.1fr);
+          justify-items: stretch;
+          text-align: left;
+          background: linear-gradient(135deg, rgba(37, 27, 91, 0.92), rgba(18, 83, 112, 0.88));
+        }
+
+        .wrappedScene-intro::before {
+          background:
+            linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px),
+            linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px);
+          background-size: 42px 42px;
+          opacity: 0.42;
+        }
+
+        .wrappedScene-finale {
+          background: linear-gradient(125deg, rgba(76, 34, 116, 0.94), rgba(187, 58, 94, 0.82));
+        }
+
+        .wrappedScene-intro .wrappedSceneCopy,
+        .wrappedScene-finale .wrappedSceneCopy {
+          align-items: flex-start;
+          grid-column: 1;
+          grid-row: 1;
+        }
+
+        .wrappedMosaic {
+          grid-column: 2;
+          grid-row: 1;
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          transform: rotate(3deg);
+          padding: 8px;
+        }
+
+        .wrappedMosaic img {
+          width: 100%;
+          aspect-ratio: 2 / 3;
+          object-fit: cover;
+          border-radius: 10px;
+          box-shadow: 0 12px 24px rgba(0,0,0,0.28);
+        }
+
+        .wrappedScene-spotlight,
+        .wrappedScene-review,
+        .wrappedScene-gameplay {
+          grid-template-columns: minmax(190px, 0.78fr) minmax(0, 1.22fr);
+          gap: 44px;
+          text-align: left;
+          justify-items: stretch;
+          background: linear-gradient(120deg, rgba(7, 16, 37, 0.5), rgba(7, 18, 39, 0.84));
+        }
+
+        .wrappedScene-spotlight .wrappedSceneCopy,
+        .wrappedScene-review .wrappedSceneCopy,
+        .wrappedScene-gameplay .wrappedSceneCopy {
+          align-items: flex-start;
+        }
+
+        .wrappedFeatureCover {
+          position: relative;
+          width: 100%;
+          max-width: 235px;
+          aspect-ratio: 2 / 3;
+          border-radius: 14px;
+          overflow: hidden;
+          box-shadow: 0 28px 60px rgba(0,0,0,0.52);
+          transform: rotate(-2deg);
+        }
+
+        .wrappedFeatureCover.isSquare {
+          aspect-ratio: 1;
+        }
+
+        .wrappedFeatureCover img,
+        .wrappedAudioArtwork img,
+        .wrappedFilmFrame img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .wrappedScene-review {
+          background: linear-gradient(135deg, rgba(70, 19, 38, 0.9), rgba(17, 20, 43, 0.9));
+        }
+
+        .wrappedScene-review .wrappedFeatureCover {
+          transform: rotate(3deg);
+          filter: saturate(0.72);
+        }
+
+        .wrappedScene-review .wrappedValue {
+          color: #ff858f;
+        }
+
+        .wrappedScene-gameplay {
+          border: 1px solid rgba(101, 240, 192, 0.34);
+          background: linear-gradient(120deg, rgba(3, 24, 30, 0.64), rgba(8, 30, 51, 0.82));
+        }
+
+        .wrappedScene-filmstrip {
+          grid-template-rows: auto 250px;
+          align-content: center;
+          gap: 36px;
+          background: linear-gradient(145deg, rgba(80, 18, 65, 0.9), rgba(12, 47, 82, 0.92));
+        }
+
+        .wrappedFilmstrip {
+          width: calc(100% + 96px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 22px 14px;
+          border-top: 8px dotted rgba(255,255,255,0.62);
+          border-bottom: 8px dotted rgba(255,255,255,0.62);
+          transform: rotate(-1.5deg);
+          background: rgba(5, 9, 19, 0.58);
+        }
+
+        .wrappedFilmFrame {
+          width: 104px;
+          aspect-ratio: 2 / 3;
+          border-radius: 7px;
+          overflow: hidden;
+          flex: 0 0 auto;
+        }
+
+        .wrappedScene-waveform {
+          grid-template-columns: 260px minmax(0, 1fr);
+          grid-template-rows: 1fr 110px;
+          gap: 28px 46px;
+          justify-items: stretch;
+          text-align: left;
+          background: linear-gradient(145deg, #2b1c56, #0a5267);
+        }
+
+        .wrappedScene-waveform .wrappedSceneCopy {
+          align-items: flex-start;
+        }
+
+        .wrappedAudioArtwork {
+          position: relative;
+          width: 230px;
+          aspect-ratio: 1;
+          z-index: 1;
+        }
+
+        .wrappedAudioArtwork img {
+          position: relative;
+          z-index: 2;
+          border-radius: 18px;
+          box-shadow: 0 24px 48px rgba(0,0,0,0.42);
+        }
+
+        .wrappedAudioDisc {
+          position: absolute;
+          width: 88%;
+          aspect-ratio: 1;
+          right: -38%;
+          top: 6%;
+          border-radius: 50%;
+          background: repeating-radial-gradient(circle, #151927 0 3px, #2a3041 4px 5px);
+          box-shadow: 0 16px 34px rgba(0,0,0,0.42);
+        }
+
+        .wrappedWaveform {
+          grid-column: 1 / -1;
+          align-self: stretch;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          height: 100px;
+        }
+
+        .wrappedWaveform span {
+          flex: 1;
+          min-width: 5px;
+          border-radius: 999px;
+          background: linear-gradient(180deg, #82f7e2, #9d72ff);
+          box-shadow: 0 0 16px rgba(121, 234, 216, 0.28);
+        }
+
+        .wrappedScene-completion {
+          grid-template-columns: minmax(0, 1fr) 300px;
+          background: linear-gradient(135deg, rgba(16, 79, 71, 0.94), rgba(24, 30, 77, 0.92));
+          text-align: left;
+        }
+
+        .wrappedScene-completion .wrappedSceneCopy {
+          align-items: flex-start;
+        }
+
+        .wrappedCompletionVisual {
+          grid-column: 2;
+          grid-row: 1;
+        }
+
+        .wrappedCompletionRing {
+          width: 260px;
+          aspect-ratio: 1;
+          border-radius: 50%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background:
+            radial-gradient(circle at center, #142d43 0 57%, transparent 58%),
+            conic-gradient(#7df5b4 var(--wrapped-progress), rgba(255,255,255,0.13) 0);
+          box-shadow: 0 20px 50px rgba(0,0,0,0.26);
+        }
+
+        .wrappedCompletionRing strong {
+          font-size: 58px;
+          color: white;
+          line-height: 1;
+        }
+
+        .wrappedCompletionRing span {
+          margin-top: 8px;
+          color: #9ff3c9;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          font-size: 11px;
+        }
+
+        .wrappedScene-genre {
+          background: linear-gradient(145deg, #4a226f, #173f6f);
+        }
+
+        .wrappedGenreField {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+        }
+
+        .wrappedGenreChip {
+          position: absolute;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          padding: 13px 18px;
+          border: 1px solid rgba(255,255,255,0.25);
+          border-radius: 12px;
+          background: rgba(255,255,255,0.1);
+          backdrop-filter: blur(10px);
+          color: white;
+        }
+
+        .wrappedGenreChip small { color: rgba(255,255,255,0.66); }
+        .wrappedGenreChip-1 { top: 11%; left: 9%; transform: rotate(-5deg); }
+        .wrappedGenreChip-2 { top: 15%; right: 8%; transform: rotate(4deg); }
+        .wrappedGenreChip-3 { bottom: 12%; left: 12%; transform: rotate(3deg); }
+        .wrappedGenreChip-4 { bottom: 9%; right: 11%; transform: rotate(-4deg); }
+        .wrappedGenreChip-5 { top: 48%; right: 3%; transform: rotate(6deg); }
+
+        .wrappedScene-calendar,
+        .wrappedScene-ratings {
+          grid-template-rows: auto 220px;
+          align-content: center;
+          gap: 32px;
+          background: linear-gradient(145deg, #17254d, #69346d);
+        }
+
+        .wrappedMonthChart,
+        .wrappedRatingChart {
+          width: 100%;
+          height: 220px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 12px;
+          padding: 0 18px;
+        }
+
+        .wrappedMonthColumn,
+        .wrappedRatingColumn {
+          flex: 1;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+
+        .wrappedMonthColumn span,
+        .wrappedRatingColumn span {
+          width: 100%;
+          min-height: 6px;
+          border-radius: 8px 8px 3px 3px;
+          background: linear-gradient(180deg, #ff7eae, #8257ff);
+        }
+
+        .wrappedMonthColumn small,
+        .wrappedRatingColumn small {
+          color: rgba(255,255,255,0.7);
+          font-size: 10px;
+          font-weight: 800;
+        }
+
+        .wrappedScene-ratings {
+          background: linear-gradient(145deg, #113f5a, #2b215d);
+        }
+
+        .wrappedRatingColumn span {
+          background: linear-gradient(180deg, #66e6d3, #4e78ef);
+        }
+
+        .wrappedScene-episodes {
+          grid-template-rows: auto 240px;
+          align-content: center;
+          gap: 28px;
+          background: linear-gradient(145deg, #15284f, #235f72);
+        }
+
+        .wrappedEpisodeWall {
+          width: calc(100% + 38px);
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          transform: perspective(900px) rotateX(5deg);
+        }
+
+        .wrappedEpisodeStill {
+          position: relative;
+          aspect-ratio: 16 / 9;
+          overflow: hidden;
+          border-radius: 10px;
+          border: 1px solid rgba(207, 235, 255, 0.28);
+          box-shadow: 0 14px 28px rgba(0, 0, 0, 0.3);
+        }
+
+        .wrappedEpisodeStill img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .wrappedEpisodeStill span {
+          position: absolute;
+          left: 8px;
+          bottom: 7px;
+          padding: 3px 6px;
+          border-radius: 5px;
+          background: rgba(4, 14, 34, 0.76);
+          color: #fff;
+          font-size: 8px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+        }
+
+        .wrappedScene-bookstack {
+          grid-template-columns: minmax(0, 0.9fr) minmax(330px, 1.1fr);
+          text-align: left;
+          background: linear-gradient(135deg, #4e295f, #a0505d);
+        }
+
+        .wrappedScene-bookstack .wrappedSceneCopy { align-items: flex-start; }
+
+        .wrappedBookStack {
+          position: relative;
+          width: 360px;
+          height: 370px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+        }
+
+        .wrappedBookStack img {
+          position: absolute;
+          bottom: 0;
+          width: 150px;
+          max-height: 240px;
+          object-fit: contain;
+          object-position: bottom;
+          border-radius: 8px;
+          box-shadow: 0 22px 36px rgba(0, 0, 0, 0.4);
+          transform-origin: bottom center;
+        }
+
+        .wrappedBookStack img:nth-child(1) { z-index: 6; transform: translateY(-6px); }
+        .wrappedBookStack img:nth-child(2) { z-index: 5; transform: translate(-84px, -1px) rotate(-8deg); }
+        .wrappedBookStack img:nth-child(3) { z-index: 4; transform: translate(84px, 2px) rotate(8deg); }
+        .wrappedBookStack img:nth-child(4) { z-index: 3; transform: translate(-142px, 14px) rotate(-13deg); }
+        .wrappedBookStack img:nth-child(5) { z-index: 2; transform: translate(142px, 15px) rotate(13deg); }
+        .wrappedBookStack img:nth-child(6) { z-index: 1; transform: translateY(22px) scale(1.06); filter: brightness(0.65); }
+
+        .wrappedScene-mix {
+          grid-template-columns: minmax(0, 1fr) 330px;
+          text-align: left;
+          background: linear-gradient(135deg, #193b67, #412462);
+        }
+
+        .wrappedScene-mix .wrappedSceneCopy { align-items: flex-start; }
+
+        .wrappedMixVisual {
+          display: grid;
+          place-items: center;
+          gap: 20px;
+        }
+
+        .wrappedMixRing {
+          width: 210px;
+          aspect-ratio: 1;
+          border-radius: 50%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background:
+            radial-gradient(circle, #17294b 0 52%, transparent 53%),
+            conic-gradient(#ffca66 0 25%, #ff6c91 25% 50%, #55d5ec 50% 75%, #75e39a 75% 100%);
+          box-shadow: 0 22px 46px rgba(0, 0, 0, 0.32);
+        }
+
+        .wrappedMixRing strong { color: #fff; font-size: 44px; line-height: 1; }
+        .wrappedMixRing > span { color: rgba(230, 241, 255, 0.72); text-transform: uppercase; font-size: 10px; font-weight: 900; letter-spacing: 0.12em; }
+
+        .wrappedMixLegend {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px 18px;
+          width: 100%;
+        }
+
+        .wrappedMixLegend > div {
+          display: grid;
+          grid-template-columns: 8px auto 1fr;
+          align-items: center;
+          gap: 7px;
+          color: white;
+        }
+
+        .wrappedMixLegend > div > span { width: 8px; height: 8px; border-radius: 3px; background: #ffca66; }
+        .wrappedMixLegend-2 > span { background: #ff6c91 !important; }
+        .wrappedMixLegend-3 > span { background: #55d5ec !important; }
+        .wrappedMixLegend-4 > span { background: #75e39a !important; }
+        .wrappedMixLegend small { color: rgba(226, 239, 255, 0.68); font-size: 9px; text-transform: uppercase; }
+
+        .wrappedScene-versus {
+          grid-template-columns: minmax(0, 1fr) 340px;
+          text-align: left;
+          background: linear-gradient(135deg, #112b52, #314f77);
+        }
+
+        .wrappedScene-versus .wrappedSceneCopy { align-items: flex-start; }
+
+        .wrappedVersusVisual {
+          height: 330px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 28px;
+        }
+
+        .wrappedVersusVisual > div {
+          height: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+
+        .wrappedVersusVisual strong { color: #fff; font-size: 30px; }
+        .wrappedVersusVisual span { width: 82px; min-height: 30px; border-radius: 14px 14px 4px 4px; background: linear-gradient(180deg, #6ae6d5, #4f82f0); }
+        .wrappedVersusVisual > div:last-child span { background: linear-gradient(180deg, #f6b55e, #eb648c); }
+        .wrappedVersusVisual small { color: rgba(231, 241, 255, 0.72); font-weight: 900; }
+
+        .wrappedScene-tastegap {
+          grid-template-columns: minmax(175px, 0.62fr) minmax(0, 1.15fr);
+          grid-template-rows: auto auto;
+          gap: 24px 42px;
+          text-align: left;
+          justify-items: stretch;
+          background: linear-gradient(130deg, rgba(64, 28, 87, 0.8), rgba(17, 61, 86, 0.92));
+        }
+
+        .wrappedScene-tastegap .wrappedSceneCopy { align-items: flex-start; }
+        .wrappedScene-tastegap .wrappedFeatureCover { max-width: 190px; }
+
+        .wrappedTasteScale {
+          grid-column: 1 / -1;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+          width: 100%;
+        }
+
+        .wrappedTasteScale > div {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 5px 12px;
+          padding: 14px 16px;
+          border-radius: 12px;
+          background: rgba(4, 14, 31, 0.34);
+          color: rgba(226, 239, 255, 0.72);
+          font-size: 10px;
+          text-transform: uppercase;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+        }
+
+        .wrappedTasteScale strong { color: #fff; font-size: 26px; }
+        .wrappedTasteScale i { grid-column: 1 / -1; height: 7px; border-radius: 999px; background: linear-gradient(90deg, #8b6cff, #ff6f98); }
+        .wrappedTasteScale i.isCommunity { background: linear-gradient(90deg, #4b9df4, #66e2cf); }
+
+        .wrappedScene-people {
+          grid-template-rows: auto 270px;
+          align-content: center;
+          gap: 30px;
+          background: linear-gradient(140deg, #452461, #253f78);
+        }
+
+        .wrappedPeopleMarquee {
+          width: 100%;
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 8px;
+          align-items: stretch;
+        }
+
+        .wrappedPeopleMarquee > div {
+          min-height: 210px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding: 16px 12px;
+          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(255,255,255,0.15), rgba(255,255,255,0.04));
+          border: 1px solid rgba(255,255,255,0.18);
+          text-align: left;
+        }
+
+        .wrappedPeopleMarquee > div:nth-child(even) { transform: translateY(18px); }
+        .wrappedPeopleMarquee span { color: #9cf5d4; font-size: 11px; font-weight: 900; }
+        .wrappedPeopleMarquee strong { color: #fff; font-size: 16px; line-height: 1.15; }
+        .wrappedPeopleMarquee small { color: rgba(230,240,255,0.66); font-size: 10px; }
+
+        .wrappedScene-timeline {
+          grid-template-rows: auto 240px;
+          align-content: center;
+          gap: 34px;
+          background: linear-gradient(145deg, #153557, #5c365d);
+        }
+
+        .wrappedEraTimeline {
+          position: relative;
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-around;
+          gap: 12px;
+        }
+
+        .wrappedEraTimeline::before {
+          content: "";
+          position: absolute;
+          left: 4%;
+          right: 4%;
+          top: 50%;
+          height: 2px;
+          background: linear-gradient(90deg, #64e1d1, #9e72ff, #ff7398);
+        }
+
+        .wrappedEraTimeline > div {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 7px;
+        }
+
+        .wrappedEraTimeline > div > span { border-radius: 50%; background: linear-gradient(145deg, #8ff3da, #716cf2); border: 5px solid rgba(15,37,68,0.92); box-shadow: 0 10px 24px rgba(0,0,0,0.25); }
+        .wrappedEraTimeline strong { color: #fff; font-size: 16px; }
+        .wrappedEraTimeline small { color: #ffcc79; font-weight: 900; }
+
+        .wrappedScene-queue {
+          grid-template-rows: auto 260px auto;
+          align-content: center;
+          gap: 22px;
+          background: linear-gradient(140deg, #292849, #31576b);
+        }
+
+        .wrappedQueueDeck {
+          width: 100%;
+          height: 245px;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          overflow: hidden;
+          padding: 0 18px;
+        }
+
+        .wrappedQueueDeck img {
+          width: 120px;
+          max-height: 210px;
+          object-fit: cover;
+          border-radius: 9px;
+          box-shadow: 0 20px 32px rgba(0,0,0,0.36);
+          margin-left: -18px;
+          transform-origin: bottom center;
+        }
+
+        .wrappedQueueDeck img:first-child { margin-left: 0; }
+        .wrappedQueueDeck img:nth-child(odd) { transform: translateY(12px) rotate(-3deg); }
+        .wrappedQueueDeck img:nth-child(even) { transform: rotate(3deg); }
+
+        .wrappedStatPairs {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          gap: 10px;
+          align-self: end;
+          justify-self: stretch;
+          grid-column: 1 / -1;
+        }
+
+        .wrappedStatPairs > div {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 3px;
+          padding: 12px 14px;
+          border: 1px solid rgba(255,255,255,0.17);
+          border-radius: 10px;
+          background: rgba(5,14,31,0.25);
+        }
+
+        .wrappedStatPairs strong { color: white; font-size: 18px; }
+        .wrappedStatPairs span {
+          color: rgba(255,255,255,0.65);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-size: 9px;
+          font-weight: 800;
+        }
+
+        @keyframes wrappedSceneEnter {
+          from { opacity: 0; transform: translateY(12px) scale(0.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .wrappedControls {
@@ -7380,6 +8683,1059 @@ export function StatisticsView({
           border-radius: 6px;
         }
 
+        /* Apple-style Statistics surface. Keep the existing data modules and
+           interactions, but let every theme own its colors and contrast. */
+        .statsRoot {
+          color: var(--stats-text);
+          background: var(--stats-bg);
+          padding: 18px;
+        }
+
+        .statsRoot.statsStage {
+          border-radius: 18px;
+        }
+
+        .statsHeader {
+          align-items: center;
+          gap: 24px;
+          margin-bottom: 18px;
+          padding: 18px 20px;
+          border: 1px solid var(--stats-border);
+          border-radius: 8px;
+          background: var(--stats-card);
+          box-shadow: var(--stats-shadow);
+        }
+
+        .statsHeaderIntro {
+          display: grid;
+          grid-template-columns: auto auto minmax(0, 1fr);
+          align-items: center;
+          min-width: 410px;
+          padding: 0;
+          gap: 12px;
+        }
+
+        .statsHeaderIntro::before {
+          display: none;
+        }
+
+        .statsExitButton {
+          display: grid;
+          place-items: center;
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          padding: 0;
+          border: 1px solid var(--stats-border);
+          border-radius: 50%;
+          color: var(--stats-heading-secondary);
+          background: var(--stats-surface-soft);
+          box-shadow: none;
+        }
+
+        .statsExitButton svg {
+          width: 17px;
+          height: 17px;
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .statsExitButton:hover {
+          color: #7147ed;
+          border-color: color-mix(in srgb, #8b5cf6 38%, var(--stats-border));
+          background: color-mix(in srgb, #8b5cf6 9%, var(--stats-card));
+          transform: none;
+        }
+
+        .statsHeaderIcon {
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 4px;
+          width: 54px;
+          height: 54px;
+          padding: 12px 11px;
+          border-radius: 14px;
+          background: linear-gradient(145deg, color-mix(in srgb, #8b5cf6 10%, var(--stats-card)), color-mix(in srgb, #ec4899 7%, var(--stats-card)));
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, #8b5cf6 11%, transparent);
+        }
+
+        .statsHeaderBar {
+          display: block;
+          width: 5px;
+          border-radius: 4px 4px 2px 2px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+        }
+
+        .statsHeaderBarOne {
+          height: 16px;
+          background: linear-gradient(180deg, #d8a7ff, #9b5de5);
+        }
+
+        .statsHeaderBarTwo {
+          height: 25px;
+          background: linear-gradient(180deg, #8ddcf5, #5688ee);
+        }
+
+        .statsHeaderBarThree {
+          height: 21px;
+          background: linear-gradient(180deg, #ff92cf, #d946ef);
+        }
+
+        .statsHeaderBarFour {
+          height: 31px;
+          background: linear-gradient(180deg, #ffb05d, #ec4899);
+        }
+
+        .statsHeaderCopy {
+          min-width: 0;
+        }
+
+        .statsTitle {
+          color: transparent;
+          font-size: 29px;
+          line-height: 1.05;
+          font-weight: 780;
+          letter-spacing: 0;
+          text-shadow: none;
+          background: linear-gradient(90deg, #8b5cf6 0%, #d946ef 48%, #ff8a36 100%);
+          background-clip: text;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .statsSubtitle {
+          margin-top: 3px;
+          color: var(--stats-heading-secondary);
+          font-size: 12px;
+          font-weight: 550;
+          letter-spacing: 0;
+          text-shadow: none;
+        }
+
+        .statsHeaderControls {
+          flex-direction: row;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-left: auto;
+        }
+
+        .statsTabs {
+          padding: 0;
+          gap: 8px;
+          flex-wrap: nowrap;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+        }
+
+        .statsTab {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          min-width: 82px;
+          min-height: 36px;
+          padding: 7px 15px;
+          border: 1px solid var(--stats-border);
+          border-radius: 9px;
+          background: var(--stats-card);
+          color: var(--stats-heading-secondary);
+          font-size: 11px;
+          font-weight: 680;
+          letter-spacing: 0;
+          box-shadow: none;
+          transform: none;
+        }
+
+        .statsTab:hover {
+          border-color: color-mix(in srgb, #8b5cf6 32%, var(--stats-border));
+          color: #7147ed;
+          background: color-mix(in srgb, #8b5cf6 6%, var(--stats-card));
+          transform: none;
+        }
+
+        .statsTab.active {
+          border: 1px solid color-mix(in srgb, #8b5cf6 58%, var(--stats-border));
+          color: #7147ed;
+          background: color-mix(in srgb, #8b5cf6 8%, var(--stats-card));
+          box-shadow: 0 2px 8px color-mix(in srgb, #8b5cf6 10%, transparent);
+        }
+
+        .statsYearPicker,
+        .yearReviewPicker {
+          color: var(--stats-muted);
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          padding: 0;
+          box-shadow: none;
+        }
+
+        .statsYearPicker select,
+        .yearReviewPicker select {
+          color: var(--stats-text);
+          border-color: var(--stats-border);
+          background: var(--stats-card);
+          border-radius: 6px;
+          box-shadow: none;
+        }
+
+        .statsSummaryGrid {
+          gap: 9px;
+          margin-bottom: 14px;
+        }
+
+        .statsSummaryGrid::before {
+          content: "At a Glance";
+          grid-column: 1 / -1;
+          display: block;
+          padding-left: 10px;
+          border-left: 3px solid #8b5cf6;
+          color: var(--stats-heading-primary);
+          font-size: 15px;
+          line-height: 1.1;
+          font-weight: 800;
+        }
+
+        .metricCard {
+          min-height: 118px;
+          padding: 13px 14px;
+          border: 1px solid var(--stats-border);
+          border-radius: 8px;
+          background: var(--stats-card);
+          box-shadow: var(--stats-shadow);
+        }
+
+        .metricCard::before {
+          display: none;
+        }
+
+        .metricCardInteractive:hover {
+          border-color: color-mix(in srgb, var(--metric-accent) 48%, var(--stats-border));
+          box-shadow: 0 10px 28px color-mix(in srgb, var(--metric-accent) 12%, transparent);
+        }
+
+        .metricLabel {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--stats-muted);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0;
+        }
+
+        .metricIcon {
+          display: inline-grid;
+          place-items: center;
+          flex: 0 0 auto;
+          color: var(--metric-accent);
+        }
+
+        .metricValue,
+        .metricValueCompact,
+        .metricValueHours {
+          margin-top: 6px;
+          color: var(--stats-text);
+          font-size: 25px;
+          font-weight: 760;
+          letter-spacing: 0;
+        }
+
+        .metricSubLabel {
+          color: var(--stats-muted);
+          font-size: 10px;
+          font-weight: 550;
+        }
+
+        .statsModuleRows,
+        .statsModuleRow {
+          gap: 10px;
+        }
+
+        .statsCard,
+        :global(.topRatedColumn) {
+          border: 1px solid var(--stats-border);
+          border-radius: 8px;
+          color: var(--stats-text);
+          background: var(--stats-card);
+          box-shadow: var(--stats-shadow);
+        }
+
+        .statsCard {
+          min-height: 196px;
+          padding: 12px;
+        }
+
+        .statsCardInteractive:hover {
+          border-color: color-mix(in srgb, #8b5cf6 34%, var(--stats-border));
+          box-shadow: 0 10px 30px color-mix(in srgb, #8b5cf6 10%, transparent);
+        }
+
+        .cardHeader {
+          margin-bottom: 10px;
+        }
+
+        .cardHeader h2,
+        :global(.topRatedColumnHeader h3) {
+          color: var(--stats-heading-primary);
+          font-size: 13px;
+          font-weight: 780;
+          letter-spacing: 0;
+          text-transform: none;
+        }
+
+        .cardHeader span,
+        :global(.topRatedColumnHeader span) {
+          color: var(--stats-muted);
+          font-size: 10px;
+          font-weight: 650;
+        }
+
+        .yearReviewHero {
+          position: relative;
+          display: grid;
+          grid-template-columns: minmax(390px, 1fr) minmax(500px, 1.3fr) 210px;
+          align-items: stretch;
+          gap: 28px;
+          min-height: 224px;
+          padding: 18px;
+          border: 1px solid var(--stats-border);
+          border-radius: 8px;
+          overflow: hidden;
+          background: var(--stats-card);
+          box-shadow: var(--stats-shadow);
+        }
+
+        .yearReviewHero::after {
+          display: none;
+        }
+
+        .yearReviewStoryGroup,
+        .yearReviewHeroControls {
+          position: relative;
+          z-index: 1;
+        }
+
+        .yearReviewStoryGroup {
+          display: grid;
+          grid-template-columns: minmax(180px, 0.9fr) minmax(180px, 1fr);
+          align-items: center;
+          gap: 20px;
+          min-width: 0;
+          padding: 18px 0 20px 16px;
+          overflow: hidden;
+        }
+
+        .yearReviewHeroMain {
+          position: relative;
+          z-index: 1;
+          min-width: 0;
+        }
+
+        .yearReviewEyebrow {
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          color: #b44bd4;
+          background: transparent;
+          font-size: 11px;
+          letter-spacing: 0;
+        }
+
+        .yearReviewTitle {
+          margin-top: 5px;
+          color: transparent;
+          font-size: 76px;
+          font-weight: 820;
+          line-height: 0.95;
+          letter-spacing: 0;
+          text-shadow: none;
+          background: linear-gradient(100deg, #b64de4 0%, #e64fb2 52%, #ff9b33 100%);
+          background-clip: text;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .yearReviewSubtitle {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          margin: 0;
+          max-width: 250px;
+          line-height: 1.55;
+          position: relative;
+          z-index: 1;
+        }
+
+        .yearReviewSubtitle strong {
+          color: var(--stats-heading-primary);
+          font-weight: 750;
+        }
+
+        .yearReviewSubtitle span,
+        .yearReviewPickerHint {
+          color: var(--stats-heading-secondary);
+        }
+
+        .yearReviewHeroControls {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          justify-content: center;
+          gap: 12px;
+          min-width: 0;
+          padding-right: 10px;
+        }
+
+        .wrappedLaunchButton {
+          display: inline-flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 8px;
+          width: fit-content;
+          min-width: 218px;
+          min-height: 42px;
+          padding: 8px 20px;
+          border: 1px solid rgba(255, 255, 255, 0.54);
+          border-radius: 999px;
+          color: #7d36c8;
+          background: rgba(255, 255, 255, 0.9);
+          box-shadow: 0 8px 22px rgba(68, 22, 124, 0.2);
+          letter-spacing: 0;
+          text-transform: none;
+        }
+
+        .wrappedPlayGlyph {
+          display: grid;
+          place-items: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          color: #ffffff;
+          background: linear-gradient(135deg, #9a4fec, #d34bc1);
+          font-size: 8px;
+          line-height: 1;
+          padding-left: 1px;
+        }
+
+        .yearReviewConfetti {
+          position: absolute;
+          inset: 12px 0 2px 0;
+          pointer-events: none;
+          opacity: 0.85;
+          background:
+            linear-gradient(35deg, transparent 48%, #ff8b5c 49% 53%, transparent 54%) 6% 86% / 16px 16px no-repeat,
+            linear-gradient(35deg, transparent 48%, #9560ed 49% 53%, transparent 54%) 45% 76% / 14px 14px no-repeat,
+            linear-gradient(35deg, transparent 48%, #49b8ee 49% 53%, transparent 54%) 72% 82% / 16px 16px no-repeat,
+            radial-gradient(circle, #e1e8f2 0 3px, transparent 4px) 59% 26% / 12px 12px no-repeat,
+            radial-gradient(circle, #ffb96b 0 3px, transparent 4px) 86% 58% / 12px 12px no-repeat;
+        }
+
+        .yearReviewFeature {
+          position: relative;
+          display: flex;
+          align-items: stretch;
+          min-width: 0;
+          min-height: 188px;
+          overflow: hidden;
+          isolation: isolate;
+          border-radius: 10px;
+          color: #ffffff;
+          background:
+            linear-gradient(118deg, rgba(118, 50, 204, 0.98) 0%, rgba(182, 62, 188, 0.97) 48%, rgba(241, 83, 112, 0.96) 100%);
+          box-shadow: 0 12px 28px rgba(105, 40, 159, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        .yearReviewFeature::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          background:
+            radial-gradient(circle at 62% 12%, rgba(255, 255, 255, 0.18), transparent 34%),
+            linear-gradient(145deg, transparent 40%, rgba(255, 142, 78, 0.22));
+        }
+
+        .yearReviewFeatureCopy {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          width: 58%;
+          padding: 20px 24px;
+        }
+
+        .yearReviewFeatureEyebrow {
+          font-size: 11px;
+          font-weight: 820;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .yearReviewFeature h3 {
+          margin: 6px 0 5px;
+          color: #ffffff;
+          font-size: 31px;
+          font-weight: 800;
+          line-height: 0.98;
+          letter-spacing: 0;
+        }
+
+        .yearReviewFeature p {
+          margin: 0 0 15px;
+          max-width: 240px;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 12px;
+          font-weight: 610;
+          line-height: 1.35;
+        }
+
+        .yearReviewFeaturePlay {
+          position: absolute;
+          z-index: 4;
+          top: 50%;
+          left: 66%;
+          display: grid;
+          place-items: center;
+          width: 96px;
+          height: 96px;
+          border: 1px solid rgba(255, 255, 255, 0.62);
+          border-radius: 50%;
+          color: #8b2b9d;
+          background: rgba(255, 255, 255, 0.8);
+          box-shadow: 0 12px 26px rgba(83, 20, 109, 0.25);
+          transform: translate(-50%, -50%);
+          backdrop-filter: blur(8px);
+          cursor: pointer;
+        }
+
+        .yearReviewFeaturePlay span {
+          margin-left: 5px;
+          font-size: 28px;
+          background: linear-gradient(145deg, #8d35cd, #ef4c8d);
+          background-clip: text;
+          -webkit-background-clip: text;
+          color: transparent;
+        }
+
+        .yearReviewFilmstrip {
+          position: absolute;
+          z-index: 1;
+          top: -34px;
+          right: -44px;
+          display: flex;
+          gap: 13px;
+          width: 245px;
+          height: 250px;
+          padding: 25px 16px;
+          border-top: 14px dashed rgba(95, 25, 111, 0.42);
+          border-bottom: 14px dashed rgba(95, 25, 111, 0.42);
+          background: linear-gradient(135deg, rgba(115, 29, 129, 0.42), rgba(160, 42, 119, 0.24));
+          transform: rotate(-16deg);
+          opacity: 0.9;
+        }
+
+        .yearReviewFilmstrip span {
+          flex: 0 0 56px;
+          border: 5px solid rgba(104, 24, 117, 0.34);
+          background: rgba(255, 177, 205, 0.12);
+        }
+
+        .yearStoryChip,
+        .highlightItem {
+          border: 1px solid var(--stats-border);
+          border-radius: 7px;
+          color: var(--stats-text);
+          background: var(--stats-surface-soft);
+          box-shadow: none;
+        }
+
+        .yearStoryCard {
+          border-color: var(--stats-border);
+          background: var(--stats-card);
+        }
+
+        .yearStoryCard .cardHeader h2,
+        .yearStoryCard .cardHeader span,
+        .yearStoryBody p,
+        .yearStoryChip strong,
+        .yearSpotlightTitle,
+        .yearSpotlightNoteLarge {
+          color: var(--stats-text);
+          text-shadow: none;
+        }
+
+        .cardTitleWithIcon {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #7147ed !important;
+        }
+
+        .yearStoryChip span {
+          color: #8b5cf6;
+          letter-spacing: 0;
+        }
+
+        .yearSpotlightNote,
+        .yearSpotlightFallback {
+          color: var(--stats-muted);
+        }
+
+        .yearSpotlightBodyInteractive:hover,
+        .yearStoryChipInteractive:hover {
+          border-color: color-mix(in srgb, #8b5cf6 24%, var(--stats-border));
+          background: color-mix(in srgb, #8b5cf6 8%, var(--stats-surface-soft));
+        }
+
+        .yearPaceValue,
+        .highlightValue,
+        .highlightValueButton,
+        .legendValue,
+        .barRowValue,
+        .statusVerticalValue,
+        .releaseMomentumValue,
+        :global(.topRatedStatsRow) {
+          color: var(--stats-text);
+        }
+
+        .legendListItem,
+        .barRowLabel,
+        .statusVerticalLabel,
+        .statusVerticalPct,
+        .ratingCount,
+        .ratingLabel,
+        .releaseMomentumLabel,
+        .releaseLineYear,
+        .timelineYears,
+        .highlightLabel {
+          color: var(--stats-muted);
+        }
+
+        .barTrack,
+        .statusVerticalTrack,
+        .ratingBarTrack.scaledTrack,
+        .releaseMomentumTrack,
+        .releaseLineSvg,
+        .releaseSvg {
+          border-color: var(--stats-border);
+          background: var(--stats-track);
+        }
+
+        .releaseLineValueLabel,
+        .releasePeakValue,
+        .releaseLowValue {
+          stroke: var(--stats-bg);
+        }
+
+        :global(.topRatedColumn) {
+          padding: 9px;
+        }
+
+        :global(.topRatedTileInteractive:hover) {
+          background: color-mix(in srgb, #8b5cf6 10%, transparent);
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, #8b5cf6 20%, transparent);
+        }
+
+        :global(.topRatedScoreText) {
+          color: #d99016;
+        }
+
+        .statsTheme-dark :global(.topRatedScoreText) {
+          color: #ffd166;
+        }
+
+        .statsTheme-dark .statsHeaderIntro::before {
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+
+        .statsTheme-dark .statsTab.active {
+          color: #ffffff;
+        }
+
+        .statsTheme-classic .statsTab.active {
+          color: #ffffff;
+        }
+
+        /* Second-pass polish: stronger hierarchy, flatter charts, and
+           deliberate use of the full desktop canvas. */
+        .statsExitButton {
+          display: inline-flex;
+          grid-auto-flow: column;
+          width: auto;
+          min-width: 92px;
+          height: 40px;
+          padding: 0 13px 0 10px;
+          gap: 7px;
+          border-radius: 9px;
+          font-size: 12px;
+          font-weight: 720;
+          white-space: nowrap;
+        }
+
+        .statsExitButton svg {
+          width: 16px;
+          height: 16px;
+        }
+
+        .statsHeaderIntro {
+          min-width: 470px;
+        }
+
+        .statsHeaderControls {
+          flex: 1 1 720px;
+          min-width: 680px;
+        }
+
+        .statsTabs {
+          flex: 1 1 auto;
+          width: 100%;
+        }
+
+        .statsTab {
+          flex: 1 1 0;
+          min-width: 92px;
+          min-height: 40px;
+          padding: 8px 16px;
+          font-size: 12.5px;
+          font-weight: 720;
+        }
+
+        .statsTab:last-child {
+          flex-grow: 1.25;
+        }
+
+        .statsYearPicker {
+          min-width: 112px;
+        }
+
+        .statsStage .statsYearPicker {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          align-self: center;
+          justify-content: center;
+          width: 112px;
+          height: 40px;
+          min-height: 40px;
+          gap: 0;
+        }
+
+        .statsStage .statsYearPicker > span {
+          position: absolute;
+          left: 4px;
+          bottom: calc(100% + 3px);
+          font-size: 9px;
+          line-height: 1;
+        }
+
+        .statsStage .statsYearPicker select {
+          width: 112px;
+          height: 40px;
+          min-height: 40px;
+          padding-top: 0;
+          padding-bottom: 0;
+        }
+
+        .metricCard {
+          display: grid;
+          grid-template-rows: auto minmax(44px, 1fr) auto;
+          min-height: 132px;
+          padding: 14px 15px;
+          border-color: color-mix(in srgb, var(--metric-accent) 20%, var(--stats-border));
+          background: color-mix(in srgb, var(--metric-accent) 6%, var(--stats-card));
+        }
+
+        .metricLabel {
+          gap: 9px;
+          color: color-mix(in srgb, var(--metric-accent) 42%, var(--stats-text));
+          font-size: 11px;
+          font-weight: 760;
+        }
+
+        .metricIcon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: color-mix(in srgb, var(--metric-accent) 13%, var(--stats-card));
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--metric-accent) 20%, transparent);
+        }
+
+        .metricValue,
+        .metricValueCompact,
+        .metricValueHours {
+          display: flex;
+          align-items: center;
+          align-self: stretch;
+          margin: 0;
+          color: var(--stats-heading-primary);
+          font-size: 29px;
+          line-height: 1;
+          font-weight: 790;
+        }
+
+        .metricValueHours {
+          font-size: 25px;
+        }
+
+        .metricSubLabel {
+          margin: 0;
+          color: var(--stats-heading-secondary);
+          font-size: 10.5px;
+          font-weight: 600;
+        }
+
+        .genreOrbitCard {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .genreOrbitBody {
+          display: grid;
+          grid-template-columns: minmax(190px, 0.8fr) minmax(280px, 1.2fr);
+          align-items: center;
+          gap: 24px;
+          min-height: 0;
+          flex: 1;
+        }
+
+        .genreOrbitCard .donutWrap {
+          margin: 0;
+        }
+
+        .genreOrbitCard .donut {
+          width: 172px;
+          height: 172px;
+          border: 0;
+          box-shadow: none;
+        }
+
+        .genreOrbitCard .donutCenter {
+          width: 104px;
+          height: 104px;
+          border: 0;
+          color: var(--stats-text);
+          background: var(--stats-card);
+          box-shadow: inset 0 0 0 1px var(--stats-border);
+        }
+
+        .genreOrbitCard .donutCenterValue {
+          color: var(--stats-heading-primary);
+        }
+
+        .genreOrbitCard .legendList.compact {
+          max-height: none;
+          overflow: visible;
+          gap: 8px;
+          padding: 0;
+        }
+
+        .genreOrbitCard .legendListItem {
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          min-height: 27px;
+          padding: 3px 4px;
+        }
+
+        .genreLegendCopy {
+          display: grid;
+          grid-template-columns: minmax(105px, auto) minmax(70px, 1fr);
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .genreLegendTrack {
+          display: block;
+          height: 5px;
+          overflow: hidden;
+          border-radius: 999px;
+          background: var(--stats-track);
+        }
+
+        .genreLegendTrack > span {
+          display: block;
+          height: 100%;
+          border-radius: inherit;
+        }
+
+        .ratingBarTrack.scaledTrack {
+          background: var(--stats-track);
+          border-color: var(--stats-border);
+        }
+
+        .ratingBar {
+          border: 0;
+          border-radius: 4px 4px 2px 2px;
+          box-shadow: none;
+        }
+
+        .ratingBar.noData {
+          background: color-mix(in srgb, var(--stats-muted) 20%, transparent);
+          opacity: 0.45;
+        }
+
+        .releaseLineValueLabel {
+          fill: var(--stats-heading-primary);
+          stroke: var(--stats-card);
+          stroke-width: 5px;
+          font-size: 24px;
+          font-weight: 800;
+        }
+
+        .yearTopRatedRankText {
+          color: var(--stats-heading-primary);
+        }
+
+        .yearTopRatedScoreText {
+          color: #c77800;
+        }
+
+        .statsTheme-dark .yearTopRatedScoreText {
+          color: #ffd166;
+        }
+
+        /* Statistics annotation polish: consistent controls, readable chart
+           labels, and a balanced Year in Review hero at every desktop scale. */
+        .statsHeaderIntro {
+          grid-template-columns: auto minmax(0, 1fr);
+          min-width: 390px;
+        }
+
+        .statsHeaderControls {
+          min-width: 660px;
+        }
+
+        .statsTab {
+          flex: 0 0 104px;
+          width: 104px;
+          min-width: 104px;
+          height: 40px;
+          min-height: 40px;
+          padding: 0 12px;
+          white-space: nowrap;
+          line-height: 1;
+        }
+
+        .statsTab:last-child {
+          flex: 0 0 104px;
+        }
+
+        .releaseLineYear.major {
+          color: var(--stats-heading-secondary);
+          font-size: 13px;
+          font-weight: 800;
+          line-height: 1.2;
+          text-shadow: none;
+        }
+
+        .releaseLineYears {
+          margin-top: 3px;
+        }
+
+        .yearReviewHero {
+          grid-template-columns: minmax(430px, 1.04fr) minmax(500px, 1.28fr) minmax(230px, 0.56fr);
+          gap: 24px;
+          min-height: 244px;
+          padding: 20px;
+        }
+
+        .yearReviewStoryGroup {
+          grid-template-columns: minmax(205px, 0.92fr) minmax(205px, 1fr);
+          gap: 24px;
+          padding: 20px 0 22px 16px;
+        }
+
+        .yearReviewEyebrow {
+          font-size: 14px;
+          font-weight: 800;
+          line-height: 1.15;
+        }
+
+        .yearReviewTitle {
+          margin-top: 7px;
+          font-size: 88px;
+          line-height: 0.92;
+        }
+
+        .yearReviewSubtitle {
+          max-width: 285px;
+          gap: 7px;
+          font-size: 15px;
+          line-height: 1.55;
+        }
+
+        .yearReviewSubtitle strong {
+          font-size: 16px;
+          line-height: 1.35;
+        }
+
+        .yearReviewHeroControls {
+          gap: 14px;
+          padding: 14px 10px 14px 0;
+        }
+
+        .yearReviewHeroControls .yearReviewPicker > span {
+          font-size: 13px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+        }
+
+        .yearReviewHeroControls .yearReviewPicker select {
+          width: 100%;
+          min-height: 48px;
+          padding: 0 14px;
+          border-radius: 8px;
+          font-size: 15px;
+          font-weight: 750;
+        }
+
+        .yearReviewPickerHint {
+          max-width: 220px;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        .yearReviewFeature {
+          min-height: 202px;
+        }
+
+        .yearReviewConfetti {
+          inset: 0;
+          opacity: 1;
+          background: none;
+        }
+
+        .yearReviewConfetti i {
+          position: absolute;
+          display: block;
+          width: 6px;
+          height: 12px;
+          border-radius: 2px;
+          background: #8b5cf6;
+          transform: rotate(28deg);
+        }
+
+        .yearReviewConfetti i:nth-child(1) { left: 2%; bottom: 13%; background: #ff8a5c; transform: rotate(-28deg); }
+        .yearReviewConfetti i:nth-child(2) { left: 14%; bottom: 5%; background: #cbd5e1; transform: rotate(34deg); }
+        .yearReviewConfetti i:nth-child(3) { left: 27%; bottom: 16%; background: #9b5de5; transform: rotate(42deg); }
+        .yearReviewConfetti i:nth-child(4) { left: 41%; bottom: 4%; background: #67bff0; transform: rotate(-35deg); }
+        .yearReviewConfetti i:nth-child(5) { left: 57%; bottom: 15%; background: #ff9d55; transform: rotate(36deg); }
+        .yearReviewConfetti i:nth-child(6) { left: 72%; bottom: 6%; background: #d8b4fe; transform: rotate(-22deg); }
+        .yearReviewConfetti i:nth-child(7) { left: 87%; bottom: 18%; background: #fb7185; transform: rotate(31deg); }
+        .yearReviewConfetti i:nth-child(8) { left: 20%; top: 17%; background: #93c5fd; transform: rotate(-40deg); }
+        .yearReviewConfetti i:nth-child(9) { left: 50%; top: 12%; background: #f9a8d4; transform: rotate(26deg); }
+        .yearReviewConfetti i:nth-child(10) { left: 78%; top: 21%; background: #a78bfa; transform: rotate(-31deg); }
+        .yearReviewConfetti i:nth-child(11) { left: 34%; top: 35%; background: #fdba74; transform: rotate(54deg); }
+        .yearReviewConfetti i:nth-child(12) { left: 92%; top: 42%; background: #7dd3fc; transform: rotate(22deg); }
+
         @media (max-width: 980px) {
           .highlightsGrid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7463,48 +9819,124 @@ export function StatisticsView({
 
           .statsHeaderIntro {
             width: 100%;
+            min-width: 0;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 9px;
           }
 
           .statsExitButton {
-            width: 100%;
+            width: auto;
+            min-width: 86px;
+            height: 36px;
+          }
+
+          .statsHeaderIcon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+          }
+
+          .statsTitle {
+            font-size: 24px;
+          }
+
+          .statsSubtitle {
+            font-size: 11px;
           }
 
           .statsHeaderControls {
             width: 100%;
+            min-width: 0;
+            flex: 1 1 auto;
             justify-content: flex-start;
           }
 
           .statsTabs {
-            justify-content: flex-start;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            width: 100%;
           }
 
           .statsTab {
+            min-width: 0;
             padding: 6px 10px;
             font-size: 11px;
           }
 
-          .yearReviewHero {
-            align-items: flex-start;
+          .genreOrbitBody {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 14px;
+          }
+
+          .genreLegendCopy {
+            grid-template-columns: minmax(92px, auto) minmax(60px, 1fr);
           }
 
           .yearReviewHero {
-            padding: 10px;
+            align-items: flex-start;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 14px;
+            padding: 12px;
+          }
+
+          .yearReviewStoryGroup {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+            width: 100%;
+            padding: 4px 8px 12px;
+          }
+
+          .yearReviewTitle {
+            font-size: 52px;
+            line-height: 0.98;
+          }
+
+          .yearReviewSubtitle {
+            max-width: none;
+          }
+
+          .yearReviewFeature {
+            width: 100%;
+            min-height: 184px;
+          }
+
+          .yearReviewFeatureCopy {
+            width: 68%;
+            padding: 17px;
+          }
+
+          .yearReviewFeature h3 {
+            font-size: 24px;
+          }
+
+          .yearReviewFeaturePlay {
+            left: 77%;
+            width: 68px;
+            height: 68px;
+          }
+
+          .yearReviewFilmstrip {
+            right: -86px;
+            opacity: 0.68;
           }
 
           .yearReviewHeroControls {
             align-items: stretch;
             width: 100%;
             margin-left: 0;
+            padding: 0 8px 5px;
           }
 
           .yearReviewHeroActions {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
             width: 100%;
-            flex-direction: column;
             align-items: stretch;
           }
 
           .wrappedLaunchButton {
-            width: 100%;
+            width: auto;
+            min-width: 0;
             text-align: center;
           }
 
@@ -7570,6 +10002,105 @@ export function StatisticsView({
 
           .wrappedStory {
             padding: 10px 14px;
+          }
+
+          .wrappedScene {
+            width: calc(100% - 44px);
+            min-height: 510px;
+            padding: 28px 22px;
+          }
+
+          .wrappedScene-intro,
+          .wrappedScene-finale,
+          .wrappedScene-spotlight,
+          .wrappedScene-review,
+          .wrappedScene-gameplay,
+          .wrappedScene-waveform,
+          .wrappedScene-completion,
+          .wrappedScene-bookstack,
+          .wrappedScene-mix,
+          .wrappedScene-versus,
+          .wrappedScene-tastegap {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto auto;
+            gap: 18px;
+            text-align: center;
+          }
+
+          .wrappedScene-intro .wrappedSceneCopy,
+          .wrappedScene-finale .wrappedSceneCopy,
+          .wrappedScene-spotlight .wrappedSceneCopy,
+          .wrappedScene-review .wrappedSceneCopy,
+          .wrappedScene-gameplay .wrappedSceneCopy,
+          .wrappedScene-waveform .wrappedSceneCopy,
+          .wrappedScene-completion .wrappedSceneCopy,
+          .wrappedScene-bookstack .wrappedSceneCopy,
+          .wrappedScene-mix .wrappedSceneCopy,
+          .wrappedScene-versus .wrappedSceneCopy,
+          .wrappedScene-tastegap .wrappedSceneCopy {
+            align-items: center;
+            grid-column: 1;
+          }
+
+          .wrappedMosaic {
+            grid-column: 1;
+            grid-row: 2;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+          }
+
+          .wrappedFeatureCover,
+          .wrappedAudioArtwork {
+            width: 150px;
+            justify-self: center;
+          }
+
+          .wrappedBookStack {
+            width: min(330px, 100%);
+            height: 245px;
+            justify-self: center;
+          }
+
+          .wrappedBookStack img {
+            width: 105px;
+            max-height: 180px;
+          }
+
+          .wrappedMixVisual,
+          .wrappedVersusVisual {
+            justify-self: center;
+            width: min(330px, 100%);
+          }
+
+          .wrappedMixRing { width: 160px; }
+          .wrappedVersusVisual { height: 220px; }
+          .wrappedEpisodeWall { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .wrappedPeopleMarquee { grid-template-columns: repeat(5, minmax(90px, 1fr)); overflow: hidden; }
+          .wrappedPeopleMarquee > div { min-height: 170px; }
+          .wrappedEraTimeline { overflow-x: auto; justify-content: flex-start; padding: 0 14px; }
+          .wrappedEraTimeline > div { min-width: 72px; }
+          .wrappedQueueDeck img { width: 92px; }
+
+          .wrappedCompletionVisual {
+            grid-column: 1;
+            grid-row: 2;
+          }
+
+          .wrappedCompletionRing {
+            width: 190px;
+          }
+
+          .wrappedFilmstrip {
+            width: calc(100% + 44px);
+            overflow: hidden;
+            justify-content: flex-start;
+          }
+
+          .wrappedFilmFrame {
+            width: 82px;
+          }
+
+          .wrappedStatPairs {
+            align-self: auto;
           }
 
           .wrappedControls {

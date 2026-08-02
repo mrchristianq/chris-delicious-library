@@ -2819,6 +2819,7 @@ fn discover_igdb_games(genre_ids: Option<Vec<i64>>) -> NativeResult<Vec<Row>> {
     Ok(by_key.values().take(20).map(igdb_game_to_row).collect())
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(LibraryDb {

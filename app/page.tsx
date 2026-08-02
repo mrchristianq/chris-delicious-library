@@ -379,7 +379,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "12.0.32";
+const APP_VERSION = "13.0.0";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -705,6 +705,34 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.0.0",
+    date: "2026-08-02",
+    notes: [
+      "Expanded the annual Wrapped experience with eight new data-driven story pages and distinct visual layouts.",
+    ],
+  },
+  {
+    version: "12.0.36",
+    date: "2026-07-30",
+    notes: [
+      "Updated the iPhone and iPad home screen icons to use the CDL stacked-books app icon.",
+    ],
+  },
+  {
+    version: "12.0.35",
+    date: "2026-07-30",
+    notes: [
+      "Updated the iOS Xcode build phase so phone builds can find the local Node and Rust toolchains.",
+    ],
+  },
+  {
+    version: "12.0.34",
+    date: "2026-07-30",
+    notes: [
+      "Added the Tauri mobile entry point needed for the private iPhone and iPad wrapper spike.",
+    ],
+  },
   {
     version: "12.0.33",
     date: "2026-07-29",
