@@ -1,8 +1,25 @@
 # Chris' Delicious Library Design Document
 
-Version described: 11.0.2
+Version described: 13.0.3
 
-This document is the rebuild guide for Chris' Delicious Library. It describes the app's purpose, screens, data sources, write paths, sync model, native behavior, Apps Script bridge, media metadata providers, artwork rules, and release workflow. A developer with access to the Google Sheet, R2 bucket, API keys, and this repo should be able to recreate the app from scratch.
+Document last verified against the repository: 2026-08-03
+
+This document is the authoritative product, design, architecture, migration, and rebuild guide for Chris' Delicious Library. It describes the app's purpose, every major screen and interaction, data sources, data ownership rules, write paths, synchronization model, native behavior, Apps Script bridge, metadata providers, artwork rules, responsive behavior, visual language, build pipeline, and release workflow. A developer with access to the Google Sheet, R2 bucket, API keys, licensed media assets, and this repository should be able to recreate the application from scratch or move development to another computer without relying on conversation history.
+
+This document describes the production Next.js/Tauri application in this repository. The separate SwiftUI Apple companion project is intentionally isolated and is not the subject of this document.
+
+## Document Map
+
+- Sections 1-4: product purpose, architecture, repository layout, and runtime targets.
+- Sections 5-9: environment, Google Sheets schemas, settings, ChangeLog, and external providers.
+- Sections 10-16: artwork, read/write flows, save reliability, metadata editing, and TV episodes.
+- Sections 17-24: navigation, dashboards, Cover/List views, details, Statistics, native behavior, and offline sync.
+- Sections 25-28: build/release workflow, Apps Script deployment, testing, and known constraints.
+- Section 29: exhaustive page-by-page and interaction catalog.
+- Sections 30-35: data ownership, API contracts, persistence keys, Tauri internals, visual design, and responsive/accessibility rules.
+- Sections 36-39: Windows migration, security, acceptance checklist, and authoritative decisions.
+
+When rebuilding, read Sections 1-16 first for behavior and data contracts, Section 29 for the complete user experience, and Sections 30-39 before implementing persistence, native packaging, or release automation.
 
 ## 1. Product Purpose
 
@@ -15,7 +32,7 @@ Chris' Delicious Library is a personal media library for Books, Movies, TV Shows
 - Track TV episode progress by season and episode.
 - Store artwork in Cloudflare R2 for fast, durable, offline-friendly display.
 - Sync changes to Google Sheets.
-- Run as a web app and as a local-first native macOS app.
+- Run as a web app and as a local-first native desktop app. The current packaged target is macOS; Windows packaging is specified in Section 36.
 - Cache images, icons, backdrops, cast photos, and row data for offline use.
 
 The current web app is implemented as a Next.js app. The native Mac app is implemented with Tauri 2 and uses the same React UI with a local SQLite-backed sync layer.
@@ -53,11 +70,11 @@ Important files and folders:
 - `app/components/*DetailsPage.tsx`: Full details pages for Books, Movies, TV Shows, and Games.
 - `app/components/*DetailsEditModal.tsx`: Edit modals for each media type.
 - `app/components/Rate*Modal.tsx`: Rating and quick status/date edit flows.
-- `app/components/AddItemModal.tsx`: Add-new-item entry point and provider selection.
-- `app/components/StatisticsView.tsx`: Statistics dashboard, yearly modules, rating charts, top/bottom lists.
+- `app/components/AddItemModal.tsx`: Add-new-item entry point, media/provider selection, search results, and book edition selection.
+- `app/components/StatisticsView.tsx`: Statistics dashboard, media-specific analytics, Year in Review, Wrapped playback, rating charts, and top/bottom lists.
+- `app/components/MediaDetailsSidebar.tsx`: Single-click compact details inspector shared by all media types.
 - `app/components/RoadmapView.tsx`: Roadmap/discover view.
 - `app/components/RolodexCounter.tsx`: Sidebar animated count digits.
-- `app/components/coverStyles.ts`: Shared cover radius style.
 - `app/lib/mediaSearchClient.ts`: Client helper for metadata search.
 - `app/native/bridge.ts`: Browser-to-Tauri bridge for native mode.
 - `app/api/*/route.ts`: Server-side routes for writes, search, R2 uploads, TV episodes, recommendations, icons, roadmap, and sync.
@@ -66,7 +83,7 @@ Important files and folders:
 - `GOOGLE_APPS_SCRIPT.gs`: Single-file Apps Script replacement used by the current app.
 - `apps-script-clean/*`: Safer split Apps Script files for WebApp/Menu/ChangeLog/TMDB cleanup.
 - `scripts/build-native-renderer.mjs`: Static export workaround for native renderer.
-- `public/`: Static assets, icons, textures, status images, and app artwork.
+- Repository-root image files and generated static output: shelf textures, platform frames, icons, logos, and compatibility artifacts. New source assets should preferably live in a dedicated public asset folder during future cleanup.
 - `docs/`: Long-lived documentation, including this design document.
 
 ## 4. Runtime Targets
@@ -81,7 +98,7 @@ npm run dev
 
 Production reads from published Google Sheet CSV URLs and writes through Apps Script URLs configured in environment variables.
 
-### Native macOS
+### Native Desktop (Currently macOS)
 
 The native app uses Tauri:
 
@@ -407,7 +424,7 @@ Important Apps Script rules:
 
 ## 10. TV Episode Tracking
 
-Episode tracking is implemented in v11.
+Episode tracking is a first-class feature and shared-data workflow. It is not merely decorative metadata: episode progress must survive refresh, browser changes, native restarts, and use on another device.
 
 ### Loading episodes
 
@@ -549,12 +566,12 @@ The sidebar shows:
 - Search.
 - Library: Home, Books, Movies, TV Shows, Games.
 - Animated rolodex counters for media counts.
-- Smart Lists: This Year, Current, Completed, Abandoned, plus custom lists.
+- Smart Lists: user-created saved filters only. Legacy hard-coded This Year, Current, Completed, and Abandoned lists were removed from the primary design; an existing saved list such as Abandoned may still appear because it is stored user data.
 - Discover: Statistics, Roadmap, Themes, Icons, Activity Log.
 - Cover size slider.
 - Sync status module.
 
-Media rows default to Home dashboards. This must hold across desktop web, mobile web, and native.
+Media rows default to their custom Home dashboards. This must hold across desktop web, mobile web, and native.
 
 ### Common header controls
 
@@ -671,13 +688,17 @@ Games support a custom "Now Playing" status icon.
 
 ## 17. Smart Lists and Ordering
 
-Smart Lists include:
+Smart Lists are user-created saved filters stored under `smartLists:v1`. The creation/editor surface follows a clean guided flow:
 
-- This Year.
-- Current.
-- Completed.
-- Abandoned.
-- Custom smart lists.
+1. Name the list.
+2. Select one or more media types.
+3. Choose an existing icon or upload a new icon.
+4. Configure independent filter paths for each selected media type.
+5. Choose statuses, year sources/values, and tags that are valid for that media type.
+6. Choose default sorting and whether manual order is allowed.
+7. Save or cancel.
+
+The sidebar displays each saved list's icon, name, and live result count. Desktop supports right-click edit/delete. Mobile renders the same saved lists and no longer exposes the retired built-in list set. Icon selection uses known repository icons and uploaded persisted icon URLs rather than a permanently visible tray of random choices.
 
 Completed smart lists sort by the relevant completion/watch date newest first:
 
@@ -696,6 +717,15 @@ Manual ordering is used for:
 Those orders must be saved as settings and must survive refresh/reload. The app should not reorder them except when the user manually drags items.
 
 ## 18. Details Pages
+
+The app has two details presentations:
+
+- Single click opens `MediaDetailsSidebar`, unless the user selected direct-to-full mode.
+- Double click opens the existing full details page.
+- The header inspector icon toggles whether a single click opens the sidebar or full details directly.
+- Sidebar width is user-resizable and stored locally.
+- The sidebar includes Details, Rate, Edit, Delete, and Close actions, status selection, user/external ratings, description, media-specific details, cast/creators, and similar items.
+- The compact inspector must never change the full details page's behavior or data model.
 
 Each media type has a full details page and edit modal.
 
@@ -796,7 +826,11 @@ Roadmap syncs from live data and appears in both web and native.
 
 ### Themes
 
-Themes control app colors and visual mode. The app supports light/dark themes and media-specific accent colors.
+Themes control app colors and visual mode. The app supports `light`, `dark`, `classic`, and `wood` shelf modes plus media-specific accent colors.
+
+Wood Shelf is desktop/non-mobile cover-view styling. It uses repeated wood back and shelf-lip textures, keeps cover bottoms visually seated on the lip, adds shelf-specific row height, and moves Upcoming release text over artwork where below-cover text would visually fall outside the shelf. It must not alter data, sorting, list view, details pages, mobile, or Statistics. Statistics intentionally renders Wood Shelf as the light analytics theme.
+
+Horizontal cover gap and vertical row margin are universal settings shared by all themes. Wood Shelf adds its own structural shelf allowance on top of those user choices.
 
 ### Icons
 
@@ -931,3 +965,731 @@ When Apps Script code changes:
 - Native sync depends on public CSV availability and Apps Script write availability.
 - Book metadata providers remain imperfect; Audnexus is better for audiobooks, Hardcover is better for general editions.
 - Some legacy columns remain for compatibility and should be treated carefully during refactors.
+
+## 29. Exhaustive Screen and Page Catalog
+
+This section records the intended purpose and behavior of every major user-facing surface. The application is state-driven rather than URL-route-driven; most screens are selected within `app/page.tsx` and rendered inside the shared shell.
+
+### 29.1 Global application shell
+
+The desktop shell has three possible columns:
+
+1. Left navigation sidebar.
+2. Main content canvas.
+3. Optional right details inspector.
+
+The left sidebar is persistent on normal desktop widths. The main canvas owns the section header and current content. The right inspector opens after a single media click when inspector mode is active. Its width is resizable and must reduce the main canvas gracefully rather than overlay it at normal desktop widths.
+
+The mobile shell replaces the persistent sidebar with a card-based home/navigation surface and bottom navigation controls. Full details, edit, add, filters, and rate flows become full-screen or near-full-screen overlays.
+
+### 29.2 Global Home / mixed library
+
+Global Home is the mixed-media library landing surface. It can show Books, Movies, TV Shows, and Games together. Its header exposes mixed-list destinations:
+
+- Library
+- Upcoming
+- Now Playing
+- Play Next
+- Read Next
+- Movie Watchlist
+- TV Watchlist
+
+Mixed covers retain their media-specific aspect ratio. Status badges, rating badges, platform frames, and status colors must remain media-aware. Global Home is also where manual source orders originate for Play Next, Read Next, and both watchlists.
+
+### 29.3 Search
+
+Search supports two scopes:
+
+- Current view/media context.
+- Entire library.
+
+Search filters already-loaded library data. Add-item metadata lookup is a separate workflow and must not be conflated with library search. Search results use the same cover/list renderer and details behavior as the source view.
+
+### 29.4 Books section
+
+Books has these top-level tabs:
+
+- Home
+- Library
+- Upcoming
+- Completed
+- Wishlist
+
+Books Home remains a handcrafted dashboard and never switches to generic List view. Other eligible Books tabs support Cover and List modes.
+
+Books sidebar filters include reading status, format, series, genre, tags, and any view-specific sort/filter controls. Book format is normalized to exactly `Physical`, `Audiobook`, or `eBook`. Audiobooks may use square artwork while physical/eBook covers use their natural portrait ratios.
+
+Books Home sections:
+
+- Read Next: exact manual order from the global Read Next source.
+- New Releases: recent library releases, with compact vertical spacing based on the actual tallest item in the row.
+- Upcoming: future releases known to the library.
+- Statistics: book totals, completed, reading, and average rating.
+- New York Times Bestsellers: external fiction list, excluding owned/library matches where possible and opening an external book/review destination.
+
+Book ratings are always conceptually out of `5.0`. Never silently multiply them to a ten-point scale in cover badges, lists, Statistics, rate cards, or Wrapped.
+
+### 29.5 Movies section
+
+Movies has these tabs:
+
+- Home
+- Library
+- Upcoming
+- Backlog
+- Started
+- Watched
+- Abandoned
+
+Movies Home is custom and does not use List mode. Its Watchlist section mirrors Movie Watchlist manual order. New Backlog additions are inserted at the front of Movie Watchlist, not appended to the end.
+
+Movie status values currently expected by the app and Sheet validation include:
+
+- `Watched`
+- `Backlog`
+- `Abandoned`
+- `Started`
+- `Pending Digital Release`
+
+The Rate Movie workflow intentionally omits `Pending Digital Release`, because rating is a completion-oriented action. The full edit flow can still set all valid statuses.
+
+Movie dates have distinct meanings:
+
+- `ReleaseDate`: public release date.
+- `WatchDate`: the user's full watched date and the completion date used for sorting/statistics.
+
+Do not substitute a release year or year-only helper for `WatchDate`.
+
+### 29.6 TV Shows section
+
+TV Shows has these tabs:
+
+- Home
+- Library
+- Upcoming
+- Backlog
+- Watching
+- Watched
+- Abandoned
+
+The user-facing Watching state maps to Sheet value `Started`. Watch Next remains a separate state. Home Watchlist/Watching rows preserve global TV Watchlist ordering. Cover subtitles can show `X Episodes Remaining`; this value must be available even when zero episodes have been watched, using cached/loaded total episode metadata.
+
+The full TV details page is the home of episode management. Show-level edit/rating and episode-level progress are separate saves with separate verification requirements.
+
+### 29.7 Games section
+
+Games has these tabs:
+
+- Home
+- Library
+- Upcoming
+- Backlog
+- Completed
+- Abandoned
+- Wishlist
+
+Games Home sections:
+
+- In Progress (`Now Playing`).
+- Play Next in exact source order.
+- New Releases, including Wishlist games only after their release date has arrived.
+- Upcoming future releases.
+- Statistics, including monthly completion bars.
+- Recommendations/discovery.
+
+Duplicate game titles on different platforms are valid. Identity and save matching must include `IGDB_ID` and platform when needed. A deduplication helper must never collapse Steam, GOG, console, or other platform editions into one visible record.
+
+### 29.8 Generic Cover view
+
+Cover view is a responsive grid whose row height is derived from cover size, media aspect ratios, optional title/date labels, and theme spacing. It supports:
+
+- independent media cover-size percentages;
+- mobile per-view cover sizes;
+- horizontal and vertical spacing controls;
+- natural aspect ratio for book/audiobook artwork;
+- aligned cover bottoms;
+- status and rating badges;
+- subtle per-cover shadows in light mode;
+- glossy pointer/focus effect and multidirectional tilt where supported;
+- manual drag ordering on approved views;
+- single-click inspector and double-click full details.
+
+The active item must not receive an unwanted blue rectangular focus border. Accessibility focus must remain visible through a polished cover-aware treatment rather than a raw browser outline.
+
+### 29.9 Generic List view
+
+List view shares the same filtered and sorted visible item array as Cover view. It must never create a second filtering implementation.
+
+Desktop List view is table-like with:
+
+- sticky column header;
+- freestanding rounded cover thumbnails;
+- wrapping text rather than destructive ellipsis for important values;
+- per-view column selection and order;
+- draggable column widths with invisible resize hit targets;
+- per-view scale slider affecting thumbnail, row, and typography density;
+- status icon immediately before Status text, without a circular badge container;
+- row click opening details;
+- explicit Edit/Save mode for inline changes.
+
+Mobile List view is a compact row-card presentation. It shows the cover on the left and selected key fields on the right/under the title. It must not attempt to compress the desktop table into the phone width.
+
+### 29.10 Smart List builder
+
+The Smart List builder is a dedicated creation/edit screen, not an inline sidebar form. It contains:
+
+- title and live result count;
+- Name input;
+- Media Type selector with none selected for a new list;
+- Icon chooser/upload control;
+- Filter Paths area with one equal-width path per selected media type;
+- valid status choices per media type;
+- valid date/year source choices per media type;
+- media-specific tag choices only;
+- sorting/manual-order controls;
+- Cancel and Save actions.
+
+One selected media type uses the available path width. Two use approximately half each. More types distribute evenly and wrap responsively when needed. The layout must avoid decorative empty gaps and nested card clutter.
+
+### 29.11 Full details pages
+
+Full details pages are immersive, media-specific surfaces with backdrop/color treatment, primary artwork, title and metadata, actions, ratings, synopsis, cast/creators, recommendations, and detailed facts. They are the authoritative rich view and must continue to work independently of the sidebar inspector.
+
+Shared actions:
+
+- Rate It
+- Edit
+- Delete
+- Back/close
+- status indicator
+
+Movie and TV details use TMDB cast/backdrop/recommendations. Games use IGDB metadata and external IGDB resolution. Books use author/narrator/series/provider metadata. TV adds the episode tracker.
+
+### 29.12 Compact details sidebar
+
+The compact inspector uses an Apple-like information hierarchy:
+
+- top action row of equal rounded-square icon buttons: Details, Rate, Edit, Delete, Close;
+- artwork below the action row so narrow widths never cause cover/icon overlap;
+- title, media/year/runtime summary, genres, and media-specific status control aligned beside artwork;
+- artwork bottom aligned with the status control bottom where space permits;
+- paired external/user rating module with score-reactive color gradients;
+- synopsis;
+- media-specific detail grid;
+- five compact cast/creator portraits where available;
+- five compact similar-media covers;
+- scroll only when the inspector cannot fit its content.
+
+Rating rings use a white inner/outer breathing area and a score-colored gradient arc. Background tint changes by score family. Ratings are centered inside the ring. Books remain on the five-point model even if percentage rings convert them for visual comparison.
+
+### 29.13 Add Item
+
+Add Item begins with media/provider selection, then search, then result/edition confirmation. It supports manual entry when metadata search is insufficient.
+
+- Books: Audnexus for audiobook-first search, Hardcover for broader edition metadata.
+- Movies: TMDB movie search.
+- TV Shows: TMDB show search.
+- Games: IGDB search.
+
+Search result covers must preserve source aspect ratio. Audiobook result art is square. Selecting a book result leads to the specific edition/format choice rather than immediately writing an ambiguous work-level result.
+
+### 29.14 Edit Item
+
+Edit modals expose the complete supported Sheet field set for that media. They include the cleaned Artwork control:
+
+- displayed R2 preview;
+- Sync Default to R2;
+- Upload Custom R2;
+- concise backup state.
+
+Developer-facing URL fields should not dominate the layout. Data validation options must exactly match the Sheet's validation values. Dates use date controls and normalized comparison to avoid false readback mismatches caused by locale or timezone formatting.
+
+### 29.15 Rate It
+
+Rate cards are media-specific, not a generic form with mismatched statuses. The intended visual design includes:
+
+- cover and item summary;
+- external average rating;
+- large rating stars and slider;
+- star opacity representing fractional progress (for example 4.5 = four full stars plus one at 50% opacity);
+- rating-distribution comparison based on the user's library;
+- balanced status choice grid with even rows;
+- full-width date input when it occupies a row alone;
+- immediate pressed/saving feedback;
+- success feedback only after durable confirmation.
+
+The Save button disables or visibly changes state immediately. A sound may be used only as supplemental success feedback and must not be the sole confirmation.
+
+### 29.16 TV episode tracker
+
+The tracker includes Watch Next cards and the All Episodes accordion. Watched controls use a clear pale circular background and checkmark. Season-level toggles are bulk commands and must immediately reflect the optimistic target state.
+
+Bulk confirmation UI reports both operations and episodes in language such as `Confirming 3 season updates - 25/69 episodes`. The queue must accept additional individual or season changes while earlier confirmation is running. Writes are serialized/merged safely; an older confirmation must not roll back a newer intent.
+
+### 29.17 Statistics
+
+Statistics has six modes:
+
+- Everything
+- Books
+- Movies
+- TV Shows
+- Games
+- Year in Review
+
+All modes retain the normal app sidebar. The Statistics header uses the colorful Statistics mark/title and a consistent segmented tab row plus a vertically centered Year selector.
+
+Default media dashboards contain:
+
+- At a Glance metric cards;
+- Activity by Month;
+- genre distribution;
+- status distribution;
+- rating profile;
+- releases by year;
+- media mix or tags;
+- highlights;
+- top-ten comparison modules.
+
+Metric values, chart annotations, axes, legends, and compact metadata must be as large as their modules permit without clipping. Light mode must maintain dark readable chart labels; dark mode uses an appropriate contrasting palette. Charts should use flat, intentional color systems rather than accidental 3D gradients.
+
+### 29.18 Year in Review
+
+Year in Review combines:
+
+- a celebratory hero with large gradient year, actual confetti marks, descriptive copy, Wrapped promo, and large Year picker;
+- At a Glance year metrics;
+- storyline and pace comparisons;
+- top/lowest/longest/most-played highlights;
+- Top 20 and Bottom 20 rated modules.
+
+Top-rated grids maintain constant cover width, natural variable heights by media type, bottom-aligned covers, small equal horizontal gaps, and rank/rating captions immediately below. Titles appear through hover/accessible labels rather than taking permanent vertical space. Book ratings remain out of five.
+
+### 29.19 Wrapped playback
+
+Wrapped is a timed, music-backed, full-screen annual story inspired by Spotify Wrapped but built from personal library data. Version 13 contains nineteen slides. Slides intentionally vary composition rather than reusing a single template.
+
+Slide topics include opening/year context, overall totals, top media, ratings, genres, movies, TV episodes, audiobooks, games, completion behavior, discoveries, and closing summary. Artwork rules:
+
+- foreground cover is the item poster/cover;
+- background should prefer a distinct backdrop/still/screenshot, not a blurred duplicate of the same cover;
+- fallback backgrounds may use other ranked item art or designed color fields;
+- text remains readable over every image through controlled overlays.
+
+The original licensed download was `the-creator-hey-pluto-main-version-45210-01-44.mp3`, licensed from Uppbeat with license code `DKEBXZONO4GTJOQE`. The deployed repository asset is `public/audio/wrapped/the-creator-hey-pluto.mp3`; native/static output must include the same asset. Preserve the downloaded license evidence outside the repository as well. The app must not imply ownership beyond that license.
+
+Wrapped episode history has an explicit `loading | ready | error` state. It must never show zero while TV Episode CSV/native history is merely loading.
+
+### 29.20 Roadmap
+
+Roadmap is a persistent planning/discovery view. Web storage uses the R2 `roadmap/items.json` object through `/api/roadmap`; native uses Tauri roadmap commands and local persistence. It must not silently fork into unrelated browser-only and native-only lists.
+
+### 29.21 Themes
+
+Themes is the user-facing visual configuration page. It controls shelf mode, colors, cover sizing, spacing, sidebar styles, counters, badges, titles, and theme-specific options. Changes save through the Settings system and should preview without reloading.
+
+### 29.22 Icons
+
+Icons manages current sidebar destinations and media status icons. Retired built-in Smart List icons must not be shown as active system destinations. Uploaded icons persist to durable storage/settings and are cached for native offline use.
+
+### 29.23 Activity Log
+
+Activity Log reads the published ChangeLog CSV and presents edits without requiring the Google Sheet UI. It is diagnostic and audit-oriented. It should expose timestamp, source, sheet, title, row, field, old value, new value, user, and function when available.
+
+### 29.24 Settings/filter panel
+
+The per-view control panel owns sorting, filters, cover/list size, columns, and view-specific choices. Its state key must include the exact active view so Home Upcoming preferences cannot overwrite Home Now Playing, Books Completed, or another section. Mobile preferences are also per-view.
+
+## 30. Data Ownership and Source Matrix
+
+| Data | Primary source | Cache/fallback | Writer | Ownership rule |
+|---|---|---|---|---|
+| Books library rows | Google Sheet `Books` | Native SQLite / loaded client state | Apps Script | User-owned and metadata-enhanced |
+| Movie rows | Google Sheet `Movies` | Native SQLite / loaded client state | Apps Script | User status/rating/date must survive metadata sync |
+| TV show rows | Google Sheet `Shows` | Native SQLite / loaded client state | Apps Script | Show progress status is user-owned |
+| Game rows | Google Sheet `Games` | Native SQLite / loaded client state | Apps Script | Platform editions remain independent |
+| Episode metadata/progress | Google Sheet `TV Episodes` | localStorage/native SQLite | Apps Script | Watched/WatchedAt are user-owned |
+| UI settings | Google Sheet `Settings` | `cdlSettingsCache` / native SQLite | Apps Script/native queue | Shared across devices where appropriate |
+| Per-device inspector geometry | localStorage | none | browser/Tauri webview | Device-local |
+| Change history | Google Sheet `ChangeLog` | published CSV | Apps Script / sheet scripts | Append-only audit, capped by script policy |
+| Covers/backdrops/icons | Cloudflare R2 | native disk cache / metadata URL | API route or native R2 uploader | R2 is displayed source once synchronized |
+| Metadata | TMDB/IGDB/Audnexus/Hardcover/NYT | Sheet columns | app sync actions | Must not overwrite user fields |
+| Roadmap | R2 JSON | native/local cache | API/native command | Shared planning data |
+| Wrapped music | licensed static asset | local packaged asset | repository build | License-restricted asset |
+
+## 31. API Route Contracts
+
+### `/api/sheets-write` POST
+
+Accepts a normalized write payload plus target Apps Script URL information from the application. It only forwards to approved Google Script hosts. It sends JSON as `text/plain;charset=utf-8` to avoid problematic browser preflight behavior. Response text is read once and reused. Do not read the body twice.
+
+### `/api/media-search` GET
+
+Server-side metadata gateway for TMDB, IGDB, Audnexus/Audible catalog, and Hardcover search/details operations. It protects server-only credentials and normalizes provider results for the add/sync UI.
+
+### `/api/recommendations` POST
+
+Builds external recommendation candidates, filters library-owned titles, and returns media-specific results. Recommendation output is a suggestion source, not durable library data until the user adds an item.
+
+### `/api/tv-episodes` GET
+
+Requires a TMDB show ID. Fetches seasons and episode metadata, normalizes still/poster URLs, and returns rows suitable for merge/upsert. It must not invent watched state.
+
+### `/api/upload-cover` POST
+
+Uploads cover/icon bytes or a source URL to Cloudflare R2 and returns the public durable URL/object information. Configuration requires all R2 credentials.
+
+### `/api/sync-covers` POST
+
+Synchronizes metadata artwork into the R2 display layer. It is used by Artwork controls and bulk/specific cover maintenance.
+
+### `/api/cover-proxy` GET
+
+Fetches permitted remote artwork for browser-safe display/upload when direct provider hotlinking or CORS blocks the client.
+
+### `/api/ui-prefs` GET/PUT
+
+Reads/writes shared UI preference JSON at R2 key `settings/ui-prefs.json`. This is distinct from the Sheet Settings rows and should not become a conflicting second source without an explicit migration plan.
+
+### `/api/roadmap` GET/PUT
+
+Reads/writes R2 key `roadmap/items.json`.
+
+### `/api/sidebar-icon` GET
+
+Resolves sidebar icon resources against configured R2 public storage.
+
+## 32. Client Persistence Keys
+
+Important localStorage families:
+
+- `cdlSettingsCache`: local mirror of Settings key/value rows.
+- `cdlTvEpisodeRows`: episode metadata and progress cache.
+- `cdlTvEpisodeDailyRefreshDate`: last app-driven daily refresh date.
+- `cdlCoverOverrides`: compatibility cover overrides.
+- `cdlPopupCoverModes`: per-item default/custom artwork presentation choice.
+- `cdlSidebarIconOverrides`: latest sidebar icon URLs.
+- `cdlStatusIconOverrides`: latest status icon URLs.
+- `cdlNativeSidebarIconCache`: native local paths for sidebar icons.
+- `cdlNativeStatusIconCache`: native local paths for status icons.
+- `cdlMobileCoverScalePct`: legacy/global mobile scale fallback.
+- `cdlMobileCoverScaleByGroup`: mobile cover scale grouped by section.
+- `cdlMobileViewPreferences`: exact mobile per-view preferences.
+- `cdl:details-open-mode`: `sidebar` or `full` single-click behavior.
+- `cdl:details-sidebar-width`: device-local inspector width.
+
+Settings key families stored through the Settings system:
+
+- `viewDisplayMode:<viewKey>`
+- `viewListColumns:<viewKey>`
+- `viewListSize:<viewKey>`
+- `viewListColumnWidths:<viewKey>`
+- `viewSortField:<viewKey>`
+- `viewSortOrder:<viewKey>`
+- `viewManualOrder:<viewKey>`
+- `smartLists:v1`
+- `smartListManualOrder:<smartListId>`
+- `sidebarIcon:<iconKey>`
+- `statusIcon:<statusKey>`
+- shelf theme, spacing, cover sizing, sidebar typography, counter dimensions, badge dimensions, and color keys.
+
+Local-first view settings are intentionally recognized by a key pattern so a slower remote Settings load does not overwrite a newer local manual order or view configuration during startup.
+
+## 33. Native Tauri Architecture
+
+### 33.1 Database
+
+The Tauri layer stores data in `library.sqlite` under the platform app-data directory. Tables cover normalized row snapshots, settings, sync queue, assets/cache metadata, and roadmap storage. JavaScript communicates through typed helpers in `app/native/bridge.ts`.
+
+### 33.2 Native commands
+
+Current commands include:
+
+- `read_snapshot`
+- `seed_snapshot`
+- `queue_sheet_write`
+- `save_item`
+- `delete_item`
+- `save_setting`
+- `import_asset`
+- `save_asset_bytes`
+- `cache_remote_media`
+- `cache_icons`
+- `cache_status`
+- `sync_status`
+- `sync_now`
+- `load_tv_episodes`
+- `read_roadmap`
+- `save_roadmap`
+- `open_external_url`
+- `resolve_igdb_url`
+- `discover_igdb_games`
+
+### 33.3 Native startup
+
+1. Detect Tauri runtime.
+2. Read local snapshot.
+3. Render cached rows immediately when present.
+4. Seed from published CSV if the local database is empty.
+5. Process pending writes when online.
+6. Pull remote snapshots only when doing so will not erase pending local edits.
+7. Cache remote artwork/icons incrementally.
+
+### 33.4 Conflict policy
+
+Queued writes carry `ClientUpdatedAt`; remote rows carry `LastModifiedAt`. If remote is newer than a pending local edit, native marks/skips the stale write rather than overwriting newer shared data. This is a last-write protection policy, not full record-level merge resolution.
+
+### 33.5 Static renderer build
+
+The native frontend is a static export under `out`. `scripts/build-native-renderer.mjs` temporarily isolates server-only API routes during export because they cannot be part of a purely static renderer. Never run a destructive manual move of `app/api`; use the script so interrupted builds restore the source tree.
+
+## 34. Visual Design System
+
+### 34.1 Product character
+
+The interface combines classic Delicious Library shelf browsing with a restrained Apple-like application structure. It should feel like a personal collection tool, not a marketing website. Dense libraries favor scanability, exact alignment, compact controls, and high-quality artwork.
+
+### 34.2 Shape language
+
+- Section/tab selections use modest rounded rectangles, not oversized capsules.
+- Repeated cards use small radii; avoid cards nested inside cards.
+- Icon commands use familiar symbols and tooltips.
+- Covers themselves receive the rounded corners; they do not sit on visible white template plates.
+- Detail action buttons are equal rounded squares with evenly distributed spacing.
+
+### 34.3 Color language
+
+Media accents:
+
+- Books: green family.
+- Movies: purple family.
+- TV Shows: orange family.
+- Games: blue family.
+- Global/mixed: neutral gray with selective accent colors.
+
+Light mode uses near-white app surfaces with subtle borders and cover-local shadows. Dark mode uses true readable contrast rather than dark blue-on-blue monotony. Wood Shelf applies wood only to library shelf content, not analytical or modal surfaces.
+
+### 34.4 Typography
+
+- Use system/Geist-like sans typography.
+- Zero negative letter spacing.
+- Titles are strong but proportional to their module.
+- Small chart metadata must remain readable at ordinary desktop distance.
+- Text wraps when meaning would be lost by truncation.
+- Button and dropdown labels must fit at all supported sizes.
+
+### 34.5 Motion
+
+- Cover hover/focus uses a temporary glossy sheen and multidirectional tilt.
+- The effect overlays the artwork edge-to-edge and does not expose a padded rectangular wrapper.
+- Standard covers do not add a separate vertical lift in addition to tilt.
+- Rolodex counters animate all digits on initial load, then only the selected media row on navigation.
+- Respect reduced-motion preferences for nonessential motion.
+
+### 34.6 Shadows
+
+Light-mode covers receive individual shadows: darkest immediately beneath/around each cover, fading quickly before the row boundary. Shadows must not merge into a continuous horizontal band or stop at a straight row line.
+
+## 35. Responsive and Accessibility Rules
+
+- Desktop minimum native window is currently 1024 x 720.
+- The web UI must remain usable below that through mobile layout switches.
+- No text or control overlap at supported widths.
+- Fixed-format elements use stable dimensions/aspect ratios.
+- Horizontal carousels may hide scrollbar chrome while remaining scrollable.
+- Keyboard focus must remain visible without raw accidental outlines.
+- Buttons need accessible labels; icon-only buttons need tooltips/ARIA names.
+- Row/cover selection and double-click behavior must have a keyboard-accessible equivalent.
+- Color is not the only status signal: icons/text accompany it.
+- Save state needs textual feedback in addition to sound or animation.
+
+## 36. Windows Migration Guide
+
+Moving development to a Windows PC is feasible. The web application is cross-platform. Tauri source is cross-platform in principle, but the current bundle configuration is macOS-specific and must be extended rather than assumed to build unchanged.
+
+### 36.1 Data that must be transferred securely
+
+Transfer through secure/private means, not a public Git commit:
+
+- `.env.local`
+- R2 credentials
+- TMDB, IGDB/Twitch, Hardcover, NYT credentials
+- Google Apps Script deployment URL values
+- any downloaded license receipt for Wrapped music
+- optional native `library.sqlite` if preserving the Mac's offline queue/cache state
+
+The Google Sheet and R2 bucket remain remote shared sources; they do not need to be copied to Windows.
+
+### 36.2 Source transfer
+
+Preferred process:
+
+1. Commit all intended source/document changes on Mac.
+2. Push `dev` and `main` as requested.
+3. Clone the Git repository on Windows onto an NTFS path without unusual permission restrictions.
+4. Restore `.env.local` manually.
+5. Run `npm install` rather than copying `node_modules` from macOS.
+6. Run `npm run dev` and verify web behavior first.
+
+Do not copy macOS `node_modules`, `.next`, `out`, or `src-tauri/target` to Windows. They contain platform-specific binaries and stale paths.
+
+### 36.3 Windows prerequisites
+
+Install:
+
+- current Node.js LTS compatible with Next.js 16;
+- npm;
+- Git for Windows;
+- Rust stable through rustup, including MSVC target;
+- Visual Studio Build Tools with Desktop development with C++ and Windows SDK;
+- Microsoft Edge WebView2 Runtime;
+- optional GitHub CLI and Vercel CLI.
+
+### 36.4 Windows web validation
+
+```powershell
+npm install
+npm run dev
+npm run build
+```
+
+Verify every CSV URL, metadata route, R2 upload, and Apps Script write from the Windows network/browser environment.
+
+### 36.5 Tauri Windows changes required
+
+Current `src-tauri/tauri.conf.json` bundle targets are `dmg` and `app`, and the icon list contains only `icon.icns`. For Windows builds:
+
+- add Windows bundle target(s), normally `nsis` and/or `msi`;
+- create/provide a proper `.ico` icon with multiple embedded sizes;
+- retain macOS targets through platform-specific config or a compatible target list;
+- audit `open_external_url` and any shell commands for macOS-only behavior;
+- confirm app-data paths use Tauri APIs rather than hard-coded `/Users/...` paths;
+- confirm the static renderer script works under PowerShell/Windows filesystem semantics;
+- validate native asset cache filenames against Windows reserved characters and path length;
+- decide whether to migrate the existing SQLite snapshot or let Windows seed from Sheets.
+
+### 36.6 Native data migration options
+
+Option A, recommended clean migration:
+
+1. Ensure Mac pending queue is zero and Sheets are fully confirmed.
+2. Install Windows native build.
+3. Let Windows seed SQLite from published Sheet CSVs.
+4. Rebuild local artwork caches over time.
+
+Option B, exact offline-state migration:
+
+1. Close the Mac app completely.
+2. Copy `library.sqlite` and required cached asset directories from macOS app support.
+3. Place them in the Windows Tauri app-data directory.
+4. Verify schema/version compatibility before launch.
+
+Option B is only necessary if unsynced local writes or a warm offline cache must be preserved. It carries more risk and should not be used while the Mac app has an active write queue.
+
+### 36.7 Cross-platform release policy
+
+After Windows support exists, release validation should cover:
+
+- web/Vercel;
+- macOS `.app` and `.dmg`;
+- Windows installer and installed executable;
+- shared Sheet visibility across Mac, Windows, and web;
+- R2 artwork consistency;
+- save/readback confirmation from each target;
+- version display alignment in every target.
+
+## 37. Security, Privacy, and Operational Concerns
+
+- Never expose server-only R2 secret keys, IGDB client secret, or private provider credentials through `NEXT_PUBLIC_*` variables.
+- Published Sheet CSV URLs are effectively read-access tokens. Anyone with the URL may read that published tab.
+- Apps Script `/exec` URLs can be invoked by anyone who obtains them unless the script implements additional authorization. Current host validation in the app prevents arbitrary forwarding but is not user authentication.
+- R2 public artwork URLs are intentionally public; do not store private documents in that bucket/path.
+- ChangeLog may contain personal library activity and dates.
+- Native SQLite contains the local library and pending writes; protect the user account/device and backups.
+- Keep the Uppbeat license code and proof with release records.
+- Rotate credentials if `.env.local` or deployment secrets are exposed.
+
+## 38. End-to-End Acceptance Checklist
+
+### Reading and navigation
+
+- [ ] All five library destinations load.
+- [ ] Books, Movies, TV Shows, and Games open to Home in web, mobile, and native.
+- [ ] Search works in current and entire-library scope.
+- [ ] Cover and List views share the same item set.
+- [ ] Per-view preferences survive reload independently.
+
+### CRUD and save reliability
+
+- [ ] Add one item of each media type.
+- [ ] Edit status, rating, and date for each media type.
+- [ ] Verify exact Sheet cells after save.
+- [ ] Verify refresh returns confirmed values.
+- [ ] Delete a test item with confirmation.
+- [ ] Confirm ChangeLog rows.
+- [ ] Test an Apps Script timeout where the write still lands and ensure readback resolves it correctly.
+
+### Ordering
+
+- [ ] Reorder Read Next and reload.
+- [ ] Reorder Play Next and reload.
+- [ ] Reorder Movie Watchlist and reload.
+- [ ] Reorder TV Watchlist and reload.
+- [ ] Confirm Home dashboard mirrors each source order on first load.
+
+### Episodes
+
+- [ ] Load a multi-season show.
+- [ ] Toggle one episode.
+- [ ] Toggle one whole season.
+- [ ] Queue another season while confirmation is active.
+- [ ] Confirm progress count advances.
+- [ ] Confirm Sheet Watched/WatchedAt values.
+- [ ] Reload and verify progress.
+- [ ] Open on a second device and verify shared progress.
+
+### Artwork
+
+- [ ] Sync metadata cover to R2.
+- [ ] Upload custom R2 cover.
+- [ ] Verify displayed cover after reload and on another device.
+- [ ] Verify audiobook/game artwork has no white template border.
+- [ ] Verify native cache/offline fallback.
+
+### Visual/responsive
+
+- [ ] Light, dark, classic, and wood modes.
+- [ ] Desktop wide, desktop minimum, tablet, and phone widths.
+- [ ] Details inspector at narrow and wide widths.
+- [ ] No clipped labels, charts, rate controls, or cover subtitles.
+- [ ] Wood Shelf rows seat covers on the lip and do not affect mobile/Statistics.
+- [ ] Reduced motion behavior.
+
+### Statistics/Wrapped
+
+- [ ] All media tabs and year selector.
+- [ ] Book ratings remain five-point.
+- [ ] Chart labels readable in light and dark modes.
+- [ ] Year in Review metrics match source data.
+- [ ] Wrapped plays all nineteen slides.
+- [ ] Episode slide never flashes false zero while loading.
+- [ ] Licensed music loads in web and packaged native builds.
+
+## 39. Authoritative Implementation Decisions
+
+These decisions should not be casually reversed:
+
+1. Google Sheets is the shared source of truth until an explicit backend migration is approved.
+2. Immediate UI feedback is optimistic; successful completion requires durable confirmation.
+3. R2 is the displayed artwork source after synchronization.
+4. User-owned status, ratings, dates, watched progress, and manual order survive metadata refresh.
+5. Duplicate game platform editions are independent records.
+6. Book Type has only Physical, Audiobook, and eBook.
+7. Book ratings are out of five.
+8. Home dashboards remain custom and do not become generic List views.
+9. Every eligible view stores its own display, size, columns, sort, and filter preferences.
+10. Single click opens the compact inspector by default; double click opens full details.
+11. Wood Shelf is a visual desktop cover theme only.
+12. Statistics uses light styling when the library theme is Wood Shelf.
+13. Every implemented code change includes the required app version increment unless explicitly overridden.
+14. Web/Tauri production work remains separate from the SwiftUI Apple companion project.
