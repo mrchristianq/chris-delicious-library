@@ -1,6 +1,6 @@
 {
   "name": "chris-delicious-library",
-  "version": "13.0.3",
+  "version": "13.0.8",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
@@ -41,5 +41,9 @@
     "eslint-config-next": "16.1.4",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.11.1": true
   }
 }

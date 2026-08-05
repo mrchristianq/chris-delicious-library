@@ -387,7 +387,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.0.3";
+const APP_VERSION = "13.0.8";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -713,6 +713,41 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.0.8",
+    date: "2026-08-05",
+    notes: [
+      "Widened the Add to Library media-type grid so cards read as rectangles instead of near-squares, and warmed the modal's palette (ivory surfaces, umber-tinted borders/shadows) for a more considered look.",
+    ],
+  },
+  {
+    version: "13.0.7",
+    date: "2026-08-05",
+    notes: [
+      "Fixed book saves (cover uploads, edits, ratings) silently landing on the wrong row when a book's ISBN/ASIN/HardcoverID was duplicated across other rows. The app now detects the conflict, matches by title instead, and the cover-upload path verifies the write against the Sheet before reporting success.",
+    ],
+  },
+  {
+    version: "13.0.6",
+    date: "2026-08-05",
+    notes: [
+      "Fixed drag-to-reorder tiles (Read Next, Play Next, watchlists) starting on the slightest mouse movement instead of requiring a real drag gesture, which made clicks misfire as reorders.",
+    ],
+  },
+  {
+    version: "13.0.5",
+    date: "2026-08-05",
+    notes: [
+      "Redesigned the Add to Library media-type picker with a new hero header and colored cards/rows, and added a Manual Entry path that skips search.",
+    ],
+  },
+  {
+    version: "13.0.4",
+    date: "2026-08-05",
+    notes: [
+      "Removed the unused Publisher field from the Add/Edit Book form since it is not tied to a Sheet column.",
+    ],
+  },
   {
     version: "13.0.3",
     date: "2026-08-02",
@@ -7044,7 +7079,10 @@ export default function Page() {
           updates: { R2CoverUrl: syncedCoverUrl, R2CoverUrl_Date: replacementDate },
         }, "Failed to save game R2 cover");
       } else if (mediaType === "book" && booksWriteUrl) {
-        const bookMatch = buildBookSheetMatch(item);
+        const { match: bookMatch, warnings: bookMatchWarnings } = resolveSafeBookMatch(item);
+        if (bookMatchWarnings.length > 0) {
+          console.warn("[Cover Upload] Ambiguous book match key(s) detected:", bookMatchWarnings);
+        }
         await postSheetWrite(booksWriteUrl, {
           action: "updateBook",
           match: bookMatch,
@@ -7056,6 +7094,26 @@ export default function Page() {
             CustomImageURL: syncedCoverUrl,
           },
         }, "Failed to save book R2 cover");
+
+        if (isBrowserLikelyOnline()) {
+          try {
+            await verifySavedFieldsFromCsv({
+              sheetName: "Books",
+              csvUrl: booksCsvUrl,
+              match: { title: safeStr(bookMatch.title) },
+              verifyFields: { R2CoverUrl: syncedCoverUrl },
+            });
+          } catch (verifyError: any) {
+            const warningText = bookMatchWarnings.length > 0 ? ` ${bookMatchWarnings.join(" ")}` : "";
+            throw new Error(
+              `Google Sheet did not confirm the cover save.${warningText} ${verifyError?.message || "Verification failed."}`
+            );
+          }
+        }
+
+        if (bookMatchWarnings.length > 0) {
+          setCoverUploadError(`Saved, but matched by title because: ${bookMatchWarnings.join(" ")}`);
+        }
       }
 
       const withUploadedR2Cover = (prev: any) => {
@@ -7224,7 +7282,14 @@ export default function Page() {
           mediaType === "tv" ? "updateShow" :
           "updateGame";
         const title = safeStr(item?.title || item?.Title || item?.name);
-        const bookMatch = mediaType === "book" ? buildBookSheetMatch(item) : {};
+        let bookMatch: Record<string, string> = {};
+        if (mediaType === "book") {
+          const safeBookMatch = resolveSafeBookMatch(item);
+          bookMatch = safeBookMatch.match;
+          if (safeBookMatch.warnings.length > 0) {
+            console.warn("[R2 Sync] Ambiguous book match key(s) detected:", safeBookMatch.warnings);
+          }
+        }
         const gameMatch = mediaType === "game"
           ? {
               igdbId: safeStr(item?.igdbId || item?.IGDB_ID),
@@ -8301,6 +8366,53 @@ export default function Page() {
     [getRowValueByField]
   );
 
+  // Match keys in the same priority order Apps Script's updateBookRow_ uses. Manually
+  // added books (no external IDs) sometimes end up with a duplicated/corrupted value in
+  // one of these fields (e.g. a bad ISBN copied across a multi-part audiobook). If we send
+  // an ambiguous key as the match, Apps Script silently updates whichever row it finds
+  // first — not necessarily the row the user is looking at — and reports success anyway.
+  // This resolves a match that's guaranteed unique against the currently loaded rows,
+  // dropping any key that collides with a different-titled row and falling back down the
+  // priority chain (ultimately to Title, which Apps Script also uses as a last resort).
+  const BOOK_MATCH_KEY_PRIORITY: Array<{ key: "googleBooksVolumeId" | "openLibraryWorkKey" | "isbn" | "audibleAsin" | "audnexusAsin" | "hardcoverId"; sheetField: string; label: string }> = [
+    { key: "googleBooksVolumeId", sheetField: "GoogleBooksVolumeId", label: "Google Books ID" },
+    { key: "openLibraryWorkKey", sheetField: "OpenLibraryWorkKey", label: "Open Library key" },
+    { key: "isbn", sheetField: "isbn", label: "ISBN" },
+    { key: "audibleAsin", sheetField: "AudibleASIN", label: "Audible ASIN" },
+    { key: "audnexusAsin", sheetField: "AudnexusASIN", label: "Audnexus ASIN" },
+    { key: "hardcoverId", sheetField: "HardcoverID", label: "Hardcover ID" },
+  ];
+
+  const resolveSafeBookMatch = useCallback(
+    (item: any, updates?: Record<string, string>): { match: Record<string, string>; warnings: string[] } => {
+      const match = buildBookSheetMatch(item, updates);
+      const title = safeStr(match.title);
+      const warnings: string[] = [];
+      const safeMatch: Record<string, string> = { ...match };
+      for (const { key, sheetField, label } of BOOK_MATCH_KEY_PRIORITY) {
+        const value = safeStr(safeMatch[key]);
+        if (!value) continue;
+        const conflictingTitles = Array.from(new Set(
+          bookRows
+            .filter((row) => {
+              const rowValue = safeStr(getRowValueByField(row, sheetField));
+              const rowTitle = safeStr(getRowValueByField(row, "Title"));
+              return rowValue === value && rowTitle.toLowerCase() !== title.toLowerCase();
+            })
+            .map((row) => safeStr(getRowValueByField(row, "Title")))
+        ));
+        if (conflictingTitles.length > 0) {
+          warnings.push(
+            `${label} "${value}" is also used by ${conflictingTitles.length} other book${conflictingTitles.length === 1 ? "" : "s"} (${conflictingTitles.join(", ")}); matched by title instead.`
+          );
+          safeMatch[key] = "";
+        }
+      }
+      return { match: safeMatch, warnings };
+    },
+    [buildBookSheetMatch, bookRows, getRowValueByField]
+  );
+
   const uploadCoverFormData = useCallback(async (formData: FormData): Promise<Record<string, any>> => {
     if (!isNativeApp) {
       const res = await fetch("/api/upload-cover", {
@@ -8370,6 +8482,10 @@ export default function Page() {
     }
 
     const bookSheetMatch = buildBookSheetMatch(item, updates);
+    const { match: safeBookSheetMatch, warnings: bookMatchWarnings } = resolveSafeBookMatch(item, updates);
+    if (bookMatchWarnings.length > 0) {
+      console.warn("[Save Book] Ambiguous book match key(s) detected:", bookMatchWarnings);
+    }
     const matchGoogleBooksVolumeId = bookSheetMatch.googleBooksVolumeId;
     const matchOpenLibraryWorkKey = bookSheetMatch.openLibraryWorkKey;
     const matchIsbn = bookSheetMatch.isbn;
@@ -8414,10 +8530,7 @@ export default function Page() {
     const payload = {
       action: "updateBook",
       match: {
-        ...bookSheetMatch,
-        googleBooksVolumeId: matchGoogleBooksVolumeId,
-        openLibraryWorkKey: matchOpenLibraryWorkKey,
-        isbn: matchIsbn,
+        ...safeBookSheetMatch,
         title: matchTitle,
       },
       updates: {
@@ -10071,7 +10184,10 @@ export default function Page() {
           updates.tags = tags;
           verifyFields.tags = tags;
         }
-        const bookMatch = buildBookSheetMatch(rateItItem);
+        const { match: bookMatch, warnings: bookMatchWarnings } = resolveSafeBookMatch(rateItItem);
+        if (bookMatchWarnings.length > 0) {
+          console.warn("[Rate It] Ambiguous book match key(s) detected:", bookMatchWarnings);
+        }
         const matchTitle = bookMatch.title;
         const bookReadbackId =
           (bookMatch.googleBooksVolumeId && { idField: "GoogleBooksVolumeId", idValue: bookMatch.googleBooksVolumeId }) ||
@@ -17430,10 +17546,10 @@ export default function Page() {
 
       const distance = Math.hypot(event.clientX - currentDrag.startX, event.clientY - currentDrag.startY);
       const isTouchLike = event.pointerType === "touch" || event.pointerType === "pen" || isMobileLayout;
-      const dragActivationThreshold = isTouchLike ? 22 : 2;
+      const dragActivationThreshold = isTouchLike ? 22 : 6;
       const elapsedMs = performance.now() - (currentDrag.startTimeMs ?? 0);
-      const meetsTouchActivation = !isTouchLike || (distance >= dragActivationThreshold && elapsedMs >= 180);
-      const active = currentDrag.active || meetsTouchActivation;
+      const meetsActivation = distance >= dragActivationThreshold && (!isTouchLike || elapsedMs >= 180);
+      const active = currentDrag.active || meetsActivation;
 
       const nextDrag: WishlistPointerDrag = {
         ...currentDrag,

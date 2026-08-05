@@ -53,7 +53,6 @@ const createBookFields = (statusOptions?: Array<{ value: string; label: string }
     { key: "series",             label: "Series" },
     { key: "author",             label: "Author" },
     { key: "narrator",           label: "Narrator" },
-    { key: "publisher",          label: "Publisher" },
     { key: "ownership",          label: "Ownership",         options: OWNERSHIP_OPTIONS },
     { key: "type",               label: "Type",              options: TYPE_OPTIONS },
     { key: "status",             label: "Status",            options: statusLabels },
