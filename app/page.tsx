@@ -3284,18 +3284,24 @@ function getDisplayCover(item: any, mediaType: "book" | "movie" | "tv" | "game")
   if (mediaType === "movie" || mediaType === "tv") {
     return safeStr(item?.r2CoverUrl || item?.R2CoverUrl || item?.posterUrl || item?.PosterURL || item?.metadataCoverUrl || "");
   }
-  return safeStr(
-    item?.r2CoverUrl ||
-      item?.R2CoverUrl ||
-      item?.localCoverUrl ||
-      item?.LocalCoverURL ||
-      item?.coverUrl ||
-      item?.CoverURL ||
-      item?.metadataCoverUrl ||
-      item?.imageUrl ||
-      item?.ImageURL ||
-      item?.posterUrl ||
-      ""
+  // Game covers: bump any raw IGDB URL up to 1080p so box art isn't stuck at
+  // IGDB's tiny t_cover_big thumbnail (264x374). No-ops on r2CoverUrl / other
+  // non-IGDB hosts, so it's safe to apply unconditionally here.
+  return upgradeIgdbScreenshotSize(
+    safeStr(
+      item?.r2CoverUrl ||
+        item?.R2CoverUrl ||
+        item?.localCoverUrl ||
+        item?.LocalCoverURL ||
+        item?.coverUrl ||
+        item?.CoverURL ||
+        item?.metadataCoverUrl ||
+        item?.imageUrl ||
+        item?.ImageURL ||
+        item?.posterUrl ||
+        ""
+    ),
+    "t_1080p"
   );
 }
 
@@ -4135,7 +4141,8 @@ export default function Page() {
     nav === "wishlist-books" ||
     nav === "watchlist-movies" ||
     nav === "watchlist-tv" ||
-    nav === "upcoming";
+    nav === "upcoming" ||
+    nav === "completed-gallery";
   const isSmartListOrDiscoverNav =
     nav === "current" ||
     nav === "completed" ||
@@ -26802,6 +26809,7 @@ export default function Page() {
                     : shelfThemeMode === "dark"
               }
               isMobileLayout={isMobileLayout}
+              searchQuery={deferredQuery}
               getDisplayCoverUrl={(item) => getDisplayCoverUrl(item, true)}
               isAudiobookItem={isAudiobookItem}
               onSelectItem={(item, mediaType) => openFullSelectedItem({ ...item, __type: mediaType })}

@@ -1098,7 +1098,14 @@ function normalizeIgdbCoverUrl(url: string): string {
   const normalized = safeStr(url);
   if (!normalized) return "";
   const https = normalized.startsWith("//") ? `https:${normalized}` : normalized;
-  return https.replace("/t_thumb/", "/t_cover_big/");
+  // Bump every legacy/small cover size up to 1080p (same tier used for
+  // screenshots) so box art renders sharp instead of the tiny t_cover_big
+  // thumbnail (264x374) IGDB defaults to.
+  return https
+    .replace("/t_thumb/", "/t_1080p/")
+    .replace("/t_cover_small/", "/t_1080p/")
+    .replace("/t_cover_big/", "/t_1080p/")
+    .replace("/t_720p/", "/t_1080p/");
 }
 
 function mapIgdbGameToResult(item: IgdbGame): SearchResult {

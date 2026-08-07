@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 type MediaType = "book" | "movie" | "tv" | "game";
 
@@ -15,6 +15,7 @@ type CompletedGalleryProps = {
   items: CompletedGalleryEntry[];
   isDark: boolean;
   isMobileLayout: boolean;
+  searchQuery?: string;
   getDisplayCoverUrl: (item: Record<string, unknown>) => string;
   isAudiobookItem?: (item: Record<string, unknown>) => boolean;
   onSelectItem: (item: Record<string, unknown>, mediaType: MediaType) => void;
@@ -22,6 +23,14 @@ type CompletedGalleryProps = {
   onRateItem: (item: Record<string, unknown>, mediaType: MediaType) => void;
   onBack: () => void;
 };
+
+const MEDIA_TYPE_FILTER_OPTIONS: Array<{ key: MediaType | "all"; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "book", label: "Books" },
+  { key: "movie", label: "Movies" },
+  { key: "tv", label: "TV Shows" },
+  { key: "game", label: "Games" },
+];
 
 const DEFAULT_CAROUSEL_HEIGHT = 168;
 const MIN_CAROUSEL_HEIGHT = 96;
@@ -88,6 +97,43 @@ function formatCompactDate(raw: string): string {
   const dd = String(parsed.getDate()).padStart(2, "0");
   const month = parsed.getMonth() + 1;
   return `${month}/${dd}/${parsed.getFullYear()}`;
+}
+
+type DateRangePreset = "all" | "this-year" | "last-year" | "last-30" | "custom";
+
+const DATE_RANGE_PRESETS: Array<{ key: DateRangePreset; label: string }> = [
+  { key: "all", label: "All Time" },
+  { key: "this-year", label: "This Year" },
+  { key: "last-year", label: "Last Year" },
+  { key: "last-30", label: "Last 30 Days" },
+  { key: "custom", label: "Custom Range" },
+];
+
+function matchesDateRange(raw: string, preset: DateRangePreset, customFrom: string, customTo: string): boolean {
+  if (preset === "all") return true;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const now = new Date();
+  if (preset === "this-year") return parsed.getFullYear() === now.getFullYear();
+  if (preset === "last-year") return parsed.getFullYear() === now.getFullYear() - 1;
+  if (preset === "last-30") {
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 30);
+    return parsed >= cutoff && parsed <= now;
+  }
+  // custom
+  if (customFrom) {
+    const from = new Date(customFrom);
+    if (!Number.isNaN(from.getTime()) && parsed < from) return false;
+  }
+  if (customTo) {
+    const to = new Date(customTo);
+    if (!Number.isNaN(to.getTime())) {
+      to.setHours(23, 59, 59, 999);
+      if (parsed > to) return false;
+    }
+  }
+  return true;
 }
 
 function formatRuntimeMinutes(raw: string): string {
@@ -219,6 +265,7 @@ export function CompletedGallery({
   items,
   isDark,
   isMobileLayout,
+  searchQuery,
   getDisplayCoverUrl,
   isAudiobookItem,
   onSelectItem,
@@ -226,8 +273,95 @@ export function CompletedGallery({
   onRateItem,
   onBack,
 }: CompletedGalleryProps) {
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | "all">("all");
+  const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterPanelRef = useRef<HTMLDivElement | null>(null);
+  const filterButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (filterPanelRef.current?.contains(target)) return;
+      if (filterButtonRef.current?.contains(target)) return;
+      setFilterOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFilterOpen(false);
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [filterOpen]);
+
+  const q = text(searchQuery).toLowerCase();
+  const searchedItems = useMemo(
+    () => (q ? items.filter((entry) => first(entry.item, ["title", "Title"]).toLowerCase().includes(q)) : items),
+    [items, q]
+  );
+
+  const mediaTypeCounts = useMemo(() => {
+    const counts: Record<MediaType | "all", number> = { all: searchedItems.length, book: 0, movie: 0, tv: 0, game: 0 };
+    for (const entry of searchedItems) counts[entry.mediaType] += 1;
+    return counts;
+  }, [searchedItems]);
+
+  const typeFilteredItems = useMemo(
+    () => (mediaTypeFilter === "all" ? searchedItems : searchedItems.filter((entry) => entry.mediaType === mediaTypeFilter)),
+    [searchedItems, mediaTypeFilter]
+  );
+
+  const genreOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of typeFilteredItems) {
+      for (const g of getGenreTags(entry.item)) {
+        counts.set(g, (counts.get(g) || 0) + 1);
+      }
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [typeFilteredItems]);
+
+  // If the selected genre no longer exists among the current (search/type
+  // filtered) options — e.g. the user switched media type — treat it as
+  // cleared. Derived during render instead of an effect so it takes effect
+  // immediately, in the same pass, rather than one render late.
+  const effectiveGenreFilter = genreFilter && genreOptions.some(([g]) => g === genreFilter) ? genreFilter : null;
+
+  const genreFilteredItems = useMemo(
+    () =>
+      effectiveGenreFilter
+        ? typeFilteredItems.filter((entry) => getGenreTags(entry.item).includes(effectiveGenreFilter))
+        : typeFilteredItems,
+    [typeFilteredItems, effectiveGenreFilter]
+  );
+
+  const filteredItems = useMemo(
+    () =>
+      dateRangePreset === "all"
+        ? genreFilteredItems
+        : genreFilteredItems.filter((entry) => matchesDateRange(entry.completionDate, dateRangePreset, customFrom, customTo)),
+    [genreFilteredItems, dateRangePreset, customFrom, customTo]
+  );
+
+  const isFiltering = Boolean(q || mediaTypeFilter !== "all" || effectiveGenreFilter || dateRangePreset !== "all");
+  const activeFilterCount =
+    (mediaTypeFilter !== "all" ? 1 : 0) + (effectiveGenreFilter ? 1 : 0) + (dateRangePreset !== "all" ? 1 : 0);
+
   const [selectedIndexRaw, setSelectedIndex] = useState(0);
-  const selectedIndex = items.length > 0 ? Math.min(selectedIndexRaw, items.length - 1) : 0;
+  const [lastFilterSignature, setLastFilterSignature] = useState("");
+  const filterSignature = `${q}|${mediaTypeFilter}|${effectiveGenreFilter ?? ""}|${dateRangePreset}|${customFrom}|${customTo}`;
+  if (filterSignature !== lastFilterSignature) {
+    setLastFilterSignature(filterSignature);
+    if (selectedIndexRaw !== 0) setSelectedIndex(0);
+  }
+  const selectedIndex = filteredItems.length > 0 ? Math.min(selectedIndexRaw, filteredItems.length - 1) : 0;
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [carouselHeight, setCarouselHeight] = useState(DEFAULT_CAROUSEL_HEIGHT);
   const [coverTilt, setCoverTilt] = useState({ y: COVER_BASE_TILT_Y, x: COVER_BASE_TILT_X });
@@ -277,7 +411,7 @@ export function CompletedGallery({
     };
   }, []);
 
-  const selected = items[selectedIndex] || null;
+  const selected = filteredItems[selectedIndex] || null;
 
   const [notesExpandedForKey, setNotesExpandedForKey] = useState<string | undefined>(selected?.itemKey);
   if (selected?.itemKey !== notesExpandedForKey) {
@@ -288,14 +422,14 @@ export function CompletedGallery({
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "ArrowRight") {
-        setSelectedIndex((i) => Math.min(items.length - 1, i + 1));
+        setSelectedIndex((i) => Math.min(filteredItems.length - 1, i + 1));
       } else if (event.key === "ArrowLeft") {
         setSelectedIndex((i) => Math.max(0, i - 1));
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [items.length]);
+  }, [filteredItems.length]);
 
   useEffect(() => {
     itemRefs.current[selectedIndex]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
@@ -328,6 +462,11 @@ export function CompletedGallery({
   const hairline = isDark ? "rgba(255,255,255,0.10)" : "rgba(20,16,12,0.10)";
   const cardBg = isDark ? "rgba(255,255,255,0.045)" : "rgba(20,16,12,0.035)";
   const accent = isDark ? "#8baff4" : "#3461ad";
+  // Keeps the floating header legible no matter how bright the spotlight
+  // gets behind it, without needing an opaque bar.
+  const headerTextShadow = isDark
+    ? "0 1px 8px rgba(0,0,0,0.85), 0 0 22px rgba(0,0,0,0.55)"
+    : "0 1px 8px rgba(255,255,255,0.92), 0 0 22px rgba(255,255,255,0.65)";
 
   const title = selected ? first(selected.item, ["title", "Title"]) || "Untitled" : "";
   const year = selected ? getReleaseYear(selected.item, selected.mediaType) : "";
@@ -344,12 +483,15 @@ export function CompletedGallery({
   const headerBlock = (
     <div
       style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
         display: "flex",
         alignItems: "center",
         gap: 14,
         padding: isMobileLayout ? "14px 16px" : "16px 28px",
-        borderBottom: `1px solid ${hairline}`,
-        flexShrink: 0,
+        zIndex: 2,
       }}
     >
       <button
@@ -364,7 +506,9 @@ export function CompletedGallery({
           height: 32,
           borderRadius: 8,
           border: `1px solid ${hairline}`,
-          background: "transparent",
+          background: isDark ? "rgba(10,10,10,0.5)" : "rgba(255,255,255,0.65)",
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
           color: textPrimary,
           cursor: "pointer",
           flexShrink: 0,
@@ -375,21 +519,276 @@ export function CompletedGallery({
         </svg>
       </button>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: textMuted }}>Completed</div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: textPrimary, lineHeight: 1.2 }}>Gallery</div>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: textMuted, textShadow: headerTextShadow }}>Completed</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: textPrimary, lineHeight: 1.2, textShadow: headerTextShadow }}>Gallery</div>
       </div>
-      <div style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: textSecondary, whiteSpace: "nowrap" }}>
-        {items.length} completed item{items.length === 1 ? "" : "s"}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: textSecondary, whiteSpace: "nowrap", textShadow: headerTextShadow }}>
+          {filteredItems.length}
+          {isFiltering ? ` of ${items.length}` : ""} completed item{filteredItems.length === 1 && !isFiltering ? "" : "s"}
+        </div>
+        {items.length > 0 ? (
+          <button
+            ref={filterButtonRef}
+            type="button"
+            onClick={() => setFilterOpen((v) => !v)}
+            aria-pressed={filterOpen}
+            aria-expanded={filterOpen}
+            style={{
+              position: "relative",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              borderRadius: 999,
+              border: filterOpen || isFiltering ? `1px solid ${accent}` : `1px solid ${hairline}`,
+              background: filterOpen || isFiltering ? `${accent}1f` : isDark ? "rgba(10,10,10,0.5)" : "rgba(255,255,255,0.65)",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+              color: filterOpen || isFiltering ? accent : textSecondary,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6h16M7 12h10M10 18h4" />
+            </svg>
+            Filter
+            {activeFilterCount > 0 ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: 16,
+                  height: 16,
+                  padding: "0 4px",
+                  borderRadius: 999,
+                  background: accent,
+                  color: isDark ? "#050505" : "#ffffff",
+                  fontSize: 10,
+                  fontWeight: 800,
+                }}
+              >
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
       </div>
+
+      {filterOpen ? (
+        <div
+          ref={filterPanelRef}
+          style={{
+            position: "absolute",
+            top: "100%",
+            right: isMobileLayout ? 16 : 28,
+            marginTop: 8,
+            width: isMobileLayout ? "calc(100vw - 32px)" : 320,
+            maxWidth: "calc(100vw - 32px)",
+            borderRadius: 14,
+            border: `1px solid ${hairline}`,
+            background: isDark ? "#111111" : "#ffffff",
+            boxShadow: isDark ? "0 20px 40px rgba(0,0,0,0.6)" : "0 20px 40px rgba(30,24,18,0.18)",
+            padding: 16,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            zIndex: 20,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 8 }}>
+              Media Type
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {MEDIA_TYPE_FILTER_OPTIONS.map((option) => {
+                const active = mediaTypeFilter === option.key;
+                const count = mediaTypeCounts[option.key];
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setMediaTypeFilter(option.key)}
+                    aria-pressed={active}
+                    disabled={count === 0 && !active}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "5px 11px",
+                      borderRadius: 999,
+                      border: active ? `1px solid ${accent}` : `1px solid ${hairline}`,
+                      background: active ? `${accent}1f` : "transparent",
+                      color: active ? accent : count === 0 ? textMuted : textSecondary,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: count === 0 && !active ? "default" : "pointer",
+                      opacity: count === 0 && !active ? 0.5 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {option.label}
+                    <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.75 }}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {genreOptions.length ? (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 8 }}>
+                Genre
+              </div>
+              <select
+                value={effectiveGenreFilter ?? ""}
+                onChange={(event) => setGenreFilter(event.target.value || null)}
+                style={{
+                  width: "100%",
+                  padding: "7px 9px",
+                  borderRadius: 8,
+                  border: effectiveGenreFilter ? `1px solid ${accent}` : `1px solid ${hairline}`,
+                  background: isDark ? "#0c0c0c" : "#ffffff",
+                  color: effectiveGenreFilter ? accent : textPrimary,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">All Genres</option>
+                {genreOptions.map(([g, count]) => (
+                  <option key={g} value={g}>
+                    {g} ({count})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 8 }}>
+              Completed Date
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {DATE_RANGE_PRESETS.map((preset) => {
+                const active = dateRangePreset === preset.key;
+                return (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => setDateRangePreset(preset.key)}
+                    aria-pressed={active}
+                    style={{
+                      padding: "5px 11px",
+                      borderRadius: 999,
+                      border: active ? `1px solid ${accent}` : `1px solid ${hairline}`,
+                      background: active ? `${accent}1f` : "transparent",
+                      color: active ? accent : textSecondary,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+            {dateRangePreset === "custom" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(event) => setCustomFrom(event.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 8px",
+                    borderRadius: 8,
+                    border: `1px solid ${hairline}`,
+                    background: isDark ? "#0c0c0c" : "#ffffff",
+                    color: textPrimary,
+                    fontSize: 12,
+                    minWidth: 0,
+                  }}
+                />
+                <span style={{ color: textMuted, fontSize: 11 }}>to</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(event) => setCustomTo(event.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 8px",
+                    borderRadius: 8,
+                    border: `1px solid ${hairline}`,
+                    background: isDark ? "#0c0c0c" : "#ffffff",
+                    color: textPrimary,
+                    fontSize: 12,
+                    minWidth: 0,
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4, borderTop: `1px solid ${hairline}` }}>
+            <button
+              type="button"
+              onClick={() => {
+                setMediaTypeFilter("all");
+                setGenreFilter(null);
+                setDateRangePreset("all");
+                setCustomFrom("");
+                setCustomTo("");
+              }}
+              disabled={!isFiltering}
+              style={{
+                border: "none",
+                background: "none",
+                color: isFiltering ? accent : textMuted,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: isFiltering ? "pointer" : "default",
+                padding: "8px 4px 0",
+              }}
+            >
+              Clear filters
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterOpen(false)}
+              style={{
+                padding: "7px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: accent,
+                color: isDark ? "#050505" : "#ffffff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 
   if (!selected) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: isMobileLayout ? "auto" : "calc(100vh - 40px)", minHeight: isMobileLayout ? "100vh" : undefined, maxHeight: isMobileLayout ? undefined : "calc(100vh - 40px)", overflow: isMobileLayout ? "visible" : "hidden", background: bg, fontFamily: FONT }}>
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", height: isMobileLayout ? "auto" : "calc(100vh - 40px)", minHeight: isMobileLayout ? "100vh" : undefined, maxHeight: isMobileLayout ? undefined : "calc(100vh - 40px)", overflow: isMobileLayout ? "visible" : "hidden", background: bg, fontFamily: FONT }}>
         {headerBlock}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: textSecondary, fontSize: 14, textAlign: "center", padding: 24 }}>
-          Nothing completed yet. Finish a book, movie, show, or game and it will show up here.
+          {items.length === 0
+            ? "Nothing completed yet. Finish a book, movie, show, or game and it will show up here."
+            : "No completed items match your filters."}
         </div>
       </div>
     );
@@ -406,38 +805,35 @@ export function CompletedGallery({
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
-        background: bg,
         padding: isMobileLayout ? "16px 16px 20px" : "24px 24px 36px",
         boxSizing: "border-box",
         overflow: "visible",
       }}
     >
-      {/* Single natural spotlight beam, from a source above, softly widening downward. Layered in one element so it reads as one light, not several. */}
+      {/* Single soft, wide ambient glow — no hard shape, no cone, no defined
+          edges. Just one big radial falloff, wide enough to spread well past
+          the cover on both sides and fade smoothly in every direction, the
+          way real bounced/ambient light actually looks (matching the
+          reference: a broad soft glow behind the subject, not a beam). */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           left: "50%",
-          top: "-10%",
-          width: "min(64%, 560px)",
-          height: "82%",
+          top: "-20%",
+          width: "190%",
+          height: "85%",
           transform: "translateX(-50%)",
           background: isDark
-            ? [
-                "radial-gradient(ellipse 46% 20% at 50% 0%, rgba(255,255,255,0.85), rgba(255,255,255,0) 72%)",
-                "radial-gradient(ellipse 62% 55% at 50% 26%, rgba(255,255,255,0.4), rgba(255,255,255,0) 70%)",
-                "radial-gradient(ellipse 40% 70% at 50% 40%, rgba(255,255,255,0.22), rgba(255,255,255,0) 75%)",
-              ].join(", ")
-            : [
-                "radial-gradient(ellipse 46% 20% at 50% 0%, rgba(255,252,244,0.92), rgba(255,252,244,0) 72%)",
-                "radial-gradient(ellipse 62% 55% at 50% 26%, rgba(200,178,140,0.34), rgba(200,178,140,0) 70%)",
-                "radial-gradient(ellipse 40% 70% at 50% 40%, rgba(200,178,140,0.18), rgba(200,178,140,0) 75%)",
-              ].join(", "),
-          filter: "blur(6px)",
+            ? "radial-gradient(ellipse 68% 55% at 50% 28%, rgba(255,255,255,0.5), rgba(255,255,255,0.2) 38%, rgba(255,255,255,0.08) 62%, rgba(255,255,255,0) 85%)"
+            : "radial-gradient(ellipse 68% 55% at 50% 28%, rgba(255,252,244,0.58), rgba(255,252,244,0.22) 38%, rgba(215,196,164,0.09) 62%, rgba(215,196,164,0) 85%)",
+          filter: "blur(28px)",
           pointerEvents: "none",
         }}
       />
-      {/* Reflected light bleed: a soft, blurred echo of the cover's own artwork, so its colors tint the ambient light around it */}
+      {/* Reflected light bleed: a faint, blurred echo of the cover's own colors,
+          layered inside the same soft glow so its colors tint the ambient
+          light without creating a separate visible shape. */}
       {coverUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -446,16 +842,18 @@ export function CompletedGallery({
           alt=""
           style={{
             position: "absolute",
+            left: "50%",
+            top: "34%",
             display: "block",
             width: "auto",
             height: "auto",
-            maxHeight: "calc(58% - 16px)",
-            maxWidth: "70%",
+            maxHeight: "60%",
+            maxWidth: "78%",
             objectFit: "contain",
             borderRadius: 10,
-            filter: `blur(34px) saturate(1.35) brightness(${isDark ? 1.15 : 1.05})`,
-            opacity: isDark ? 0.5 : 0.36,
-            transform: "scale(1.12)",
+            filter: `blur(60px) saturate(1.05) brightness(${isDark ? 1.05 : 1})`,
+            opacity: isDark ? 0.22 : 0.15,
+            transform: "translate(-50%, -50%) scale(1.05)",
             pointerEvents: "none",
           }}
         />
@@ -778,9 +1176,9 @@ export function CompletedGallery({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: isMobileLayout ? "auto" : "calc(100vh - 40px)", minHeight: isMobileLayout ? "100vh" : undefined, maxHeight: isMobileLayout ? undefined : "calc(100vh - 40px)", overflow: isMobileLayout ? "visible" : "hidden", background: bg, fontFamily: FONT, color: textPrimary }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", height: isMobileLayout ? "auto" : "calc(100vh - 40px)", minHeight: isMobileLayout ? "100vh" : undefined, maxHeight: isMobileLayout ? undefined : "calc(100vh - 40px)", overflow: isMobileLayout ? "visible" : "hidden", background: bg, fontFamily: FONT, color: textPrimary }}>
       {headerBlock}
-      <div style={{ flex: "1 1 auto", display: "flex", flexDirection: isMobileLayout ? "column" : "row", justifyContent: isMobileLayout ? undefined : "center", minHeight: 0, overflowY: "hidden", overflowX: "visible", paddingLeft: isMobileLayout ? undefined : 24 }}>
+      <div style={{ flex: "1 1 auto", display: "flex", flexDirection: isMobileLayout ? "column" : "row", justifyContent: isMobileLayout ? undefined : "center", minHeight: 0, overflowY: "hidden", overflowX: "visible", paddingLeft: isMobileLayout ? undefined : 24, paddingTop: isMobileLayout ? 58 : 64 }}>
         {spotlightStage}
         {detailsPanel}
       </div>
@@ -836,7 +1234,7 @@ export function CompletedGallery({
         }}
         className="completedGalleryNoScrollbar"
       >
-        {items.map((entry, index) => {
+        {filteredItems.map((entry, index) => {
           const isSelected = index === selectedIndex;
           const thumbUrl = getDisplayCoverUrl(entry.item);
           const entryTitle = first(entry.item, ["title", "Title"]) || "Untitled";
