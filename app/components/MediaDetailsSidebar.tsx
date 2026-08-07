@@ -494,7 +494,6 @@ export function MediaDetailsSidebar({
   const overview = first(item, ["overview", "Overview", "description", "Description"]);
   const status = getStatus(item, mediaType);
   const genres = first(item, ["genres", "Genres", "genre", "Genre", "categories"]);
-  const notes = first(item, ["notes", "Notes"]);
   const facts = getFacts(item, mediaType);
   const detailFacts = getDetailFacts(item, mediaType);
   const ratingGauges = getRatingGauges(item, mediaType);
@@ -784,7 +783,7 @@ export function MediaDetailsSidebar({
                         boxShadow: isDark ? "inset 0 1px rgba(255,255,255,0.05)" : "inset 0 1px rgba(255,255,255,0.55)",
                       }}
                     >
-                      <option value="">No status</option>
+                      {mediaType !== "book" && mediaType !== "game" ? <option value="">No status</option> : null}
                       {currentStatusOptions.map((option) => (
                         <option key={option} value={option}>{option}</option>
                       ))}
@@ -856,7 +855,7 @@ export function MediaDetailsSidebar({
             </section>
           ) : null}
 
-          {detailFacts.length || notes ? (
+          {detailFacts.length ? (
             <section style={{ padding: "11px 0", borderBottom: `1px solid ${hairline}` }}>
               {detailFacts.length ? (
                 <>
@@ -923,12 +922,6 @@ export function MediaDetailsSidebar({
                     ))}
                   </div>
                 </>
-              ) : null}
-              {notes ? (
-                <div style={{ marginTop: detailFacts.length ? 14 : 0 }}>
-                  <div style={{ color: mutedText, fontSize: 9, textTransform: "uppercase", fontWeight: 650 }}>Notes</div>
-                  <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.45, fontWeight: 450 }}>{notes}</div>
-                </div>
               ) : null}
             </section>
           ) : null}

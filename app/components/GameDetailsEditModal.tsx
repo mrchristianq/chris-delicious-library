@@ -29,6 +29,7 @@ type FieldDef = {
   isDate?: boolean;
   isFlag?: boolean;
   wide?: boolean;
+  placeholder?: string;
 };
 
 type DiffRow = {
@@ -133,6 +134,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     screenshotsUrl: firstNonEmpty(item, ["screenshotsUrl", "ScreenshotsURL"]),
     // Description
     description:    firstNonEmpty(item, ["description", "Description"]),
+    notes:          firstNonEmpty(item, ["notes", "Notes"]),
   };
   for (const key of ["dateCompleted", "dateAdded"] as const) {
     if (raw[key]) {
@@ -179,7 +181,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: string
     );
   }
   if (field.multiline) {
-    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
+    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} placeholder={field.placeholder} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
   }
   if (field.options && field.options.length > 0) {
     const opts = field.options;
@@ -287,6 +289,7 @@ export function GameDetailsEditModal({
     { key: "screenshotsUrl", label: "Screenshots URL",    wide: true },
     // Description
     { key: "description",    label: "Description",        multiline: true, wide: true },
+    { key: "notes",          label: "My Review / Notes",  multiline: true, wide: true, placeholder: "Add your thoughts, review, or personal notes…" },
   ];
 
   const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);

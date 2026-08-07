@@ -503,6 +503,7 @@ export function BookDetailsPage({
   const releaseDate = formatLongDate(item.releaseDate || item.ReleaseDate);
   const genres = splitList(item.genre || item.categories || item.Genre).slice(0, 3);
   const description = safeStr(item.description || item.Description);
+  const notes = safeStr(item.notes || item.Notes);
   const title = safeStr(item.title) || "Untitled";
   const subtitle = safeStr(item.subtitle || item.Subtitle);
   const typeLabel = isAudiobookItem(item) ? "Audiobook" : safeStr(item.types || item.type || item.Type) || "Book";
@@ -1206,6 +1207,27 @@ export function BookDetailsPage({
               />
             </div>
           </div>
+
+          {notes ? (
+            <div
+              style={{
+                gridColumn: isMobileLayout ? undefined : "1 / -1",
+                minWidth: 0,
+                borderRadius: 20,
+                padding: isMobileLayout ? "16px 16px 18px" : "16px 18px",
+                background: `linear-gradient(${rgba("#000000", 0.22)}, ${rgba("#000000", 0.22)}), linear-gradient(180deg, ${palette.surface} 0%, ${rgba("#ffffff", 0.04)} 100%)`,
+                border: `1px solid ${palette.surfaceBorder}`,
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 850, letterSpacing: "0.08em", color: palette.mutedText }}>
+                MY REVIEW / NOTES
+              </div>
+              <div style={{ marginTop: 9, fontSize: 13, lineHeight: 1.55, color: palette.text, whiteSpace: "pre-wrap" }}>
+                {notes}
+              </div>
+            </div>
+          ) : null}
 
           {displayBooksModule.items.length > 0 ? (
             <div

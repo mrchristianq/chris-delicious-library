@@ -26,6 +26,7 @@ type FieldDef = {
   multiline?: boolean;
   options?: readonly string[];
   isDate?: boolean;
+  placeholder?: string;
 };
 
 type DiffRow = {
@@ -69,6 +70,7 @@ const createBookFields = (statusOptions?: Array<{ value: string; label: string }
     { key: "audibleAsin",        label: "Audible ASIN" },
     { key: "audnexusAsin",       label: "Audnexus ASIN" },
     { key: "description",        label: "Description",       multiline: true },
+    { key: "notes",               label: "My Review / Notes", multiline: true, placeholder: "Add your thoughts, review, or personal notes…" },
   ];
 };
 
@@ -130,7 +132,7 @@ const LABEL_STYLE: React.CSSProperties = {
 
 function FieldInput({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
   if (field.multiline) {
-    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
+    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} placeholder={field.placeholder} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
   }
   if (field.options) {
     const opts = field.options as readonly string[];
@@ -246,6 +248,7 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
     audibleAsin: firstNonEmpty(item, ["audibleAsin", "AudibleASIN", "Audible Asin", "Audible_ASIN"]),
     audnexusAsin: firstNonEmpty(item, ["audnexusAsin", "AudnexusASIN", "Audnexus Asin", "Audnexus_ASIN"]),
     description: firstNonEmpty(item, ["description", "Description"]),
+    notes: firstNonEmpty(item, ["notes", "Notes"]),
   };
 }
 

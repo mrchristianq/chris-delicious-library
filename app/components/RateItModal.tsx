@@ -21,6 +21,7 @@ type RatingData = {
   status?: string;
   hoursPlayed?: string;
   yearPlayed?: string;
+  notes?: string;
 };
 
 type RateItModalProps = {
@@ -140,6 +141,7 @@ export function RateItModal({
   const [status, setStatus] = useState("");
   const [hoursPlayed, setHoursPlayed] = useState("");
   const [yearPlayed, setYearPlayed] = useState("");
+  const [notes, setNotes] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState("");
 
@@ -187,6 +189,7 @@ export function RateItModal({
     );
     setHoursPlayed(firstNonEmpty(item, ["hoursPlayed", "Hours Played", "HoursPlayed"]));
     setYearPlayed(firstNonEmpty(item, ["yearPlayed", "Year Played", "YearPlayed"]));
+    setNotes(firstNonEmpty(item, ["notes", "Notes"]));
     setSaveState("idle");
     setSaveError("");
   }, [open, item, mediaType]);
@@ -293,6 +296,7 @@ export function RateItModal({
       if (dateCompleted) data.dateCompleted = dateCompleted;
       if (yearPlayed) data.yearPlayed = yearPlayed;
     }
+    if (notes !== firstNonEmpty(item || {}, ["notes", "Notes"])) data.notes = notes;
 
     setSaveState("saving");
     setSaveError("");
@@ -479,6 +483,18 @@ export function RateItModal({
               </label>
             </>
           ) : null}
+        </section>
+
+        <section className="rateNotesSection">
+          <label>
+            <span>My Review / Notes</span>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Add your thoughts, review, or personal notes…"
+              rows={4}
+            />
+          </label>
         </section>
 
         {saveState === "saving" ? (
@@ -884,6 +900,37 @@ export function RateItModal({
           outline: none;
         }
         .rateFields input:focus {
+          border-color: var(--rate-accent);
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--rate-accent) 17%, transparent);
+        }
+        .rateNotesSection {
+          margin-top: 14px;
+        }
+        .rateNotesSection label {
+          display: block;
+        }
+        .rateNotesSection label > span {
+          display: block;
+          margin-bottom: 6px;
+          color: #2d2f35;
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .rateNotesSection textarea {
+          box-sizing: border-box;
+          width: 100%;
+          padding: 9px 11px;
+          border: 1px solid #d5d6dc;
+          border-radius: 11px;
+          background: rgba(255, 255, 255, 0.82);
+          color: #202126;
+          font: inherit;
+          font-size: 13px;
+          line-height: 1.4;
+          outline: none;
+          resize: vertical;
+        }
+        .rateNotesSection textarea:focus {
           border-color: var(--rate-accent);
           box-shadow: 0 0 0 3px color-mix(in srgb, var(--rate-accent) 17%, transparent);
         }

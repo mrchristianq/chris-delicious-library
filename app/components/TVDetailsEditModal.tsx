@@ -24,6 +24,7 @@ type FieldDef = {
   options?: readonly string[];
   isDate?: boolean;
   wide?: boolean;
+  placeholder?: string;
 };
 
 type DiffRow = {
@@ -59,6 +60,7 @@ const TV_FIELDS: FieldDef[] = [
   { key: "posterUrl",        label: "Poster URL" },
   { key: "backdropUrl",      label: "Backdrop URL" },
   { key: "overview",         label: "Overview",          multiline: true },
+  { key: "notes",            label: "My Review / Notes", multiline: true, placeholder: "Add your thoughts, review, or personal notes…" },
 ];
 
 // Fields TMDB can fill in for TV shows
@@ -130,6 +132,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     posterUrl:        firstNonEmpty(item, ["posterUrl", "PosterURL"]),
     backdropUrl:      firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
     overview:         firstNonEmpty(item, ["overview", "Overview"]),
+    notes:            firstNonEmpty(item, ["notes", "Notes"]),
   };
   // Normalize date fields to YYYY-MM-DD for <input type="date">
   for (const key of Object.keys(raw)) {
@@ -164,7 +167,7 @@ const LABEL_STYLE: React.CSSProperties = {
 
 function FieldInput({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
   if (field.multiline) {
-    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
+    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} placeholder={field.placeholder} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
   }
   if (field.options) {
     const opts = field.options as readonly string[];

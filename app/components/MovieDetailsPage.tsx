@@ -285,6 +285,7 @@ export function MovieDetailsPage({
   const runtime = rawRuntime ? formatRuntime(rawRuntime) : "";
   const genres = splitList(item.genres).slice(0, 3);
   const overview = safeStr(item.overview || item.description);
+  const notes = safeStr(item.notes || item.Notes);
   const myRating = safeStr(item.myRating);
   const tmdbRating = safeStr(item.tmdbRating);
   const watchStatus = safeStr(item.watchStatus || item.watched);
@@ -713,6 +714,16 @@ export function MovieDetailsPage({
                   </div>
                 </>
               ) : null}
+            </>
+          ) : null}
+
+          {/* My Review / Notes */}
+          {notes ? sectionBox(
+            <>
+              {sectionLabel("MY REVIEW / NOTES")}
+              <div style={{ fontSize: 13, lineHeight: 1.55, color: palette.text, whiteSpace: "pre-wrap" }}>
+                {notes}
+              </div>
             </>
           ) : null}
 

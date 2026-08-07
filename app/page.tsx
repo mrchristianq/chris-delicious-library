@@ -24,6 +24,7 @@ import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
 import { RateItModal } from "./components/RateItModal";
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaDetailsSidebar } from "./components/MediaDetailsSidebar";
+import { CompletedGallery } from "./components/CompletedGallery";
 import { COVER_IMAGE_RADIUS_STYLE } from "./components/coverStyles";
 import {
   isNativeRuntime,
@@ -161,6 +162,7 @@ type Show = {
   recommendedTitles?: string;
   recommendationsLastChecked?: string;
   recommendationsHidden?: string;
+  notes?: string;
 };
 
 type TVEpisodeRow = Row & {
@@ -246,6 +248,7 @@ type Book = {
   recommendedTitles?: string;
   recommendationsLastChecked?: string;
   recommendationsHidden?: string;
+  notes?: string;
 };
 
 type Movie = {
@@ -289,6 +292,7 @@ type Movie = {
   recommendedTitles?: string;
   recommendationsLastChecked?: string;
   recommendationsHidden?: string;
+  notes?: string;
 };
 
 type Game = {
@@ -340,6 +344,7 @@ type Game = {
   recommendedTitles?: string;
   recommendationsLastChecked?: string;
   recommendationsHidden?: string;
+  notes?: string;
 };
 
 type SmartListMediaType = "book" | "movie" | "tv" | "game";
@@ -387,7 +392,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.0.8";
+const APP_VERSION = "13.1.0";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -644,6 +649,7 @@ const SHELF_THEME_MODE_SETTING_KEY = "shelfThemeMode";
 const SHELF_HORIZONTAL_GAP_SETTING_KEY = "shelfHorizontalGapPx";
 const SHELF_VERTICAL_MARGIN_SETTING_KEY = "shelfVerticalMarginPx";
 const COVER_TITLES_VISIBLE_SETTING_KEY = "coverTitlesVisible";
+const COMPLETED_GALLERY_THEME_SETTING_KEY = "completedGalleryThemeMode";
 const DEFAULT_MEDIA_COVER_SIZE_PCT = {
   tv: 93,
   movies: 100,
@@ -713,6 +719,35 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.0",
+    date: "2026-08-06",
+    notes: [
+      "Added a new Completed Gallery: a museum-style browsing experience for everything marked completed across Books, Movies, TV Shows, and Games, with a spotlighted featured cover, a details panel, and a horizontally scrolling carousel. Reachable from a new 'Completed' item in the header navigation.",
+      "Added a My Review / Notes field, editable from both Rate It and Edit, that now appears on each item's full details page and in the Completed Gallery.",
+    ],
+  },
+  {
+    version: "13.0.11",
+    date: "2026-08-06",
+    notes: [
+      "Kept the mobile bottom navigation bar visible on every page, including Statistics and Activity Log, so there is always a way back to the home screen.",
+    ],
+  },
+  {
+    version: "13.0.10",
+    date: "2026-08-06",
+    notes: [
+      "Removed the 'No status' option from the Game status dropdown in the quick details sidebar, matching the same fix already applied to Books.",
+    ],
+  },
+  {
+    version: "13.0.9",
+    date: "2026-08-06",
+    notes: [
+      "Fixed the Book status dropdown in the quick details sidebar showing a 'No status' option that shouldn't exist for books and missing valid statuses like Collection and Wishlist. Book status lists are now derived from the actual values in the Sheet instead of a hardcoded list, so filters, list-view editing, and the sidebar all stay in sync with real data.",
+    ],
+  },
   {
     version: "13.0.8",
     date: "2026-08-05",
@@ -3444,6 +3479,34 @@ function isGameCompletedStatus(game: Pick<Game, "status" | "playStatus" | "gameS
   return Boolean(safeStr(game.dateCompleted)) || status === "completed" || status === "done" || status === "beaten" || status === "finished";
 }
 
+function isBookCompletedStatus(book: Pick<Book, "status">): boolean {
+  const status = normalizeStatusToken(book.status);
+  return status === "completed" || status === "watched";
+}
+
+// Single shared "is this item completed" check used across all four media types (e.g. by the
+// Completed gallery). Reuses each media type's existing status/date fields — never ratings or notes.
+function isMediaItemCompleted(item: any, mediaType: MediaType): boolean {
+  switch (mediaType) {
+    case "book": return isBookCompletedStatus(item as Book);
+    case "movie": return isMovieWatchedStatus(item as Movie);
+    case "tv": return isTvWatchedStatus(item as Show);
+    case "game": return isGameCompletedStatus(item as Game);
+    default: return false;
+  }
+}
+
+// The date each media type's completion is recorded under. Used to sort the Completed gallery.
+function getMediaItemCompletionDate(item: any, mediaType: MediaType): string {
+  switch (mediaType) {
+    case "book": return safeStr((item as Book)?.completedDate);
+    case "movie": return safeStr((item as Movie)?.watchDate);
+    case "tv": return safeStr((item as Show)?.dateCompleted);
+    case "game": return safeStr((item as Game)?.dateCompleted);
+    default: return "";
+  }
+}
+
 function isGameAbandonedStatus(game: Pick<Game, "status" | "playStatus" | "gameStatus">): boolean {
   const status = normalizeStatusToken(game.status || game.playStatus || game.gameStatus);
   return ABANDONED_STATUS_VALUES.has(status);
@@ -3573,6 +3636,7 @@ function rowToShow(r: Row): Show | null {
     recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
     recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
     recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
+    notes: safeStr(r["Notes"]) || safeStr(r["notes"]) || undefined,
   };
 }
 
@@ -3655,6 +3719,7 @@ function rowToBook(r: Row): Book | null {
     recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
     recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
     recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
+    notes: safeStr(r["Notes"]) || safeStr(r["notes"]) || undefined,
   };
 }
 
@@ -3715,6 +3780,7 @@ function rowToMovie(r: Row): Movie | null {
     recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
     recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
     recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
+    notes: safeStr(r["Notes"]) || safeStr(r["notes"]) || undefined,
   };
 }
 
@@ -3784,6 +3850,7 @@ function rowToGame(r: Row): Game | null {
     recommendedTitles: safeStr(r["RecommendedTitles"]) || undefined,
     recommendationsLastChecked: safeStr(r["RecommendationsLastChecked"]) || undefined,
     recommendationsHidden: safeStr(r["RecommendationsHidden"]) || undefined,
+    notes: safeStr(r["Notes"]) || safeStr(r["notes"]) || undefined,
   };
 }
 
@@ -3816,7 +3883,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "completed-gallery" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
 type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync" | "themes" | "icons">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type MobileViewFilterKey =
@@ -3846,7 +3913,7 @@ type TvQuickLinkKey = "home" | "library" | "backlog" | "watching" | "watched" | 
 type TvViewMode = TvQuickLinkKey | "custom";
 type GameQuickLinkKey = "home" | "library" | "backlog" | "completed" | "abandoned" | "wishlist" | "upcoming";
 type GameViewMode = GameQuickLinkKey | "custom";
-type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "upcoming";
+type BacklogQuickLinkKey = "home" | "now-playing" | "play-next" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "upcoming" | "completed-gallery";
 type BuiltInSmartListKey = "year-this" | "current" | "completed" | "abandoned";
 type ShelfThemeMode = "light" | "dark" | "classic" | "wood";
 type ShelfSpacing = { horizontal: number; vertical: number };
@@ -4355,6 +4422,7 @@ export default function Page() {
   const [gameGenresOpen, setGameGenresOpen] = useState<boolean>(false);
   const [showStatusIndicators, setShowStatusIndicators] = useState<boolean>(false);
   const [coverTitlesVisible, setCoverTitlesVisible] = useState<boolean>(false);
+  const [completedGalleryThemeMode, setCompletedGalleryThemeMode] = useState<"match" | "light" | "dark">("match");
   const [sandboxMode] = useState<boolean>(false);
   const [coverTrimAssets, setCoverTrimAssets] = useState<Record<string, { url: string; aspect: number }>>({});
   const [viewportW, setViewportW] = useState(0);
@@ -5810,6 +5878,22 @@ export default function Page() {
     setTvDetailsEditOpen(true);
   }, [coverOverrides]);
 
+  const openGameEditModalFromDetails = useCallback((item: any) => {
+    const nextItem = buildItemWithCoverSelection(item, coverOverrides);
+    setGameDetailItem(nextItem);
+    setGameDetailsEditOpen(true);
+  }, [coverOverrides]);
+
+  // Single dispatcher used by the Completed gallery (and anywhere else that already
+  // knows a specific media type) to open the correct Edit modal without re-deriving
+  // the media type from the item's shape.
+  const openEditModalForType = useCallback((item: any, mediaType: "book" | "movie" | "tv" | "game") => {
+    if (mediaType === "book") { openBookEditModalFromDetails(item); return; }
+    if (mediaType === "movie") { openMovieEditModalFromDetails(item); return; }
+    if (mediaType === "tv") { openTVEditModalFromDetails(item); return; }
+    if (mediaType === "game") { openGameEditModalFromDetails(item); return; }
+  }, [openBookEditModalFromDetails, openMovieEditModalFromDetails, openTVEditModalFromDetails, openGameEditModalFromDetails]);
+
   useEffect(() => {
     const onResize = () => {
       setViewportH(window.innerHeight || 0);
@@ -6206,7 +6290,7 @@ export default function Page() {
   }, [mobileFullLibraryOpen, nav]);
 
   useEffect(() => {
-    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync" && nav !== "themes" && nav !== "icons") {
+    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync" && nav !== "themes" && nav !== "icons" && nav !== "completed-gallery") {
       setLastLibraryNav(nav);
     }
   }, [nav]);
@@ -6222,6 +6306,12 @@ export default function Page() {
   }, []);
 
   const handleExitStatistics = useCallback(() => {
+    setNav(lastLibraryNav || "home");
+    setMobileSidebarOpen(false);
+    setMobileSettingsOpen(false);
+  }, [lastLibraryNav]);
+
+  const handleExitCompletedGallery = useCallback(() => {
     setNav(lastLibraryNav || "home");
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
@@ -8563,6 +8653,7 @@ export default function Page() {
         AudnexusASIN: safeStr(finalUpdates.audnexusAsin),
         OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
         GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
+        Notes: safeStr(finalUpdates.notes),
       },
     };
 
@@ -8582,6 +8673,7 @@ export default function Page() {
       AudnexusASIN: safeStr(finalUpdates.audnexusAsin),
       OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
       GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
+      Notes: safeStr(finalUpdates.notes),
     };
     const bookOldValues: Record<string, string> = {
       Title: safeStr(item?.title || item?.Title),
@@ -8599,6 +8691,7 @@ export default function Page() {
       AudnexusASIN: safeStr(item?.audnexusAsin || item?.AudnexusASIN || item?.["Audnexus Asin"] || item?.Audnexus_ASIN),
       OpenLibraryWorkKey: safeStr(item?.openLibraryWorkKey || item?.OpenLibraryWorkKey),
       GoogleBooksVolumeId: safeStr(item?.googleBooksVolumeId || item?.GoogleBooksVolumeId),
+      Notes: safeStr(item?.notes || item?.Notes),
     };
     const bookChangeLogRows = buildChangeLogRowsForSave({
       sourceSheet: "Books",
@@ -8676,6 +8769,7 @@ export default function Page() {
         audnexusAsin: safeStr(finalUpdates.audnexusAsin),
         openLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
         googleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
+        notes: safeStr(finalUpdates.notes),
       };
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
@@ -8738,6 +8832,7 @@ export default function Page() {
         audnexusAsin: safeStr(finalUpdates.audnexusAsin),
         openLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
         googleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
+        notes: safeStr(finalUpdates.notes),
       };
       return buildItemWithCoverSelection(nextItem, coverOverrides);
     });
@@ -8802,6 +8897,7 @@ export default function Page() {
           AudnexusASIN: safeStr(finalUpdates.audnexusAsin),
           OpenLibraryWorkKey: safeStr(finalUpdates.openLibraryWorkKey),
           GoogleBooksVolumeId: safeStr(finalUpdates.googleBooksVolumeId),
+          Notes: safeStr(finalUpdates.notes),
         };
       })
     );
@@ -8905,6 +9001,7 @@ export default function Page() {
         PosterURL: safeStr(updates.posterUrl),
         CustomURL: safeStr(updates.customImageUrl),
         CustomImageURL: safeStr(updates.customImageUrl),
+        Notes: safeStr(updates.notes),
       },
     };
     const showFieldChanges: Record<string, string> = {
@@ -8918,6 +9015,7 @@ export default function Page() {
       PosterURL: safeStr(updates.posterUrl),
       BackdropURL: safeStr(updates.backdropUrl),
       Tags: safeStr(updates.tags),
+      Notes: safeStr(updates.notes),
     };
     const showOldValues: Record<string, string> = {
       Title: safeStr(item?.title || item?.Title),
@@ -8930,6 +9028,7 @@ export default function Page() {
       PosterURL: safeStr(item?.posterUrl || item?.PosterURL),
       BackdropURL: safeStr(item?.backdropUrl || item?.BackdropURL),
       Tags: safeStr(item?.tags || item?.Tag),
+      Notes: safeStr(item?.notes || item?.Notes),
     };
     const showChangeLogRows = buildChangeLogRowsForSave({
       sourceSheet: "Shows",
@@ -9004,6 +9103,7 @@ export default function Page() {
       tag: safeStr(updates.tags),
       tags: safeStr(updates.tags),
       posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
+      notes: safeStr(updates.notes),
     });
 
     setModalItem((prev: any) => {
@@ -9056,6 +9156,7 @@ export default function Page() {
           Tags: safeStr(updates.tags),
           Tag: safeStr(updates.tags),
           PosterURL: safeStr(updates.posterUrl),
+          Notes: safeStr(updates.notes),
         };
       })
     );
@@ -9117,6 +9218,7 @@ export default function Page() {
         Ownership: safeStr(updates.ownership),
         CustomURL: safeStr(updates.customImageUrl),
         CustomImageURL: safeStr(updates.customImageUrl),
+        Notes: safeStr(updates.notes),
       },
     };
     const movieFieldChanges: Record<string, string> = {
@@ -9130,6 +9232,7 @@ export default function Page() {
       "My Rating": safeStr(updates.myRating),
       PosterURL: safeStr(updates.posterUrl),
       BackdropURL: safeStr(updates.backdropUrl),
+      Notes: safeStr(updates.notes),
     };
     const movieOldValues: Record<string, string> = {
       Title: safeStr(item?.title || item?.Title),
@@ -9142,6 +9245,7 @@ export default function Page() {
       "My Rating": safeStr(item?.myRating || item?.MyRating || item?.["My Rating"]),
       PosterURL: safeStr(item?.posterUrl || item?.PosterURL),
       BackdropURL: safeStr(item?.backdropUrl || item?.BackdropURL),
+      Notes: safeStr(item?.notes || item?.Notes),
     };
     const movieChangeLogRows = buildChangeLogRowsForSave({
       sourceSheet: "Movies",
@@ -9227,6 +9331,7 @@ export default function Page() {
       overview: safeStr(updates.overview),
       posterUrl: safeStr(updates.posterUrl) || prev.posterUrl,
       backdropUrl: safeStr(updates.backdropUrl),
+      notes: safeStr(updates.notes),
     });
 
     setModalItem((prev: any) => {
@@ -9272,6 +9377,7 @@ export default function Page() {
           PosterURL: safeStr(updates.posterUrl),
           BackdropURL: safeStr(updates.backdropUrl),
           Ownership: safeStr(updates.ownership),
+          Notes: safeStr(updates.notes),
         };
       })
     );
@@ -9364,6 +9470,7 @@ export default function Page() {
       IGDB_ID: ["igdbId", "IGDB_ID"],
       IGDB_ID_Override: ["igdbIdOverride", "IGDB_ID_Override"],
       LocalCoverURL: ["localCoverUrl", "LocalCoverURL"],
+      Notes: ["notes", "Notes"],
     };
 
     const candidateUpdates: Record<string, string> = {
@@ -9393,6 +9500,7 @@ export default function Page() {
       LocalCoverURL: safeStr(updates.localCoverUrl),
       CustomURL: safeStr(updates.customImageUrl),
       CustomImageURL: safeStr(updates.customImageUrl),
+      Notes: safeStr(updates.notes),
     };
 
     const normalizedNextGameStatus = normalizeStatus(safeStr(updates.status));
@@ -9481,6 +9589,7 @@ export default function Page() {
         localCoverUrl: safeStr(updates.localCoverUrl),
         gameStatus: safeStr(updates.status),
         playStatus: safeStr(updates.status),
+        notes: safeStr(updates.notes),
       };
     };
 
@@ -9609,6 +9718,7 @@ export default function Page() {
           IGDB_ID: safeStr(updates.igdbId) || matchIgdbId || rowIgdbId,
           IGDB_ID_Override: safeStr(updates.igdbIdOverride),
           LocalCoverURL: safeStr(updates.localCoverUrl),
+          Notes: safeStr(updates.notes),
         };
       })
     );
@@ -9961,6 +10071,10 @@ export default function Page() {
           updates.WatchDate = watchDateForSheet;
           verifyFields.WatchDate = watchDateForSheet;
         }
+        if (data.notes !== undefined) {
+          updates.Notes = safeStr(data.notes);
+          verifyFields.Notes = safeStr(data.notes);
+        }
         const matchTmdbId = safeStr(rateItItem.tmdbId || rateItItem.TMDB_ID);
         const matchTitle = safeStr(rateItItem.title || rateItItem.Title);
         console.log("[RateIt Save] Movie", {
@@ -10014,6 +10128,7 @@ export default function Page() {
                 WatchDate: updates.WatchDate,
               }
             : {}),
+          ...(data.notes !== undefined ? { notes: safeStr(data.notes), Notes: safeStr(data.notes) } : {}),
         };
         setMovieDetailItem((prev: any) => {
           if (!prev || buildTypedItemKey(prev, "movie") !== rateItItemKey) return prev;
@@ -10036,6 +10151,7 @@ export default function Page() {
                       }
                     : {}),
                   ...(data.watchDate ? { WatchDate: updates.WatchDate } : {}),
+                  ...(data.notes !== undefined ? { Notes: safeStr(data.notes) } : {}),
                 }
               : row
           )
@@ -10072,6 +10188,10 @@ export default function Page() {
             updates.WatchStatus = "Completed";
             verifyFields.WatchStatus = "Completed";
           }
+        }
+        if (data.notes !== undefined) {
+          updates.Notes = safeStr(data.notes);
+          verifyFields.Notes = safeStr(data.notes);
         }
         const matchTmdbId = safeStr(rateItItem.tmdbId || rateItItem.TMDB_ID);
         const matchTitle = safeStr(rateItItem.title || rateItItem.Title);
@@ -10125,6 +10245,7 @@ export default function Page() {
                 CompletedDate: updates.CompletedDate,
               }
             : {}),
+          ...(data.notes !== undefined ? { notes: safeStr(data.notes), Notes: safeStr(data.notes) } : {}),
         };
         setTvDetailItem((prev: any) => {
           if (!prev || buildTypedItemKey(prev, "tv") !== rateItItemKey) return prev;
@@ -10147,6 +10268,7 @@ export default function Page() {
                         CompletedDate: updates.CompletedDate,
                       }
                     : {}),
+                  ...(data.notes !== undefined ? { Notes: safeStr(data.notes) } : {}),
                 }
               : row
           )
@@ -10183,6 +10305,10 @@ export default function Page() {
           updates.Tag = tags;
           updates.tags = tags;
           verifyFields.tags = tags;
+        }
+        if (data.notes !== undefined) {
+          updates.Notes = safeStr(data.notes);
+          verifyFields.Notes = safeStr(data.notes);
         }
         const { match: bookMatch, warnings: bookMatchWarnings } = resolveSafeBookMatch(rateItItem);
         if (bookMatchWarnings.length > 0) {
@@ -10238,6 +10364,7 @@ export default function Page() {
                 Tag: safeStr(data.tags),
               }
             : {}),
+          ...(data.notes !== undefined ? { notes: safeStr(data.notes), Notes: safeStr(data.notes) } : {}),
         };
         setBookDetailItem((prev: any) => {
           if (!prev || buildTypedItemKey(prev, "book") !== rateItItemKey) return prev;
@@ -10267,6 +10394,7 @@ export default function Page() {
                   }
                 : {}),
               ...(data.tags ? { Tag: safeStr(data.tags), tags: safeStr(data.tags) } : {}),
+              ...(data.notes !== undefined ? { Notes: safeStr(data.notes) } : {}),
             };
           })
         );
@@ -10304,6 +10432,10 @@ export default function Page() {
         if (data.yearPlayed) {
           updates["Year Played"] = safeStr(data.yearPlayed);
           verifyFields["Year Played"] = safeStr(data.yearPlayed);
+        }
+        if (data.notes !== undefined) {
+          updates.Notes = safeStr(data.notes);
+          verifyFields.Notes = safeStr(data.notes);
         }
         const matchIgdbId = safeStr(rateItItem.igdbId || rateItItem.IGDB_ID);
         const matchTitle = safeStr(rateItItem.title || rateItItem.name);
@@ -10355,6 +10487,7 @@ export default function Page() {
           ...(data.hoursPlayed ? { hoursPlayed: safeStr(data.hoursPlayed) } : {}),
           ...(data.dateCompleted ? { dateCompleted: safeStr(data.dateCompleted) } : {}),
           ...(data.yearPlayed ? { yearPlayed: safeStr(data.yearPlayed) } : {}),
+          ...(data.notes !== undefined ? { notes: safeStr(data.notes), Notes: safeStr(data.notes) } : {}),
         };
         setGameDetailItem((prev: any) => {
           if (!prev || buildTypedItemKey(prev, "game") !== rateItItemKey) return prev;
@@ -10379,6 +10512,7 @@ export default function Page() {
                   ...(data.hoursPlayed ? { "Hours Played": safeStr(data.hoursPlayed) } : {}),
                   ...(data.dateCompleted ? { "Date Completed": updates["Date Completed"] } : {}),
                   ...(data.yearPlayed ? { "Year Played": safeStr(data.yearPlayed) } : {}),
+                  ...(data.notes !== undefined ? { Notes: safeStr(data.notes) } : {}),
                 }
               : row
           )
@@ -11148,13 +11282,17 @@ export default function Page() {
 
     if (setting) {
       const rawValue = safeStr(setting["Value"]);
-      return rawValue === "" ? defaultValue : parseStoredSettingValue(rawValue);
+      if (rawValue !== "") return parseStoredSettingValue(rawValue);
+      // Sheet row exists but is empty (e.g. a transient/partial sync) — fall
+      // back to the local cache instead of clobbering it with defaultValue.
+      const localValueForEmptyRow = readLocalSettingValue();
+      return localValueForEmptyRow !== undefined ? localValueForEmptyRow : defaultValue;
     }
 
     // Fallback to local cache only if the key is not present in sheet.
     const localValue = readLocalSettingValue();
     if (localValue !== undefined) return localValue;
-    
+
     return defaultValue;
   }, [settingsRows]);
 
@@ -11545,6 +11683,12 @@ export default function Page() {
       ),
     });
     setCoverTitlesVisible(getSetting(COVER_TITLES_VISIBLE_SETTING_KEY, false));
+    {
+      const rawCompletedGalleryTheme = safeStr(getSetting(COMPLETED_GALLERY_THEME_SETTING_KEY, "match"));
+      setCompletedGalleryThemeMode(
+        rawCompletedGalleryTheme === "light" || rawCompletedGalleryTheme === "dark" ? rawCompletedGalleryTheme : "match"
+      );
+    }
 
     setIconSize(getSetting("iconSize", 16));
     
@@ -12354,6 +12498,10 @@ export default function Page() {
     setCoverTitlesVisible(value);
     saveSetting(COVER_TITLES_VISIBLE_SETTING_KEY, value, "Themes", "Show item titles under covers");
   };
+  const updateCompletedGalleryThemeMode = (value: "match" | "light" | "dark") => {
+    setCompletedGalleryThemeMode(value);
+    saveSetting(COMPLETED_GALLERY_THEME_SETTING_KEY, value, "Themes", "Completed Gallery Theme");
+  };
   
   // Update UI immediately; debounce only persistence so controls remain responsive.
   const debouncedUpdate = useCallback((key: string, value: number, setter: (v: number) => void, category: string, description: string) => {
@@ -12980,6 +13128,38 @@ export default function Page() {
       return true;
     }) as Game[];
   }, [gameRows]);
+
+  // Combined "Completed" collection across all four media types, for the Completed gallery.
+  // Uses the shared isMediaItemCompleted/getMediaItemCompletionDate helpers (status/date fields
+  // only — never ratings or notes), sorted by completion date newest-first with undated items last.
+  type CompletedGalleryItem = { item: Record<string, unknown>; mediaType: MediaType; completionDate: string; itemKey: string };
+  const completedGalleryItems = useMemo<CompletedGalleryItem[]>(() => {
+    const buildEntries = (rows: Array<Book | Movie | Show | Game>, mediaType: MediaType): CompletedGalleryItem[] =>
+      rows
+        .filter((row) => isMediaItemCompleted(row, mediaType))
+        .map((row) => ({
+          item: { ...row, __type: mediaType } as Record<string, unknown>,
+          mediaType,
+          completionDate: getMediaItemCompletionDate(row, mediaType),
+          itemKey: buildTypedItemKey(row, mediaType),
+        }));
+
+    const combined = [
+      ...buildEntries(allBooks, "book"),
+      ...buildEntries(allMovies, "movie"),
+      ...buildEntries(allShows, "tv"),
+      ...buildEntries(allGames, "game"),
+    ];
+
+    return combined.sort((a, b) => {
+      const aDate = parseReleaseDateForComparison(a.completionDate);
+      const bDate = parseReleaseDateForComparison(b.completionDate);
+      if (aDate && bDate) return bDate.getTime() - aDate.getTime();
+      if (aDate && !bDate) return -1;
+      if (!aDate && bDate) return 1;
+      return safeStr(a.item.title).localeCompare(safeStr(b.item.title));
+    });
+  }, [allBooks, allMovies, allShows, allGames]);
 
   const gameRelated = useMemo(() => {
     if (!gameDetailItem) return { games: [] as Record<string, unknown>[], label: "Similar Games" };
@@ -14394,10 +14574,19 @@ export default function Page() {
 
   const showStatuses = useMemo(() => ["Ended", "Returning Series", "Canceled"], []);
 
-  const readingStatuses = useMemo(
-    () => ["Reading", "Completed", "Backlog", "Abandoned", "Paused"],
-    []
-  );
+  const readingStatuses = useMemo(() => {
+    const byToken = new Map<string, string>();
+    const addStatus = (raw: string) => {
+      const value = safeStr(raw);
+      if (!value) return;
+      const token = normalizeStatus(value);
+      if (!token || byToken.has(token)) return;
+      byToken.set(token, value);
+    };
+    allBooks.forEach((book) => addStatus(safeStr(book.status)));
+    ["Reading", "Completed", "Backlog", "Abandoned", "Paused"].forEach(addStatus);
+    return Array.from(byToken.values()).sort((a, b) => a.localeCompare(b));
+  }, [allBooks, normalizeStatus]);
 
   const readingStatusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -16828,6 +17017,7 @@ export default function Page() {
     { key: "wishlist-books", label: "Read Next" },
     { key: "watchlist-movies", label: "Movie Watchlist" },
     { key: "watchlist-tv", label: "TV Watchlist" },
+    { key: "completed-gallery", label: "Completed" },
   ];
 
   const activeBacklogQuickLink: BacklogQuickLinkKey | null =
@@ -16837,7 +17027,8 @@ export default function Page() {
     nav === "play-next" ||
     nav === "wishlist-books" ||
     nav === "watchlist-movies" ||
-    nav === "watchlist-tv"
+    nav === "watchlist-tv" ||
+    nav === "completed-gallery"
       ? nav
       : null;
 
@@ -18088,7 +18279,7 @@ export default function Page() {
     { key: "watchlist-tv", label: "Watchlist TV", count: stats.watchlistTv },
     { key: "wishlist", label: "Wishlist Games", count: stats.wishlist },
   ];
-  const mobileBottomDockVisible = isMobileLayout && nav !== "statistics" && nav !== "cover-sync";
+  const mobileBottomDockVisible = isMobileLayout;
   const mobileBlockingOverlayOpen =
     addModalOpen ||
     bookDetailsEditOpen ||
@@ -25959,6 +26150,49 @@ export default function Page() {
                           <span style={{ width: 20, height: 20, borderRadius: 999, background: "#fff", marginLeft: coverTitlesVisible ? 20 : 0, transition: "margin-left 160ms cubic-bezier(0.22, 0.76, 0.2, 1)", boxShadow: "0 1px 3px rgba(0,0,0,0.28)" }} />
                         </span>
                       </button>
+
+                      <div style={{ height: 1, background: "rgba(152, 162, 171, 0.2)", margin: "6px 0" }} />
+
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Completed Gallery</div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.4, marginTop: -8 }}>
+                        Choose the Gallery's own look — independent of the shelf theme above.
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {([
+                          { key: "match" as const, label: "Match App Theme", description: `Follows the shelf theme (currently ${shelfThemeMode === "dark" ? "dark" : "light"}).` },
+                          { key: "light" as const, label: "Always Light", description: "White spotlight background, regardless of shelf theme." },
+                          { key: "dark" as const, label: "Always Dark", description: "Black spotlight background, regardless of shelf theme." },
+                        ]).map((choice) => {
+                          const active = completedGalleryThemeMode === choice.key;
+                          return (
+                            <button
+                              key={`completed-gallery-theme-${choice.key}`}
+                              type="button"
+                              onClick={() => updateCompletedGalleryThemeMode(choice.key)}
+                              aria-pressed={active}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 12,
+                                padding: "11px 14px",
+                                borderRadius: 12,
+                                border: active ? "2px solid #41b65c" : "1px solid rgba(150, 160, 175, 0.32)",
+                                background: active ? "rgba(65, 182, 92, 0.06)" : "rgba(255, 255, 255, 0.86)",
+                                cursor: "pointer",
+                                textAlign: "left",
+                              }}
+                            >
+                              <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: 13.5, fontWeight: 750, color: "#1d2735", letterSpacing: "-0.01em" }}>{choice.label}</span>
+                                <span style={{ fontSize: 11.5, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.3 }}>{choice.description}</span>
+                              </span>
+                              <span aria-hidden style={{ width: 18, height: 18, borderRadius: 999, border: active ? "2px solid #41b65c" : "2px solid rgba(150,160,175,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", background: active ? "#41b65c" : "transparent" }}>
+                                {active ? <span style={{ width: 6, height: 6, borderRadius: 999, background: "#fff" }} /> : null}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Preview column */}
@@ -26556,6 +26790,31 @@ export default function Page() {
                 })()} 
               </div>
             </div>
+          ) : nav === "completed-gallery" && !bookDetailItem && !movieDetailItem && !tvDetailItem && !gameDetailItem ? (
+            <CompletedGallery
+              onBack={handleExitCompletedGallery}
+              items={completedGalleryItems}
+              isDark={
+                completedGalleryThemeMode === "dark"
+                  ? true
+                  : completedGalleryThemeMode === "light"
+                    ? false
+                    : shelfThemeMode === "dark"
+              }
+              isMobileLayout={isMobileLayout}
+              getDisplayCoverUrl={(item) => getDisplayCoverUrl(item, true)}
+              isAudiobookItem={isAudiobookItem}
+              onSelectItem={(item, mediaType) => openFullSelectedItem({ ...item, __type: mediaType })}
+              onEditItem={openEditModalForType}
+              onRateItem={(item, mediaType) => handleOpenRateIt(
+                item,
+                mediaType,
+                mediaType === "book" ? sidebarHighlightColorsLight.books
+                  : mediaType === "movie" ? sidebarHighlightColorsLight.movies
+                  : mediaType === "tv" ? sidebarHighlightColorsLight.tv
+                  : sidebarHighlightColorsLight.games
+              )}
+            />
           ) : bookDetailItem && getMediaType(bookDetailItem) === "book" ? (
             <BookDetailsPage
               key={getMediaItemKey(bookDetailItem)}

@@ -329,6 +329,7 @@ export function GameDetailsPage({
   const developer = safeStr(item.developer);
   const genres = splitList(item.genres || item.genre).slice(0, 3);
   const description = safeStr(item.description || item.overview);
+  const notes = safeStr(item.notes || item.Notes);
   const myRating = safeStr(item.myRating);
   const igdbRating = safeStr(item.igdbRating);
   const playStatus = safeStr(item.playStatus || item.gameStatus || item.status);
@@ -796,6 +797,16 @@ export function GameDetailsPage({
                   </div>
                 </>
               ) : null}
+            </>
+          ) : null}
+
+          {/* My Review / Notes */}
+          {notes ? sectionBox(
+            <>
+              {sectionLabel("MY REVIEW / NOTES")}
+              <div style={{ fontSize: 13, lineHeight: 1.55, color: palette.text, whiteSpace: "pre-wrap" }}>
+                {notes}
+              </div>
             </>
           ) : null}
 
