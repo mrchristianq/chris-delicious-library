@@ -244,7 +244,7 @@ function getAverageRating(item: Record<string, unknown>, mediaType: MediaType): 
 
 const STAR_SIZE = 24.5;
 
-function StarRow({ pct, color }: { pct: number; color: string }) {
+function StarRow({ pct, color, size = STAR_SIZE }: { pct: number; color: string; size?: number }) {
   const stars = [0, 1, 2, 3, 4].map((i) => {
     const starPct = Math.max(0, Math.min(100, pct - i * 20)) * 5;
     return Math.min(100, starPct);
@@ -252,9 +252,9 @@ function StarRow({ pct, color }: { pct: number; color: string }) {
   return (
     <span style={{ display: "inline-flex", gap: 2 }} aria-hidden>
       {stars.map((fillPct, i) => (
-        <span key={i} style={{ position: "relative", display: "inline-block", width: STAR_SIZE, height: STAR_SIZE, lineHeight: `${STAR_SIZE}px` }}>
-          <span style={{ position: "absolute", inset: 0, color: "rgba(150,150,150,0.35)", fontSize: STAR_SIZE }}>★</span>
-          <span style={{ position: "absolute", inset: 0, color, fontSize: STAR_SIZE, overflow: "hidden", width: `${fillPct}%` }}>★</span>
+        <span key={i} style={{ position: "relative", display: "inline-block", width: size, height: size, lineHeight: `${size}px`, flexShrink: 0 }}>
+          <span style={{ position: "absolute", inset: 0, color: "rgba(150,150,150,0.35)", fontSize: size }}>★</span>
+          <span style={{ position: "absolute", inset: 0, color, fontSize: size, overflow: "hidden", width: `${fillPct}%` }}>★</span>
         </span>
       ))}
     </span>
@@ -1003,26 +1003,26 @@ export function CompletedGallery({
       </div>
 
       {myRating || avgRating ? (
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", paddingTop: 4 }}>
+        <div style={{ display: "flex", gap: isMobileLayout ? 12 : 24, flexWrap: "nowrap", paddingTop: 4 }}>
           {myRating ? (
-            <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 5 }}>
+            <div style={{ flex: "1 1 0%", minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {myRating.label}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <StarRow pct={myRating.pct} color="#f4b23f" />
-                <span style={{ fontSize: 13, fontWeight: 700, color: textPrimary }}>{myRating.display}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 5 : 8, minWidth: 0 }}>
+                <StarRow pct={myRating.pct} color="#f4b23f" size={isMobileLayout ? 15 : STAR_SIZE} />
+                <span style={{ fontSize: isMobileLayout ? 12 : 13, fontWeight: 700, color: textPrimary, whiteSpace: "nowrap" }}>{myRating.display}</span>
               </div>
             </div>
           ) : null}
           {avgRating ? (
-            <div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 5 }}>
+            <div style={{ flex: "1 1 0%", minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {avgRating.label}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <StarRow pct={avgRating.pct} color="#f4b23f" />
-                <span style={{ fontSize: 13, fontWeight: 700, color: textPrimary }}>{avgRating.display}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 5 : 8, minWidth: 0 }}>
+                <StarRow pct={avgRating.pct} color="#f4b23f" size={isMobileLayout ? 15 : STAR_SIZE} />
+                <span style={{ fontSize: isMobileLayout ? 12 : 13, fontWeight: 700, color: textPrimary, whiteSpace: "nowrap" }}>{avgRating.display}</span>
               </div>
             </div>
           ) : null}
