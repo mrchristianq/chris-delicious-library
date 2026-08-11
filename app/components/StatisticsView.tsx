@@ -825,6 +825,11 @@ function parseRatingValue(value: unknown, scaleHint: RatingScaleHint = "auto"): 
   if (raw.includes("%") || normalized > 10) {
     normalized = normalized / 10;
   } else if (scaleHint === "five" && normalized <= 5) {
+    // Round to the same 1-decimal precision used everywhere else a 5-star rating is
+    // displayed (RateItModal, MediaDetailsSidebar, the cover badge) before doubling to
+    // a 10-point scale. Without this, a raw value like 4.95 - which rounds to a "clean"
+    // 5.0 everywhere else in the app - stayed a fractional 9.9 here instead of 10.0.
+    normalized = Math.round(normalized * 10) / 10;
     normalized = normalized * 2;
   }
 
@@ -9624,7 +9629,7 @@ export function StatisticsView({
         }
 
         .statsHeaderControls {
-          min-width: 660px;
+          min-width: 706px;
         }
 
         .statsTab {
@@ -9638,8 +9643,13 @@ export function StatisticsView({
           line-height: 1;
         }
 
+        /* "Year in Review" carries an icon plus the longest label of the group, so it
+           needs more room than the other pills to avoid looking cramped/oversized. */
         .statsTab:last-child {
-          flex: 0 0 104px;
+          flex: 0 0 150px;
+          width: 150px;
+          min-width: 150px;
+          font-size: 13px;
         }
 
         .releaseLineYear.major {
