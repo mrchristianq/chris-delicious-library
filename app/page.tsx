@@ -3394,9 +3394,10 @@ const TV_HEADER_WATCHING_STATUSES = new Set([
   "in progress",
   "paused",
   "pending return",
+  "pending release",
 ]);
 const TV_WATCHLIST_PAUSED_STATUSES = new Set(["paused"]);
-const TV_WATCHLIST_PENDING_RETURN_STATUSES = new Set(["pending return"]);
+const TV_WATCHLIST_PENDING_RETURN_STATUSES = new Set(["pending return", "pending release"]);
 const TV_WATCHLIST_NOT_STARTED_STATUSES = new Set(["backlog", "wishlist"]);
 const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectionMeta> = {
   watching: {
@@ -3421,7 +3422,7 @@ const TV_WATCHLIST_SECTION_META: Record<TvWatchlistSectionKey, TvWatchlistSectio
     badgeColor: "rgba(255, 247, 224, 0.98)",
   },
   pendingReturn: {
-    label: "Pending Return",
+    label: "Pending Return or Release",
     headerColor: STATUS_COLOR_BLUE,
     badgeBackground: "rgba(57, 117, 163, 0.9)",
     badgeBorder: "rgba(169, 221, 255, 0.82)",
@@ -3500,6 +3501,27 @@ function isMediaItemCompleted(item: any, mediaType: MediaType): boolean {
     case "game": return isGameCompletedStatus(item as Game);
     default: return false;
   }
+}
+
+// Same idea, but for items the user abandoned/dropped rather than finished. Books have no
+// abandoned concept in this app (no isBookAbandonedStatus helper exists), so they're excluded.
+function isMediaItemAbandoned(item: any, mediaType: MediaType): boolean {
+  switch (mediaType) {
+    case "movie": return isMovieAbandonedStatus(item as Movie);
+    case "tv": return isTvAbandonedStatus(item as Show);
+    case "game": return isGameAbandonedStatus(item as Game);
+    default: return false;
+  }
+}
+
+// "completed" | "abandoned" | null — drives the green/orange status badge in the Completed gallery.
+// Checks abandoned first: isGameCompletedStatus/isMovieWatchedStatus/etc. treat a populated
+// completion date as "completed" even when the row's actual status field says Abandoned, so an
+// explicit Abandoned status must win over a stray leftover date.
+function getMediaItemGalleryStatus(item: any, mediaType: MediaType): "completed" | "abandoned" | null {
+  if (isMediaItemAbandoned(item, mediaType)) return "abandoned";
+  if (isMediaItemCompleted(item, mediaType)) return "completed";
+  return null;
 }
 
 // The date each media type's completion is recorded under. Used to sort the Completed gallery.
@@ -13136,19 +13158,23 @@ export default function Page() {
     }) as Game[];
   }, [gameRows]);
 
-  // Combined "Completed" collection across all four media types, for the Completed gallery.
-  // Uses the shared isMediaItemCompleted/getMediaItemCompletionDate helpers (status/date fields
-  // only — never ratings or notes), sorted by completion date newest-first with undated items last.
-  type CompletedGalleryItem = { item: Record<string, unknown>; mediaType: MediaType; completionDate: string; itemKey: string };
+  // Combined "Completed"/"Abandoned" collection across all four media types, for the Completed
+  // gallery. Uses the shared isMediaItemCompleted/isMediaItemAbandoned/getMediaItemCompletionDate
+  // helpers (status/date fields only — never ratings or notes), sorted by completion date
+  // newest-first with undated items last. Books have no abandoned concept, so only completed
+  // books are included; other media types include both completed and abandoned entries.
+  type CompletedGalleryItem = { item: Record<string, unknown>; mediaType: MediaType; completionDate: string; itemKey: string; status: "completed" | "abandoned" };
   const completedGalleryItems = useMemo<CompletedGalleryItem[]>(() => {
     const buildEntries = (rows: Array<Book | Movie | Show | Game>, mediaType: MediaType): CompletedGalleryItem[] =>
       rows
-        .filter((row) => isMediaItemCompleted(row, mediaType))
-        .map((row) => ({
+        .map((row) => ({ row, status: getMediaItemGalleryStatus(row, mediaType) }))
+        .filter((entry): entry is { row: Book | Movie | Show | Game; status: "completed" | "abandoned" } => entry.status !== null)
+        .map(({ row, status }) => ({
           item: { ...row, __type: mediaType } as Record<string, unknown>,
           mediaType,
           completionDate: getMediaItemCompletionDate(row, mediaType),
           itemKey: buildTypedItemKey(row, mediaType),
+          status,
         }));
 
     const combined = [
@@ -14489,8 +14515,8 @@ export default function Page() {
       ) {
         return { key: "completed", color: STATUS_COLOR_GREEN, label: "Watched / Completed" };
       }
-      if (status === "pending return") {
-        return { key: "pending-return", color: STATUS_COLOR_YELLOW, label: "Pending Return" };
+      if (status === "pending return" || status === "pending release") {
+        return { key: "pending-return", color: STATUS_COLOR_YELLOW, label: "Pending Return or Release" };
       }
       if (status === "paused") {
         return { key: "paused", color: STATUS_COLOR_YELLOW, label: "Paused" };
@@ -14560,7 +14586,7 @@ export default function Page() {
       { key: "game-now-playing", label: "Now Playing (Games)", color: STATUS_COLOR_BLUE },
       { key: "abandoned", label: "Abandoned", color: STATUS_COLOR_ORANGE },
       { key: "not-started", label: "Not Started", color: STATUS_COLOR_RED },
-      { key: "pending-return", label: "Pending Return", color: STATUS_COLOR_YELLOW },
+      { key: "pending-return", label: "Pending Return or Release", color: STATUS_COLOR_YELLOW },
       { key: "paused", label: "Paused", color: STATUS_COLOR_YELLOW },
     ],
     []
@@ -14575,6 +14601,7 @@ export default function Page() {
       "Watch Next",
       "Paused",
       "Pending Return",
+      "Pending Release",
     ],
     []
   );
@@ -14823,7 +14850,7 @@ export default function Page() {
       ),
       tv: buildOptions(
         allShows.map((show) => safeStr(show.watchStatus || show.showStatus || show.watched)),
-        ["Currently Watching", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return"]
+        ["Currently Watching", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return", "Pending Release"]
       ),
       game: buildOptions(
         allGames.map((game) => safeStr(game.status || game.playStatus || game.gameStatus || game.completed)),

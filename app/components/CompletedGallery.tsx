@@ -9,6 +9,7 @@ export type CompletedGalleryEntry = {
   mediaType: MediaType;
   completionDate: string;
   itemKey: string;
+  status: "completed" | "abandoned";
 };
 
 type CompletedGalleryProps = {
@@ -74,6 +75,15 @@ function splitTags(value: string): string[] {
 function mediaLabel(mediaType: MediaType): string {
   if (mediaType === "tv") return "TV Show";
   return `${mediaType.slice(0, 1).toUpperCase()}${mediaType.slice(1)}`;
+}
+
+const STATUS_COLORS: Record<"completed" | "abandoned", string> = {
+  completed: "#3fb864",
+  abandoned: "#e08a2c",
+};
+
+function statusLabel(status: "completed" | "abandoned"): string {
+  return status === "completed" ? "Completed" : "Abandoned";
 }
 
 function getYear(value: string): string {
@@ -231,8 +241,12 @@ function getAverageRating(item: Record<string, unknown>, mediaType: MediaType): 
     const raw = first(item, ["igdbRating", "IGDB Rating", "rating", "Rating"]);
     const n = Number.parseFloat(raw);
     if (!Number.isFinite(n) || n <= 0) return null;
-    // IGDB ratings are stored on a 0-100 scale in this app.
-    const outOf10 = Math.min(10, n / 10);
+    // IGDB ratings in this app are inconsistently stored as either a 0-10 or
+    // a 0-100 scale depending on when/how the row was synced. Normalize both
+    // to 0-10, matching the same dual-scale handling the list view already
+    // uses (see formatListRating in app/page.tsx) — dividing unconditionally
+    // by 10 here previously turned an already-0-10 value like 8.5 into 0.85.
+    const outOf10 = Math.min(10, n <= 10 ? n : n / 10);
     return { label: "Average Rating", display: `${outOf10.toFixed(1)}/10`, pct: (outOf10 / 10) * 100 };
   }
   const raw = first(item, ["tmdbRating", "TMDB_Rating", "TMDB Rating"]);
@@ -525,7 +539,7 @@ export function CompletedGallery({
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: textSecondary, whiteSpace: "nowrap", textShadow: headerTextShadow }}>
           {filteredItems.length}
-          {isFiltering ? ` of ${items.length}` : ""} completed item{filteredItems.length === 1 && !isFiltering ? "" : "s"}
+          {isFiltering ? ` of ${items.length}` : ""} item{filteredItems.length === 1 && !isFiltering ? "" : "s"}
         </div>
         {items.length > 0 ? (
           <button
@@ -980,21 +994,40 @@ export function CompletedGallery({
       className="completedGalleryNoScrollbar"
     >
       <div>
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 10.5,
-            fontWeight: 800,
-            letterSpacing: 0.8,
-            textTransform: "uppercase",
-            color: mediaAccent,
-            marginBottom: 8,
-          }}
-        >
-          <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: mediaAccent, display: "inline-block" }} />
-          {mediaLabel(selected.mediaType)}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 10.5,
+              fontWeight: 800,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              color: mediaAccent,
+            }}
+          >
+            <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: mediaAccent, display: "inline-block" }} />
+            {mediaLabel(selected.mediaType)}
+          </div>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 9.5,
+              fontWeight: 800,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+              color: STATUS_COLORS[selected.status],
+              padding: "3px 8px",
+              borderRadius: 999,
+              border: `1px solid ${STATUS_COLORS[selected.status]}55`,
+              background: `${STATUS_COLORS[selected.status]}1a`,
+            }}
+          >
+            {statusLabel(selected.status)}
+          </div>
         </div>
         <h1 style={{ margin: 0, fontSize: isMobileLayout ? 24 : 30, fontWeight: 800, lineHeight: 1.15, color: textPrimary }}>{title}</h1>
         <div style={{ marginTop: 8, fontSize: 13, fontWeight: 600, color: textSecondary }}>
@@ -1277,6 +1310,20 @@ export function CompletedGallery({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={thumbUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 ) : null}
+                <span
+                  aria-hidden
+                  title={statusLabel(entry.status)}
+                  style={{
+                    position: "absolute",
+                    top: 5,
+                    right: 5,
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: STATUS_COLORS[entry.status],
+                    boxShadow: "0 0 0 1.5px rgba(0,0,0,0.35)",
+                  }}
+                />
               </button>
               {dateLabel ? (
                 <div
