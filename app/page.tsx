@@ -392,7 +392,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.3";
+const APP_VERSION = "13.1.4";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -719,6 +719,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.4",
+    date: "2026-08-22",
+    notes: [
+      "Fixed the Library/Upcoming/Now Playing header nav looking noticeably bolder and boxier on Windows than Mac: Arial has no real 800-weight face, so Windows was synthesizing a heavier faux-bold than Mac's renderer produced for the same request. Dropped to 700 (Arial's real Bold face).",
+    ],
+  },
   {
     version: "13.1.3",
     date: "2026-08-22",
