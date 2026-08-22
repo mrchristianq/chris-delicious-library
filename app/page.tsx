@@ -392,7 +392,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.4";
+const APP_VERSION = "13.1.5";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -719,6 +719,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.5",
+    date: "2026-08-22",
+    notes: [
+      "Fixed the same Windows over-bold/boxy look on the library toolbar's Clear, Status, item count, and Cover/List controls - same root cause and fix (fontWeight 800/900 down to Arial's real 700 Bold face) as the header nav fix in 13.1.4.",
+    ],
+  },
   {
     version: "13.1.4",
     date: "2026-08-22",
@@ -19435,7 +19442,9 @@ export default function Page() {
             boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
             cursor: "pointer",
             fontSize: 11,
-            fontWeight: 800,
+            // 700 is Arial's real Bold face; 800 has no matching weight to source
+            // from, so Windows synthesizes an extra-heavy faux-bold here.
+            fontWeight: 700,
             letterSpacing: "0.04em",
             textTransform: "uppercase",
           }}
@@ -19480,7 +19489,9 @@ export default function Page() {
               : "0 3px 8px rgba(0, 0, 0, 0.34)",
             cursor: "pointer",
             fontSize: 11,
-            fontWeight: 800,
+            // 700 is Arial's real Bold face; 800 has no matching weight to source
+            // from, so Windows synthesizes an extra-heavy faux-bold here.
+            fontWeight: 700,
             letterSpacing: "0.04em",
             textTransform: "uppercase",
           }}
@@ -19512,7 +19523,9 @@ export default function Page() {
         <span
           style={{
             fontSize: 11,
-            fontWeight: 900,
+            // 700 is Arial's real Bold face; 900 has no matching weight to source
+            // from, so Windows synthesizes an extra-heavy faux-bold here.
+            fontWeight: 700,
             color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
             letterSpacing: "0.01em",
             lineHeight: 1,
@@ -27987,7 +28000,9 @@ export default function Page() {
                               boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
                               cursor: "pointer",
                               fontSize: 11,
-                              fontWeight: 800,
+                              // 700 is Arial's real Bold face; 800 has no matching weight to source
+                              // from, so Windows synthesizes an extra-heavy faux-bold here.
+                              fontWeight: 700,
                               letterSpacing: "0.04em",
                               textTransform: "uppercase",
                             }}
@@ -28032,7 +28047,9 @@ export default function Page() {
                                 : "0 3px 8px rgba(0, 0, 0, 0.34)",
                               cursor: "pointer",
                               fontSize: 11,
-                              fontWeight: 800,
+                              // 700 is Arial's real Bold face; 800 has no matching weight to source
+                              // from, so Windows synthesizes an extra-heavy faux-bold here.
+                              fontWeight: 700,
                               letterSpacing: "0.04em",
                               textTransform: "uppercase",
                             }}
@@ -28074,7 +28091,9 @@ export default function Page() {
                     <span
                         style={{
                           fontSize: 11,
-                          fontWeight: 900,
+                          // 700 is Arial's real Bold face; 900 has no matching weight to source
+                          // from, so Windows synthesizes an extra-heavy faux-bold here.
+                          fontWeight: 700,
                           color: isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250, 242, 230, 0.68)",
                           letterSpacing: "0.01em",
                           lineHeight: 1,
@@ -28124,7 +28143,9 @@ export default function Page() {
                                 padding: "0 8px",
                                 cursor: "pointer",
                                 fontSize: 11,
-                                fontWeight: 900,
+                                // 700 is Arial's real Bold face; 900 has no matching weight to source
+                                // from, so Windows synthesizes an extra-heavy faux-bold here.
+                                fontWeight: 700,
                                 textTransform: "capitalize",
                               }}
                             >
