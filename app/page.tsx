@@ -27597,7 +27597,10 @@ export default function Page() {
                                   background: active ? headerHomeQuickLinkActiveBackground : "rgba(255,255,255,0.55)",
                                   color: active ? "#ffffff" : "#4d5b6a",
                                   fontSize: 11,
-                                  fontWeight: 800,
+                                  // 700 is Arial's real Bold face; requesting 800 has no matching
+                                  // weight to source from, so Windows synthesizes an extra-heavy
+                                  // faux-bold that reads as noticeably boxier than the same text on Mac.
+                                  fontWeight: 700,
                                   whiteSpace: "nowrap",
                                 }}
                               >
@@ -27652,7 +27655,10 @@ export default function Page() {
                                   boxShadow: active ? "0 2px 7px rgba(122, 130, 141, 0.2)" : "none",
                                   cursor: "pointer",
                                   fontSize: 12,
-                                  fontWeight: 800,
+                                  // 700 is Arial's real Bold face; requesting 800 has no matching
+                                  // weight to source from, so Windows synthesizes an extra-heavy
+                                  // faux-bold that reads as noticeably boxier than the same text on Mac.
+                                  fontWeight: 700,
                                   lineHeight: 1,
                                 }}
                               >
