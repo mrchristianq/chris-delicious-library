@@ -545,7 +545,7 @@ export function BookDetailsEditModal({
           border: "1px solid rgba(255,255,255,0.55)",
           background: "linear-gradient(180deg, rgba(251,252,254,0.96) 0%, rgba(241,244,249,0.98) 100%)",
           boxShadow: "0 24px 48px rgba(15,23,40,0.26), inset 0 1px 0 rgba(255,255,255,0.86)",
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", sans-serif',
         }}
         onClick={(event) => event.stopPropagation()}
       >

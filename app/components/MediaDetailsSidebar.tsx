@@ -562,7 +562,7 @@ export function MediaDetailsSidebar({
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif",
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', sans-serif",
           backdropFilter: "blur(22px) saturate(1.08)",
           WebkitBackdropFilter: "blur(22px) saturate(1.08)",
         }}

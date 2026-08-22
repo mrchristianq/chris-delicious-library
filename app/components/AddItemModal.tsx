@@ -64,7 +64,7 @@ const BOOK_FORMAT_OPTIONS = [
   { value: "eBook",     label: "eBook",     emoji: "📱" },
 ];
 
-const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif';
+const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", sans-serif';
 
 const backLinkStyle: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 4,

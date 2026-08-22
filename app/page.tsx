@@ -4876,8 +4876,8 @@ export default function Page() {
   const sidebarSectionFontFamily = isSimpleSidebarTheme
     ? "\"Geist Sans\", \"Geist\", \"Segoe UI\", sans-serif"
     : isMacSidebarTheme
-    ? "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Helvetica Neue\", sans-serif"
-    : "\"Nunito\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Roboto\", sans-serif";
+    ? "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI Variable\", \"Segoe UI\", \"Helvetica Neue\", sans-serif"
+    : "\"Nunito\", -apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Roboto\", sans-serif";
   const sidebarSectionHeaderStyle: CSSProperties = {
     width: "100%",
     textAlign: "left",

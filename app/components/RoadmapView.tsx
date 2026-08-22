@@ -271,7 +271,7 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
       WebkitBackdropFilter: "blur(20px) saturate(1.2)",
       border: "1px solid rgba(0, 0, 0, 0.08)",
       boxShadow: "0 2px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)",
-      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", sans-serif',
       color: "#1d1d1f",
       overflow: "hidden",
       animation: "roadmapFadeRise 320ms cubic-bezier(0.22, 1, 0.36, 1)",

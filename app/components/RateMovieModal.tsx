@@ -466,7 +466,7 @@ export function RateMovieModal({ open, item, onClose, onSave, onShowSuccess, hig
           background: rgba(255, 255, 255, 0.72);
           color: #242a32;
           font-size: 13px;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif;
           transition: all 120ms ease;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }

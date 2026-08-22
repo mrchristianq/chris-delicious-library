@@ -43,7 +43,7 @@ const MAX_CAROUSEL_HEIGHT = 340;
 const COVER_BASE_TILT_Y = 10;
 const COVER_BASE_TILT_X = 2;
 
-const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
+const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", sans-serif';
 const REVIEW_FONT = 'Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif';
 
 const MEDIA_ACCENTS: Record<MediaType, string> = {
