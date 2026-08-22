@@ -392,7 +392,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.0";
+const APP_VERSION = "13.1.3";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -719,6 +719,30 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.3",
+    date: "2026-08-22",
+    notes: [
+      "Added a native Windows font fallback (Segoe UI Variable / Segoe UI) to every font stack that leads with the macOS system font, so the app no longer falls back to plain Arial on Windows. Mac rendering is unchanged.",
+    ],
+  },
+  {
+    version: "13.1.2",
+    date: "2026-08-22",
+    notes: [
+      "Fixed a Statistics/Year in Review rating bug where a book rating that displays as a clean 5.0 everywhere else in the app (Rate It, cover badge, details sidebar) could show as 9.9 instead of 10.0 in Year in Review, caused by rounding happening after rather than before the 5-to-10-point scale conversion.",
+      "Widened the 'Year in Review' tab pill in Statistics so its icon and label have breathing room instead of looking cramped.",
+    ],
+  },
+  {
+    version: "13.1.1",
+    date: "2026-08-22",
+    notes: [
+      "Fixed the Completed Gallery showing an inaccurate Average Rating for games (e.g. 1.0/10 instead of 9.6/10) caused by inconsistent 0-10 vs 0-100 scales in the underlying data.",
+      "Abandoned movies, TV shows, and games now appear in the Completed Gallery alongside completed items, with a green 'Completed' / orange 'Abandoned' status badge in the details panel and on carousel thumbnails.",
+      "Added a 'Pending Release' status option for TV shows, and relabeled the TV Watchlist's 'Pending Return' section 'Pending Return or Release' to group both together.",
+    ],
+  },
   {
     version: "13.1.0",
     date: "2026-08-06",
