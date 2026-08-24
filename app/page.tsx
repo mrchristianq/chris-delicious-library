@@ -193,6 +193,49 @@ function hasTvEpisodeProgressSnapshot(rows: TVEpisodeRow[]): boolean {
   });
 }
 
+function getTvEpisodeRowKey(row: TVEpisodeRow): string {
+  const explicit = String(row.EpisodeKey ?? "").trim();
+  if (explicit) return explicit;
+  const showId = String(row.ShowTMDB_ID ?? row.ShowTitle ?? "").trim();
+  const season = String(row.SeasonNumber ?? "").trim();
+  const episode = String(row.EpisodeNumber ?? "").trim();
+  return showId && season && episode ? `${showId}:s${season}:e${episode}` : "";
+}
+
+// The published TV Episodes sheet can end up with more than one row for the same episode
+// (e.g. a stale row left behind by an earlier upsert) - when that happens, whichever
+// duplicate lands later in the CSV silently wins wherever the app keys rows by episode,
+// which can make an episode you just marked watched look unwatched again after a reload.
+// Collapse duplicates by key, keeping whichever row was actually updated most recently.
+function dedupeTvEpisodeRows(rows: TVEpisodeRow[]): TVEpisodeRow[] {
+  const byKey = new Map<string, TVEpisodeRow>();
+  const unkeyed: TVEpisodeRow[] = [];
+  for (const row of rows) {
+    const key = getTvEpisodeRowKey(row);
+    if (!key) {
+      unkeyed.push(row);
+      continue;
+    }
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, row);
+      continue;
+    }
+    const existingTime = Date.parse(String(existing.LastModifiedAt || existing.UpdatedAt || "")) || 0;
+    const rowTime = Date.parse(String(row.LastModifiedAt || row.UpdatedAt || "")) || 0;
+    if (rowTime !== existingTime) {
+      byKey.set(key, rowTime > existingTime ? row : existing);
+      continue;
+    }
+    const existingWatched = String(existing.Watched ?? "").trim() !== "";
+    const rowWatched = String(row.Watched ?? "").trim() !== "";
+    if (rowWatched !== existingWatched) {
+      byKey.set(key, rowWatched ? row : existing);
+    }
+  }
+  return [...byKey.values(), ...unkeyed];
+}
+
 type TVEpisodeBulkSaveProgress = {
   total: number;
   confirmed: number;
@@ -392,7 +435,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.5";
+const APP_VERSION = "13.1.6";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -719,6 +762,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.6",
+    date: "2026-08-24",
+    notes: [
+      "Fixed TV episodes reverting to unwatched after reopening the app. The published TV Episodes sheet can end up with more than one row for the same episode (a stale row left behind by an earlier sync); the app now collapses duplicates by episode key, keeping whichever row was actually updated most recently, instead of letting a leftover stale row silently overwrite your watched status.",
+    ],
+  },
   {
     version: "13.1.5",
     date: "2026-08-22",
@@ -10737,7 +10787,7 @@ export default function Page() {
             }
 
             setTvRows(snapshot.tvRows);
-            const snapshotEpisodeRows = (snapshot.tvEpisodeRows || []) as TVEpisodeRow[];
+            const snapshotEpisodeRows = dedupeTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
             setTvEpisodeRows(snapshotEpisodeRows);
             setTvEpisodeDataStatus(hasTvEpisodeProgressSnapshot(snapshotEpisodeRows) ? "ready" : "loading");
             setBookRows(snapshot.bookRows);
@@ -10795,7 +10845,7 @@ export default function Page() {
           }
 
           setTvRows(snapshot.tvRows);
-          const snapshotEpisodeRows = (snapshot.tvEpisodeRows || []) as TVEpisodeRow[];
+          const snapshotEpisodeRows = dedupeTvEpisodeRows((snapshot.tvEpisodeRows || []) as TVEpisodeRow[]);
           setTvEpisodeRows(snapshotEpisodeRows);
           setTvEpisodeDataStatus(hasTvEpisodeProgressSnapshot(snapshotEpisodeRows) ? "ready" : "loading");
           setBookRows(snapshot.bookRows);
@@ -10868,9 +10918,11 @@ export default function Page() {
 
         if (tvEpisodesRes && tvEpisodesRes.status === "fulfilled" && typeof tvEpisodesRes.value === "string") {
           const parsed = Papa.parse<Row>(tvEpisodesRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || [])
-            .map((r) => r as TVEpisodeRow)
-            .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])));
+          const data = dedupeTvEpisodeRows(
+            (parsed.data || [])
+              .map((r) => r as TVEpisodeRow)
+              .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])))
+          );
           if (data.length > 0 && hasTvEpisodeProgressSnapshot(data)) {
             nextTvEpisodeRows = data;
             setTvEpisodeRows(data);
