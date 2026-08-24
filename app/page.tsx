@@ -7,12 +7,20 @@
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import Papa from "papaparse";
 import { MediaModal } from "./components/MediaModal";
 import { AddItemModal, type AddExtendedType } from "./components/AddItemModal";
 import { fetchMediaSearch } from "./lib/mediaSearchClient";
-import { StatisticsView } from "./components/StatisticsView";
-import { RoadmapView } from "./components/RoadmapView";
+
+// Statistics and Roadmap are large, rarely-opened views - loading them as separate chunks
+// (instead of bundling them into every page load) keeps the initial JS payload smaller.
+const StatisticsView = dynamic(() => import("./components/StatisticsView").then((mod) => mod.StatisticsView), {
+  loading: () => <div style={{ padding: 40, textAlign: "center", color: "#8a94a3" }}>Loading…</div>,
+});
+const RoadmapView = dynamic(() => import("./components/RoadmapView").then((mod) => mod.RoadmapView), {
+  loading: () => <div style={{ padding: 40, textAlign: "center", color: "#8a94a3" }}>Loading…</div>,
+});
 import { BookDetailsPage } from "./components/BookDetailsPage";
 import { MovieDetailsPage } from "./components/MovieDetailsPage";
 import { TVDetailsPage } from "./components/TVDetailsPage";
@@ -48,6 +56,21 @@ import {
 } from "./lib/mediaStatusOptions";
 
 type Row = Record<string, string>;
+
+// Parses a CSV in a Web Worker instead of on the main thread. The library's CSVs (TV Episodes
+// alone is 1MB+ at 2000+ items) are large enough that a synchronous Papa.parse() on load can
+// block the UI for a noticeable stretch; worker parsing keeps the page responsive during sync.
+function parseCsvRowsWithWorker(csvText: string): Promise<Row[]> {
+  return new Promise((resolve, reject) => {
+    Papa.parse<Row>(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      worker: true,
+      complete: (results) => resolve((results.data || []) as Row[]),
+      error: (error: Error) => reject(error),
+    });
+  });
+}
 type CoverCandidate = { label: string; url: string };
 type NativeCacheStatusView = {
   cachedCovers: number;
@@ -435,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.6";
+const APP_VERSION = "13.1.7";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -762,6 +785,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.7",
+    date: "2026-08-24",
+    notes: [
+      "Performance: the library's CSVs (TV Episodes alone is 1MB+ at current size) now parse in a background Web Worker instead of blocking the main thread on every sync, keeping the app responsive while data loads.",
+      "Performance: Statistics and Roadmap now load as separate code chunks on first visit instead of being bundled into every page load, shrinking the initial JS the app has to download and parse.",
+    ],
+  },
   {
     version: "13.1.6",
     date: "2026-08-24",
@@ -10878,12 +10909,13 @@ export default function Page() {
       loadCsvSnapshot();
     }
 
-    async function fetchCsv(url: string) {
+    async function fetchCsv(url: string): Promise<Row[]> {
       const separator = url.includes("?") ? "&" : "?";
       const refreshUrl = `${url}${separator}_cdlSync=${Date.now()}`;
       const res = await fetch(refreshUrl, { cache: "no-store" });
       if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
-      return await res.text();
+      const text = await res.text();
+      return parseCsvRowsWithWorker(text);
     }
 
     function loadCsvSnapshot() {
@@ -10907,19 +10939,17 @@ export default function Page() {
         let nextGameRows: Row[] = [];
         let nextSettingsRows: Row[] = [];
 
-        if (tvRes && tvRes.status === "fulfilled" && typeof tvRes.value === "string") {
-          const parsed = Papa.parse<Row>(tvRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+        if (tvRes && tvRes.status === "fulfilled" && Array.isArray(tvRes.value)) {
+          const data = tvRes.value.filter((r) => Boolean(safeStr(r["Title"])));
           nextTvRows = data;
           setTvRows(data);
         } else if (tvRes && tvRes.status === "rejected") {
           setError(`TV CSV: ${tvRes.reason?.message || String(tvRes.reason)}`);
         }
 
-        if (tvEpisodesRes && tvEpisodesRes.status === "fulfilled" && typeof tvEpisodesRes.value === "string") {
-          const parsed = Papa.parse<Row>(tvEpisodesRes.value, { header: true, skipEmptyLines: true });
+        if (tvEpisodesRes && tvEpisodesRes.status === "fulfilled" && Array.isArray(tvEpisodesRes.value)) {
           const data = dedupeTvEpisodeRows(
-            (parsed.data || [])
+            tvEpisodesRes.value
               .map((r) => r as TVEpisodeRow)
               .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])))
           );
@@ -10943,9 +10973,8 @@ export default function Page() {
           );
         }
 
-        if (booksRes && booksRes.status === "fulfilled" && typeof booksRes.value === "string") {
-          const parsed = Papa.parse<Row>(booksRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+        if (booksRes && booksRes.status === "fulfilled" && Array.isArray(booksRes.value)) {
+          const data = booksRes.value.filter((r) => Boolean(safeStr(r["Title"])));
 
           // Debug: Log all column headers from books CSV
           if (data.length > 0) {
@@ -10976,18 +11005,16 @@ export default function Page() {
           setError((prev) => (prev ? prev + "\n" : "") + `Books CSV: ${booksRes.reason?.message || String(booksRes.reason)}`);
         }
 
-        if (moviesRes && moviesRes.status === "fulfilled" && typeof moviesRes.value === "string") {
-          const parsed = Papa.parse<Row>(moviesRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+        if (moviesRes && moviesRes.status === "fulfilled" && Array.isArray(moviesRes.value)) {
+          const data = moviesRes.value.filter((r) => Boolean(safeStr(r["Title"])));
           nextMovieRows = data;
           setMovieRows(data);
         } else if (moviesRes && moviesRes.status === "rejected") {
           setError((prev) => (prev ? prev + "\n" : "") + `Movies CSV: ${moviesRes.reason?.message || String(moviesRes.reason)}`);
         }
 
-        if (gamesRes && gamesRes.status === "fulfilled" && typeof gamesRes.value === "string") {
-          const parsed = Papa.parse<Row>(gamesRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || []).map((r) => r as Row).filter((r) => Boolean(safeStr(r["Title"])));
+        if (gamesRes && gamesRes.status === "fulfilled" && Array.isArray(gamesRes.value)) {
+          const data = gamesRes.value.filter((r) => Boolean(safeStr(r["Title"])));
 
           // Debug: Log all column headers from games CSV
           if (data.length > 0) {
@@ -11019,9 +11046,8 @@ export default function Page() {
           setError((prev) => (prev ? prev + "\n" : "") + `Games CSV: ${gamesRes.reason?.message || String(gamesRes.reason)}`);
         }
 
-        if (settingsRes && settingsRes.status === "fulfilled" && typeof settingsRes.value === "string") {
-          const parsed = Papa.parse<Row>(settingsRes.value, { header: true, skipEmptyLines: true });
-          const data = (parsed.data || []).map((r) => r as Row);
+        if (settingsRes && settingsRes.status === "fulfilled" && Array.isArray(settingsRes.value)) {
+          const data = settingsRes.value;
           nextSettingsRows = data;
           setSettingsRows(data);
         } else if (settingsRes && settingsRes.status === "rejected") {
