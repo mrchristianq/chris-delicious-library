@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.9";
+const APP_VERSION = "13.1.10";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.10",
+    date: "2026-08-25",
+    notes: [
+      "Added a soft corner shadow to Wood Shelf where the wall meets the shelf top, to help blend the seam between the two layered shelf textures and give the corner a more natural, shadowed look.",
+    ],
+  },
   {
     version: "13.1.9",
     date: "2026-08-25",
@@ -28511,6 +28518,24 @@ export default function Page() {
                     outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.34)" : "none",
                   }}
                 >
+                  {isWoodShelfPresentation ? (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: WOOD_SHELF_LIP_HEIGHT,
+                        height: 16,
+                        zIndex: 1,
+                        pointerEvents: "none",
+                        // A believable corner shadow where the wall meets the shelf top - also
+                        // conveniently blends over the seam between the stretched wall texture
+                        // above and the crisp lip overlay below.
+                        background: "linear-gradient(to bottom, rgba(35, 20, 8, 0) 0%, rgba(35, 20, 8, 0.4) 100%)",
+                      }}
+                    />
+                  ) : null}
                   {isWoodShelfPresentation ? (
                     <div
                       aria-hidden
