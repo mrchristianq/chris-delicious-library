@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.10";
+const APP_VERSION = "13.1.11";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.11",
+    date: "2026-08-25",
+    notes: [
+      "Replaced Wood Shelf's corner shadow attempt with a thin wood-toned line placed exactly on the seam where the stretched wall texture meets the shelf-lip overlay, colored to match the surrounding wood grain so it blends in rather than standing out.",
+      "Fixed that seam line (and the shelf lip itself) rendering on top of covers instead of behind them - covers now always paint above the shelf's decorative layers.",
+    ],
+  },
   {
     version: "13.1.10",
     date: "2026-08-25",
@@ -28525,14 +28533,16 @@ export default function Page() {
                         position: "absolute",
                         left: 0,
                         right: 0,
-                        bottom: WOOD_SHELF_LIP_HEIGHT,
-                        height: 16,
-                        zIndex: 1,
+                        // Centered on the seam itself (bottom: WOOD_SHELF_LIP_HEIGHT), just
+                        // barely straddling it - that's the actual boundary between the two
+                        // rendered layers. Covers render above this (see the covers wrapper's
+                        // zIndex below), so this never shows through on top of a cover.
+                        bottom: WOOD_SHELF_LIP_HEIGHT - 4,
+                        height: 5,
+                        zIndex: 2,
                         pointerEvents: "none",
-                        // A believable corner shadow where the wall meets the shelf top - also
-                        // conveniently blends over the seam between the stretched wall texture
-                        // above and the crisp lip overlay below.
-                        background: "linear-gradient(to bottom, rgba(35, 20, 8, 0) 0%, rgba(35, 20, 8, 0.4) 100%)",
+                        // Color sampled directly from the shelf2.png wood grain near this seam.
+                        background: "linear-gradient(to top, rgba(121, 68, 26, 0) 0%, rgba(121, 68, 26, 0.9) 50%, rgba(121, 68, 26, 0) 100%)",
                       }}
                     />
                   ) : null}
@@ -28627,6 +28637,9 @@ export default function Page() {
                       right: shelfSidePadding,
                       top: showTvWatchlistSectionHeader ? TV_WATCHLIST_SECTION_HEADER_SPACE : 0,
                       bottom: 0,
+                      // Covers must always paint above the shelf's own decorative layers
+                      // (wall/lip images, seam shadow), regardless of how those are tuned.
+                      zIndex: 3,
                     }}
                   >
                     {(() => {
