@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.8";
+const APP_VERSION = "13.1.9";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.9",
+    date: "2026-08-25",
+    notes: [
+      "Fixed a stray highlight line on Wood Shelf where the wall meets the shelf top. The shelf texture's edge highlight was baked into the same image used to stretch across the whole (variable-height) row, so it could land in a different spot than the crisp fixed-height shelf-lip drawn on top, showing as a faint doubled line. The stretched layer now clips that region out entirely and lets the lip own the shelf edge.",
+    ],
+  },
   {
     version: "13.1.8",
     date: "2026-08-25",
@@ -5538,6 +5545,15 @@ export default function Page() {
   const WOOD_SHELF_LIP_HEIGHT = 22;
   const WOOD_SHELF_IMAGE = "/shelf2.png";
   const WOOD_SHELF_IMAGE_HEIGHT = 195;
+  // Where the bright shelf-edge highlight sits in the source image (measured ~row 180 of 195).
+  // The row's main background stretches to fill the full (variable) row height, so without this
+  // it would smear that highlight to wherever 180/195 lands for that row's height - landing in a
+  // different spot than the crisp fixed-height lip overlay below and showing up as a stray
+  // second line. Sizing the main background taller than the row and anchoring it to the top
+  // pushes everything from the highlight down off the bottom edge (clipped by overflow:hidden),
+  // leaving only the wall texture there and letting the lip overlay own the ledge exclusively.
+  const WOOD_SHELF_WALL_FRACTION = 180 / WOOD_SHELF_IMAGE_HEIGHT;
+  const WOOD_SHELF_MAIN_BACKGROUND_SIZE = `100% ${(100 / WOOD_SHELF_WALL_FRACTION).toFixed(2)}%`;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
   const SETTINGS_WINDOW_DEFAULT_HEIGHT = 680;
   const SETTINGS_WINDOW_MARGIN = 16;
@@ -28477,9 +28493,9 @@ export default function Page() {
                         ? "none"
                         : `url(${shelfTheme})`,
                     backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center",
+                    backgroundPosition: isWoodShelfPresentation ? "top" : "center",
                     backgroundSize: isWoodShelfPresentation
-                      ? "100% 100%"
+                      ? WOOD_SHELF_MAIN_BACKGROUND_SIZE
                       : isElectricBlueShelfPresentation
                         ? "calc(100% + 2px) calc(100% + 2px)"
                         : isSimpleShelfPresentation
