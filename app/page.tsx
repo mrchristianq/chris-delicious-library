@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.7";
+const APP_VERSION = "13.1.8";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.8",
+    date: "2026-08-25",
+    notes: [
+      "Wood Shelf now uses the Classic theme's sidebar coloring instead of falling back to the default theme, and swapped in a new shelf texture image.",
+    ],
+  },
   {
     version: "13.1.7",
     date: "2026-08-24",
@@ -4899,7 +4906,10 @@ export default function Page() {
   const isSimpleSidebarTheme = false;
   const isDarkSidebarTheme = false;
   const isDarkShelfMode = shelfThemeMode === "dark";
-  const isClassicShelfMode = shelfThemeMode === "classic";
+  // Wood Shelf has no sidebar styling of its own, so it fell through to the default Mac-theme
+  // sidebar. Reuse the Classic theme's sidebar coloring for it instead, per request - all three
+  // uses of this flag are sidebar-only (shell background/shadow, detail-panel backplate).
+  const isClassicShelfMode = shelfThemeMode === "classic" || shelfThemeMode === "wood";
   const COVER_STAGE_BACKGROUND = isDarkShelfMode ? "#1a1d22" : "#ececec";
   const coverSurfaceBoxShadow = isDarkShelfMode
     ? "0 0 6px 0 rgba(0, 0, 0, 0.6)"
@@ -5526,7 +5536,8 @@ export default function Page() {
   const SIMPLE_SHELF_VERTICAL_PADDING = 7;
   const LIP_FROM_BOTTOM = 5;
   const WOOD_SHELF_LIP_HEIGHT = 22;
-  const WOOD_SHELF_IMAGE = "/shelf-honey-oak.png";
+  const WOOD_SHELF_IMAGE = "/shelf2.png";
+  const WOOD_SHELF_IMAGE_HEIGHT = 195;
   const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
   const SETTINGS_WINDOW_DEFAULT_HEIGHT = 680;
   const SETTINGS_WINDOW_MARGIN = 16;
@@ -28498,7 +28509,7 @@ export default function Page() {
                         backgroundImage: `url(${WOOD_SHELF_IMAGE})`,
                         backgroundRepeat: "no-repeat",
                         backgroundPosition: "center bottom",
-                        backgroundSize: "100% 183px",
+                        backgroundSize: `100% ${WOOD_SHELF_IMAGE_HEIGHT}px`,
                         boxShadow: "0 5px 9px rgba(66, 35, 12, 0.32), inset 0 1px 0 rgba(255, 225, 171, 0.45)",
                       }}
                     />
