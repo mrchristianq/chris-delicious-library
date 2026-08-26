@@ -24,6 +24,7 @@ export const TV_WATCH_STATUS_OPTIONS = [
   "Watch Next",
   "Paused",
   "Pending Return",
+  "Pending Release",
 ] as const;
 
 export const GAME_STATUS_OPTIONS = [

@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.11";
+const APP_VERSION = "13.1.12";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,14 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.12",
+    date: "2026-08-25",
+    notes: [
+      "New games now default Platform, Ownership, and Status to \"Wishlist\" and Format to \"Digital\" instead of inheriting whatever platform IGDB happened to list first for that game (often Xbox), since a freshly-added game hasn't actually been decided on yet.",
+      "Fixed TV shows set to \"Pending Release\" reverting to \"Not Started\" after a reload - the sheet-write status normalizer didn't recognize \"Pending Release\" as a valid status and was silently clearing it on save.",
+    ],
+  },
   {
     version: "13.1.11",
     date: "2026-08-25",
@@ -2953,6 +2961,10 @@ function parseGameTagValues(game: Pick<Game, "tag" | "yearPlayed">): string[] {
   return [...parseTagValues(game.tag), ...parseTagValues(game.yearPlayed)];
 }
 
+// Applied to every newly-added game (search result, manual entry, or recommendation) instead of
+// letting IGDB's arbitrary first-listed platform (often "Xbox") stick as a false default - a
+// freshly-added game hasn't actually been decided on yet, so it starts life as a wishlist item.
+const NEW_GAME_DEFAULTS = { platform: "Wishlist", ownership: "Wishlist", status: "Wishlist", format: "Digital" };
 const WATCHED_STATUS_VALUES = new Set(["watched", "completed", "true", "yes", "1"]);
 const ABANDONED_STATUS_VALUES = new Set(["abandoned", "dropped", "drop", "quit", "dnf"]);
 const NOW_PLAYING_GAME_STATUS_VALUES = new Set(["now playing"]);
@@ -10087,7 +10099,12 @@ export default function Page() {
     const mediaType = (type === "book-audnexus" || type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
     setIsAddingNewItem(true);
     setAddNewItemType(mediaType === "book" ? "book" : mediaType);
-    const prefill = bookFormat && mediaType === "book" ? { ...data, type: bookFormat } : data;
+    const prefill =
+      bookFormat && mediaType === "book"
+        ? { ...data, type: bookFormat }
+        : mediaType === "game"
+          ? { ...data, ...NEW_GAME_DEFAULTS }
+          : data;
     if (mediaType === "movie") {
       setMovieDetailItem(prefill);
       setMovieDetailsEditOpen(true);
@@ -10109,7 +10126,8 @@ export default function Page() {
     const mediaType = (type === "book-audnexus" || type === "book-apple" || type === "book-hardcover") ? "book" : type as "movie" | "tv" | "game";
     setIsAddingNewItem(true);
     setAddNewItemType(mediaType === "book" ? "book" : mediaType);
-    const prefill: Record<string, unknown> = mediaType === "book" ? { type: bookFormat } : {};
+    const prefill: Record<string, unknown> =
+      mediaType === "book" ? { type: bookFormat } : mediaType === "game" ? { ...NEW_GAME_DEFAULTS } : {};
     if (mediaType === "movie") {
       setMovieDetailItem(prefill);
       setMovieDetailsEditOpen(true);
@@ -10186,6 +10204,7 @@ export default function Page() {
       description: safeStr(item?.overview || item?.description),
       genres: Array.isArray(item?.genres) ? (item.genres as string[]).join(", ") : safeStr(item?.genres),
       platforms: Array.isArray(item?.platforms) ? (item.platforms as string[]).join(", ") : safeStr(item?.platforms),
+      ...NEW_GAME_DEFAULTS,
     };
     setIsAddingNewItem(true);
     setAddNewItemType("game");
