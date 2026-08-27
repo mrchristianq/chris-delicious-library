@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.12";
+const APP_VERSION = "13.1.13";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.13",
+    date: "2026-08-27",
+    notes: [
+      "Faded the Upcoming shelf's \"days remaining\" badge and the TV Watchlist's \"episodes remaining\" label down to a subtle blend by default, popping back to full visibility when you hover the cover.",
+    ],
+  },
   {
     version: "13.1.12",
     date: "2026-08-25",
@@ -29290,6 +29297,7 @@ export default function Page() {
                           {isWoodShelfUpcomingPresentation && upcomingLabel ? (
                             <div
                               aria-hidden
+                              className="shelfUpcomingBadge"
                               style={{
                                 position: "absolute",
                                 left: 6,
@@ -29427,6 +29435,7 @@ export default function Page() {
                           {tvWatchlistEpisodesRemainingLabel ? (
                             <div
                               aria-hidden
+                              className="shelfEpisodesRemainingBadge"
                               style={{
                                 position: "absolute",
                                 top: caseHeight + upcomingMetadataSpace + completedMetadataSpace + metadataLayout.topGap,
@@ -30622,6 +30631,15 @@ export default function Page() {
         }
         .case:hover .case-reflection {
           opacity: 0.82;
+        }
+        .shelfUpcomingBadge,
+        .shelfEpisodesRemainingBadge {
+          opacity: 0.32;
+          transition: opacity 160ms ease;
+        }
+        .case:hover .shelfUpcomingBadge,
+        .case:hover .shelfEpisodesRemainingBadge {
+          opacity: 1;
         }
       `}</style>
     </div>
