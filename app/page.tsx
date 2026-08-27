@@ -458,7 +458,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.13";
+const APP_VERSION = "13.1.14";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +785,13 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.14",
+    date: "2026-08-27",
+    notes: [
+      "On Wood Shelf, moved TV Watchlist's \"episodes remaining\" label into the same overlaid pill module as Upcoming's \"days remaining\" badge - directly on the cover in the same spot, instead of as plain text below it. Other shelf themes are unaffected.",
+    ],
+  },
   {
     version: "13.1.13",
     date: "2026-08-27",
@@ -16466,6 +16473,7 @@ export default function Page() {
   const isWoodShelfPresentation =
     shelfThemeMode === "wood" && !isMobileLayout && activeDisplayMode === "cover";
   const isWoodShelfUpcomingPresentation = isWoodShelfPresentation && isUpcomingView;
+  const isWoodShelfTvWatchlistPresentation = isWoodShelfPresentation && nav === "watchlist-tv";
   const activeShelfBottomOffset = isWoodShelfPresentation
     ? Math.max(0, WOOD_SHELF_LIP_HEIGHT - 3)
     : shelfBottomOffset;
@@ -28814,7 +28822,7 @@ export default function Page() {
                           )
                         : metadataLayout.secondaryFontSize;
                       const tvWatchlistEpisodesMetadataSpace =
-                        nav === "watchlist-tv" ? metadataLayout.completedSpace : 0;
+                        nav === "watchlist-tv" && !isWoodShelfTvWatchlistPresentation ? metadataLayout.completedSpace : 0;
                       const titleMetadataSpace = coverTitlesVisible ? metadataLayout.titleSpace : 0;
                       const lowerMetadataSpace =
                         upcomingMetadataSpace +
@@ -29358,6 +29366,50 @@ export default function Page() {
                             </div>
                           ) : null}
 
+                          {isWoodShelfTvWatchlistPresentation && tvWatchlistEpisodesRemainingLabel ? (
+                            <div
+                              aria-hidden
+                              className="shelfUpcomingBadge"
+                              style={{
+                                position: "absolute",
+                                left: 6,
+                                right: 6,
+                                bottom: 7,
+                                zIndex: 24,
+                                pointerEvents: "none",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                minHeight: Math.max(28, metadataLayout.primaryLineHeight + metadataLayout.secondaryLineHeight + 5),
+                                padding: "3px 5px 4px",
+                                borderRadius: 6,
+                                border: "1px solid rgba(255,255,255,0.22)",
+                                background:
+                                  "linear-gradient(180deg, rgba(20, 13, 7, 0.58) 0%, rgba(20, 13, 7, 0.82) 100%)",
+                                boxShadow: "0 2px 7px rgba(24, 12, 4, 0.34)",
+                                backdropFilter: "blur(3px)",
+                                color: "#fff",
+                                textAlign: "center",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "100%",
+                                  fontSize: metadataLayout.primaryFontSize,
+                                  fontWeight: 750,
+                                  lineHeight: `${metadataLayout.primaryLineHeight}px`,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  textShadow: "0 1px 2px rgba(0,0,0,0.7)",
+                                }}
+                              >
+                                {tvWatchlistEpisodesRemainingLabel}
+                              </div>
+                            </div>
+                          ) : null}
+
                           {isUpcomingView && upcomingLabel && !isWoodShelfUpcomingPresentation ? (
                             <div
                               aria-hidden
@@ -29432,7 +29484,7 @@ export default function Page() {
                             </div>
                           ) : null}
 
-                          {tvWatchlistEpisodesRemainingLabel ? (
+                          {tvWatchlistEpisodesRemainingLabel && !isWoodShelfTvWatchlistPresentation ? (
                             <div
                               aria-hidden
                               className="shelfEpisodesRemainingBadge"
