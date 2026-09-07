@@ -467,7 +467,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.26";
+const APP_VERSION = "13.1.27";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -794,6 +794,11 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.27",
+    date: "2026-09-07",
+    notes: ["Changed the shelf 3D toggle to indicate selection with the active media section's text color instead of a filled pill."],
+  },
   {
     version: "13.1.26",
     date: "2026-09-07",
@@ -28518,9 +28523,9 @@ export default function Page() {
                       <button type="button" aria-label="3D shelf covers" aria-pressed={shelfCover3D}
                         onClick={() => setShelfCover3D((active) => !active)}
                         style={{ height: 30, padding: "0 9px", borderRadius: 9, cursor: "pointer", fontSize: 12, fontWeight: 600,
-                          background: shelfCover3D ? "rgba(70,110,170,0.85)" : isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28,18,10,0.52)",
+                          background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28,18,10,0.52)",
                           border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10,6,3,0.78)",
-                          color: shelfCover3D ? "#fff" : isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250,242,230,0.68)" }}>3D</button>
+                          color: shelfCover3D ? activeSidebarHighlightColors[activeCoverScaleGroup] : "#111111" }}>3D</button>
                     ) : null}
                     {renderDetailsOpenModeButton()}
                     {nav === "smart-custom" && activeSmartList ? (
