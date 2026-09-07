@@ -9,8 +9,8 @@ import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEve
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Papa from "papaparse";
-import { MediaModal } from "./components/MediaModal";
-import { AddItemModal, type AddExtendedType } from "./components/AddItemModal";
+import type { AddExtendedType } from "./components/AddItemModal";
+import { MountOnFirstOpen } from "./components/MountOnFirstOpen";
 import { fetchMediaSearch } from "./lib/mediaSearchClient";
 
 // Statistics and Roadmap are large, rarely-opened views - loading them as separate chunks
@@ -21,18 +21,26 @@ const StatisticsView = dynamic(() => import("./components/StatisticsView").then(
 const RoadmapView = dynamic(() => import("./components/RoadmapView").then((mod) => mod.RoadmapView), {
   loading: () => <div style={{ padding: 40, textAlign: "center", color: "#8a94a3" }}>Loading…</div>,
 });
-import { BookDetailsPage } from "./components/BookDetailsPage";
-import { MovieDetailsPage } from "./components/MovieDetailsPage";
-import { TVDetailsPage } from "./components/TVDetailsPage";
-import { GameDetailsPage } from "./components/GameDetailsPage";
-import { BookDetailsEditModal } from "./components/BookDetailsEditModal";
-import { MovieDetailsEditModal } from "./components/MovieDetailsEditModal";
-import { TVDetailsEditModal } from "./components/TVDetailsEditModal";
-import { GameDetailsEditModal } from "./components/GameDetailsEditModal";
-import { RateItModal } from "./components/RateItModal";
+const deferredViewOptions = {
+  loading: () => <div role="status" style={{ padding: 40, textAlign: "center", color: "#8a94a3" }}>Loading…</div>,
+};
+const deferredEditorOptions = {
+  loading: () => <div role="status" style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100000, padding: "12px 20px", borderRadius: 12, background: "#242830", color: "#fff", pointerEvents: "none" }}>Opening…</div>,
+};
+const BookDetailsPage = dynamic(() => import("./components/BookDetailsPage").then((mod) => mod.BookDetailsPage), { loading: deferredViewOptions.loading });
+const MovieDetailsPage = dynamic(() => import("./components/MovieDetailsPage").then((mod) => mod.MovieDetailsPage), { loading: deferredViewOptions.loading });
+const TVDetailsPage = dynamic(() => import("./components/TVDetailsPage").then((mod) => mod.TVDetailsPage), { loading: deferredViewOptions.loading });
+const GameDetailsPage = dynamic(() => import("./components/GameDetailsPage").then((mod) => mod.GameDetailsPage), { loading: deferredViewOptions.loading });
+const CompletedGallery = dynamic(() => import("./components/CompletedGallery").then((mod) => mod.CompletedGallery), { loading: deferredViewOptions.loading });
+const MediaModal = dynamic(() => import("./components/MediaModal").then((mod) => mod.MediaModal), { loading: deferredEditorOptions.loading });
+const AddItemModal = dynamic(() => import("./components/AddItemModal").then((mod) => mod.AddItemModal), { loading: deferredEditorOptions.loading });
+const BookDetailsEditModal = dynamic(() => import("./components/BookDetailsEditModal").then((mod) => mod.BookDetailsEditModal), { loading: deferredEditorOptions.loading });
+const MovieDetailsEditModal = dynamic(() => import("./components/MovieDetailsEditModal").then((mod) => mod.MovieDetailsEditModal), { loading: deferredEditorOptions.loading });
+const TVDetailsEditModal = dynamic(() => import("./components/TVDetailsEditModal").then((mod) => mod.TVDetailsEditModal), { loading: deferredEditorOptions.loading });
+const GameDetailsEditModal = dynamic(() => import("./components/GameDetailsEditModal").then((mod) => mod.GameDetailsEditModal), { loading: deferredEditorOptions.loading });
+const RateItModal = dynamic(() => import("./components/RateItModal").then((mod) => mod.RateItModal), { loading: deferredEditorOptions.loading });
 import { RolodexCounter } from "./components/RolodexCounter";
 import { MediaDetailsSidebar } from "./components/MediaDetailsSidebar";
-import { CompletedGallery } from "./components/CompletedGallery";
 import { COVER_IMAGE_RADIUS_STYLE } from "./components/coverStyles";
 import {
   isNativeRuntime,
@@ -458,7 +466,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.15";
+const APP_VERSION = "13.1.17";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -785,6 +793,22 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.17",
+    date: "2026-09-07",
+    notes: [
+      "On first web load, show fresh core library data and settings before the TV episode feed finishes, clearly labeling partial counts and withholding TV until its progress check succeeds.",
+      "Keep Statistics behind full-refresh confirmation, preserve native and subsequent refresh behavior, and cancel superseded Sheet requests without changing freshness checks.",
+    ],
+  },
+  {
+    version: "13.1.16",
+    date: "2026-09-06",
+    notes: [
+      "Load full details, Completed Gallery, and editors only when needed to reduce startup JavaScript, preserving editor state after first use.",
+      "Do not report a successful web refresh when a Sheet feed fails or episode progress could not be refreshed; fresh-data checks remain unchanged.",
+    ],
+  },
   {
     version: "13.1.15",
     date: "2026-08-27",
@@ -4263,6 +4287,7 @@ export default function Page() {
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   const [loading, setLoading] = useState(false);
+  const [webCoreSnapshotReady, setWebCoreSnapshotReady] = useState(false);
   const [startupSettingsHydrated, setStartupSettingsHydrated] = useState(false);
   const [startupLockVisible, setStartupLockVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -4314,6 +4339,7 @@ export default function Page() {
   const nativeSyncAfterRemoteRefreshRef = useRef(false);
   const nativeOnlineSnapshotRefreshStartedRef = useRef(false);
   const webInitialFollowupRefreshStartedRef = useRef(false);
+  const webHasLoadedSnapshotRef = useRef(false);
   const webHardRefreshFollowupRef = useRef(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -10935,6 +10961,8 @@ export default function Page() {
 
     let cancelled = false;
     let webFollowupRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshController = new AbortController();
+    setWebCoreSnapshotReady(false);
     setLoading(true);
     setError(null);
 
@@ -10994,26 +11022,36 @@ export default function Page() {
     async function fetchCsv(url: string): Promise<Row[]> {
       const separator = url.includes("?") ? "&" : "?";
       const refreshUrl = `${url}${separator}_cdlSync=${Date.now()}`;
-      const res = await fetch(refreshUrl, { cache: "no-store" });
+      const res = await fetch(refreshUrl, { cache: "no-store", signal: refreshController.signal });
       if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status} ${res.statusText}`);
       const text = await res.text();
       return parseCsvRowsWithWorker(text);
     }
 
     function loadCsvSnapshot() {
+      // Start the large episode feed alongside the core library, but only hold
+      // TV back on first web load. Later refreshes and native seeding stay atomic.
+      const progressiveFirstLoad = !isNativeApp && !webHasLoadedSnapshotRef.current;
+      const episodeResult = Promise.allSettled([
+        tvEpisodesCsvUrl ? fetchCsv(tvEpisodesCsvUrl) : Promise.resolve(null),
+      ]).then(([result]) => result);
       Promise.allSettled([
         tvCsvUrl ? fetchCsv(tvCsvUrl) : Promise.resolve(null),
         booksCsvUrl ? fetchCsv(booksCsvUrl) : Promise.resolve(null),
         moviesCsvUrl ? fetchCsv(moviesCsvUrl) : Promise.resolve(null),
         gamesCsvUrl ? fetchCsv(gamesCsvUrl) : Promise.resolve(null),
         settingsCsvUrl ? fetchCsv(settingsCsvUrl) : Promise.resolve(null),
-        tvEpisodesCsvUrl ? fetchCsv(tvEpisodesCsvUrl) : Promise.resolve(null),
       ])
-      .then((results) => {
-        console.log("[CSV LOAD] Starting CSV parsing...");
+      .then(async (results) => {
+        let tvEpisodesRes = progressiveFirstLoad ? undefined : await episodeResult;
         if (cancelled) return;
 
-        const [tvRes, booksRes, moviesRes, gamesRes, settingsRes, tvEpisodesRes] = results;
+        const [tvRes, booksRes, moviesRes, gamesRes, settingsRes] = results;
+        // A retained snapshot is useful, but it is not proof of a fresh sync.
+        const feedNames = ["TV", "Books", "Movies", "Games", "Settings"];
+        const failedFeeds = results.flatMap((result, index) =>
+          result.status === "rejected" ? [feedNames[index]] : []
+        );
         let nextTvRows: Row[] = [];
         let nextTvEpisodeRows: TVEpisodeRow[] = [];
         let nextBookRows: Row[] = [];
@@ -11024,36 +11062,11 @@ export default function Page() {
         if (tvRes && tvRes.status === "fulfilled" && Array.isArray(tvRes.value)) {
           const data = tvRes.value.filter((r) => Boolean(safeStr(r["Title"])));
           nextTvRows = data;
-          setTvRows(data);
+          if (!progressiveFirstLoad) setTvRows(data);
         } else if (tvRes && tvRes.status === "rejected") {
           setError(`TV CSV: ${tvRes.reason?.message || String(tvRes.reason)}`);
         }
 
-        if (tvEpisodesRes && tvEpisodesRes.status === "fulfilled" && Array.isArray(tvEpisodesRes.value)) {
-          const data = dedupeTvEpisodeRows(
-            tvEpisodesRes.value
-              .map((r) => r as TVEpisodeRow)
-              .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])))
-          );
-          if (data.length > 0 && hasTvEpisodeProgressSnapshot(data)) {
-            nextTvEpisodeRows = data;
-            setTvEpisodeRows(data);
-            setTvEpisodeDataStatus("ready");
-          } else {
-            nextTvEpisodeRows = tvEpisodeRowsRef.current;
-            setTvEpisodeDataStatus(
-              hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current) ? "ready" : "error"
-            );
-          }
-        } else if (tvEpisodesRes && tvEpisodesRes.status === "rejected") {
-          console.warn("TV Episodes CSV:", tvEpisodesRes.reason?.message || String(tvEpisodesRes.reason));
-          if (!hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current)) setTvEpisodeDataStatus("error");
-        } else if (!tvEpisodesCsvUrl) {
-          nextTvEpisodeRows = tvEpisodeRowsRef.current;
-          setTvEpisodeDataStatus(
-            hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current) ? "ready" : "error"
-          );
-        }
 
         if (booksRes && booksRes.status === "fulfilled" && Array.isArray(booksRes.value)) {
           const data = booksRes.value.filter((r) => Boolean(safeStr(r["Title"])));
@@ -11136,6 +11149,45 @@ export default function Page() {
           setError((prev) => (prev ? prev + "\n" : "") + `Settings CSV: ${settingsRes.reason?.message || String(settingsRes.reason)}`);
         }
 
+        if (progressiveFirstLoad) {
+          // Settings are applied by the existing hydration effect before unlock.
+          setWebCoreSnapshotReady(true);
+          tvEpisodesRes = await episodeResult;
+          if (cancelled) return;
+        }
+
+        if (tvEpisodesRes && tvEpisodesRes.status === "fulfilled" && Array.isArray(tvEpisodesRes.value)) {
+          const data = dedupeTvEpisodeRows(
+            tvEpisodesRes.value
+              .map((r) => r as TVEpisodeRow)
+              .filter((r) => Boolean(safeStr(r["ShowTMDB_ID"] || r["ShowTitle"])))
+          );
+          if (data.length > 0 && hasTvEpisodeProgressSnapshot(data)) {
+            nextTvEpisodeRows = data;
+            setTvEpisodeRows(data);
+            setTvEpisodeDataStatus("ready");
+          } else {
+            nextTvEpisodeRows = tvEpisodeRowsRef.current;
+            failedFeeds.push("TV Episodes");
+            setTvEpisodeDataStatus(
+              hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current) ? "ready" : "error"
+            );
+          }
+        } else if (tvEpisodesRes && tvEpisodesRes.status === "rejected") {
+          failedFeeds.push("TV Episodes");
+          console.warn("TV Episodes CSV:", tvEpisodesRes.reason?.message || String(tvEpisodesRes.reason));
+          if (!hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current)) setTvEpisodeDataStatus("error");
+        } else if (!tvEpisodesCsvUrl) {
+          nextTvEpisodeRows = tvEpisodeRowsRef.current;
+          setTvEpisodeDataStatus(
+            hasTvEpisodeProgressSnapshot(tvEpisodeRowsRef.current) ? "ready" : "error"
+          );
+        }
+
+        if (progressiveFirstLoad && !failedFeeds.includes("TV Episodes") && tvRes.status === "fulfilled" && Array.isArray(tvRes.value)) {
+          setTvRows(nextTvRows);
+        }
+
         if (isNativeApp) {
           nativeSeedSnapshot({
             tvRows: nextTvRows,
@@ -11179,9 +11231,13 @@ export default function Page() {
               setLoading(false);
             });
         } else {
-          setSyncState("ok");
-          setSyncMsg("Synced");
-          setLastSyncAt(Date.now());
+          webHasLoadedSnapshotRef.current = true;
+          if (failedFeeds.includes("TV Episodes")) {
+            setError((prev) => (prev ? prev + "\n" : "") + "TV episode progress could not be refreshed. Please retry.");
+          }
+          setSyncState(failedFeeds.length ? "error" : "ok");
+          setSyncMsg(failedFeeds.length ? `Refresh incomplete: ${failedFeeds.join(", ")}. Please retry.` : "Synced");
+          if (!failedFeeds.length) setLastSyncAt(Date.now());
           setLoading(false);
           const shouldRunFollowupRefresh =
             webHardRefreshFollowupRef.current || !webInitialFollowupRefreshStartedRef.current;
@@ -11208,6 +11264,7 @@ export default function Page() {
     return () => {
       cancelled = true;
       if (webFollowupRefreshTimer) clearTimeout(webFollowupRefreshTimer);
+      refreshController.abort();
     };
   }, [tvCsvUrl, tvEpisodesCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp]);
 
@@ -12009,17 +12066,17 @@ export default function Page() {
   }, [getCachedNumericSetting, getSetting, settingsRows]);
 
   useEffect(() => {
-    if (!loading && settingsRows.length === 0) {
+    if (((!loading && syncState !== "idle") || webCoreSnapshotReady) && settingsRows.length === 0) {
       setStartupSettingsHydrated(true);
     }
-  }, [loading, settingsRows.length]);
+  }, [loading, syncState, webCoreSnapshotReady, settingsRows.length]);
 
   useEffect(() => {
     if (!startupLockVisible) return;
-    if (!loading && startupSettingsHydrated) {
+    if ((!loading || (!isNativeApp && webCoreSnapshotReady)) && startupSettingsHydrated) {
       setStartupLockVisible(false);
     }
-  }, [loading, startupLockVisible, startupSettingsHydrated]);
+  }, [loading, isNativeApp, webCoreSnapshotReady, startupLockVisible, startupSettingsHydrated]);
 
   const persistSmartLists = useCallback(
     (nextLists: SmartList[]) => {
@@ -25724,6 +25781,7 @@ export default function Page() {
 
           {loading ? (
             <div
+              role="status"
               style={{
                 background: "#fff",
                 border: sidebarInlineCountBorder,
@@ -25733,7 +25791,9 @@ export default function Page() {
                 marginBottom: 16,
               }}
             >
-              Loading…
+              {!isNativeApp && webCoreSnapshotReady
+                ? "Showing available fresh data. TV shows and episode progress are still loading; library counts are partial."
+                : "Loading…"}
             </div>
           ) : null}
 
@@ -26195,7 +26255,9 @@ export default function Page() {
             </div>
           ) : null}
 
-          {nav === "statistics" ? (
+          {nav === "statistics" && !isNativeApp && (loading || syncState === "error") ? (
+            <div role="status" style={{ padding: 24 }}>Statistics will appear after a successful full library refresh.</div>
+          ) : nav === "statistics" ? (
             <StatisticsView
               books={allBooks}
               movies={allMovies}
@@ -30061,6 +30123,7 @@ export default function Page() {
         </div>
       ) : null}
 
+      <MountOnFirstOpen open={addModalOpen}>
       <AddItemModal
         open={addModalOpen}
         onClose={() => {
@@ -30071,8 +30134,10 @@ export default function Page() {
         onAddManually={handleAddItemManually}
         initialSelection={addModalInitialSelection}
       />
+      </MountOnFirstOpen>
 
       {/* MediaModal for cover/info popup - overlays app */}
+      <MountOnFirstOpen open={modalOpen}>
       <MediaModal
         item={modalItem}
         open={modalOpen}
@@ -30090,7 +30155,9 @@ export default function Page() {
         isReplacingCover={Boolean(modalItem && uploadingCoverForKey === getMediaItemKey(modalItem))}
         replaceCoverError={coverUploadError}
       />
+      </MountOnFirstOpen>
 
+      <MountOnFirstOpen open={bookDetailsEditOpen && Boolean(bookDetailItem)}>
       <BookDetailsEditModal
         open={bookDetailsEditOpen && Boolean(bookDetailItem)}
         item={bookDetailItem}
@@ -30111,7 +30178,9 @@ export default function Page() {
         replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "book"}
       />
+      </MountOnFirstOpen>
 
+      <MountOnFirstOpen open={movieDetailsEditOpen && Boolean(movieDetailItem)}>
       <MovieDetailsEditModal
         open={movieDetailsEditOpen && Boolean(movieDetailItem)}
         item={movieDetailItem}
@@ -30127,7 +30196,9 @@ export default function Page() {
         replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "movie"}
       />
+      </MountOnFirstOpen>
 
+      <MountOnFirstOpen open={tvDetailsEditOpen && Boolean(tvDetailItem)}>
       <TVDetailsEditModal
         open={tvDetailsEditOpen && Boolean(tvDetailItem)}
         item={tvDetailItem}
@@ -30143,7 +30214,9 @@ export default function Page() {
         replaceCoverError={coverUploadError}
         isNew={isAddingNewItem && addNewItemType === "tv"}
       />
+      </MountOnFirstOpen>
 
+      <MountOnFirstOpen open={gameDetailsEditOpen && Boolean(gameDetailEditItem)}>
       <GameDetailsEditModal
         open={gameDetailsEditOpen && Boolean(gameDetailEditItem)}
         item={gameDetailEditItem}
@@ -30164,7 +30237,9 @@ export default function Page() {
         ownershipOptions={gameOwnershipOptions}
         formatOptions={gameFormatOptions}
       />
+      </MountOnFirstOpen>
 
+      <MountOnFirstOpen open={rateItModalOpen}>
       <RateItModal
         open={rateItModalOpen}
         onClose={() => setRateItModalOpen(false)}
@@ -30174,6 +30249,7 @@ export default function Page() {
         highlightColor={rateItHighlightColor}
         coverUrl={rateItItem ? getDisplayCoverUrl(rateItItem) : ""}
       />
+      </MountOnFirstOpen>
 
       {/* Save toast */}
       <div style={{
