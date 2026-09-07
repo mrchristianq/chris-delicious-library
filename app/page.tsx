@@ -466,7 +466,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.17";
+const APP_VERSION = "13.1.23";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -793,6 +793,36 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.23",
+    date: "2026-09-07",
+    notes: ["Added a subtle, top-lit rear-edge outline to the Completed Gallery 3D spine."],
+  },
+  {
+    version: "13.1.22",
+    date: "2026-09-07",
+    notes: ["Replaced copied artwork on 3D cover spines with a softened edge-color wash while preserving the crisp frame."],
+  },
+  {
+    version: "13.1.21",
+    date: "2026-09-07",
+    notes: ["Enabled the reversible Completed Gallery 3D treatment by default and increased its resting angle to 32 degrees for a more visible spine."],
+  },
+  {
+    version: "13.1.20",
+    date: "2026-09-07",
+    notes: ["Framed the optional 3D case spine, concentrated the front frame reflection along the top rail, and removed the pale vertical front bevel for a flatter, boxier appearance."],
+  },
+  {
+    version: "13.1.19",
+    date: "2026-09-07",
+    notes: ["Sharpened the optional Completed Gallery 3D case corners, increased its resting spine angle, and widened its hover movement. Original cover treatment remains unchanged."],
+  },
+  {
+    version: "13.1.18",
+    date: "2026-09-07",
+    notes: ["Added a reversible, off-by-default 3D cover preview in Completed Gallery's Filter panel, with artwork-colored case surfaces and a highlighted front edge. No saved preferences or library records are changed."],
+  },
   {
     version: "13.1.17",
     date: "2026-09-07",

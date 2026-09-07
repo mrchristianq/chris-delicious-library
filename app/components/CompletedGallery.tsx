@@ -380,6 +380,8 @@ export function CompletedGallery({
   const [carouselHeight, setCarouselHeight] = useState(DEFAULT_CAROUSEL_HEIGHT);
   const [coverTilt, setCoverTilt] = useState({ y: COVER_BASE_TILT_Y, x: COVER_BASE_TILT_X });
   const [coverHovering, setCoverHovering] = useState(false);
+  // Session-only preference: no Sheet writes; original treatment remains available.
+  const [physicalCoverPreview, setPhysicalCoverPreview] = useState(true);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const resizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -398,9 +400,10 @@ export function CompletedGallery({
     const rect = event.currentTarget.getBoundingClientRect();
     const xRel = (event.clientX - rect.left) / rect.width - 0.5;
     const yRel = (event.clientY - rect.top) / rect.height - 0.5;
-    const maxTiltDelta = 14;
+    const maxTiltDelta = physicalCoverPreview ? 18 : 14;
     const tiltYDelta = Math.max(-maxTiltDelta, Math.min(maxTiltDelta, xRel * maxTiltDelta * 2));
-    const tiltXDelta = Math.max(-9, Math.min(9, -yRel * 14));
+    const maxTiltX = physicalCoverPreview ? 12 : 9;
+    const tiltXDelta = Math.max(-maxTiltX, Math.min(maxTiltX, -yRel * (physicalCoverPreview ? 20 : 14)));
     coverTiltPendingRef.current = { y: COVER_BASE_TILT_Y + tiltYDelta, x: COVER_BASE_TILT_X + tiltXDelta };
     if (coverTiltRafRef.current === null) {
       coverTiltRafRef.current = window.requestAnimationFrame(flushCoverTilt);
@@ -493,6 +496,9 @@ export function CompletedGallery({
   const completionDisplay = selected ? formatDisplayDate(selected.completionDate) : "";
   const coverUrl = selected ? getDisplayCoverUrl(selected.item) : "";
   const mediaAccent = selected ? MEDIA_ACCENTS[selected.mediaType] : accent;
+  const caseDepth = isMobileLayout ? 24 : 36;
+  const coverCornerRadius = physicalCoverPreview ? 2 : 6;
+  const caseArtwork = `url(${JSON.stringify(coverUrl)})`;
 
   const headerBlock = (
     <div
@@ -614,6 +620,18 @@ export function CompletedGallery({
             zIndex: 20,
           }}
         >
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: textPrimary, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={physicalCoverPreview}
+              onChange={(event) => setPhysicalCoverPreview(event.target.checked)}
+              style={{ accentColor: accent }}
+            />
+            3D cover (preview)
+          </label>
+          <div style={{ color: textMuted, fontSize: 11, lineHeight: 1.4 }}>
+            Artwork-colored case. Uncheck to restore the original cover. 3D starts enabled each time you enter Gallery.
+          </div>
           <div>
             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: textMuted, marginBottom: 8 }}>
               Media Type
@@ -905,6 +923,7 @@ export function CompletedGallery({
           }}
         >
           <div
+            data-cover-treatment={physicalCoverPreview ? "physical" : "original"}
             onMouseEnter={handleCoverMouseEnter}
             onMouseMove={handleCoverMouseMove}
             onMouseLeave={handleCoverMouseLeave}
@@ -912,10 +931,51 @@ export function CompletedGallery({
               position: "relative",
               height: "100%",
               transformStyle: "preserve-3d",
-              transform: `perspective(1400px) rotateY(${coverTilt.y}deg) rotateX(${coverTilt.x}deg)`,
+              transform: `perspective(1400px) rotateY(${coverTilt.y + (physicalCoverPreview ? 22 : 0)}deg) rotateX(${coverTilt.x}deg)`,
               transition: "transform 70ms ease",
             }}
           >
+            {physicalCoverPreview ? (
+              <>
+                {/* Separate planes meet at the artwork edges and extend backward.
+                    Do not put opacity/filter/overflow on their preserve-3d parent. */}
+                <div aria-hidden style={{ position: "absolute", inset: 0, borderRadius: coverCornerRadius, background: "#151719", transform: `translateZ(-${caseDepth}px)`, boxShadow: "0 14px 22px rgba(0,0,0,0.45)", pointerEvents: "none" }} />
+                {(["left", "right"] as const).map((side) => (
+                  <div key={side} aria-hidden data-case-face={side} style={{
+                    position: "absolute", top: 0, left: side === "left" ? 0 : "100%",
+                    width: caseDepth, height: "100%", transformOrigin: "left center",
+                    transform: side === "left" ? "rotateY(-90deg) translateX(-100%)" : "rotateY(90deg)",
+                    background: "#151719", overflow: "hidden",
+                    // Crisp rails on all four sides of the spine, brightest on top.
+                    boxShadow: "inset 0 2px 0 rgba(255,255,255,0.72), inset 0 -2px 0 rgba(0,0,0,0.8), inset 3px 0 0 rgba(12,16,20,0.9), inset -3px 0 0 rgba(150,165,180,0.5)",
+                    backfaceVisibility: "hidden", pointerEvents: "none",
+                  }}>
+                    {/* Stretch only the outermost edge into a color wash. Blur this
+                        flat child, never the parent holding the 3D planes. */}
+                    <div style={{ position: "absolute", inset: "-32px 0", backgroundImage: caseArtwork,
+                      backgroundSize: "10000% 100%", backgroundPosition: `${side} center`,
+                      filter: "blur(24px)", transform: "scaleX(4)", pointerEvents: "none" }} />
+                    <div style={{ position: "absolute", inset: 0,
+                      background: "linear-gradient(90deg, rgba(0,0,0,0.72), rgba(0,0,0,0.18) 76%, rgba(255,255,255,0.16))",
+                      boxShadow: "inset 0 2px 0 rgba(255,255,255,0.72), inset 0 -2px 0 rgba(0,0,0,0.8), inset 3px 0 0 rgba(12,16,20,0.9), inset -3px 0 0 rgba(150,165,180,0.5)" }} />
+                    <div style={{ position: "absolute", top: 0, bottom: 0,
+                      left: side === "left" ? 0 : undefined, right: side === "right" ? 0 : undefined,
+                      width: 1, pointerEvents: "none",
+                      background: "linear-gradient(to bottom, rgba(235,243,250,0.8), rgba(160,180,198,0.55) 25%, rgba(135,155,175,0.35) 85%, rgba(135,155,175,0.2))" }} />
+                  </div>
+                ))}
+                {(["top", "bottom"] as const).map((edge) => (
+                  <div key={edge} aria-hidden data-case-face={edge} style={{
+                    position: "absolute", left: 0, top: edge === "top" ? 0 : "100%",
+                    width: "100%", height: caseDepth, transformOrigin: "center top",
+                    transform: edge === "top" ? "rotateX(90deg) translateY(-100%)" : "rotateX(-90deg)",
+                    backgroundImage: `linear-gradient(rgba(0,0,0,0.45), rgba(255,255,255,0.12)), ${caseArtwork}`,
+                    backgroundSize: "100% 100%, 100% auto", backgroundPosition: `center, center ${edge}`,
+                    backfaceVisibility: "hidden", pointerEvents: "none",
+                  }} />
+                ))}
+              </>
+            ) : null}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={coverUrl}
@@ -927,23 +987,36 @@ export function CompletedGallery({
                 width: "auto",
                 maxWidth: "100%",
                 objectFit: "contain",
-                borderRadius: 6,
+                borderRadius: coverCornerRadius,
                 // Layered box-shadows fake a glossy, reflective case: an outer drop
                 // shadow + solid edge for depth, an inset top-left "glancing light"
                 // streak, an inset left spine, and a bright inset highlight along
                 // the top where the spotlight lands.
-                boxShadow: isDark
+                boxShadow: physicalCoverPreview
+                  ? "0 2px 4px rgba(0,0,0,0.3)"
+                  : isDark
                   ? "0 12px 22px rgba(0,0,0,0.75), -5px 5px 0 rgba(0,0,0,0.35), inset 8px 0 14px -6px rgba(0,0,0,0.7), inset -30px -46px 50px -40px rgba(255,255,255,0.55), inset 0 8px 14px -8px rgba(255,255,255,0.5)"
                   : "0 10px 18px rgba(30,24,18,0.32), -4px 4px 0 rgba(30,24,18,0.18), inset 8px 0 14px -6px rgba(0,0,0,0.44), inset -30px -46px 50px -40px rgba(255,255,255,0.7), inset 0 8px 14px -8px rgba(255,255,255,0.9)",
               }}
             />
+            {physicalCoverPreview ? (
+              <div aria-hidden style={{
+                position: "absolute", inset: 0, borderRadius: coverCornerRadius, pointerEvents: "none",
+                transform: "translateZ(0.2px)",
+                // A narrow top-rail reflection, not a broad vertical bevel over the art.
+                background: "linear-gradient(90deg, rgba(255,255,255,0.18), rgba(255,255,255,0.95) 45%, rgba(255,255,255,0.8) 65%, rgba(255,255,255,0.2))",
+                backgroundSize: "100% 2px",
+                backgroundRepeat: "no-repeat",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5), inset 1px 0 0 rgba(140,155,170,0.4), inset -1px 0 0 rgba(140,155,170,0.4), inset 0 -1px 0 rgba(0,0,0,0.75)",
+              }} />
+            ) : null}
             {/* Glossy hover sheen: two soft bands that fade in on hover, tracking with the tilt like the library's cover hover effect */}
             <div
               aria-hidden
               style={{
                 position: "absolute",
                 inset: 0,
-                borderRadius: 6,
+                borderRadius: coverCornerRadius,
                 opacity: coverHovering ? 1 : 0,
                 transition: "opacity 140ms ease",
                 background: "linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.1) 30%, rgba(255,255,255,0.02) 63%, rgba(0,0,0,0.06) 100%)",
@@ -959,7 +1032,7 @@ export function CompletedGallery({
                 right: 0,
                 top: 0,
                 height: "42%",
-                borderRadius: "6px 6px 0 0",
+                borderRadius: `${coverCornerRadius}px ${coverCornerRadius}px 0 0`,
                 opacity: coverHovering ? 1 : 0,
                 transition: "opacity 140ms ease",
                 background: "linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.1) 55%, rgba(255,255,255,0) 100%)",
