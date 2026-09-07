@@ -1,4 +1,5 @@
 "use client";
+import { DetailsCover3D, Cover3DToggle, useDetailsCover3D } from "./PhysicalCover";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
@@ -296,6 +297,7 @@ export function GameDetailsPage({
   suppressRemoteRelatedCovers = false,
 }: GameDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cover3D, setCover3D] = useDetailsCover3D();
   const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
   const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
@@ -600,6 +602,7 @@ export function GameDetailsPage({
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
+              <Cover3DToggle active={cover3D} onToggle={() => setCover3D((active) => !active)} />
               {chipStatus ? (
                 <span style={{ borderRadius: 999, padding: isMobileLayout ? "6px 10px" : "8px 13px", fontSize: isMobileLayout ? 11 : 12, lineHeight: 1, fontWeight: 850, ...statusColor }}>
                   {chipStatus.charAt(0).toUpperCase() + chipStatus.slice(1)}
@@ -678,7 +681,8 @@ export function GameDetailsPage({
               {coverUrl ? (() => {
                 const externalHref = getIgdbGameUrl(item);
                 const img = (
-                  <img src={coverUrl} alt={title} style={{
+<DetailsCover3D enabled={cover3D} coverUrl={coverUrl} isMobileLayout={isMobileLayout}>
+<img src={coverUrl} alt={title} style={{
                     width: POSTER_W,
                     flexShrink: 0,
                     border: "2px solid rgba(255,255,255,0.16)",
@@ -686,6 +690,7 @@ export function GameDetailsPage({
                     cursor: externalHref ? "pointer" : "default",
                     ...COVER_IMAGE_RADIUS_STYLE,
                   }} />
+</DetailsCover3D>
                 );
                 return externalHref ? (
                   <a

@@ -1,4 +1,5 @@
 "use client";
+import { DetailsCover3D, Cover3DToggle, useDetailsCover3D } from "./PhysicalCover";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
@@ -283,6 +284,7 @@ export function TVDetailsPage({
   suppressRemoteRelatedCovers = false,
 }: TVDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cover3D, setCover3D] = useDetailsCover3D();
   const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
   const [failedCastPhotoUrls, setFailedCastPhotoUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
@@ -769,6 +771,7 @@ export function TVDetailsPage({
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
+              <Cover3DToggle active={cover3D} onToggle={() => setCover3D((active) => !active)} />
               {chipStatus ? (
                 <span style={{ borderRadius: 999, padding: isMobileLayout ? "6px 10px" : "8px 13px", fontSize: isMobileLayout ? 11 : 12, lineHeight: 1, fontWeight: 850, ...statusColor }}>
                   {chipStatus.charAt(0).toUpperCase() + chipStatus.slice(1)}
@@ -832,7 +835,8 @@ export function TVDetailsPage({
               {coverUrl ? (() => {
                 const externalHref = getTmdbTvUrl(item);
                 const img = (
-                  <img src={coverUrl} alt={title} style={{
+<DetailsCover3D enabled={cover3D} coverUrl={coverUrl} isMobileLayout={isMobileLayout}>
+<img src={coverUrl} alt={title} style={{
                     width: POSTER_W,
                     flexShrink: 0,
                     border: "2px solid rgba(255,255,255,0.16)",
@@ -840,6 +844,7 @@ export function TVDetailsPage({
                     cursor: externalHref ? "pointer" : "default",
                     ...COVER_IMAGE_RADIUS_STYLE,
                   }} />
+</DetailsCover3D>
                 );
                 return externalHref ? (
                   <a href={externalHref} target="_blank" rel="noopener noreferrer" title="Open on TMDB" onClick={(event) => handleExternalLinkClick(event, externalHref)} style={{ display: "block", lineHeight: 0, flexShrink: 0 }}>

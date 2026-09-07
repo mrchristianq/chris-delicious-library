@@ -4,6 +4,7 @@
 ===================================================================================== */
 
 "use client";
+import { PhysicalCoverPlanes, PhysicalCoverFrame, useShelfCover3D, DETAILS_COVER_START_Y } from "./components/PhysicalCover";
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -466,7 +467,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.23";
+const APP_VERSION = "13.1.26";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -793,6 +794,21 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.26",
+    date: "2026-09-07",
+    notes: ["Added a remembered 3D toggle to the standard shelf toolbar, using the full-details case and subtle angle without changing list views."],
+  },
+  {
+    version: "13.1.25",
+    date: "2026-09-07",
+    notes: ["Made full-details 3D covers nearly straight-on and remembered the shared full-details 3D preference in this browser between sessions."],
+  },
+  {
+    version: "13.1.24",
+    date: "2026-09-07",
+    notes: ["Added an optional 3D cover button beside Back on all full details pages, sharing the Completed Gallery case and starting angle."],
+  },
   {
     version: "13.1.23",
     date: "2026-09-07",
@@ -4692,6 +4708,7 @@ export default function Page() {
   const [sandboxMode] = useState<boolean>(false);
   const [coverTrimAssets, setCoverTrimAssets] = useState<Record<string, { url: string; aspect: number }>>({});
   const [viewportW, setViewportW] = useState(0);
+  const [shelfCover3D, setShelfCover3D] = useShelfCover3D();
   const [viewportH, setViewportH] = useState(0);
   const [windowScrollY, setWindowScrollY] = useState(0);
   const lastAppliedScrollYRef = useRef(0);
@@ -28497,6 +28514,14 @@ export default function Page() {
                         <line x1="17" y1="18" x2="21" y2="18"></line>
                       </svg>
                     </button>
+                    {activeDisplayMode === "cover" ? (
+                      <button type="button" aria-label="3D shelf covers" aria-pressed={shelfCover3D}
+                        onClick={() => setShelfCover3D((active) => !active)}
+                        style={{ height: 30, padding: "0 9px", borderRadius: 9, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                          background: shelfCover3D ? "rgba(70,110,170,0.85)" : isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28,18,10,0.52)",
+                          border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10,6,3,0.78)",
+                          color: shelfCover3D ? "#fff" : isSimpleHeaderTheme ? simpleHeaderTextColor : "rgba(250,242,230,0.68)" }}>3D</button>
+                    ) : null}
                     {renderDetailsOpenModeButton()}
                     {nav === "smart-custom" && activeSmartList ? (
                       <button
@@ -28835,7 +28860,7 @@ export default function Page() {
                       const statusRegionTopPx = coverVisualTopPx;
                       const statusRegionWidthPx = coverVisualWidthPx;
                       const statusRegionHeightPx = coverVisualHeightPx;
-                      const coverImageRadiusPx = 6;
+                      const coverImageRadiusPx = shelfCover3D ? 2 : 6;
                       const coverTrimAsset = selectedCoverUrl ? coverTrimAssets[selectedCoverUrl] : null;
                       const macDisplayCoverUrl = (DISABLE_INSETS || isMacCoverMode) && coverTrimAsset ? coverTrimAsset.url : selectedCoverUrl;
                       const rawCoverObjectFit = coverTrimAsset ? "cover" : "contain";
@@ -29027,15 +29052,22 @@ export default function Page() {
                           onMouseLeave={handleCaseMouseLeave}
                           >
                           <div
-                            className="caseSurface glossyTileHighlight glossyTileHighlight--cover glossyTileHighlightInner"
+                            className={shelfCover3D ? "caseSurface caseSurface3D" : "caseSurface glossyTileHighlight glossyTileHighlight--cover glossyTileHighlightInner"}
                             style={{
                               borderRadius: coverImageRadiusPx,
                               background: "transparent",
                               overflow: "visible",
                               outline: sandboxMode ? "1px dashed rgba(255, 214, 102, 0.35)" : "none",
+                              transformStyle: shelfCover3D ? "preserve-3d" : undefined,
+                              transform: shelfCover3D ? `translate3d(var(--dragPushX, 0px), var(--dragPushY, 0px), 0) perspective(1400px) rotateY(calc(${DETAILS_COVER_START_Y}deg + clamp(-3deg, var(--tiltY, 0deg), 3deg))) rotateX(clamp(-2deg, var(--tiltX, 0deg), 2deg)) rotateZ(var(--dragShakeDeg, 0deg)) scale(var(--dragScale, 1))` : undefined,
                             }}
                           >
                           <>
+                                {shelfCover3D && selectedCoverUrl ? (
+                                  <div aria-hidden style={{ position: "absolute", top: insetTop, right: insetRight, bottom: insetBottom, left: insetLeft, transformStyle: "preserve-3d", pointerEvents: "none" }}>
+                                    <PhysicalCoverPlanes coverUrl={selectedCoverUrl} isMobileLayout={isMobileLayout} />
+                                  </div>
+                                ) : null}
                                 <div
                                     style={{
                                       position: "absolute",
@@ -29049,7 +29081,7 @@ export default function Page() {
                                       borderRadius: coverImageRadiusPx,
                                       clipPath: undefined,
                                       background: COVER_STAGE_BACKGROUND,
-                                      boxShadow: coverSurfaceBoxShadow,
+                                      boxShadow: shelfCover3D ? "0 2px 4px rgba(0,0,0,0.3)" : coverSurfaceBoxShadow,
                                     }}
                                   >
                                 {sandboxMode ? (
@@ -29289,6 +29321,11 @@ export default function Page() {
                                   </div>
                                 )}
                               </div>
+                                {shelfCover3D && selectedCoverUrl ? (
+                                  <div aria-hidden style={{ position: "absolute", top: insetTop, right: insetRight, bottom: insetBottom, left: insetLeft, transformStyle: "preserve-3d", pointerEvents: "none" }}>
+                                    <PhysicalCoverFrame />
+                                  </div>
+                                ) : null}
                             </>
 
                           </div>

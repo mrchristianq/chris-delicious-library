@@ -1,4 +1,5 @@
 "use client";
+import { DetailsCover3D, Cover3DToggle, useDetailsCover3D } from "./PhysicalCover";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
@@ -455,6 +456,7 @@ export function BookDetailsPage({
   highlightColor,
 }: BookDetailsPageProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cover3D, setCover3D] = useDetailsCover3D();
   const [failedRelatedCoverUrls, setFailedRelatedCoverUrls] = useState<Set<string>>(() => new Set());
   const detailScale = useDesktopDetailScale(isMobileLayout);
   const { ref: stageRef, scale: fitScale } = useFitToViewportScale<HTMLDivElement>(isMobileLayout);
@@ -924,6 +926,7 @@ export function BookDetailsPage({
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
+              <Cover3DToggle active={cover3D} onToggle={() => setCover3D((active) => !active)} />
               {chips.length > 0
                 ? chips.map((chip, index) => {
                   const isCompletedChip = chip.toLowerCase() === "completed";
@@ -983,7 +986,8 @@ export function BookDetailsPage({
                       onClick={(event) => handleExternalLinkClick(event, externalHref)}
                       style={{ display: "block", lineHeight: 0 }}
                     >
-                      <img
+<DetailsCover3D enabled={cover3D} coverUrl={coverUrl} isMobileLayout={isMobileLayout}>
+<img
                         src={coverUrl}
                         alt={title}
                         style={{
@@ -999,9 +1003,11 @@ export function BookDetailsPage({
                           ...COVER_IMAGE_RADIUS_STYLE,
                         }}
                       />
+</DetailsCover3D>
                     </a>
                   ) : (
-                    <img
+<DetailsCover3D enabled={cover3D} coverUrl={coverUrl} isMobileLayout={isMobileLayout}>
+<img
                       src={coverUrl}
                       alt={title}
                       style={{
@@ -1016,6 +1022,7 @@ export function BookDetailsPage({
                         ...COVER_IMAGE_RADIUS_STYLE,
                       }}
                     />
+</DetailsCover3D>
                   );
                 })()}
               </div>
