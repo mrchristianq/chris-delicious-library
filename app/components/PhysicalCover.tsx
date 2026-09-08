@@ -50,8 +50,8 @@ return function useCoverPreference() {
 export const useDetailsCover3D = createCoverPreference("cdl:details-cover-3d");
 export const useShelfCover3D = createCoverPreference("cdl:shelf-cover-3d");
 
-export function PhysicalCoverPlanes({ coverUrl, isMobileLayout }: { coverUrl: string; isMobileLayout: boolean }) {
-  const caseDepth = isMobileLayout ? 24 : 36;
+export function PhysicalCoverPlanes({ coverUrl, isMobileLayout, depthScale = 1 }: { coverUrl: string; isMobileLayout: boolean; depthScale?: number }) {
+  const caseDepth = (isMobileLayout ? 24 : 36) * depthScale;
   const coverCornerRadius = 2;
   const caseArtwork = `url(${JSON.stringify(coverUrl)})`;
   return <>                {/* Separate planes meet at the artwork edges and extend backward.

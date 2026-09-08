@@ -936,7 +936,7 @@ export function CompletedGallery({
           >
             {physicalCoverPreview ? (
               <>
-                <PhysicalCoverPlanes coverUrl={coverUrl} isMobileLayout={isMobileLayout} />
+                <PhysicalCoverPlanes coverUrl={coverUrl} isMobileLayout={isMobileLayout} depthScale={0.82} />
               </>
             ) : null}
             {/* eslint-disable-next-line @next/next/no-img-element */}
