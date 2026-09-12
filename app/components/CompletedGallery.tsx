@@ -931,12 +931,15 @@ export function CompletedGallery({
               height: "100%",
               transformStyle: "preserve-3d",
               transform: `perspective(1400px) rotateY(${coverTilt.y + (physicalCoverPreview ? PHYSICAL_COVER_START_Y - COVER_BASE_TILT_Y : 0)}deg) rotateX(${coverTilt.x}deg)`,
-              transition: "transform 70ms ease",
+              // Pointer updates already run once per animation frame. Avoid
+              // continuously restarting interpolation between those frames.
+              transition: physicalCoverPreview && coverHovering ? "none" : "transform 70ms ease",
+              willChange: physicalCoverPreview ? "transform" : undefined,
             }}
           >
             {physicalCoverPreview ? (
               <>
-                <PhysicalCoverPlanes coverUrl={coverUrl} isMobileLayout={isMobileLayout} depthScale={0.82} />
+                <PhysicalCoverPlanes coverUrl={coverUrl} isMobileLayout={isMobileLayout} depthScale={0.82} smoothEdges />
               </>
             ) : null}
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -951,6 +954,9 @@ export function CompletedGallery({
                 maxWidth: "100%",
                 objectFit: "contain",
                 borderRadius: coverCornerRadius,
+                backfaceVisibility: physicalCoverPreview ? "hidden" : undefined,
+                outline: physicalCoverPreview ? "1px solid transparent" : undefined,
+                imageRendering: "auto",
                 // Layered box-shadows fake a glossy, reflective case: an outer drop
                 // shadow + solid edge for depth, an inset top-left "glancing light"
                 // streak, an inset left spine, and a bright inset highlight along

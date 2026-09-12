@@ -50,7 +50,7 @@ return function useCoverPreference() {
 export const useDetailsCover3D = createCoverPreference("cdl:details-cover-3d");
 export const useShelfCover3D = createCoverPreference("cdl:shelf-cover-3d");
 
-export function PhysicalCoverPlanes({ coverUrl, isMobileLayout, depthScale = 1 }: { coverUrl: string; isMobileLayout: boolean; depthScale?: number }) {
+export function PhysicalCoverPlanes({ coverUrl, isMobileLayout, depthScale = 1, smoothEdges = false }: { coverUrl: string; isMobileLayout: boolean; depthScale?: number; smoothEdges?: boolean }) {
   const caseDepth = (isMobileLayout ? 24 : 36) * depthScale;
   const coverCornerRadius = 2;
   const caseArtwork = `url(${JSON.stringify(coverUrl)})`;
@@ -66,6 +66,7 @@ export function PhysicalCoverPlanes({ coverUrl, isMobileLayout, depthScale = 1 }
                     // Crisp rails on all four sides of the spine, brightest on top.
                     boxShadow: "inset 0 2px 0 rgba(255,255,255,0.72), inset 0 -2px 0 rgba(0,0,0,0.8), inset 3px 0 0 rgba(12,16,20,0.9), inset -3px 0 0 rgba(150,165,180,0.5)",
                     backfaceVisibility: "hidden", pointerEvents: "none",
+                    outline: smoothEdges ? "1px solid transparent" : undefined,
                   }}>
                     {/* Stretch only the outermost edge into a color wash. Blur this
                         flat child, never the parent holding the 3D planes. */}
@@ -89,6 +90,7 @@ export function PhysicalCoverPlanes({ coverUrl, isMobileLayout, depthScale = 1 }
                     backgroundImage: `linear-gradient(rgba(0,0,0,0.45), rgba(255,255,255,0.12)), ${caseArtwork}`,
                     backgroundSize: "100% 100%, 100% auto", backgroundPosition: `center, center ${edge}`,
                     backfaceVisibility: "hidden", pointerEvents: "none",
+                    outline: smoothEdges ? "1px solid transparent" : undefined,
                   }} />
                 ))}</>;
 }

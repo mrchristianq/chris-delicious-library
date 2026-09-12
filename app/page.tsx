@@ -467,7 +467,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.28";
+const APP_VERSION = "13.1.29";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -794,6 +794,11 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.29",
+    date: "2026-09-12",
+    notes: ["Improved Completed Gallery 3D edge smoothing and removed overlapping hover interpolation to reduce shimmer during rotation."],
+  },
   {
     version: "13.1.28",
     date: "2026-09-07",
