@@ -2,6 +2,10 @@
 
 These files are safe replacement sources for the Apps Script project. They are split so the spreadsheet menu and the web app do not overwrite each other.
 
+`MetadataBatch.gs` is an archival/test copy of the shared helper currently appended
+to live `Movies.gs`, **not an additional drop-in file**. Keep only one definition.
+See `../docs/METADATA_BATCH_FIX.md` for the 13.1.30 Movie/TV batch integration and usage.
+
 ## Replace these Apps Script files
 
 1. Replace `WebApp.gs` with `apps-script-clean/WebApp.gs`.

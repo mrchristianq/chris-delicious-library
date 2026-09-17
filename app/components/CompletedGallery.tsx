@@ -1311,10 +1311,12 @@ export function CompletedGallery({
           const thumbHeight = isMobileLayout
             ? 96
             : Math.max(56, carouselHeight - 42 - 14 - labelHeight);
+          // Definite widths avoid Safari's intrinsic image sizing in nested flex items.
+          const thumbWidth = thumbHeight * (isSquareCover ? 1 : 2 / 3);
           return (
             <div
               key={entry.itemKey}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: "0 0 auto" }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: `0 0 ${thumbWidth}px`, width: thumbWidth, minWidth: 0 }}
             >
               <button
                 ref={(el) => { itemRefs.current[index] = el; }}
@@ -1327,8 +1329,9 @@ export function CompletedGallery({
                   position: "relative",
                   flex: "0 0 auto",
                   height: thumbHeight,
-                  width: "auto",
-                  aspectRatio: isSquareCover ? "1 / 1" : "2 / 3",
+                  width: thumbWidth,
+                  minWidth: 0,
+                  boxSizing: "border-box",
                   borderRadius: 8,
                   overflow: "hidden",
                   padding: 0,

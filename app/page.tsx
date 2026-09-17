@@ -467,7 +467,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.29";
+const APP_VERSION = "13.1.31";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -794,6 +794,16 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.31",
+    date: "2026-09-16",
+    notes: ["Fixed oversized Completed Gallery carousel spacing in Safari with explicit thumbnail and item widths."],
+  },
+  {
+    version: "13.1.30",
+    date: "2026-09-15",
+    notes: ["Repaired Movie and TV metadata batches with resumable row progress, time-bounded runs, and error checkpoints while preserving existing cells."],
+  },
   {
     version: "13.1.29",
     date: "2026-09-12",

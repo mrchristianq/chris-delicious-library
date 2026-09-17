@@ -1,6 +1,6 @@
 [package]
 name = "chris-delicious-library"
-version = "13.1.29"
+version = "13.1.31"
 description = "Chris' Delicious Library"
 authors = ["Chris"]
 edition = "2021"
