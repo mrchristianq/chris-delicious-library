@@ -467,7 +467,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.31";
+const APP_VERSION = "13.1.32";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -794,6 +794,11 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "13.1.32",
+    date: "2026-09-30",
+    notes: ["Added all supported TV watch statuses, including Pending Release, to Add and Edit TV Show using the shared status list."],
+  },
   {
     version: "13.1.31",
     date: "2026-09-16",

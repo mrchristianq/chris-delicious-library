@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { TV_WATCH_STATUS_OPTIONS } from "../lib/mediaStatusOptions";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type TVDetailsEditModalProps = {
@@ -35,15 +36,12 @@ type DiffRow = {
   selected: boolean;
 };
 
-const WATCH_STATUS_OPTIONS = [
-  "Started", "Completed", "Backlog", "Abandoned", "Watch Next", "Paused", "Pending Return",
-] as const;
 const SHOW_STATUS_OPTIONS = ["Ended", "Returning Series", "Canceled"] as const;
 
 const TV_FIELDS: FieldDef[] = [
   { key: "title",            label: "Title",            wide: true },
   { key: "year",             label: "Year" },
-  { key: "watchStatus",      label: "Watch Status",      options: WATCH_STATUS_OPTIONS },
+  { key: "watchStatus",      label: "Watch Status",      options: TV_WATCH_STATUS_OPTIONS },
   { key: "showStatus",       label: "Show Status",       options: SHOW_STATUS_OPTIONS },
   { key: "dateCompleted",    label: "Date Completed",    isDate: true },
   { key: "firstAirDate",     label: "First Air Date",    isDate: true },
