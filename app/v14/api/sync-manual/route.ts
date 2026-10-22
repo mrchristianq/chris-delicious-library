@@ -86,7 +86,9 @@ export async function POST(request:Request){
   const plan=readStoredMixedPlan(snapshot.settings,body.libraryId,body.fingerprint);if(plan.ownerId!==owner)throw new Error("Wrong run owner");
   if(storedMixedPackage(plan).parts.length&&!(await readMixedContext(client,owner,body.libraryId)).allowChunkedPlans)throw new Error("Larger package guards are not installed");
   if(plan.creates&&!(await readMixedContext(client,owner,body.libraryId)).allowSheetImports)throw new Error("New-item imports not installed");
-  const context=await readMixedContext(client,owner,body.libraryId,plan.runId);
+  // The run-specific overload is exclusively for new-item runs: SQL proves
+  // original metadata membership there and rejects ordinary update runs.
+  const context=await readMixedContext(client,owner,body.libraryId,plan.creates?plan.runId:undefined);
   if(plan.identityReview&&!context.allowReviewedIdentities)throw new Error("Identity safety checks are not installed");
   if(plan.selection&&!context.allowSelectedItems)throw new Error("Selected-item controls unavailable");
   if(!context.activePlan&&context.runStatus!=="completed"&&(await prepare(client,owner,body.libraryId,plan.selection?.keys)).plan.fingerprint!==plan.fingerprint)throw new Error("Approval or source changed before Apply");

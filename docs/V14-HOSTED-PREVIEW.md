@@ -1,4 +1,8 @@
-# v14.0.70 — hosted preview preparation
+# v14.0.71 — hosted preview preparation
+
+## Existing-item resume preparation fix — October 22, 2026
+
+Version70 committed/pushed as8b78604 to isolated branch only. Normal Git preview dpl_5wg1ZwwUdHB4xWjA97ZSde81qmpD deployed; existing test alias explicitly reassigned from67. GET readiness200, POST503 before backup/dispatch; run remains running, original values restored. Read-only owner-scoped reproduction proves the unconditional two-argument run-context RPC rejects this ordinary update run because its SQL overload requires creates. Version71 calls that overload only for new-item plans, matching the execution adapter's existing fresh-source logic. The same read-only route diagnostic now reaches the deliberately blocked backup boundary. No live mutation from diagnosis, no SQL/security changes. Regression exercises ordinary active resume and preserves the new-item original-metadata guard. Hosted completion still requires actual resume/readback after deployment; do not mark the saved run complete manually.
 
 ## Resume fix prepared, hosted verification gated
 

@@ -29,7 +29,7 @@ export default async function V14Page() {
   }
   return <main className="v14-root">
     <div className={`v14-panel ${libraries?.length ? "v14-wide" : ""}`}>
-<span className="v14-badge">PRIVATE TEST · 14.0.70</span>
+<span className="v14-badge">PRIVATE TEST · 14.0.71</span>
       <h1>Chris’ Delicious Library</h1>
       <p className="v14-intro">Your next chapter, safely separated.</p>
       <div className="v14-safety">Original app unchanged · Original Google Sheet untouched · Sync off</div>
