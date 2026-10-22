@@ -14,6 +14,9 @@ export async function stageMixedPlan(writer:SettingWriter,plan:TrackerMixedPlan,
   const key=`__cdl_tracker_mixed_v1:${plan.fingerprint}`;
   const readSnapshot=async()=>{const snapshot=await readLibrary(writer,plan.libraryId);if(snapshot.owner_id!==plan.ownerId)throw new Error("Wrong run owner");return snapshot;};
   const read=async()=>(await readSnapshot()).settings.find(s=>s.key===key);
+  const alreadyStored=await read();
+  if(alreadyStored)readStoredMixedPlan((await readSnapshot()).settings,plan.libraryId,plan.fingerprint);
+  else {
   for(const part of packaged.parts){
     const existing=(await readSnapshot()).settings.find(s=>s.key===part.key);
     if(existing&&existing.value.value!==part.value)throw new Error("Immutable run part changed");
@@ -23,6 +26,7 @@ export async function stageMixedPlan(writer:SettingWriter,plan:TrackerMixedPlan,
   if(!existing){try{await saveSetting(writer,plan.libraryId,key,null,requestId,value);}catch(cause){if((await read())?.value.value!==value)throw cause;}}
   if((await read())?.value.value!==value)throw new Error("Combined package readback failed");
   readStoredMixedPlan((await readSnapshot()).settings,plan.libraryId,plan.fingerprint);
+  }
   const journal=createTrackerJournalStore(writer,plan.libraryId,mixedJournal(plan));
   if(!await journal.read()){try{await journal.save(null,randomUUID(),mixedJournal(plan));}catch(cause){if(!await journal.read())throw cause;}}
   return journal;

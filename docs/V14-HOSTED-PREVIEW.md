@@ -1,6 +1,24 @@
-# v14.0.67 — hosted preview preparation
+# v14.0.70 — hosted preview preparation
+
+## Resume fix prepared, hosted verification gated
+
+Read-only diagnosis on the actual saved restoration package: stored gzip length67494 vs locally regenerated70674; decompressed bytes identical; SQL cursor packageHash matches original stored manifest. Fixed readiness/staging/claim to validate logical content and retain the original stored manifest seal instead of recompressing it for identity. Existing SQL migrations, journal state, plan fingerprint and scope/CAS guards remain unchanged. Added compression-variation/corruption and no-restaging readiness regressions;437 tests, build, TypeScript, lint, Rust pass. Source changes uncommitted/unpushed, version70.
+
+Direct CLI preview `dpl_DVBekxwAa3qhpPXZWHo7EvisqD58` lacked worktree Git metadata and v14 branch config. Retried from private normal checkout `preview-upload-B4BS3Y/source` (actual working files copied,14 tracked modified files SHA256 compared equal, no credentials copied, no new commit), yielding `dpl_5frFkD73oaAGp5gt29BP153nxiva`; branch configuration loaded but platform branch-URL safety gate still rejects manual CLI runtime. Temporary assignment of the existing v14 alias did not change this; restored alias to original67 deployment `dpl_GwczQCY9ejgqmkMTPH3dVCet8MnE`. Do not weaken or spoof system variables to enable it. Need explicit commit/push approval for isolated branch and normal Git preview, then verify saved run resume through owner UI. No production change or run-completion bypass. Temporary upload checkout retained privately; no local file deletion.
+
+## Hosted live acceptance — October 22, 2026, 07:55–08:03 EDT
+
+Owner signed into hosted67. Fresh comparison2340 records / zero differences. Authorized reversible test used Driver's Ed (`9d1c39c9-6f7f-59b3-ad78-289c24eb6018`): full edit personal rating7.1→7.2, independently confirmed Supabase revision2, Watched status/date2026-05-29 unchanged. Selected-row export completed run `847087c6-9a27-4752-8b01-f79ca61f2caf` at11:57:32UTC. Private Storage upload/download SHA256 receipt `4b2625f7dc64d3a69fffe4b01ce6a76d4faba2d3a8b9c18912b84bdbdce10937`,791416bytes, bucket remains private. Actual displayed next comparison confirmed Sheet7.2 / app7.1 after restoration.
+
+Restoration saved rating7.1 via hosted UI. Audit patches are exactly personal_rating7.2 and7.1; comparison of original-before vs final-after excluding revision/updated_at confirms all original item content restored. Independent fresh Google read confirms unique Movies row Driver's Ed,MyRating7.1,TMDB_Rating6.5,Watch StatusWatched,WatchDate2026-05-29. Both app and tracker values restored; no duplicate record created.
+
+BLOCKER: restoration run `9495dae6-da12-4794-8541-3325dc00917a` remains running after navigation away during final confirmation. Resume Saved Sync GET readiness returns the generic unavailable message. Stored active plan decodes correctly, selection is this one item, all context safety flags true. Exact failing readiness precondition not yet established; do not infer cause from the generic message or claim resume acceptance. Two private recovery objects total1582827bytes. No manual completion, baseline bypass, forced replay, original Sheet/production writes, new deployment or commit performed during this test. Release acceptance is incomplete until this hosted resume failure is diagnosed and verified.
 
 ## Isolated branch publication — October 22, 2026
+
+Published commit `d64e09c` only to `codex/v14-supabase`. Validation:431 tests, production build, TypeScript and Rust pass; focused lint zero errors/three existing image warnings. Staged credential scan found no credential content or prohibited paths. Installed SQL sources retained byte-identical (existing extra EOF blanks not rewritten); whitespace check otherwise passes. Generated native schema changes remain local/unstaged.
+
+Branch-specific Preview configuration now installed: server-only Google JSON Secret plus12 runtime configuration keys, exact platform-provided origin `https://chris-delicious-library-git-c-aa6f14-chris-qs-projects-823e8c6f.vercel.app`, manual-only writes/sync, original tracker excluded. Verified Vercel metadata shows only Preview / `codex/v14-supabase`. Initial Git preview ready; rebuild `dpl_GwczQCY9ejgqmkMTPH3dVCet8MnE` started to consume configuration. Supabase dashboard login expired; GitHub callback returned504 while dashboard displayed a technical-issue banner. No Supabase redirect changed yet; authenticated hosted acceptance pending. Production remains v13.1.32.
 
 Owner approved committing and pushing only `codex/v14-supabase`; `dev`, `main`, production and the original tracker stay unchanged. Verified separate CLI account `mrchristianq`, team `team_LLQnWpKTs91ldayTlJsmLWpK`, existing project `prj_teKGJ7tEwZ7BecFwicZjTbUUmHJz`. Branch-scoped secret creation was refused before publication because the remote branch did not exist; no secret was saved by that attempt.
 

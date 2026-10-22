@@ -478,7 +478,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.67";
+const APP_VERSION = "14.0.70";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -805,6 +805,21 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "14.0.70",
+    date: "2026-10-22",
+    notes: ["Resume saved syncs using the original verified package seal, without depending on gzip output matching across runtimes."],
+  },
+  {
+    version: "14.0.69",
+    date: "2026-10-22",
+    notes: ["Show safe, specific Supabase password-change diagnostics instead of guessing the failure cause."],
+  },
+  {
+    version: "14.0.68",
+    date: "2026-10-22",
+    notes: ["Add a local-only password-change form for the verified signed-in test-library owner."],
+  },
   {
     version: "14.0.67",
     date: "2026-10-22",

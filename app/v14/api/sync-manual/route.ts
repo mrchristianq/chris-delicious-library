@@ -6,7 +6,7 @@ import {readTrackerConnection} from "../../../lib/v14/tracker-read-server";
 import {readTrackerBaselineState} from "../../../lib/v14/tracker-baseline-read";
 import {compileTrackerMixedPlan,compileMixedNewItemPlan,compileMixedSameItemPlan,compileMixedSeparateEditionPlan,mixedHash,mixedRunId} from "../../../lib/v14/tracker-mixed-plan";
 import {attachIdentityReviews} from "../../../lib/v14/tracker-identity-review";
-import {storedMixedPackage,readStoredMixedPlan,preflightMixedPackage} from "../../../lib/v14/tracker-mixed-package";
+import {storedMixedPackage,readStoredMixedPlan,readStoredMixedPackage,preflightMixedPackage} from "../../../lib/v14/tracker-mixed-package";
 import {attachNewItemDecisions} from "../../../lib/v14/tracker-new-decisions";
 import {previewTrackerThreeWay} from "../../../lib/v14/tracker-three-way";
 import {trackerRowIdentity} from "../../../lib/v14/tracker-write-plan";
@@ -47,10 +47,10 @@ async function prepare(client:Client,owner:string,id:string,items?:string[]){
  if(ir&&items&&!before.activePlan){if(items.length!==1)throw new Error("Apply identity reviews individually");const {fingerprint:old,runId:oldId,...body}=plan;void old;void oldId;const selectedBody={...body,selection:{keys:items,itemIds:[plan.creates?.[0].input.itemId??plan.identityReview!.candidateId]}};const fingerprint=mixedHash(selectedBody);plan={...selectedBody,fingerprint,runId:mixedRunId(fingerprint)};}
  if(plan.ownerId!==owner)throw new Error("Wrong run owner");
   if(plan.exports.some(s=>s.kind==="add-record")&&!before.allowAdditions)throw new Error("Approved additions are not installed yet");
- const packaged=storedMixedPackage(plan);
- if(packaged.parts.length&&!before.allowChunkedPlans)throw new Error("Larger package guards are not installed");
+ const saved=snapshot.settings.some(s=>s.key===`__cdl_tracker_mixed_v1:${plan.fingerprint}`)?readStoredMixedPackage(snapshot.settings,id,plan.fingerprint):null;
+ if((saved?saved.partCount:storedMixedPackage(plan).parts.length)&&!before.allowChunkedPlans)throw new Error("Larger package guards are not installed");
  if(!before.activePlan)preflightMixedPackage(plan,snapshot.items,connection.tables,connection.grids);
- const staged=snapshot.settings.some(s=>s.key===`__cdl_tracker_mixed_v1:${plan.fingerprint}`&&s.value.value===packaged.manifest)&&snapshot.settings.some(s=>s.key===`__cdl_tracker_run_v1:${plan.fingerprint}`);
+ const staged=!!saved&&snapshot.settings.some(s=>s.key===`__cdl_tracker_run_v1:${plan.fingerprint}`);
  if(staged)readStoredMixedPlan(snapshot.settings,id,plan.fingerprint);
  if(plan.creates&&!before.allowSheetImports)throw new Error("New-item database guards are not installed");
  return {plan,summary:{fingerprint:plan.fingerprint,imports:plan.imports.length+(plan.creates?.length??0),exports:plan.exports.length,...(plan.selection?{items:plan.selection.keys}:{}),staged,resume:!!before.activePlan,writeEnabled:manualSyncEnabled()}};

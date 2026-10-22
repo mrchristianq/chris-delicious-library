@@ -29,6 +29,16 @@ export function readStoredMixedPlan(settings:SnapshotSetting[],libraryId:string,
  });
  return decodeMixedPlan(values.join(''),libraryId,fingerprint);
 }
+
+/** Compression bytes can differ across zlib versions/architectures. Validate
+ * the logical sealed plan, but retain the ORIGINAL manifest for SQL's seal. */
+export function readStoredMixedPackage(settings:SnapshotSetting[],libraryId:string,fingerprint:string){
+ const matches=settings.filter(s=>s.key===`__cdl_tracker_mixed_v1:${fingerprint}`);
+ if(matches.length!==1)throw new Error("Saved run package unavailable or duplicated");
+ const plan=readStoredMixedPlan(settings,libraryId,fingerprint),manifest=matches[0].value.value as string;
+ const parts=manifest.startsWith(prefix)?JSON.parse(manifest.slice(prefix.length)).hashes.length:0;
+ return {plan,manifest,hash:hash(manifest),partCount:parts};
+}
 /** All known transport/journal/storage/readback limits are checked before a
  * run is claimed. No network dispatch or cached source is involved. */
 export function preflightMixedPackage(plan:TrackerMixedPlan,items:SnapshotItem[],tables:TrackerTable[],grids:TrackerGrid[]){

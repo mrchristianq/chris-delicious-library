@@ -7,7 +7,8 @@ import {readLibrary} from "./read-library";
 import {readBoundedSnapshot} from "./bounded-snapshot";
 import {createTrackerJournalStore} from "./tracker-journal-store";
 import {mixedJournal,mixedHash} from "./tracker-mixed-plan";
-import {mixedPackageHash,mixedSummary} from "./tracker-mixed-store";
+import {mixedSummary} from "./tracker-mixed-store";
+import {readStoredMixedPackage} from "./tracker-mixed-package";
 import {trackerRowIdentity} from "./tracker-write-plan";
 import {trackerFieldValue} from "./tracker-reconcile";
 import {runNewTrackerImport} from "./tracker-new-import";
@@ -63,7 +64,7 @@ export function createMixedRunAdapter(client:Client,plan:TrackerMixedPlan,transp
         }
       });
     },
-    async claim(p){if(await writer.authenticatedOwner()!==p.ownerId)throw new Error("Run owner unavailable");const r=await client.rpc("cdl_v14_tracker_claim",{p_library_id:p.libraryId,p_run_id:p.runId,p_plan:p.fingerprint,p_package_hash:mixedPackageHash(p),p_summary:mixedSummary(p)}),v=r.data as {runId:string;plan:string;status:"running"|"completed";receipt?:MixedReceipt}|null;if(r.error||!v||v.runId!==p.runId||v.plan!==p.fingerprint||!["running","completed"].includes(v.status))throw new Error("Run claim not confirmed");return v;},
+    async claim(p){if(await writer.authenticatedOwner()!==p.ownerId)throw new Error("Run owner unavailable");const snapshot=await readLibrary(writer,p.libraryId),sealed=readStoredMixedPackage(snapshot.settings,p.libraryId,p.fingerprint);if(sealed.plan.ownerId!==p.ownerId||mixedHash(sealed.plan)!==mixedHash(p))throw new Error("Run package scope changed");const r=await client.rpc("cdl_v14_tracker_claim",{p_library_id:p.libraryId,p_run_id:p.runId,p_plan:p.fingerprint,p_package_hash:sealed.hash,p_summary:mixedSummary(p)}),v=r.data as {runId:string;plan:string;status:"running"|"completed";receipt?:MixedReceipt}|null;if(r.error||!v||v.runId!==p.runId||v.plan!==p.fingerprint||!["running","completed"].includes(v.status))throw new Error("Run claim not confirmed");return v;},
     import:{authenticatedOwner:writer.authenticatedOwner,
       async read(libraryId,id){const r=await client.rpc("cdl_v14_get_item",{p_id:id});if(r.error)throw new Error("Import readback unavailable");const item=r.data as SnapshotItem|null;if(item&&item.library_id!==libraryId)throw new Error("Wrong import library");return item;},
       async write(id,revision,request,patch){const r=await client.rpc("cdl_v14_full_edit",{p_id:id,p_revision:revision,p_request_id:request,p_patch:patch});if(r.error)throw new Error("Import acknowledgement uncertain");return r.data as SnapshotItem;},
