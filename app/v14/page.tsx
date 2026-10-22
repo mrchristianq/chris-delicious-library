@@ -7,6 +7,7 @@ import { rendererIdentity } from "../lib/v14/renderer-entry";
 import { readV14LibraryForVerifiedOwner } from "../lib/v14/read-library-server";
 import type { InitialLibraryRead } from "../lib/v14/renderer-backend";
 import "./v14.css";
+import { isApprovedV14Production } from "../lib/v14/hosted-preview";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +30,10 @@ export default async function V14Page() {
   }
   return <main className="v14-root">
     <div className={`v14-panel ${libraries?.length ? "v14-wide" : ""}`}>
-<span className="v14-badge">PRIVATE TEST · 14.0.71</span>
+<span className="v14-badge">{isApprovedV14Production() ? "YOUR LIBRARY" : "PRIVATE TEST"} · 14.0.72</span>
       <h1>Chris’ Delicious Library</h1>
-      <p className="v14-intro">Your next chapter, safely separated.</p>
-      <div className="v14-safety">Original app unchanged · Original Google Sheet untouched · Sync off</div>
+      <p className="v14-intro">{isApprovedV14Production() ? "Sign in to your collection." : "Your next chapter, safely separated."}</p>
+      <div className="v14-safety">{isApprovedV14Production() ? "Saved to Supabase · Manual tracker sync · Original Google Sheet protected" : "Original app unchanged · Original Google Sheet untouched · Sync off"}</div>
       {user ? <section>
         <h2>Signed in</h2><p>{user.email}</p>
         {status?.error ? <p role="alert">Library connection could not be verified. No data has been changed.</p> : libraries?.length ? <ul>{libraries.map(library => <li key={library.id}>{library.name}: {library.item_count} items</li>)}</ul> : <p>Your account is ready. The cleaned library has not been assigned or imported yet. Signing in alone does not start the import.</p>}

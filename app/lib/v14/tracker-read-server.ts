@@ -2,7 +2,7 @@ import {readFile,lstat} from "node:fs/promises";
 import {dirname,isAbsolute} from "node:path";
 import {JWT} from "google-auth-library";
 import {inspectTracker,validateTrackerManifest,TRACKER_SCOPE} from "./tracker-read";
-import {isApprovedV14Preview} from './hosted-preview';
+import {isApprovedV14Hosted} from './hosted-preview';
 import {parseHostedTrackerCredential} from './tracker-hosted-credential';
 async function privateFile(path:string) {
   if(!isAbsolute(path))throw new Error("Absolute private credential path required");
@@ -13,7 +13,7 @@ async function privateFile(path:string) {
 }
 export async function loadPrivateTrackerCredentials(){
   if(process.env.VERCEL){
-    if(!isApprovedV14Preview()||process.env.CDL_V14_TRACKER_CONFIG_FILE)throw new Error('Hosted tracker configuration is not approved');
+    if(!isApprovedV14Hosted()||process.env.CDL_V14_TRACKER_CONFIG_FILE)throw new Error('Hosted tracker configuration is not approved');
     return parseHostedTrackerCredential(process.env.CDL_V14_GOOGLE_SERVICE_ACCOUNT_JSON??'');
   }
   const path=process.env.CDL_V14_TRACKER_CONFIG_FILE;

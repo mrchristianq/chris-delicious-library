@@ -6,7 +6,7 @@ import {JWT} from "google-auth-library";
 import {loadPrivateTrackerCredentials} from "./tracker-read-server";
 import {TRACKER_ID,TRACKER_SCOPE,TRACKER_TABS} from "./tracker-read";
 import type {TrackerGrid} from "./tracker-google-request";
-import {isV14RuntimeAllowed,isApprovedV14Preview} from './hosted-preview';
+import {isV14RuntimeAllowed,isApprovedV14Hosted} from './hosted-preview';
 import {storePrivateTrackerBackup,RECOVERY_BUCKET} from './tracker-private-backup';
 
 const root="/Users/metroclick/Documents/CDL-Recovery/2026-10-09-pre-v14";
@@ -32,7 +32,7 @@ export async function saveTrackerRecoverySnapshot(run:string,grids:TrackerGrid[]
   if(snapshot.spreadsheetId!==TRACKER_ID||!Array.isArray(snapshot.sheets)||snapshot.sheets.length!==4||grids.some(g=>!snapshot.sheets.some((s:{properties:TrackerGrid&{gridProperties:{rowCount:number;columnCount:number}}})=>s.properties.title===g.title&&s.properties.sheetId===g.sheetId&&s.properties.gridProperties.rowCount===g.rowCount&&s.properties.gridProperties.columnCount===g.columnCount)))throw new Error("Tracker backup identity changed");
   const bytes=JSON.stringify({version:1,target:TRACKER_ID,run,capturedAt:new Date().toISOString(),snapshot});
   const compressed=gzipSync(bytes);if(compressed.byteLength>24000000)throw new Error("Compressed tracker backup exceeds safe bound");
-  if(isApprovedV14Preview()){
+  if(isApprovedV14Hosted()){
     if(!scope)throw new Error('Recovery owner required');
     const {createV14Client}=await import('./server');
     const client=await createV14Client(),{data:auth,error}=await client.auth.getUser();
