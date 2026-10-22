@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { editorDelta } from "../lib/v14/editor-delta";
 import { TV_WATCH_STATUS_OPTIONS } from "../lib/mediaStatusOptions";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
@@ -238,7 +239,7 @@ export function TVDetailsEditModal({ open, item, onClose, onSave, onSaved, onRep
     setSaveError(null);
     setSaveSuccess(null);
     try {
-      await Promise.resolve(onSave(item, values));
+      await Promise.resolve(onSave(item, editorDelta(item, values, buildValues(item))));
       onSaved?.();
       onClose();
     } catch (err: unknown) {

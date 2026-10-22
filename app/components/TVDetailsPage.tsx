@@ -9,6 +9,7 @@ import { handleExternalLinkClick, openExternalUrl } from "../native/externalLink
 type TVDetailsPageProps = {
   item: Record<string, unknown>;
   isMobileLayout: boolean;
+  saveDestination?: "Google Sheets" | "Supabase";
   usePageBackground?: boolean;
   onBack: () => void;
   onEdit?: (item: Record<string, unknown>) => void;
@@ -277,7 +278,7 @@ const PANEL_STYLE: React.CSSProperties = {
 };
 
 export function TVDetailsPage({
-  item, isMobileLayout, usePageBackground = false,
+  item, isMobileLayout, usePageBackground = false, saveDestination = "Google Sheets",
   onBack, onEdit, onDelete, onRate, getDisplayCoverUrl, getDisplayBackdropUrl, onPaletteChange,
   relatedShows, relatedShowsLabel, recommendedShows, episodeRows = [], onRefreshEpisodes,
   onUpdateEpisodeProgress, onBulkUpdateEpisodeProgress, onSelectRelated, highlightColor,
@@ -492,10 +493,10 @@ export function TVDetailsPage({
       total,
       confirmed,
       message: failed
-        ? "Google Sheets confirmation failed"
+        ? `${saveDestination} confirmation failed`
         : allDone
-          ? "Confirmed in Google Sheets"
-          : `Confirming ${total} episode change${total === 1 ? "" : "s"} in Google Sheets...`,
+          ? `Confirmed in ${saveDestination}`
+          : `Confirming ${total} episode change${total === 1 ? "" : "s"} in ${saveDestination}...`,
     });
   };
   const clearCompletedEpisodeSyncJobsSoon = () => {
@@ -514,7 +515,7 @@ export function TVDetailsPage({
     episodeSyncJobsRef.current[syncJob] = {
       total: 1,
       confirmed: 0,
-      message: "Queued for Google Sheets confirmation...",
+      message: `Queued for ${saveDestination} confirmation...`,
     };
     setEpisodeError(null);
     refreshEpisodeSyncProgress();
@@ -524,7 +525,7 @@ export function TVDetailsPage({
         ...episodeSyncJobsRef.current[syncJob],
         total: 1,
         confirmed: 1,
-        message: "Confirmed in Google Sheets",
+        message: `Confirmed in ${saveDestination}`,
         done: true,
       };
       refreshEpisodeSyncProgress();
@@ -535,7 +536,7 @@ export function TVDetailsPage({
         ...episodeSyncJobsRef.current[syncJob],
         total: 1,
         confirmed: 0,
-        message: "Google Sheets confirmation failed",
+        message: `${saveDestination} confirmation failed`,
         failed: true,
       };
       refreshEpisodeSyncProgress();
@@ -564,7 +565,7 @@ export function TVDetailsPage({
         ...episodeSyncJobsRef.current[syncJob],
         total: episodes.length,
         confirmed: episodes.length,
-        message: "Confirmed in Google Sheets",
+        message: `Confirmed in ${saveDestination}`,
         done: true,
       };
       refreshEpisodeSyncProgress();
@@ -575,7 +576,7 @@ export function TVDetailsPage({
         ...episodeSyncJobsRef.current[syncJob],
         total: episodeSyncJobsRef.current[syncJob]?.total || episodes.length,
         confirmed: episodeSyncJobsRef.current[syncJob]?.confirmed || 0,
-        message: "Google Sheets confirmation failed",
+        message: `${saveDestination} confirmation failed`,
         failed: true,
       };
       refreshEpisodeSyncProgress();

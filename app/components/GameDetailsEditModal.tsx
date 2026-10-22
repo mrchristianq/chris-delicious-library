@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { editorDelta } from "../lib/v14/editor-delta";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type GameDetailsEditModalProps = {
@@ -303,7 +304,7 @@ export function GameDetailsEditModal({
     setSaveError(null);
     setSaveSuccess(null);
     try {
-      await Promise.resolve(onSave(item, values));
+      await Promise.resolve(onSave(item, editorDelta(item, values, buildValues(item))));
       onSaved?.();
       onClose();
     } catch (err: unknown) {

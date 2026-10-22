@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { editorDelta } from "../lib/v14/editor-delta";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type BookDetailsEditModalProps = {
@@ -503,7 +504,9 @@ export function BookDetailsEditModal({
     setSaveSuccess(null);
     try {
       const nextValues = { ...values, type: normalizeBookTypeForSheet(values.type) };
-      await Promise.resolve(onSave(item, nextValues));
+      const initial = buildBookEditValues(item);
+      initial.type = normalizeBookTypeForSheet(initial.type);
+      await Promise.resolve(onSave(item, editorDelta(item, nextValues, initial)));
       onSaved?.();
       onClose();
     } catch (error: unknown) {

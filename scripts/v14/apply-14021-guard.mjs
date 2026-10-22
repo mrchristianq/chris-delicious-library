@@ -1,0 +1,21 @@
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+if(readFileSync(path.join(root,'supabase/.temp/project-ref'),'utf8').trim()!=='xnitocbxdpikvfxssbvm')throw new Error('Wrong linked project');
+const backup=process.argv[2];if(!backup)throw new Error('Provide rehearsed backup');
+for(const [file,sha] of [['schema.sql','bf216a4053eb5b2c6bd34cb2751db8f21e4763ac9cde6bf29b05de9260817789'],['data.sql','48cffff93f56b0fef3684ba6ac2bb131c70804e0f4c7bb4085b61e0a0df9b1e3']])if(createHash('sha256').update(readFileSync(path.join(backup,file))).digest('hex')!==sha)throw new Error('Backup mismatch');
+const quote=s=>`'${s.replaceAll("'","''")}'`;
+const expected=['20261010000100','20261011000200','20261011000300','20261012000400','20261012000500','20261012000600','20261013000700','20261013000800','20261013000900','20261013001000','20261014001100','20261015001200','20261016001300'];
+const file='20261016001400_v14_snapshot_transaction_guard.sql';
+const body=readFileSync(path.join(root,'supabase/migrations',file),'utf8').replace(/^begin;\s*/,'').replace(/commit;\s*$/,'');
+const sql=`begin;do $$ begin if (select array_agg(version::text order by version) from supabase_migrations.schema_migrations) is distinct from array[${expected.map(quote).join(',')}]::text[] then raise exception 'Unexpected migration history';end if;end $$;
+create function pg_temp.fingerprint() returns jsonb language plpgsql as $$ declare t record; result jsonb:='{}'; h text; begin for t in select tablename from pg_tables where schemaname='cdl' order by tablename loop execute format('select md5(coalesce(jsonb_agg(to_jsonb(r) order by to_jsonb(r)::text)::text,'''')) from cdl.%I r',t.tablename) into h;result:=result||jsonb_build_object(t.tablename,h);end loop;return result;end $$;
+create temp table before_data as select pg_temp.fingerprint() as value;
+${body}
+insert into supabase_migrations.schema_migrations(version,name,statements) values(${quote(file.slice(0,14))},${quote(file.slice(15,-4))},ARRAY[${quote(body)}]);
+do $$ begin if (select value from before_data) is distinct from pg_temp.fingerprint() then raise exception 'Library data changed';end if;end $$;commit;select max(version) as applied_through from supabase_migrations.schema_migrations;`;
+if(process.argv[3]!=='--apply')console.log('Pinned project and recovery checkpoint verified. Dry run only.');
+else console.log(execFileSync('supabase',['db','query','--linked',sql],{cwd:root,encoding:'utf8',timeout:60000,maxBuffer:1024*1024}));

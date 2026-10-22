@@ -53,7 +53,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${pacifico.variable} antialiased`}
       >
         {children}
-        <ServiceWorkerRegister />
+        {process.env.CDL_V14_TEST !== "true" ? <ServiceWorkerRegister /> : null}
       </body>
     </html>
   );

@@ -1,4 +1,5 @@
 "use client";
+import { formatGalleryDate, parseGalleryDate } from "../lib/gallery-dates";
 import { PhysicalCoverPlanes, PhysicalCoverFrame, PHYSICAL_COVER_START_Y } from "./PhysicalCover";
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
@@ -93,21 +94,11 @@ function getYear(value: string): string {
 }
 
 function formatDisplayDate(raw: string): string {
-  if (!raw) return "";
-  const parsed = new Date(raw);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  }
-  return raw;
+  return formatGalleryDate(raw);
 }
 
 function formatCompactDate(raw: string): string {
-  if (!raw) return "";
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  const dd = String(parsed.getDate()).padStart(2, "0");
-  const month = parsed.getMonth() + 1;
-  return `${month}/${dd}/${parsed.getFullYear()}`;
+  return formatGalleryDate(raw, true);
 }
 
 type DateRangePreset = "all" | "this-year" | "last-year" | "last-30" | "custom";
@@ -122,7 +113,7 @@ const DATE_RANGE_PRESETS: Array<{ key: DateRangePreset; label: string }> = [
 
 function matchesDateRange(raw: string, preset: DateRangePreset, customFrom: string, customTo: string): boolean {
   if (preset === "all") return true;
-  const parsed = new Date(raw);
+  const parsed = parseGalleryDate(raw);
   if (Number.isNaN(parsed.getTime())) return false;
   const now = new Date();
   if (preset === "this-year") return parsed.getFullYear() === now.getFullYear();
@@ -134,11 +125,11 @@ function matchesDateRange(raw: string, preset: DateRangePreset, customFrom: stri
   }
   // custom
   if (customFrom) {
-    const from = new Date(customFrom);
+    const from = parseGalleryDate(customFrom);
     if (!Number.isNaN(from.getTime()) && parsed < from) return false;
   }
   if (customTo) {
-    const to = new Date(customTo);
+    const to = parseGalleryDate(customTo);
     if (!Number.isNaN(to.getTime())) {
       to.setHours(23, 59, 59, 999);
       if (parsed > to) return false;

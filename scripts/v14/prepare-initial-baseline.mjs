@@ -1,0 +1,28 @@
+// Generates a private, pinned confirmation transaction. NEVER applies it.
+import {registerHooks} from 'node:module';
+import {readFileSync,mkdtempSync,writeFileSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {createHash} from 'node:crypto';
+import {writer,rpc,fingerprints,root,library,owner} from './execute-initial-tracker.mjs';
+import {initialBaselineSql} from './initial-baseline-sql.mjs';
+const h=registerHooks({resolve(s,c,n){return n(c.parentURL?.includes('/app/lib/v14/')&&s.startsWith('./')&&!s.endsWith('.ts')?s+'.ts':s,c);}});
+const {readLibrary}=await import('../../app/lib/v14/read-library.ts');
+const {readTrackerConnection}=await import('../../app/lib/v14/tracker-read-server.ts');
+const {buildInitialTrackerBaseline}=await import('../../app/lib/v14/tracker-baseline.ts');h.deregister();
+const args=process.argv.slice(2);
+if(args.length!==4||args[0]!=='--tracker-config'||!args[1].startsWith('/')||args[2]!=='--run'||!/^[a-f0-9]{64}$/.test(args[3])||readFileSync(resolve(root,'supabase/.temp/project-ref'),'utf8').trim()!=='xnitocbxdpikvfxssbvm')throw new Error('Explicit isolated tracker config and run required');
+const run=args[3];process.env.CDL_V14_TEST='true';process.env.CDL_V14_TRACKER_CONFIG_FILE=args[1];delete process.env.CDL_V14_TRACKER_WRITE_TARGET;
+const before=fingerprints();
+const [snapshot,connection]=await Promise.all([readLibrary(writer,library),readTrackerConnection(true)]);
+if(!connection?.tables)throw new Error('Fresh tracker read required');
+const stored=snapshot.settings.find(s=>s.key==='__cdl_tracker_verified_run_v1:'+run);
+if(!stored)throw new Error('Verified execution receipt required');
+const receipt=JSON.parse(stored.value.value);
+const provenance=rpc(`public.cdl_v14_tracker_provenance('${library}'::uuid)`);
+if(provenance.ownerId!==owner||provenance.libraryId!==library)throw new Error('Wrong provenance owner');
+const baseline=buildInitialTrackerBaseline(snapshot.items,connection.tables);
+if(JSON.stringify(before)!==JSON.stringify(fingerprints()))throw new Error('Library changed while preparing initial baseline');
+const sql=initialBaselineSql({run,baseline,protectedData:before,receipt,receiptRevision:stored.revision,confirmedAt:new Date().toISOString()});
+const directory=mkdtempSync('/Users/metroclick/Documents/CDL-Recovery/2026-10-09-pre-v14/v14-pre-baseline-'),path=join(directory,'baseline-confirmation.sql');
+writeFileSync(path,sql,{mode:0o600,flag:'wx'});
+console.log(JSON.stringify({directory,path,sha256:createHash('sha256').update(sql).digest('hex'),bytes:Buffer.byteLength(sql),records:baseline.records.length,baselineFingerprint:baseline.fingerprint,applied:false}));

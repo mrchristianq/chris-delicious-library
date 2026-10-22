@@ -13,6 +13,17 @@ import Papa from "papaparse";
 import type { AddExtendedType } from "./components/AddItemModal";
 import { MountOnFirstOpen } from "./components/MountOnFirstOpen";
 import { fetchMediaSearch } from "./lib/mediaSearchClient";
+import { useLibraryBackend } from "./lib/v14/backend-context";
+const TrackerSyncView = dynamic(() => import("./components/TrackerSyncView").then(mod => mod.TrackerSyncView), {
+  loading: () => <div style={{ padding: 40, color: "#8a94a3" }}>Loading…</div>,
+});
+import { browserPreferenceStorage } from "./lib/v14/browser-storage";
+import { retainDatabaseIdentity } from "./lib/v14/renderer-snapshot";
+import { stableItemKey } from "./lib/v14/stable-item-key";
+import { automaticArtworkSources, createDatabaseEditSaver, syncDatabaseArtwork } from "./lib/v14/sync-artwork";
+import { manualOrderSettings, saveManualOrder } from "./lib/v14/manual-order";
+import { subscribeLibraryRefresh } from "./lib/v14/refresh-events";
+import { freshCoverScales } from "./lib/v14/cover-scale-settings";
 
 // Statistics and Roadmap are large, rarely-opened views - loading them as separate chunks
 // (instead of bundling them into every page load) keeps the initial JS payload smaller.
@@ -467,7 +478,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "13.1.32";
+const APP_VERSION = "14.0.67";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -794,6 +805,346 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "14.0.67",
+    date: "2026-10-22",
+    notes: ["Exclude local credentials and generated native build artifacts from isolated preview uploads."],
+  },
+  {
+    version: "14.0.66",
+    date: "2026-10-21",
+    notes: ["Prepare isolated hosted-preview configuration and verified private sync backups; production remains disabled."],
+  },
+  {
+    version: "14.0.65",
+    date: "2026-10-21",
+    notes: ["Explain exactly what blocks Sync Apply, with a direct record-identity confirmation action."],
+  },
+  {
+    version: "14.0.64",
+    date: "2026-10-21",
+    notes: ["Choose conflict values directly with clear selection highlights and per-item Use All App or Sheet controls."],
+  },
+  {
+    version: "14.0.63",
+    date: "2026-10-21",
+    notes: ["Simplify Sync with colorful summaries, per-item Apply/Skip, and safely scoped selected-item syncing."],
+  },
+  {
+    version: "14.0.62",
+    date: "2026-10-21",
+    notes: ["Keep confirmed sync receipts through fresh comparison failures and enable isolated manual-save acceptance testing."],
+  },
+  {
+    version: "14.0.61",
+    date: "2026-10-20",
+    notes: ["Prepare verified same-item consolidation and separate-game-edition syncs from explicit field selections."],
+  },
+  {
+    version: "14.0.60",
+    date: "2026-10-20",
+    notes: ["Choose either source for field differences and save source-checked same-item or separate-edition review intent."],
+  },
+  {
+    version: "14.0.59",
+    date: "2026-10-20",
+    notes: ["Redesign Sync around media covers, item comparisons and a simple checked apply flow; support a customizable Sync icon."],
+  },
+  {
+    version: "14.0.58",
+    date: "2026-10-20",
+    notes: ["Allow auxiliary tracker tabs such as ChangeLog without blocking the library sync preview."],
+  },
+  {
+    version: "14.0.57",
+    date: "2026-10-20",
+    notes: ["Support checked larger sync packages and validate storage, journal and transport limits before writes."],
+  },
+  {
+    version: "14.0.56",
+    date: "2026-10-20",
+    notes: ["Add owner-approved, run-bound imports of new tracker items with durable recovery and verified baselines."],
+  },
+  {
+    version: "14.0.55",
+    date: "2026-10-20",
+    notes: ["Journal new tracker-item imports with saved-run recovery and guarded final membership checks."],
+  },
+  {
+    version: "14.0.54",
+    date: "2026-10-20",
+    notes: ["Prepare validated new-tracker-item imports with explicit approval and idempotent creation checks."],
+  },
+  {
+    version: "14.0.53",
+    date: "2026-10-20",
+    notes: ["Explain unmatched tracker records, duplicates and missing identities without guessing imports or deletions."],
+  },
+  {
+    version: "14.0.52",
+    date: "2026-10-20",
+    notes: ["Require fresh approval for tracker additions and stable-ID title changes, with verified new-record baselines."],
+  },
+  {
+    version: "14.0.51",
+    date: "2026-10-20",
+    notes: ["Add checkpointed manual tracker sync and resume controls in the isolated v14 Sync screen."],
+  },
+  {
+    version: "14.0.50",
+    date: "2026-10-20",
+    notes: ["Rehearse combined two-way sync, durable restart recovery and atomic final confirmation in isolation."],
+  },
+  {
+    version: "14.0.49",
+    date: "2026-10-19",
+    notes: ["Save baseline-bound conflict choices and verify audited tracker imports with safe retry recovery in isolation."],
+  },
+  {
+    version: "14.0.48",
+    date: "2026-10-19",
+    notes: ["Compare fresh app and tracker changes against owner-verified confirmed sync baselines."],
+  },
+  {
+    version: "14.0.47",
+    date: "2026-10-19",
+    notes: ["Harden two-way tracker comparison and verify isolated change, conflict and repeat-comparison cases."],
+  },
+  {
+    version: "14.0.46",
+    date: "2026-10-19",
+    notes: ["Prepare resumable, readback-verified tracker operations with guarded record matching and atomic request planning."],
+  },
+  {
+    version: "14.0.45",
+    date: "2026-10-19",
+    notes: ["Prepare target-pinned sync execution intents that reject stale or incomplete review approvals."],
+  },
+  {
+    version: "14.0.44",
+    date: "2026-10-19",
+    notes: ["Save the approved initial tracker review in one confirmed, reversible step without applying sync changes."],
+  },
+  {
+    version: "14.0.43",
+    date: "2026-10-19",
+    notes: ["Carry approved import mappings into tracker review without restoring old values or applying Sheet updates."],
+  },
+  {
+    version: "14.0.42",
+    date: "2026-10-19",
+    notes: ["Distinguish same-title film releases by TMDB ID and preserve displayed tracker titles during sync review."],
+  },
+  {
+    version: "14.0.41",
+    date: "2026-10-19",
+    notes: ["Remember confirmed tracker review choices between sessions, requiring new review when compared values change. Applying sync remains disabled."],
+  },
+  {
+    version: "14.0.40",
+    date: "2026-10-19",
+    notes: ["Show fresh initial tracker differences and identity issues without guessing sync direction or applying changes."],
+  },
+  {
+    version: "14.0.39",
+    date: "2026-10-19",
+    notes: ["Verify the private tracker connection using read-only access. Record matching and applying changes remain separate pending steps."],
+  },
+  {
+    version: "14.0.38",
+    date: "2026-10-19",
+    notes: ["Add the approved Sync preview screen and safe three-way comparison foundation. Applying changes remains disabled."],
+  },
+  {
+    version: "14.0.37",
+    date: "2026-10-19",
+    notes: ["Avoid redundant library reloads before saving preferences or episode progress; fresh confirmation remains required."],
+  },
+  {
+    version: "14.0.36",
+    date: "2026-10-19",
+    notes: ["Keep book completion dates on the correct calendar day in the original details view."],
+  },
+  {
+    version: "14.0.35",
+    date: "2026-10-18",
+    notes: ["Avoid a redundant sign-in verification during initial library loading. Fresh data and existing design preserved."],
+  },
+  {
+    version: "14.0.34",
+    date: "2026-10-18",
+    notes: ["Preserve original imported row order when library sort values are equal."],
+  },
+  {
+    version: "14.0.33",
+    date: "2026-10-18",
+    notes: ["Preserve unfinished v14 artwork retries across reload without repeating confirmed uploads."],
+  },
+  {
+    version: "14.0.32",
+    date: "2026-10-18",
+    notes: ["Update isolated v14 framework and artwork dependencies for security fixes."],
+  },
+  {
+    version: "14.0.31",
+    date: "2026-10-18",
+    notes: ["Avoid false artwork-sync errors when adding a v14 item without cover art."],
+  },
+  {
+    version: "14.0.30",
+    date: "2026-10-17",
+    notes: ["Preserve imported game Date Added calendar dates in v14 statistics and filters."],
+  },
+  {
+    version: "14.0.29",
+    date: "2026-10-17",
+    notes: ["Confirm manual order, sort field and direction together before reporting v14 ordering saved."],
+  },
+  {
+    version: "14.0.28",
+    date: "2026-10-17",
+    notes: ["Retain unfinished v14 artwork saves for retry without repeating confirmed cover changes."],
+  },
+  {
+    version: "14.0.27",
+    date: "2026-10-17",
+    notes: ["Serialize unchanged-edit confirmations and share concurrent artwork uploads in v14."],
+  },
+  {
+    version: "14.0.26",
+    date: "2026-10-17",
+    notes: ["Keep Completed Gallery calendar dates on the correct day across time zones."],
+  },
+  {
+    version: "14.0.25",
+    date: "2026-10-16",
+    notes: ["Apply freshly loaded v14 cover-size preferences instead of retaining startup defaults."],
+  },
+  {
+    version: "14.0.24",
+    date: "2026-10-16",
+    notes: ["Preserve the existing movie Watching option while saving its canonical v14 status."],
+  },
+  {
+    version: "14.0.23",
+    date: "2026-10-16",
+    notes: ["Save only changed v14 editor fields, preserving untouched normalized metadata."],
+  },
+  {
+    version: "14.0.22",
+    date: "2026-10-16",
+    notes: ["Preserve existing artwork during unrelated v14 edits and confirm changed artwork before finishing the save."],
+  },
+  {
+    version: "14.0.21",
+    date: "2026-10-16",
+    notes: ["Read the fresh v14 library in bounded requests, verifying a consistent version before display and save confirmation."],
+  },
+  {
+    version: "14.0.20",
+    date: "2026-10-15",
+    notes: ["Allow isolated manual save validation while automatic TV metadata refresh remains paused."],
+  },
+  {
+    version: "14.0.19",
+    date: "2026-10-15",
+    notes: ["Start the fresh v14 library read while the existing interface loads, without caching or changing the visual design."],
+  },
+  {
+    version: "14.0.18",
+    date: "2026-10-15",
+    notes: ["Mount the existing interface in isolated v14 with read-only validation and a faster fresh library snapshot."],
+  },
+  {
+    version: "14.0.17",
+    date: "2026-10-14",
+    notes: ["Preserved manual ordering across item edits using database identities, reconciled imported preferences, and required confirmation before reporting order saves. Visual design unchanged."],
+  },
+  {
+    version: "14.0.16",
+    date: "2026-10-14",
+    notes: ["Added a restricted local v14 launcher for provider and artwork credentials without loading production Sheets configuration. Interface unchanged."],
+  },
+  {
+    version: "14.0.15",
+    date: "2026-10-14",
+    notes: ["Confirmed smart-list saves before closing or reporting success, retained retry identities, and refreshed the isolated database on tab return and reconnect. Visual design unchanged."],
+  },
+  {
+    version: "14.0.14",
+    date: "2026-10-14",
+    notes: ["Connected confirmed icon resets and uploads, restored add/edit artwork synchronization, and preserved item revisions between artwork saves. Existing visual design unchanged."],
+  },
+  {
+    version: "14.0.13",
+    date: "2026-10-14",
+    notes: ["Serialized isolated backend refreshes with saves to prevent older reads replacing confirmed changes. Existing interface unchanged."],
+  },
+  {
+    version: "14.0.12",
+    date: "2026-10-14",
+    notes: ["Connected activity and roadmap backend paths, isolated account preferences and provider access, and strengthened setting confirmation. Existing visual design preserved."],
+  },
+  {
+    version: "14.0.11",
+    date: "2026-10-13",
+    notes: ["Connected additional existing save handlers to the isolated backend and strengthened artwork, episode metadata and retry validation. Interface unchanged; integration testing continues."],
+  },
+  {
+    version: "14.0.10",
+    date: "2026-10-13",
+    notes: ["Added retry-safe creation backend using existing form validation and independent readback. Existing interface unchanged."],
+  },
+  {
+    version: "14.0.9",
+    date: "2026-10-13",
+    notes: ["Added tested recoverable-delete backend with exact item identity and independent confirmation. Existing interface unchanged."],
+  },
+  {
+    version: "14.0.8",
+    date: "2026-10-13",
+    notes: ["Added full-edit backend contracts and local transaction/readback tests without changing existing forms."],
+  },
+  {
+    version: "14.0.7",
+    date: "2026-10-13",
+    notes: ["Added owner-scoped snapshot reads and tested episode/settings save foundations with durable readback. Existing interface unchanged."],
+  },
+  {
+    version: "14.0.6",
+    date: "2026-10-12",
+    notes: ["Added isolated library snapshot validation and episode/settings compatibility tests; interface unchanged."],
+  },
+  {
+    version: "14.0.5",
+    date: "2026-10-12",
+    notes: ["Added tested Supabase-to-v13 row compatibility groundwork without changing the application interface."],
+  },
+  {
+    version: "14.0.4",
+    date: "2026-10-12",
+    notes: ["Added an isolated, read-only v13 reference harness for visual parity testing. Application UI and production remain unchanged."],
+  },
+  {
+    version: "14.0.3",
+    date: "2026-10-11",
+    notes: ["Guarded owner import and isolated Supabase browsing/Rate It saves with revision checks, audit trail and durable readback. Sheet sync remains off."],
+  },
+  {
+    version: "14.0.2",
+    date: "2026-10-11",
+    notes: ["Private v14 test sign-in with owner-scoped readiness checks and blocked legacy write routes. No production cutover or automatic import."],
+  },
+  {
+    version: "14.0.1",
+    date: "2026-10-11",
+    notes: ["Guarded v14 import preparation with rollback-only verification. Production and Sheet sync remain unchanged."],
+  },
+  {
+    version: "14.0.0",
+    date: "2026-10-10",
+    notes: ["Isolated v14 database foundation and read-only import audit. Supabase app connection and Sheet sync are not enabled."],
+  },
   {
     version: "13.1.32",
     date: "2026-09-30",
@@ -3469,6 +3820,8 @@ function getMediaType(item: any): MediaType {
 }
 
 function getMediaItemKey(item: any): string {
+  const databaseKey = stableItemKey(item);
+  if (databaseKey) return databaseKey;
   const type = getMediaType(item);
   const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
   if (type === "book") {
@@ -3496,6 +3849,8 @@ function getMediaItemKey(item: any): string {
 // detecting it — required for raw CSV rows where getMediaType() misidentifies
 // the type due to capitalized field names (e.g. Platform vs platform).
 function buildTypedItemKey(item: any, mediaType: "book" | "movie" | "tv" | "game"): string {
+  const databaseKey = stableItemKey(item);
+  if (databaseKey) return databaseKey;
   const normalizedTitle = normalizeTitleKey(item?.title || item?.Title || item?.name || "");
   if (mediaType === "book") {
     const bookFormatToken = getBookFormatKeyToken(item);
@@ -4192,7 +4547,7 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width, nodeRef };
 }
 
-type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "completed-gallery" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons";
+type NavKey = "home" | "search" | "books" | "movies" | "tv" | "games" | "now-playing" | "play-next" | "wishlist" | "wishlist-books" | "watchlist-movies" | "watchlist-tv" | "current" | "completed" | "completed-gallery" | "abandoned" | "settings" | "year-this" | "smart-custom" | "statistics" | "upcoming" | "roadmap" | "cover-sync" | "themes" | "icons" | "tracker-sync";
 type LibraryNavKey = Exclude<NavKey, "statistics" | "roadmap" | "cover-sync" | "themes" | "icons">;
 type CoverScaleGroupKey = "home" | "books" | "movies" | "tv" | "games";
 type MobileViewFilterKey =
@@ -4258,28 +4613,30 @@ function getPersistedStandardSortViewLabel(nav: "home" | "books" | "movies" | "t
 }
 
 export default function Page() {
-  const isNativeApp = isNativeRuntime();
-  const tvCsvUrl = process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
-  const tvEpisodesCsvUrl = process.env.NEXT_PUBLIC_TV_EPISODES_SHEET_CSV_URL;
-  const booksCsvUrl = process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL;
-  const moviesCsvUrl = process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
-  const gamesCsvUrl = process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
-  const settingsCsvUrl = process.env.NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL;
-  const changelogCsvUrl = process.env.NEXT_PUBLIC_CHANGELOG_SHEET_CSV_URL;
-  const settingsWriteUrl = process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL || (isNativeApp ? "native://settings" : "");
-  const booksWriteUrl = process.env.NEXT_PUBLIC_BOOKS_WRITE_URL || (isNativeApp ? "native://books" : "");
+  const libraryBackend = useLibraryBackend();
+  const localStorage = libraryBackend?.storage ?? browserPreferenceStorage;
+  const isNativeApp = !libraryBackend && isNativeRuntime();
+  const tvCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_TV_SHEET_CSV_URL;
+  const tvEpisodesCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_TV_EPISODES_SHEET_CSV_URL;
+  const booksCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_BOOKS_SHEET_CSV_URL;
+  const moviesCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_MOVIES_SHEET_CSV_URL;
+  const gamesCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_GAMES_SHEET_CSV_URL;
+  const settingsCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_SETTINGS_SHEET_CSV_URL;
+  const changelogCsvUrl = libraryBackend ? undefined : process.env.NEXT_PUBLIC_CHANGELOG_SHEET_CSV_URL;
+  const settingsWriteUrl = libraryBackend ? "v14://settings" : process.env.NEXT_PUBLIC_SETTINGS_WRITE_URL || (isNativeApp ? "native://settings" : "");
+  const booksWriteUrl = libraryBackend ? "v14://books" : process.env.NEXT_PUBLIC_BOOKS_WRITE_URL || (isNativeApp ? "native://books" : "");
   const showsWriteUrl =
-    process.env.NEXT_PUBLIC_SHOWS_WRITE_URL ||
+    libraryBackend ? "v14://shows" : process.env.NEXT_PUBLIC_SHOWS_WRITE_URL ||
     process.env.NEXT_PUBLIC_TV_WRITE_URL ||
     (isNativeApp ? "native://shows" : "");
-  const moviesWriteUrl = process.env.NEXT_PUBLIC_MOVIES_WRITE_URL || (isNativeApp ? "native://movies" : "");
-  const gamesWriteUrl = process.env.NEXT_PUBLIC_GAMES_WRITE_URL || (isNativeApp ? "native://games" : "");
+  const moviesWriteUrl = libraryBackend ? "v14://movies" : process.env.NEXT_PUBLIC_MOVIES_WRITE_URL || (isNativeApp ? "native://movies" : "");
+  const gamesWriteUrl = libraryBackend ? "v14://games" : process.env.NEXT_PUBLIC_GAMES_WRITE_URL || (isNativeApp ? "native://games" : "");
   const isStaticSiteBuild = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
   const localhostSettingsReadOnlyDefault = process.env.NEXT_PUBLIC_LOCALHOST_SETTINGS_READ_ONLY !== "false";
   const isLocalhostRuntime =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname === "::1");
-  const isReadOnlySettingsMode = !isNativeApp && localhostSettingsReadOnlyDefault && isLocalhostRuntime;
+  const isReadOnlySettingsMode = !libraryBackend && !isNativeApp && localhostSettingsReadOnlyDefault && isLocalhostRuntime;
   const canWriteSettings = Boolean(settingsWriteUrl) && !isReadOnlySettingsMode;
   const writeConfigChecks = useMemo(
     () => [
@@ -4323,6 +4680,7 @@ export default function Page() {
   
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
+  const databasePendingSettingsRef = useRef<Record<string,string>>({});
   const settingsPersistTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSettingsSheetWritesRef = useRef<
     Record<string, { value: string; category: string; description: string }>
@@ -4338,8 +4696,11 @@ export default function Page() {
   const wishlistDragVisualPendingRef = useRef<WishlistPointerDrag | null>(null);
   const wishlistDragLatestOrderRef = useRef<string[] | null>(null);
   const smartListNameInputRef = useRef<string>("");
+  const smartListWriteInFlightRef = useRef(false);
+  const smartListCreateIdRef = useRef<string | null>(null);
 
   const getCachedSettingValue = useCallback((key: string): string | number | boolean | undefined => {
+    if (libraryBackend) return undefined;
     if (typeof window === "undefined") return undefined;
 
     try {
@@ -4353,7 +4714,7 @@ export default function Page() {
       console.warn(`Failed to read cached setting: ${key}`, e);
       return undefined;
     }
-  }, []);
+  }, [libraryBackend, localStorage]);
   const getCachedNumericSetting = useCallback((key: string): number | undefined => {
     const value = getCachedSettingValue(key);
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -4369,6 +4730,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [tvRows, setTvRows] = useState<Row[]>([]);
   const [tvEpisodeRows, setTvEpisodeRows] = useState<TVEpisodeRow[]>(() => {
+    if (libraryBackend) return [];
     if (typeof window === "undefined") return [];
     try {
       const parsed = JSON.parse(localStorage.getItem("cdlTvEpisodeRows") || "[]");
@@ -4378,6 +4740,7 @@ export default function Page() {
     }
   });
   const [tvEpisodeDataStatus, setTvEpisodeDataStatus] = useState<"loading" | "ready" | "error">(() => {
+    if (libraryBackend) return "loading";
     if (typeof window === "undefined") return "loading";
     try {
       const parsed = JSON.parse(localStorage.getItem("cdlTvEpisodeRows") || "[]");
@@ -4411,6 +4774,10 @@ export default function Page() {
   const [nativeCacheRunning, setNativeCacheRunning] = useState(false);
   const [settingSyncConflicts, setSettingSyncConflicts] = useState<string[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  useEffect(() => {
+    if (!libraryBackend) return;
+    return subscribeLibraryRefresh(window,document,() => setRefreshNonce(value => value + 1));
+  }, [libraryBackend]);
   const nativeForceRemoteRefreshRef = useRef(false);
   const nativeSyncAfterRemoteRefreshRef = useRef(false);
   const nativeOnlineSnapshotRefreshStartedRef = useRef(false);
@@ -4458,7 +4825,7 @@ export default function Page() {
     nav === "roadmap" ||
     nav === "cover-sync" ||
     nav === "themes" ||
-    nav === "icons";
+    nav === "icons" || nav === "tracker-sync";
   const isHomeSidebar = nav === "home" || isBacklogSidebarView || isSmartListOrDiscoverNav;
   const [lastLibraryNav, setLastLibraryNav] = useState<LibraryNavKey>("home");
   const [settingsPopupOpen, setSettingsPopupOpen] = useState<boolean>(false);
@@ -5839,12 +6206,12 @@ export default function Page() {
   const [gameDetailEditItem, setGameDetailEditItem] = useState<any>(null);
   const [detailsOpenMode, setDetailsOpenMode] = useState<"sidebar" | "full">(() => {
     if (typeof window === "undefined") return "sidebar";
-    return window.localStorage.getItem("cdl:details-open-mode") === "full" ? "full" : "sidebar";
+    return localStorage.getItem("cdl:details-open-mode") === "full" ? "full" : "sidebar";
   });
   const [sidebarDetailItem, setSidebarDetailItem] = useState<any>(null);
   const [sidebarDetailWidth, setSidebarDetailWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 380;
-    const stored = Number(window.localStorage.getItem("cdl:details-sidebar-width"));
+    const stored = Number(localStorage.getItem("cdl:details-sidebar-width"));
     return Number.isFinite(stored) ? Math.max(330, Math.min(520, stored)) : 380;
   });
   const [sidebarDetailSaveState, setSidebarDetailSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -5864,6 +6231,7 @@ export default function Page() {
   const [coverOverrides, setCoverOverrides] = useState<Record<string, string>>({});
   const [popupCoverModes, setPopupCoverModes] = useState<Record<string, "custom" | "default">>({});
   const [sidebarIconOverrides, setSidebarIconOverrides] = useState<Record<string, string>>(() => {
+    if (libraryBackend) return {};
     if (typeof window === "undefined") return {};
     try {
       const raw = localStorage.getItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY);
@@ -5874,6 +6242,7 @@ export default function Page() {
     return {};
   });
   const [statusIconOverrides, setStatusIconOverrides] = useState<Record<string, string>>(() => {
+    if (libraryBackend) return {};
     if (isReadOnlySettingsMode) return {};
     if (typeof window === "undefined") return {};
     try {
@@ -5884,8 +6253,8 @@ export default function Page() {
     } catch {}
     return {};
   });
-  const [nativeSidebarIconCache, setNativeSidebarIconCache] = useState<Record<string, string>>(() => readLocalRecord(NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY));
-  const [nativeStatusIconCache, setNativeStatusIconCache] = useState<Record<string, string>>(() => readLocalRecord(NATIVE_STATUS_ICON_CACHE_LOCAL_KEY));
+  const [nativeSidebarIconCache, setNativeSidebarIconCache] = useState<Record<string, string>>(() => libraryBackend ? {} : readLocalRecord(NATIVE_SIDEBAR_ICON_CACHE_LOCAL_KEY));
+  const [nativeStatusIconCache, setNativeStatusIconCache] = useState<Record<string, string>>(() => libraryBackend ? {} : readLocalRecord(NATIVE_STATUS_ICON_CACHE_LOCAL_KEY));
   const [failedCoverUrls, setFailedCoverUrls] = useState<Record<string, string[]>>({});
   const [failedCoverAttempts, setFailedCoverAttempts] = useState<Record<string, Record<string, number>>>({});
   const [uploadingCoverForKey, setUploadingCoverForKey] = useState<string | null>(null);
@@ -6616,7 +6985,7 @@ export default function Page() {
   }, [mobileFullLibraryOpen, nav]);
 
   useEffect(() => {
-    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync" && nav !== "themes" && nav !== "icons" && nav !== "completed-gallery") {
+    if (nav !== "statistics" && nav !== "roadmap" && nav !== "cover-sync" && nav !== "themes" && nav !== "icons" && nav !== "completed-gallery" && nav !== "tracker-sync") {
       setLastLibraryNav(nav);
     }
   }, [nav]);
@@ -6770,7 +7139,7 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (!settingsRows.length) return;
+    if (!settingsRows.length && !libraryBackend) return;
     const fromSheet: Record<string, string> = {};
     const popupModesFromSheet: Record<string, "custom" | "default"> = {};
     const sidebarIconFromSheet: Record<string, string> = {};
@@ -6809,7 +7178,10 @@ export default function Page() {
         }
       }
     });
-    if (Object.keys(fromSheet).length) {
+    if (libraryBackend) {
+      setCoverOverrides(fromSheet);
+      setPopupCoverModes(popupModesFromSheet);
+    } else if (Object.keys(fromSheet).length) {
       console.log(`[Settings Load] Updating coverOverrides with ${Object.keys(fromSheet).length} overrides from sheet:`, Object.keys(fromSheet));
       setCoverOverrides((prev) => {
         const next = { ...fromSheet, ...prev };
@@ -6817,10 +7189,10 @@ export default function Page() {
         return next;
       });
     }
-    if (Object.keys(popupModesFromSheet).length) {
+    if (!libraryBackend && Object.keys(popupModesFromSheet).length) {
       setPopupCoverModes((prev) => ({ ...popupModesFromSheet, ...prev }));
     }
-    if (isReadOnlySettingsMode) {
+    if (isReadOnlySettingsMode || libraryBackend) {
       setSidebarIconOverrides(sidebarIconFromSheet);
       setStatusIconOverrides(statusIconFromSheet);
       return;
@@ -6831,7 +7203,16 @@ export default function Page() {
     if (Object.keys(statusIconFromSheet).length) {
       setStatusIconOverrides((prev) => ({ ...prev, ...statusIconFromSheet }));
     }
-  }, [isReadOnlySettingsMode, settingsRows]);
+  }, [isReadOnlySettingsMode, settingsRows, libraryBackend]);
+
+  const writeDatabaseSetting = useCallback(async (key: string, value: string) => {
+    if (!libraryBackend) throw new Error("Database settings are unavailable");
+    const result = await libraryBackend.write("v14://settings", {key, value});
+    const confirmed = JSON.parse(result);
+    if (databasePendingSettingsRef.current[key] === value) delete databasePendingSettingsRef.current[key];
+    setSettingsRows(confirmed.settings);
+    return result;
+  }, [libraryBackend]);
 
   useEffect(() => {
     if (!isNativeApp || !isBrowserLikelyOnline()) return;
@@ -6925,6 +7306,7 @@ export default function Page() {
     if (!safeIconKey) return fallbackSrc;
     const overrideSrc = safeStr(sidebarIconOverrides[safeIconKey]);
     const cachedNativeSrc = safeStr(nativeSidebarIconCache[safeIconKey]);
+    if (safeIconKey === "tracker-sync" && !overrideSrc) return cachedNativeSrc || bundledIconSrc("/icon-sync.svg");
     if (isNativeApp || isStaticSiteBuild) {
       if (isNativeApp && isBrowserLikelyOnline() && overrideSrc) return overrideSrc;
       return cachedNativeSrc || bundledIconSrc(fallbackSrc);
@@ -6971,7 +7353,8 @@ export default function Page() {
       formData.append("title", iconKey);
       formData.append("objectKey", `icons/sidebar/${iconKey}`);
 
-      await uploadCoverFormData(formData);
+      const uploadedIcon = await uploadCoverFormData(formData);
+      if (libraryBackend) await writeDatabaseSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${iconKey}`, String(uploadedIcon.url));
 
       bumpSidebarIconVersion();
 
@@ -7047,11 +7430,13 @@ export default function Page() {
         iconSyncUrl = safeStr(payload.remoteUrl) || iconUrl;
         uploadedToCloud = true;
       } catch (uploadError) {
+        if (libraryBackend) throw uploadError;
         console.warn("Status icon upload failed, using local fallback:", uploadError);
         iconUrl = await fileToDataUrl(file);
         iconSyncUrl = iconUrl;
       }
 
+      if (libraryBackend) await writeDatabaseSetting(`${STATUS_ICON_SETTING_PREFIX}${statusKey}`, iconSyncUrl);
       setStatusIconOverrides((prev) => {
         const next = { ...prev, [statusKey]: iconUrl };
         try {
@@ -7062,7 +7447,7 @@ export default function Page() {
         return next;
       });
 
-      if (uploadedToCloud) {
+      if (uploadedToCloud && !libraryBackend) {
         saveSetting(
           `${STATUS_ICON_SETTING_PREFIX}${statusKey}`,
           iconSyncUrl,
@@ -7335,7 +7720,8 @@ export default function Page() {
           try { localStorage.setItem(SIDEBAR_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next)); } catch {}
           return next;
         });
-        saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
+        if (libraryBackend) await writeDatabaseSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl);
+        else saveSetting(`${SIDEBAR_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl, "Sidebar Icons", `Custom sidebar icon for ${state.iconKey}`);
         bumpSidebarIconVersion();
       } else if (state.iconKind === "smartlist") {
         // Smart-list icons are stored directly on the smart list record. The
@@ -7348,11 +7734,12 @@ export default function Page() {
         const payload = await uploadCoverFormData(formData);
         const iconUrl = `${String(payload.url)}?v=${Date.now()}`;
         const iconSyncUrl = `${safeStr(payload.remoteUrl) || String(payload.url)}?v=${Date.now()}`;
-        persistSmartLists(
-          customSmartLists.map((list) =>
-            list.id === state.iconKey ? { ...list, icon: isNativeApp ? iconSyncUrl : iconUrl } : list
-          )
+        const nextLists = customSmartLists.map((list) =>
+          list.id === state.iconKey ? { ...list, icon: isNativeApp ? iconSyncUrl : iconUrl } : list
         );
+        if (libraryBackend) {
+          if (!await persistSmartLists(nextLists)) throw new Error("Smart list icon save not confirmed. Retry saving the icon.");
+        } else persistSmartLists(nextLists);
       } else {
         formData.append("itemKey", `status-icon-${state.iconKey}`);
         formData.append("mediaType", "status-icon");
@@ -7365,7 +7752,8 @@ export default function Page() {
           try { localStorage.setItem(STATUS_ICON_OVERRIDES_LOCAL_KEY, JSON.stringify(next)); } catch {}
           return next;
         });
-        saveSetting(`${STATUS_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl, "Status Icons", `Custom status icon for ${state.iconKey}`);
+        if (libraryBackend) await writeDatabaseSetting(`${STATUS_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl);
+        else saveSetting(`${STATUS_ICON_SETTING_PREFIX}${state.iconKey}`, iconSyncUrl, "Status Icons", `Custom status icon for ${state.iconKey}`);
       }
       setSyncState("ok");
       setSyncMsg("Icon saved");
@@ -7383,7 +7771,23 @@ export default function Page() {
 
   const cancelIconCrop = () => setIconCropEditor(null);
 
+  const resetDatabaseStatusIcons = useCallback(async (keys: string[], message: string) => {
+    setSyncState("saving");
+    try {
+      // Retain blank rows as explicit resets so imported/local icons cannot
+      // reappear. Each write must pass independent database readback.
+      const results = await Promise.allSettled(keys.map(key => writeDatabaseSetting(`${STATUS_ICON_SETTING_PREFIX}${key}`, "")));
+      const failures = results.filter(result => result.status === "rejected");
+      if (failures.length) throw new Error(`Status icon reset not confirmed for ${failures.length} of ${keys.length} icons. Retry the reset.`);
+      setSyncState("ok"); setSyncMsg(message); setLastSyncAt(Date.now());
+    } catch (error) {
+      setSyncState("error");
+      setSyncMsg(error instanceof Error ? error.message : "Status icon reset failed");
+    }
+  }, [writeDatabaseSetting]);
+
   const resetStatusIconOverride = useCallback((statusKey: string) => {
+    if (libraryBackend) { void resetDatabaseStatusIcons([statusKey], "Status icon reset"); return; }
     setStatusIconOverrides((prev) => {
       if (!(statusKey in prev)) return prev;
       const next = { ...prev };
@@ -7399,9 +7803,17 @@ export default function Page() {
     setSyncState("ok");
     setSyncMsg("Status icon reset");
     setTimeout(() => setSyncMsg("Synced"), 1200);
-  }, []);
+  }, [libraryBackend, resetDatabaseStatusIcons]);
 
   const resetAllStatusIconOverrides = useCallback(() => {
+    if (libraryBackend) {
+      const keys = [...new Set([
+        ...Object.keys(statusIconOverrides),
+        ...settingsRows.filter(row => row.Key.startsWith(STATUS_ICON_SETTING_PREFIX)).map(row => row.Key.slice(STATUS_ICON_SETTING_PREFIX.length)),
+      ])];
+      void resetDatabaseStatusIcons(keys, "All status icons reset");
+      return;
+    }
     setStatusIconOverrides({});
     try {
       localStorage.removeItem(STATUS_ICON_OVERRIDES_LOCAL_KEY);
@@ -7414,9 +7826,16 @@ export default function Page() {
     setSyncState("ok");
     setSyncMsg("All status icons reset");
     setTimeout(() => setSyncMsg("Synced"), 1200);
-  }, []);
+  }, [libraryBackend, resetDatabaseStatusIcons, settingsRows, statusIconOverrides]);
 
   const handleReplaceCover = async (item: any, file: File) => {
+    if (libraryBackend) {
+      setUploadingCoverForKey(getMediaItemKey(item));setCoverUploadError(null);
+      try { applyDatabaseItem(getMediaType(item),await libraryBackend.artwork(item,file,"cover")); }
+      catch (error) { setCoverUploadError(error instanceof Error?error.message:"Cover save failed");throw error; }
+      finally { setUploadingCoverForKey(null); }
+      return;
+    }
     const itemKey = getMediaItemKey(item);
     const mediaType = getMediaType(item);
 
@@ -7637,6 +8056,11 @@ export default function Page() {
     if (!item || getMediaType(item) !== "book" || isStaticSiteBuild) return "";
     const sourceUrl = getBookSourceUrlByMode(item, mode);
     if (!sourceUrl) return "";
+    if (libraryBackend) {
+      const row=await libraryBackend.artwork(item,sourceUrl,"cover");
+      applyDatabaseItem("book",row);
+      return row.R2CoverUrl;
+    }
 
     const itemKey = getMediaItemKey(item);
     const formData = new FormData();
@@ -7658,6 +8082,11 @@ export default function Page() {
     requireSheetWrite = false
   ) => {
     if (!item || !sourceUrl) throw new Error("Missing item or source URL");
+    if (libraryBackend) {
+      const row=await libraryBackend.artwork(retainDatabaseIdentity(item,item),sourceUrl,imageType);
+      applyDatabaseItem(mediaType,row);
+      return imageType==="backdrop"?row.R2BackdropUrl:row.R2CoverUrl;
+    }
 
     const itemKey = getMediaItemKey(item);
     const formData = new FormData();
@@ -7817,6 +8246,12 @@ export default function Page() {
     sourceOverrideUrl?: string
   ) => {
     try {
+      if (libraryBackend) {
+        return await syncDatabaseArtwork(libraryBackend, retainDatabaseIdentity(item,item), automaticArtworkSources(item, {
+          cover: getDisplayCover(item,mediaType),
+          backdrop: mediaType === "book" ? "" : getDisplayBackdrop(item,mediaType),
+        }, safeStr(sourceOverrideUrl)), row => applyDatabaseItem(mediaType,row));
+      }
       const displayUrl = safeStr(sourceOverrideUrl) || getDisplayCover(item, mediaType);
       const existingR2Url = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
 
@@ -7891,7 +8326,7 @@ export default function Page() {
       const msg = e instanceof Error ? e.message : "R2 sync failed";
       console.debug("Auto R2 sync failed (non-critical):", e);
       setSyncState("error");
-      setSyncMsg(`Item added, but R2 sync failed. Falling back to source image. (${msg})`);
+      setSyncMsg(libraryBackend ? `Item saved, but artwork sync was not fully confirmed. (${msg})` : `Item added, but R2 sync failed. Falling back to source image. (${msg})`);
     }
   };
 
@@ -7994,6 +8429,10 @@ export default function Page() {
   const handleBookDetailsSyncCoverToR2 = handleDetailsSyncCoverToR2;
 
   const postSheetWrite = useCallback(async (url: string, payload: Record<string, unknown>, fallbackMessage: string): Promise<string> => {
+    if (libraryBackend) {
+      if (typeof payload.key !== "string" || !Object.hasOwn(payload,"value")) throw new Error("Unsupported legacy write. No Sheet request was sent.");
+      return writeDatabaseSetting(payload.key, String(payload.value));
+    }
     if (isNativeApp) {
       const queuedWriteId = await nativeQueueSheetWrite({ url, payload, fallbackMessage });
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -8054,7 +8493,7 @@ export default function Page() {
       throw new Error(errorMessage);
     }
     return typeof data.result === "string" ? data.result : JSON.stringify(data);
-  }, [isNativeApp, isStaticSiteBuild]);
+  }, [isNativeApp, isStaticSiteBuild, libraryBackend, writeDatabaseSetting]);
 
   const normalizeSheetFieldKey = useCallback((value: string) => safeStr(value).toLowerCase().replace(/[^a-z0-9]+/g, ""), []);
 
@@ -8223,6 +8662,11 @@ export default function Page() {
         rows = Array.isArray(payload.rows) ? payload.rows : [];
       }
 
+      if (libraryBackend) {
+        const confirmed=await libraryBackend.episodeMetadata(show,rows);
+        setTvEpisodeRows(confirmed);
+        return confirmed.filter(row=>row.__cdlShowId === (show.__cdlIdentity as {itemId?:string})?.itemId);
+      }
       const mergedRows = mergeTvEpisodeRows(rows);
       setTvEpisodeRows((prev) => {
         const nextByKey = new Map(prev.map((row) => [getTvEpisodeKey(row), row]));
@@ -8245,7 +8689,7 @@ export default function Page() {
 
       return mergedRows;
     },
-    [getTvEpisodeKey, isNativeApp, mergeTvEpisodeRows, postSheetWrite, showsWriteUrl, tvEpisodeRows]
+    [getTvEpisodeKey, isNativeApp, mergeTvEpisodeRows, postSheetWrite, showsWriteUrl, tvEpisodeRows, libraryBackend]
   );
 
   const queueTvEpisodeProgressWrite = useCallback(
@@ -8534,6 +8978,7 @@ export default function Page() {
 
   const updateTvEpisodeProgress = useCallback(
     async (episode: TVEpisodeRow, watched: boolean) => {
+      if (libraryBackend) { setTvEpisodeRows(await libraryBackend.progress([episode],watched)); return; }
       if (!showsWriteUrl) {
         throw new Error("Shows write URL is not configured.");
       }
@@ -8587,7 +9032,7 @@ export default function Page() {
         throw error;
       }
     },
-    [getTvEpisodeKey, queueTvEpisodeProgressWrite, showsWriteUrl]
+    [getTvEpisodeKey, queueTvEpisodeProgressWrite, showsWriteUrl, libraryBackend]
   );
 
   const bulkUpdateTvEpisodeProgress = useCallback(
@@ -8596,6 +9041,12 @@ export default function Page() {
       watched: boolean,
       onProgress?: (progress: TVEpisodeBulkSaveProgress) => void
     ) => {
+      if (libraryBackend) {
+        onProgress?.({total:episodes.length,confirmed:0,message:"Saving episode progress..."});
+        setTvEpisodeRows(await libraryBackend.progress(episodes,watched));
+        onProgress?.({total:episodes.length,confirmed:episodes.length,message:"Episode progress confirmed."});
+        return;
+      }
       if (!showsWriteUrl) {
         throw new Error("Shows write URL is not configured.");
       }
@@ -8655,7 +9106,7 @@ export default function Page() {
         throw error;
       }
     },
-    [getTvEpisodeKey, queueTvEpisodeProgressBulkWrite, showsWriteUrl]
+    [getTvEpisodeKey, queueTvEpisodeProgressBulkWrite, showsWriteUrl, libraryBackend]
   );
 
   const verifySavedFieldsFromCsv = useCallback(
@@ -8830,6 +9281,7 @@ export default function Page() {
   );
 
   const uploadCoverFormData = useCallback(async (formData: FormData): Promise<Record<string, any>> => {
+    if (libraryBackend) return libraryBackend.icon(formData);
     if (!isNativeApp) {
       const res = await fetch("/api/upload-cover", {
         method: "POST",
@@ -8890,9 +9342,39 @@ export default function Page() {
       localPath: saved.localPath,
       pendingSync: saved.pendingSync,
     };
-  }, [isNativeApp]);
+  }, [isNativeApp, libraryBackend]);
+
+  const applyDatabaseItem = useCallback((mediaType: MediaType, row: Row) => {
+    const parser = mediaType === "book" ? rowToBook : mediaType === "movie" ? rowToMovie : mediaType === "tv" ? rowToShow : rowToGame;
+    const parsed = retainDatabaseIdentity(parser(row), row);
+    if (!parsed) throw new Error("Saved item could not be rendered");
+    const next = { ...parsed, __type: mediaType };
+    const updateItem = <T extends Record<string,unknown> | null>(previous: T) => {
+      const identity = previous?.__cdlIdentity;
+      return identity && typeof identity === "object" && "itemId" in identity && identity.itemId === row.__cdlItemId
+        ? { ...previous, ...next } : previous;
+    };
+    setModalItem(updateItem); setSidebarDetailItem(updateItem);
+    setBookDetailItem(updateItem); setMovieDetailItem(updateItem); setTvDetailItem(updateItem); setGameDetailItem(updateItem);
+    setGameDetailEditItem(updateItem);
+    const updateRows = (rows: Row[]) => rows.some(entry => entry.__cdlItemId === row.__cdlItemId)
+      ? rows.map(entry => entry.__cdlItemId === row.__cdlItemId ? row : entry) : [...rows,row];
+    if (mediaType === "book") setBookRows(updateRows);
+    else if (mediaType === "movie") setMovieRows(updateRows);
+    else if (mediaType === "tv") setTvRows(updateRows);
+    else setGameRows(updateRows);
+    return next;
+  }, []);
+
+  const databaseEditSaver = useMemo(() => libraryBackend ? createDatabaseEditSaver(libraryBackend, applyDatabaseItem) : null,
+    [libraryBackend, applyDatabaseItem]);
+  const saveDatabaseEdit = async (mediaType: MediaType, item: Record<string,unknown>, updates: Record<string,string>) => {
+    if (!databaseEditSaver) throw new Error("Database backend unavailable");
+    await databaseEditSaver(mediaType, item, updates);
+  };
 
   const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
+    if (libraryBackend) { await saveDatabaseEdit("book",item,updates); return; }
     if (!booksWriteUrl) {
       throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
     }
@@ -9279,6 +9761,7 @@ export default function Page() {
   };
 
   const handleSaveShowEdits = async (item: any, updates: Record<string, string>) => {
+    if (libraryBackend) { await saveDatabaseEdit("tv",item,updates); return; }
     if (!showsWriteUrl) {
       throw new Error(
         "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
@@ -9498,6 +9981,7 @@ export default function Page() {
   };
 
   const handleSaveMovieEdits = async (item: any, updates: Record<string, string>) => {
+    if (libraryBackend) { await saveDatabaseEdit("movie",item,updates); return; }
     if (!moviesWriteUrl) {
       throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
     }
@@ -9719,6 +10203,7 @@ export default function Page() {
   };
 
   const handleSaveGameEdits = async (item: any, updates: Record<string, string>) => {
+    if (libraryBackend) { await saveDatabaseEdit("game",item,updates); return; }
     if (!gamesWriteUrl) {
       throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
     }
@@ -10060,6 +10545,15 @@ export default function Page() {
   };
 
   const handleDeleteLibraryItem = async (item: any) => {
+    if (libraryBackend) {
+      await libraryBackend.archive(item);
+      const keep = (row: Row) => row.__cdlItemId !== item.__cdlIdentity.itemId;
+      setBookRows(rows => rows.filter(keep)); setMovieRows(rows => rows.filter(keep));
+      setTvRows(rows => rows.filter(keep)); setGameRows(rows => rows.filter(keep));
+      setModalOpen(false); setModalItem(null); setCoverUploadError(null);
+      setRefreshNonce(n => n + 1);
+      return;
+    }
     const mediaType = getMediaType(item);
     const title = safeStr(item?.title);
 
@@ -10340,24 +10834,24 @@ export default function Page() {
     (mediaType: "movie" | "tv" | "book" | "game", row: Record<string, string>) => {
       const typedRow = row as Row;
       if (mediaType === "movie") {
-        const parsed = rowToMovie(typedRow);
+        const parsed = retainDatabaseIdentity(rowToMovie(typedRow),typedRow);
         if (!parsed) throw new Error("Movie was saved, but details could not be loaded.");
         finalizeAddAndOpen({ ...parsed, __type: "movie" });
         return;
       }
       if (mediaType === "tv") {
-        const parsed = rowToShow(typedRow);
+        const parsed = retainDatabaseIdentity(rowToShow(typedRow),typedRow);
         if (!parsed) throw new Error("TV show was saved, but details could not be loaded.");
         finalizeAddAndOpen({ ...parsed, __type: "tv" });
         return;
       }
       if (mediaType === "book") {
-        const parsed = rowToBook(typedRow);
+        const parsed = retainDatabaseIdentity(rowToBook(typedRow),typedRow);
         if (!parsed) throw new Error("Book was saved, but details could not be loaded.");
         finalizeAddAndOpen({ ...parsed, __type: "book" });
         return;
       }
-      const parsed = rowToGame(typedRow);
+      const parsed = retainDatabaseIdentity(rowToGame(typedRow),typedRow);
       if (!parsed) throw new Error("Game was saved, but details could not be loaded.");
       finalizeAddAndOpen({ ...parsed, __type: "game" });
     },
@@ -10374,6 +10868,16 @@ export default function Page() {
 
   const handleRateItSave = useCallback(async (data: Record<string, unknown>) => {
     if (!rateItItem || !rateItMediaType) return;
+    if (libraryBackend) {
+      const values: Record<string,string> = {};
+      for (const [key,value] of Object.entries(data)) {
+        if (value === undefined) continue;
+        const field = rateItMediaType === "book" && key === "dateCompleted" ? "completedDate" : rateItMediaType === "game" && key === "tags" ? "tag" : key;
+        values[field]=String(value);
+      }
+      applyDatabaseItem(rateItMediaType,await libraryBackend.edit(rateItItem,values));
+      return;
+    }
 
     try {
       const rateItItemKey = buildTypedItemKey(rateItItem, rateItMediaType);
@@ -10856,11 +11360,12 @@ export default function Page() {
     } catch (e: any) {
       throw e;
     }
-  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, tvCsvUrl, booksWriteUrl, booksCsvUrl, gamesWriteUrl, gamesCsvUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, buildBookSheetMatch, triggerSaveToast]);
+  }, [rateItItem, rateItMediaType, moviesWriteUrl, moviesCsvUrl, showsWriteUrl, tvCsvUrl, booksWriteUrl, booksCsvUrl, gamesWriteUrl, gamesCsvUrl, postSheetWrite, verifySavedFieldsFromCsv, formatDateForSheetWrite, buildBookSheetMatch, triggerSaveToast, libraryBackend, applyDatabaseItem]);
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
   const handleSaveNewMovie = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
+    if (libraryBackend) { const row=await libraryBackend.create("movie",values); const addedItem=applyDatabaseItem("movie",row); setMovieDetailsEditOpen(false); openNewlyAddedItemFromRow("movie",row); void syncSingleItemCoverToR2(addedItem,"movie"); return; }
     if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -10883,9 +11388,10 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "movie").catch(() => {
       // Silently ignore sync failures
     });
-  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
+  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
+    if (libraryBackend) { const row=await libraryBackend.create("tv",values); const addedItem=applyDatabaseItem("tv",row); setTvDetailsEditOpen(false); openNewlyAddedItemFromRow("tv",row); void syncSingleItemCoverToR2(addedItem,"tv"); return; }
     if (!showsWriteUrl) throw new Error("Shows write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -10910,9 +11416,10 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "tv").catch(() => {
       // Silently ignore sync failures
     });
-  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
+  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
+    if (libraryBackend) { const row=await libraryBackend.create("book",values); const addedItem=applyDatabaseItem("book",row); setBookDetailsEditOpen(false); openNewlyAddedItemFromRow("book",row); void syncSingleItemCoverToR2(addedItem,"book"); return; }
     if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -10938,9 +11445,10 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "book").catch(() => {
       // Silently ignore sync failures
     });
-  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
+  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>) => {
+    if (libraryBackend) { const row=await libraryBackend.create("game",values); const addedItem=applyDatabaseItem("game",row); setGameDetailsEditOpen(false); openNewlyAddedItemFromRow("game",row); void syncSingleItemCoverToR2(addedItem,"game"); return; }
     if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -10972,10 +11480,33 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "game").catch(() => {
       // Silently ignore sync failures
     });
-  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2]);
+  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
+    if (libraryBackend) {
+      const controller = new AbortController();
+      setLoading(true);
+      setError(null);
+      setSyncState("saving");
+      libraryBackend.load(controller.signal).then(snapshot => {
+        if (controller.signal.aborted) return;
+        setBookRows(snapshot.books); setMovieRows(snapshot.movies);
+        setTvRows(snapshot.shows); setGameRows(snapshot.games);
+        setTvEpisodeRows(snapshot.episodes);
+        setTvEpisodeDataStatus("ready");
+        setSettingsRows(snapshot.settings);
+        setWebCoreSnapshotReady(true);
+        setSyncState("ok");
+        setLastSyncAt(Date.parse(snapshot.observedAt));
+        setLoading(false);
+      }).catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setError(error instanceof Error ? error.message : "Library loading failed");
+        setSyncState("error"); setLoading(false);
+      });
+      return () => controller.abort();
+    }
     if (!tvCsvUrl && !booksCsvUrl && !moviesCsvUrl && !gamesCsvUrl) {
       if (isNativeApp) {
         let cancelled = false;
@@ -11343,7 +11874,7 @@ export default function Page() {
       if (webFollowupRefreshTimer) clearTimeout(webFollowupRefreshTimer);
       refreshController.abort();
     };
-  }, [tvCsvUrl, tvEpisodesCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp]);
+  }, [tvCsvUrl, tvEpisodesCsvUrl, booksCsvUrl, moviesCsvUrl, gamesCsvUrl, settingsCsvUrl, refreshNonce, isNativeApp, libraryBackend]);
 
   function formatLastSync(ts: number | null) {
     if (!ts) return "—";
@@ -11424,6 +11955,13 @@ export default function Page() {
   }, [isNativeApp]);
 
   const loadChangeLogRows = useCallback(async () => {
+    if (libraryBackend) {
+      setChangelogLoading(true);setChangelogError(null);
+      try { setChangelogRows(await libraryBackend.activity()); }
+      catch (error) { setChangelogRows([]);setChangelogError(error instanceof Error ? error.message : "Activity loading failed"); }
+      finally { setChangelogLoading(false); }
+      return;
+    }
     if (!changelogCsvUrl) {
       setChangelogError("ChangeLog CSV URL is not configured.");
       setChangelogRows([]);
@@ -11484,7 +12022,7 @@ export default function Page() {
     } finally {
       setChangelogLoading(false);
     }
-  }, [changelogCsvUrl]);
+  }, [changelogCsvUrl, libraryBackend]);
 
   const getChangeLogFieldValue = useCallback((row: Row, targetField: string): string => {
     const direct = safeStr(row[targetField]);
@@ -11560,6 +12098,11 @@ export default function Page() {
   //   - Even if Google Sheet is down, data is protected in localStorage
   //
   const getSetting = useCallback((key: string, defaultValue: any) => {
+    if (libraryBackend) {
+      if (Object.hasOwn(databasePendingSettingsRef.current,key)) return parseStoredSettingValue(databasePendingSettingsRef.current[key]);
+      const current=settingsRows.find(row=>row.Key===key);
+      return current ? parseStoredSettingValue(current.__cdlGeneralValue ?? current.Value) : defaultValue;
+    }
     const readLocalSettingValue = () => {
       try {
         if (settingsCacheRef.current === null) {
@@ -11655,7 +12198,7 @@ export default function Page() {
     if (localValue !== undefined) return localValue;
 
     return defaultValue;
-  }, [settingsRows]);
+  }, [settingsRows, libraryBackend]);
 
   useEffect(() => {
     try {
@@ -11772,6 +12315,11 @@ export default function Page() {
     const successCount = results.filter((r) => r.status === "fulfilled").length;
     const failedCount = results.length - successCount;
     if (failedCount > 0) {
+      if (libraryBackend) results.forEach((result,index)=>{
+        if(result.status!=="rejected")return;
+        const [key,entry]=entries[index];
+        if(!pendingSettingsSheetWritesRef.current[key]) pendingSettingsSheetWritesRef.current[key]=entry;
+      });
       setSyncState("error");
       setSyncMsg(`Saved ${successCount}/${results.length} settings`);
       return;
@@ -11783,7 +12331,7 @@ export default function Page() {
     setTimeout(() => {
       setSyncMsg("Synced");
     }, 1200);
-  }, [canWriteSettings, postSheetWrite, settingsWriteUrl]);
+  }, [canWriteSettings, postSheetWrite, settingsWriteUrl, libraryBackend]);
 
   const queueSettingSheetWrite = useCallback(
     (key: string, value: any, category: string = "", description: string = "") => {
@@ -11813,6 +12361,11 @@ export default function Page() {
   );
 
   const saveSetting = useCallback((key: string, value: any, category: string = "", description: string = "") => {
+    if (libraryBackend) {
+      databasePendingSettingsRef.current[key]=String(value);
+      queueSettingSheetWrite(key,value,category,description);
+      return;
+    }
     try {
       // Initialize cache from localStorage if not already loaded
       if (settingsCacheRef.current === null) {
@@ -11852,9 +12405,10 @@ export default function Page() {
       console.warn("Failed to save to localStorage:", e);
     }
     queueSettingSheetWrite(key, value, category, description);
-  }, [queueSettingSheetWrite]);
+  }, [queueSettingSheetWrite, libraryBackend]);
 
   const removeSetting = useCallback((key: string) => {
+    if (libraryBackend) { saveSetting(key, ""); return; }
     try {
       if (settingsCacheRef.current === null) {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
@@ -11879,7 +12433,7 @@ export default function Page() {
     } catch (e) {
       console.warn("Failed to remove setting from localStorage:", e);
     }
-  }, []);
+  }, [libraryBackend, saveSetting]);
 
   useEffect(() => {
     return () => {
@@ -11953,6 +12507,7 @@ export default function Page() {
 
   // Load UI prefs from R2 on mount — authoritative cross-device source for UI toggles
   useEffect(() => {
+    if (libraryBackend) return;
     fetch("/api/ui-prefs", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
@@ -11963,11 +12518,16 @@ export default function Page() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [libraryBackend]);
 
   // Apply settings from spreadsheet on load
   useEffect(() => {
     if (settingsRows.length === 0) return;
+    if (libraryBackend) {
+      const scales = freshCoverScales((key, fallback) => getSetting(key, fallback));
+      setCoverScaleByGroup(previous =>
+        (Object.keys(scales) as CoverScaleGroupKey[]).every(group => previous[group] === scales[group]) ? previous : scales);
+    }
     
     setPosterSizeTv(getSetting("posterSizeTv", 100));
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
@@ -12126,7 +12686,7 @@ export default function Page() {
     });
 
     const settingsCache = settingsCacheRef.current;
-    if (settingsCache && typeof settingsCache === "object") {
+    if (!libraryBackend && settingsCache && typeof settingsCache === "object") {
       Object.entries(settingsCache).forEach(([key, value]) => {
         if (!key.startsWith(SMART_LIST_MANUAL_ORDER_SETTING_PREFIX)) return;
         const listId = safeStr(key.slice(SMART_LIST_MANUAL_ORDER_SETTING_PREFIX.length));
@@ -12140,7 +12700,7 @@ export default function Page() {
     
     setSimpleShelfBackgroundColor("#ececec");
     setStartupSettingsHydrated(true);
-  }, [getCachedNumericSetting, getSetting, settingsRows]);
+  }, [getCachedNumericSetting, getSetting, settingsRows, libraryBackend]);
 
   useEffect(() => {
     if (((!loading && syncState !== "idle") || webCoreSnapshotReady) && settingsRows.length === 0) {
@@ -12156,7 +12716,22 @@ export default function Page() {
   }, [loading, isNativeApp, webCoreSnapshotReady, startupLockVisible, startupSettingsHydrated]);
 
   const persistSmartLists = useCallback(
-    (nextLists: SmartList[]) => {
+    async (nextLists: SmartList[]): Promise<boolean> => {
+      if (libraryBackend) {
+        if (smartListWriteInFlightRef.current) return false;
+        smartListWriteInFlightRef.current = true;
+        setSyncState("saving");
+        try {
+          await writeDatabaseSetting(SMART_LISTS_SETTING_KEY, JSON.stringify(nextLists));
+          setCustomSmartLists(nextLists);
+          setSyncState("ok"); setSyncMsg("Synced"); setLastSyncAt(Date.now());
+          return true;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Smart list save not confirmed";
+          setSyncState("error"); setSyncMsg(message); setSmartListBuilderError(message);
+          return false;
+        } finally { smartListWriteInFlightRef.current = false; }
+      }
       setCustomSmartLists(nextLists);
       saveSetting(
         SMART_LISTS_SETTING_KEY,
@@ -12164,11 +12739,13 @@ export default function Page() {
         "Smart Lists",
         "Custom smart list definitions"
       );
+      return true;
     },
-    [saveSetting]
+    [saveSetting, libraryBackend, writeDatabaseSetting]
   );
 
   const handleOpenSmartListBuilder = useCallback(() => {
+    smartListCreateIdRef.current = null;
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setShowVersionNotes(false);
@@ -12359,7 +12936,8 @@ export default function Page() {
     []
   );
 
-  const handleSaveSmartList = useCallback(() => {
+  const handleSaveSmartList = useCallback(async () => {
+    if (libraryBackend && smartListWriteInFlightRef.current) return;
     const name = safeStr(smartListNameInputRef.current || smartListDraft.name);
     if (!name) {
       setSmartListBuilderError("Please enter a smart list name.");
@@ -12373,7 +12951,9 @@ export default function Page() {
     const listId =
       smartListBuilderMode === "edit" && smartListBuilderEditingId
         ? smartListBuilderEditingId
-        : `smart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        : libraryBackend
+          ? (smartListCreateIdRef.current ??= `smart-${crypto.randomUUID()}`)
+          : `smart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const mediaTypes = Array.from(new Set(smartListDraft.mediaTypes));
     const statuses: Partial<Record<SmartListMediaType, string[]>> = {};
     const yearFilters: SmartListYearFiltersByMedia = {};
@@ -12438,11 +13018,12 @@ export default function Page() {
     };
 
     const nextLists =
-      smartListBuilderMode === "edit"
+      smartListBuilderMode === "edit" || (libraryBackend && customSmartLists.some(list => list.id === listId))
         ? customSmartLists.map((list) => (list.id === listId ? nextList : list))
         : [...customSmartLists, nextList];
 
-    persistSmartLists(nextLists);
+    if (!await persistSmartLists(nextLists)) return;
+    smartListCreateIdRef.current = null;
     setSmartListBuilderOpen(false);
     setSmartListBuilderMode("create");
     setSmartListBuilderEditingId(null);
@@ -12455,10 +13036,10 @@ export default function Page() {
     setNav("smart-custom");
     setSortField(nextList.defaultSortField);
     setSortOrder(nextList.defaultSortOrder);
-  }, [customSmartLists, persistSmartLists, smartListBuilderEditingId, smartListBuilderMode, smartListDraft]);
+  }, [customSmartLists, persistSmartLists, smartListBuilderEditingId, smartListBuilderMode, smartListDraft, libraryBackend]);
 
   const handleDeleteSmartList = useCallback(
-    (listId: string) => {
+    async (listId: string) => {
       const listToDelete = customSmartLists.find((list) => list.id === listId);
       if (!listToDelete) return;
       const confirmed =
@@ -12467,20 +13048,24 @@ export default function Page() {
           : window.confirm(`Delete smart list "${listToDelete.name}"?`);
       if (!confirmed) return;
       const nextLists = customSmartLists.filter((list) => list.id !== listId);
-      persistSmartLists(nextLists);
+      if (!await persistSmartLists(nextLists)) return;
       setSmartListContextMenu(null);
       setSmartListManualOrderKeysById((prev) => {
         const next = { ...prev };
         delete next[listId];
         return next;
       });
-      removeSetting(`${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${listId}`);
-      saveSetting(
+      // The deleted definition is authoritative. Retain its unused database
+      // order key as recovery history rather than claim a two-write atomic delete.
+      if (!libraryBackend) {
+        removeSetting(`${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${listId}`);
+        saveSetting(
         `${SMART_LIST_MANUAL_ORDER_SETTING_PREFIX}${listId}`,
         "",
         "Smart Lists",
         `Manual order keys for smart list ${listId}`
       );
+      }
       if (selectedSmartListId === listId) {
         setSelectedSmartListId(null);
         if (nav === "smart-custom") {
@@ -12494,11 +13079,11 @@ export default function Page() {
         setSyncMsg("Synced");
       }, 1200);
     },
-    [activateHomeLibrary, customSmartLists, nav, persistSmartLists, removeSetting, saveSetting, selectedSmartListId]
+    [activateHomeLibrary, customSmartLists, nav, persistSmartLists, removeSetting, saveSetting, selectedSmartListId, libraryBackend]
   );
 
   const handleMoveSmartList = useCallback(
-    (listId: string, direction: "up" | "down") => {
+    async (listId: string, direction: "up" | "down") => {
       const index = customSmartLists.findIndex((list) => list.id === listId);
       if (index === -1) return;
       const targetIndex = direction === "up" ? index - 1 : index + 1;
@@ -12506,7 +13091,7 @@ export default function Page() {
       const next = [...customSmartLists];
       const [moved] = next.splice(index, 1);
       next.splice(targetIndex, 0, moved);
-      persistSmartLists(next);
+      if (!await persistSmartLists(next)) return;
       setSyncState("ok");
       setSyncMsg("Synced");
       setLastSyncAt(Date.now());
@@ -12515,7 +13100,7 @@ export default function Page() {
   );
 
   const handleReorderSmartLists = useCallback(
-    (fromListId: string, toListId: string) => {
+    async (fromListId: string, toListId: string) => {
       if (!fromListId || !toListId || fromListId === toListId) return;
       const fromIndex = customSmartLists.findIndex((list) => list.id === fromListId);
       const toIndex = customSmartLists.findIndex((list) => list.id === toListId);
@@ -12523,7 +13108,7 @@ export default function Page() {
       const next = [...customSmartLists];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
-      persistSmartLists(next);
+      if (!await persistSmartLists(next)) return;
       setSyncState("ok");
       setSyncMsg("Synced");
       setLastSyncAt(Date.now());
@@ -12557,7 +13142,7 @@ export default function Page() {
     setSmartListNameDraft(currentName);
   }, []);
 
-  const commitInlineSmartListRename = useCallback(() => {
+  const commitInlineSmartListRename = useCallback(async () => {
     const nextName = smartListNameDraft.trim();
     if (!nextName) {
       setEditingBuiltInSmartListKey(null);
@@ -12570,7 +13155,7 @@ export default function Page() {
       const next = customSmartLists.map((list) =>
         list.id === editingCustomSmartListId ? { ...list, name: nextName } : list
       );
-      persistSmartLists(next);
+      if (!await persistSmartLists(next)) return;
       setSyncState("ok");
       setSyncMsg("Synced");
       setLastSyncAt(Date.now());
@@ -12669,17 +13254,18 @@ export default function Page() {
                 ? readNextManualOrderKeys
                 : wishlistManualOrderKeys;
 
-    if (existingManualOrderKeys.length > 0) return;
+    if (!libraryBackend && existingManualOrderKeys.length > 0) return;
 
     const savedManualOrderRaw = safeStr(getSetting(manualSettingKey, ""));
 
-    if (!savedManualOrderRaw) return;
+    if (!savedManualOrderRaw && !libraryBackend) return;
     try {
-      const parsed = JSON.parse(savedManualOrderRaw);
+      const parsed = JSON.parse(savedManualOrderRaw || "[]");
       if (Array.isArray(parsed)) {
         const normalized = parsed
           .map((entry) => safeStr(entry))
           .filter(Boolean);
+        if (normalized.length === existingManualOrderKeys.length && normalized.every((key, index) => key === existingManualOrderKeys[index])) return;
         if (nav === "now-playing") {
           setNowPlayingManualOrderKeys(normalized);
         } else if (nav === "play-next") {
@@ -12718,6 +13304,7 @@ export default function Page() {
     watchlistMoviesManualOrderKeys,
     watchlistTvManualOrderKeys,
     wishlistManualOrderKeys,
+    libraryBackend,
   ]);
 
   useEffect(() => {
@@ -12803,6 +13390,7 @@ export default function Page() {
   const updateShowStatusIndicators = (value: boolean) => {
     setShowStatusIndicators(value);
     saveSetting("showStatusIndicators", value, "Display", "Show status indicator dots on covers");
+    if (libraryBackend) return;
     fetch("/api/ui-prefs", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -12983,7 +13571,7 @@ export default function Page() {
     }, "Cover Sizes", `${group === "home" ? "Home" : group === "tv" ? "TV Shows" : group === "books" ? "Books" : group === "movies" ? "Movies" : "Games"} Cover Scale (%)`);
   }, [debouncedUpdate]);
   const updateCurrentCoverScale = useCallback((value: number) => {
-    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons") return;
+    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons" || nav === "tracker-sync") return;
     const currentGroup = activeCoverScaleGroup;
     updateCoverScaleForGroup(currentGroup, value);
   }, [activeCoverScaleGroup, nav, updateCoverScaleForGroup]);
@@ -13301,7 +13889,7 @@ export default function Page() {
   };
 
   const allShows = useMemo(() => {
-    return tvRows.map(rowToShow).filter(show => {
+    return tvRows.map(row => retainDatabaseIdentity(rowToShow(row),row)).filter(show => {
       if (!show) return false;
       // Filter out items with #REF! errors in key fields
       if (hasRefError(show.title) || hasRefError(show.tmdbId)) return false;
@@ -13312,6 +13900,7 @@ export default function Page() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!allShows.length) return;
+    if (libraryBackend?.validationReadOnly || libraryBackend?.suppressAutomaticRefresh) return;
     if (tvEpisodeDailyRefreshRunningRef.current) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
@@ -13391,10 +13980,10 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [allShows, refreshTvEpisodesForShow]);
+  }, [allShows, refreshTvEpisodesForShow, libraryBackend]);
 
   const allBooks = useMemo(() => {
-    return bookRows.map(rowToBook).filter(book => {
+    return bookRows.map(row => retainDatabaseIdentity(rowToBook(row),row)).filter(book => {
       if (!book) return false;
       // Filter out items with #REF! errors in key fields
       if (hasRefError(book.title) || hasRefError(book.isbn)) return false;
@@ -13403,7 +13992,7 @@ export default function Page() {
   }, [bookRows]);
 
   const allMovies = useMemo(() => {
-    return movieRows.map(rowToMovie).filter(movie => {
+    return movieRows.map(row => retainDatabaseIdentity(rowToMovie(row),row)).filter(movie => {
       if (!movie) return false;
       // Filter out items with #REF! errors in key fields
       if (hasRefError(movie.title) || hasRefError(movie.tmdbId)) return false;
@@ -13482,7 +14071,7 @@ export default function Page() {
   }, [tvDetailItem, allShows, parseCreatorTokens]);
 
   const allGames = useMemo(() => {
-    return gameRows.map(rowToGame).filter(game => {
+    return gameRows.map(row => retainDatabaseIdentity(rowToGame(row),row)).filter(game => {
       if (!game) return false;
       // Filter out items with #REF! errors in key fields
       if (hasRefError(game.title) || hasRefError(game.platform)) return false;
@@ -14456,6 +15045,7 @@ export default function Page() {
     watchlistMovieItems.forEach((item) => {
       const legacyKey = getLegacyMediaItemKey(item);
       const currentKey = getMediaItemKey(item);
+      if (stableItemKey(item)) return;
       if (legacyKey && currentKey) map.set(legacyKey, currentKey);
     });
     return map;
@@ -14465,6 +15055,7 @@ export default function Page() {
     watchlistMovieItems.forEach((item) => {
       const currentKey = getMediaItemKey(item);
       if (!currentKey) return;
+      if (stableItemKey(item)) { map.set(currentKey, currentKey); return; }
       const legacyKey = getLegacyMediaItemKey(item);
       const titleToken = normalizeTitleKey((item as any)?.title || (item as any)?.Title || (item as any)?.name || "");
       const dateToken = normalizeTitleKey(
@@ -14536,6 +15127,7 @@ export default function Page() {
     watchlistTvItems.forEach((item) => {
       const legacyKey = getLegacyMediaItemKey(item);
       const currentKey = getMediaItemKey(item);
+      if (stableItemKey(item)) return;
       if (legacyKey && currentKey) map.set(legacyKey, currentKey);
     });
     return map;
@@ -14545,6 +15137,7 @@ export default function Page() {
     watchlistTvItems.forEach((item) => {
       const currentKey = getMediaItemKey(item);
       if (!currentKey) return;
+      if (stableItemKey(item)) { map.set(currentKey, currentKey); return; }
       const legacyKey = getLegacyMediaItemKey(item);
       const titleToken = normalizeTitleKey((item as any)?.title || (item as any)?.Title || (item as any)?.name || "");
       const dateToken = normalizeTitleKey(
@@ -15435,7 +16028,7 @@ export default function Page() {
       return sorted.map((b) => ({ ...b, __type: "book" } as Book & { __type: "book" })) as any[];
     }
 
-    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons") {
+    if (nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons" || nav === "tracker-sync") {
       return [
         ...indexedBooks.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...indexedShows.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
@@ -16554,7 +17147,7 @@ export default function Page() {
       nav === "roadmap" ||
       nav === "cover-sync" ||
       nav === "themes" ||
-      nav === "icons"
+      nav === "icons" || nav === "tracker-sync"
     ) {
       return null;
     }
@@ -17460,7 +18053,7 @@ export default function Page() {
       }
       setSortField(MANUAL_SORT_FIELD);
       setSortOrder("Asc");
-      persistBacklogSortSettings(view, MANUAL_SORT_FIELD, "Asc");
+      if (!libraryBackend) persistBacklogSortSettings(view, MANUAL_SORT_FIELD, "Asc");
 
       let manualOrderSettingKey = WISHLIST_MANUAL_ORDER_SETTING_KEY;
       let manualOrderDescription = "Manual order keys for Wishlist (Backlog) view";
@@ -17481,12 +18074,21 @@ export default function Page() {
         manualOrderDescription = "Manual order keys for TV Watchlist view";
       }
 
-      saveSetting(
-        manualOrderSettingKey,
-        JSON.stringify(normalizedKeys),
-        "View Sorting",
-        manualOrderDescription
-      );
+      if (libraryBackend) {
+        setSyncState("saving"); setSyncMsg("Saving manual order...");
+        const settings = manualOrderSettings(view, normalizedKeys);
+        for (const { key, value } of settings) databasePendingSettingsRef.current[key] = value;
+        try {
+          await saveManualOrder(writeDatabaseSetting, settings);
+          setSyncState("ok"); setSyncMsg("Manual order saved"); setLastSyncAt(Date.now());
+        } catch (error) {
+          setSyncState("error");
+          setSyncMsg(error instanceof Error ? error.message : "Manual order save not confirmed");
+          return;
+        }
+      } else {
+        saveSetting(manualOrderSettingKey, JSON.stringify(normalizedKeys), "View Sorting", manualOrderDescription);
+      }
 
       if (view !== "wishlist") return;
 
@@ -17495,8 +18097,7 @@ export default function Page() {
         prev.map((row) => {
           const title = safeStr(row["Title"]);
           if (!title) return row;
-          const rowPlatform = normalizePlatformToken(safeStr(row["Platform"]));
-          const rowKey = `game:${normalizeTitleKey(title)}:${rowPlatform || "default"}`;
+          const rowKey = buildTypedItemKey(row, "game");
           const nextOrder = orderByKey.get(rowKey);
           if (!nextOrder) return row;
           if (safeStr(row["WishlistOrder"]) === nextOrder) return row;
@@ -17512,6 +18113,13 @@ export default function Page() {
       orderedItems.forEach((item, index) => {
         const orderValue = String(index + 1);
         const itemTitle = safeStr(item.title);
+        if (libraryBackend && item.__type === "game") {
+          writes.push(libraryBackend.edit(item,{wishlistOrder:orderValue}).then(row=>{
+            applyDatabaseItem("game",row);
+            return "Confirmed";
+          }));
+          return;
+        }
         if (item.__type !== "game" || !gamesWriteUrl) return;
 
         const matchIgdbId = safeStr((item as any).igdbId);
@@ -17570,6 +18178,9 @@ export default function Page() {
       watchlistTvItemsByKey,
       wishlistBookItemsByKey,
       wishlistItemsByKey,
+      libraryBackend,
+      applyDatabaseItem,
+      writeDatabaseSetting,
     ]
   );
 
@@ -17679,10 +18290,11 @@ export default function Page() {
       }
       setSortField(MANUAL_SORT_FIELD);
       setSortOrder("Asc");
-      persistBacklogSortSettings(backlogView, MANUAL_SORT_FIELD, "Asc");
+      if (!libraryBackend) persistBacklogSortSettings(backlogView, MANUAL_SORT_FIELD, "Asc");
     },
     [
       applySorting,
+      libraryBackend,
       manualSortableSmartListId,
       nav,
       nowPlayingItems,
@@ -19675,7 +20287,7 @@ export default function Page() {
       const nextMode = opensSidebar ? "full" : "sidebar";
       setDetailsOpenMode(nextMode);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem("cdl:details-open-mode", nextMode);
+        localStorage.setItem("cdl:details-open-mode", nextMode);
       }
       setSidebarDetailItem(null);
       setSidebarDetailSaveState("idle");
@@ -21917,7 +22529,10 @@ export default function Page() {
     setSidebarDetailSaveState("saving");
     setSidebarDetailSaveError("");
     try {
-      if (mediaType === "book") await handleSaveBookEdits(item, updates);
+      if (libraryBackend) {
+        applyDatabaseItem(mediaType,await libraryBackend.edit(item, mediaType === "movie" || mediaType === "tv" ? {watchStatus:nextStatus} : {status:nextStatus}));
+      }
+      else if (mediaType === "book") await handleSaveBookEdits(item, updates);
       else if (mediaType === "movie") {
         if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
         const normalizedStatus = normalizeMovieWatchStatusForSheet(nextStatus);
@@ -22013,7 +22628,7 @@ export default function Page() {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
       setSidebarDetailWidth((currentWidth) => {
-        window.localStorage.setItem("cdl:details-sidebar-width", String(currentWidth));
+        localStorage.setItem("cdl:details-sidebar-width", String(currentWidth));
         return currentWidth;
       });
     };
@@ -24659,6 +25274,17 @@ export default function Page() {
                   </span>
                 </button>
 
+                {libraryBackend ? <button
+                  type="button"
+                  aria-label="Sync"
+                  onClick={() => { setNav("tracker-sync"); setMobileSidebarOpen(false); setMobileSettingsOpen(false); }}
+                  className={`sideSubItem ${nav === "tracker-sync" ? "active" : ""}`}
+                  aria-current={nav === "tracker-sync" ? "page" : undefined}
+                  style={{ ...discoverRowStyle, borderRadius: 10,
+                    background: nav === "tracker-sync" ? "rgba(120,128,140,0.09)" : "transparent",
+                    border: nav === "tracker-sync" ? "1px solid rgba(146,154,166,0.26)" : "1px solid transparent", cursor: "pointer" }}
+                ><span style={{display:"flex",alignItems:"center",gap:discoverSidebarGap}}><img src={getSidebarIconSrc("tracker-sync", "/icon-statistics.png")} alt="" width={discoverSidebarIconSize} height={discoverSidebarIconSize} onClick={(event)=>openSidebarIconFilePicker(event,"tracker-sync")} title={uploadingSidebarIconKey==="tracker-sync"?"Uploading...":"Change icon"} style={{display:"block",objectFit:"contain",cursor:"pointer"}}/><span style={discoverLabelStyle}>Sync</span></span></button> : null}
+
               </div>
 
             </div>
@@ -25567,7 +26193,7 @@ export default function Page() {
             </div>
 
             {/* Synced Module at Bottom */}
-            {nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons" ? null : (
+            {nav === "statistics" || nav === "roadmap" || nav === "cover-sync" || nav === "themes" || nav === "icons" || nav === "tracker-sync" ? null : (
             <div style={{ padding: 0, marginTop: "auto", marginBottom: 12 }}>
               <div
                 style={{
@@ -25868,7 +26494,9 @@ export default function Page() {
                 marginBottom: 16,
               }}
             >
-              {!isNativeApp && webCoreSnapshotReady
+              {libraryBackend && webCoreSnapshotReady
+                ? "Refreshing library…"
+                : !isNativeApp && webCoreSnapshotReady
                 ? "Showing available fresh data. TV shows and episode progress are still loading; library counts are partial."
                 : "Loading…"}
             </div>
@@ -26356,6 +26984,8 @@ export default function Page() {
             />
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
+          ) : nav === "tracker-sync" && libraryBackend ? (
+            <TrackerSyncView libraryId={libraryBackend.libraryId} isDark={shelfThemeMode === "dark"} iconSrc={getSidebarIconSrc("tracker-sync", "/icon-statistics.png")} onBack={() => setNav(lastLibraryNav || "home")} onSynced={() => setRefreshNonce(value => value + 1)} />
           ) : nav === "themes" ? (
             (() => {
               const themeChoices: Array<{
@@ -26666,6 +27296,7 @@ export default function Page() {
                 { key: "themes", label: "Themes", fallback: "/icon-theme.png" },
                 { key: "icons", label: "Icons", fallback: "/icon-settings.png" },
                 { key: "r2-sync", label: "Activity Log", fallback: "/icon-statistics.png" },
+                ...(libraryBackend ? [{ key: "tracker-sync", label: "Sync", fallback: "/icon-statistics.png" }] : []),
               ];
               const statusCatalog = statusIconOptions;
               const cardGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: isMobileLayout ? "repeat(auto-fill, minmax(140px, 1fr))" : "repeat(auto-fill, minmax(180px, 1fr))", gap: isMobileLayout ? 12 : 16 };
@@ -27253,6 +27884,7 @@ export default function Page() {
             />
           ) : tvDetailItem ? (
             <TVDetailsPage
+              saveDestination={libraryBackend ? "Supabase" : "Google Sheets"}
               key={getMediaItemKey(tvDetailItem)}
               item={tvDetailItem}
               isMobileLayout={isMobileLayout}
@@ -27614,6 +28246,9 @@ export default function Page() {
                         setNav("cover-sync");
                       },
                     },
+                    ...(libraryBackend ? [{ key: "tracker-sync", label: "Sync", icon: getSidebarIconSrc("tracker-sync", "/icon-statistics.png"), action: () => {
+                      setMobileSidebarOpen(false); setMobileSettingsOpen(false); setMobileSearchOpen(false); setNav("tracker-sync");
+                    } }] : []),
                   ].map((item) => (
                     <button
                       key={`mobile-discover-card-${item.key}`}
@@ -30345,6 +30980,7 @@ export default function Page() {
         open={rateItModalOpen}
         onClose={() => setRateItModalOpen(false)}
         onSave={handleRateItSave}
+        saveDestination={libraryBackend ? "Supabase" : "Google Sheets"}
         item={rateItItem}
         mediaType={rateItMediaType || "movie"}
         highlightColor={rateItHighlightColor}
@@ -30375,7 +31011,7 @@ export default function Page() {
             <path d="M20 6L9 17l-5-5" />
           </svg>
           <span style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", letterSpacing: "0.01em" }}>
-            {`Saved to Google Sheet${lastSheetSaveAt ? ` • ${new Date(lastSheetSaveAt).toLocaleTimeString()}` : ""}`}
+            {`Saved to ${libraryBackend ? "Supabase" : "Google Sheet"}${lastSheetSaveAt ? ` • ${new Date(lastSheetSaveAt).toLocaleTimeString()}` : ""}`}
           </span>
         </div>
       </div>

@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {initialBaselineSql as build} from './initial-baseline-sql.mjs';
+const fixture=()=>({run:'a'.repeat(64),baseline:{records:[{itemId:'11111111-1111-4111-8111-111111111111',revision:1,fields:{Title:"Literal $confirm$ and ' quote",NumberOfEpisodes:10}}],fingerprint:'b'.repeat(64),columns:{Shows:['Title','NumberOfEpisodes']}},protectedData:{items:'c'.repeat(32),metadata:'d'.repeat(32),episodes:'e'.repeat(32),progress:'f'.repeat(32)},receipt:{version:1,target:'1kkdF7XFpKctOHiktwtaYagE9KeituvRepJ5ziUE_nF0',run:'a'.repeat(64),baselineConfirmed:false,records:1,operations:1,backupSha256:'c'.repeat(64),confirmedAt:'2026-10-19T23:00:00Z'},receiptRevision:1,confirmedAt:'2026-10-19T23:05:00Z'});
+test('confirmation is target-pinned, source-guarded, atomic, idempotent and uses an unpredictable dollar delimiter',()=>{
+ const sql=build(fixture());assert.match(sql,/begin isolation level serializable/);assert.match(sql,/protected_state/);assert.match(sql,/Initial baseline cannot overwrite existing baselines/);assert.match(sql,/Wrong active run/);assert.match(sql,/cdl_v14_save_setting/);assert.match(sql,/false/);
+ const tag=/do (\$cdl_[a-f0-9]+\$)/.exec(sql)[1];assert.equal(sql.split(tag).length,3);assert.equal(JSON.stringify(fixture()).includes(tag),false);assert.ok(sql.includes("and '' quote"));
+ assert.equal(sql.includes('1Kh_wLgr'),false);assert.equal(/(?:update|delete from) cdl\.(?:items|episodes|item_metadata|episode_progress)/i.test(sql),false);
+});
+test('wrong target, non-confirmed execution, excluded fields and malformed hashes cannot produce a confirmation transaction',()=>{
+ for(const change of [{...fixture(),run:'bad'},{...fixture(),receipt:{...fixture().receipt,target:'original'}},{...fixture(),receipt:{...fixture().receipt,baselineConfirmed:true}},{...fixture(),protectedData:{items:'bad'}},{...fixture(),baseline:{...fixture().baseline,records:[{...fixture().baseline.records[0],fields:{Notes:'private'}}]}}])assert.throws(()=>build(change));
+});

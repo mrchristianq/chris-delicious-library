@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { isNativeRuntime, nativeReadRoadmap, nativeSaveRoadmap } from "../native/bridge";
+import { useLibraryBackend } from "../lib/v14/backend-context";
 
 const STORAGE_KEY = "cdlRoadmapItems";
 
@@ -146,6 +147,7 @@ type RoadmapViewProps = {
 };
 
 export function RoadmapView({ onExit }: RoadmapViewProps) {
+  const libraryBackend = useLibraryBackend();
   const [items, setItems] = useState<RoadmapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState(false);
@@ -161,19 +163,33 @@ export function RoadmapView({ onExit }: RoadmapViewProps) {
   const dragId = useRef<string | null>(null);
 
   useEffect(() => {
+    if (libraryBackend) {
+      let cancelled=false;
+      libraryBackend.roadmap.load().then(next=>{if(!cancelled)setItems(next);})
+        .catch(()=>{if(!cancelled)setSaveError(true);})
+        .finally(()=>{if(!cancelled)setLoading(false);});
+      return ()=>{cancelled=true;};
+    }
     const cached = localLoad();
     if (cached.length > 0) setItems(cached);
     serverLoad()
       .then((serverItems) => { setItems(serverItems); localSave(serverItems); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [libraryBackend]);
 
   useEffect(() => {
     if (editingId && editInputRef.current) editInputRef.current.focus();
   }, [editingId]);
 
   function persist(next: RoadmapItem[]): void {
+    if (libraryBackend) {
+      if (loading) { setSaveError(true); return; }
+      setItems(next);
+      setSaveError(false);
+      void libraryBackend.roadmap.save(next).catch(()=>setSaveError(true));
+      return;
+    }
     setItems(next);
     localSave(next);
     setSaveError(false);

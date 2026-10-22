@@ -32,6 +32,7 @@ type RateItModalProps = {
   mediaType: "movie" | "tv" | "book" | "game";
   highlightColor?: string;
   coverUrl?: string;
+  saveDestination?: "Google Sheets" | "Supabase";
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -132,6 +133,7 @@ export function RateItModal({
   mediaType,
   highlightColor = "#007AFF",
   coverUrl = "",
+  saveDestination = "Google Sheets",
 }: RateItModalProps) {
   const [myRating, setMyRating] = useState("");
   const [watchStatus, setWatchStatus] = useState("");
@@ -311,7 +313,7 @@ export function RateItModal({
       window.setTimeout(onClose, 750);
     } catch (error) {
       setSaveState("error");
-      setSaveError(error instanceof Error ? error.message : "Google Sheets did not confirm this update.");
+      setSaveError(error instanceof Error ? error.message : `${saveDestination} did not confirm this update.`);
     }
   };
 
@@ -500,13 +502,13 @@ export function RateItModal({
         {saveState === "saving" ? (
           <div className="saveNotice saveNoticePending" role="status">
             <span className="saveSpinner" />
-            Saving and confirming with Google Sheets…
+            Saving and confirming with {saveDestination}…
           </div>
         ) : null}
         {saveState === "saved" ? (
           <div className="saveNotice saveNoticeSuccess" role="status">
             <span>✓</span>
-            Saved to Google Sheets
+            Saved to {saveDestination}
           </div>
         ) : null}
         {saveState === "error" ? (

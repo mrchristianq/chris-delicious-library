@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { editorDelta } from "../lib/v14/editor-delta";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
 type MovieDetailsEditModalProps = {
@@ -122,6 +123,7 @@ function buildValues(item: Record<string, unknown>): Record<string, string> {
     backdropUrl:    firstNonEmpty(item, ["backdropUrl", "BackdropURL"]),
     notes:          firstNonEmpty(item, ["notes", "Notes"]),
   };
+  if (item.__cdlIdentity && raw.watchStatus === "Started") raw.watchStatus = "Watching";
   for (const key of Object.keys(raw)) {
     if (key.toLowerCase().includes("date")) {
       const norm = normalizeDateInputValue(raw[key]);
@@ -235,7 +237,10 @@ export function MovieDetailsEditModal({ open, item, onClose, onSave, onSaved, on
     setSaveError(null);
     setSaveSuccess(null);
     try {
-      await Promise.resolve(onSave(item, values));
+      const initial = buildValues(item);
+      // Match the existing automatic initial release-status calculation.
+      if (initial.releaseDate) initial.status = new Date(initial.releaseDate) > new Date() ? "Upcoming" : "Released";
+      await Promise.resolve(onSave(item, editorDelta(item, values, initial)));
       onSaved?.();
       onClose();
     } catch (err: unknown) {

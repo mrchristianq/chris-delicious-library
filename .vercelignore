@@ -1,0 +1,19 @@
+# Local configuration and credentials must never be uploaded.
+.env*
+.git
+.vercel
+*.pem
+*.key
+.DS_Store
+
+# Dependency caches and generated web/native output are rebuilt remotely.
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+src-tauri/target
+src-tauri/gen
+supabase/.temp
+supabase/.branches

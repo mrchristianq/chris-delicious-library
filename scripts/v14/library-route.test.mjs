@@ -1,0 +1,103 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
+
+const libraryId = '11111111-1111-4111-8111-111111111111';
+const itemId = '22222222-2222-4222-8222-222222222222';
+const requestId = '33333333-3333-4333-8333-333333333333';
+const item = { id: itemId, library_id: libraryId, media_type: 'book', revision: 2, title: 'Fixture', user_status: 'Collection', personal_rating: 0, completed_on: null, notes: 'old', metadata: {}, user_fields: {} };
+globalThis.__v14RouteMocks = {
+  calls: [], current: item, snapshot: { library_id: libraryId, owner_id: 'owner', complete: true, items: [item], episodes: [], settings: [], identifiers: [], collections: [], counts: { items: 1, episodes: 0, settings: 0 } },
+};
+
+const stubs = {
+  config: `export function getV14Config(){return {origin:'http://localhost:3014'}}`,
+  server: `export async function createV14Client(){return {auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},rpc:async(name,args)=>{globalThis.__v14RouteMocks.calls.push(['rpc',name,args]);if(name==='cdl_v14_full_edit'){const p=args.p_patch;const old=globalThis.__v14RouteMocks.current;const next={...old,...p,user_fields:{...old.user_fields,...(p.overrides??{})},revision:args.p_revision+1};globalThis.__v14RouteMocks.current=next;return {data:next,error:null}}return {data:globalThis.__v14RouteMocks.current,error:null}}}}`,
+  read: `export async function readV14Library(id){globalThis.__v14RouteMocks.calls.push(['read',id]);return globalThis.__v14RouteMocks.snapshot}`,
+  create: `export async function createV14Item(input){globalThis.__v14RouteMocks.calls.push(['create',input]);return {confirmed:true}}`,
+  archive: `export async function saveV14Archive(...args){globalThis.__v14RouteMocks.calls.push(['archive',...args]);return {confirmed:true}}`,
+  setting: `export async function saveV14Setting(...args){globalThis.__v14RouteMocks.calls.push(['setting',...args]);return {confirmed:true}}`,
+  progress: `export async function saveV14EpisodeProgress(...args){globalThis.__v14RouteMocks.calls.push(['progress',...args]);return {confirmed:true}}`,
+};
+const hooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    const key = specifier.endsWith('/config') ? 'config' : specifier.endsWith('/read-library-server') ? 'read' :
+      specifier.endsWith('/create-item-server') ? 'create' :
+      specifier.endsWith('/save-archive-server') ? 'archive' : specifier.endsWith('/save-setting-server') ? 'setting' :
+      specifier.endsWith('/save-progress-server') ? 'progress' : specifier.endsWith('/server') ? 'server' : null;
+    if (key) return { url: `file:///v14-route-${key}.mjs`, shortCircuit: true };
+    return nextResolve(specifier, context);
+  },
+  load(url, context, nextLoad) {
+    const key = url.match(/^file:\/\/\/v14-route-(.+)\.mjs$/)?.[1];
+    if (key && stubs[key]) return { format: 'module', source: stubs[key], shortCircuit: true };
+    return nextLoad(url, context);
+  },
+});
+const { GET, POST } = await import('../../app/v14/api/library/route.ts');
+hooks.deregister();
+
+function post(value, headers = {}) {
+  return POST(new Request('http://localhost:3014/v14/api/library', {
+    method: 'POST',
+    headers: { origin: 'http://localhost:3014', 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(value),
+  }));
+}
+
+test('GET returns the authenticated snapshot without caching', async () => {
+  const response = await GET(new Request(`http://localhost:3014/v14/api/library?libraryId=${libraryId}`));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+  assert.equal((await response.json()).library_id, libraryId);
+});
+
+test('POST requires exact same origin and rejects unknown command fields', async () => {
+  const denied = await POST(new Request('http://localhost:3014/v14/api/library', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+  }));
+  assert.equal(denied.status, 403);
+  assert.equal((await post({ kind: 'setting', libraryId, key: 'x', revision: null, requestId, value: true, extra: 1 })).status, 400);
+});
+
+test('edit retry sends the exact patch with the client revision and confirms independent readback', async () => {
+  globalThis.__v14RouteMocks.calls.length = 0;
+  globalThis.__v14RouteMocks.current = item;
+  const patch = { title: 'Updated title', notes: '', overrides: { Author: 'A. Writer' } };
+  const response = await post({ kind: 'edit', libraryId, itemId, revision: 1, requestId, patch });
+  assert.equal(response.status, 200);
+  const writes = globalThis.__v14RouteMocks.calls.filter(([kind, name]) => kind === 'rpc' && name === 'cdl_v14_full_edit');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][2].p_revision, 1);
+  assert.equal(writes[0][2].p_request_id, requestId);
+  assert.deepEqual(writes[0][2].p_patch, patch);
+  assert.equal(globalThis.__v14RouteMocks.calls.filter(([kind, name]) => kind === 'rpc' && name === 'cdl_v14_get_item').length, 1);
+});
+
+test('rejects payloads exceeding the actual streamed byte limit', async () => {
+  const chunk = new Uint8Array(512 * 1024 + 1).fill(0x20);
+  const body = new ReadableStream({ start(controller) { controller.enqueue(chunk); controller.close(); } });
+  const response = await POST(new Request('http://localhost:3014/v14/api/library', {
+    method: 'POST', headers: { origin: 'http://localhost:3014', 'content-type': 'application/json' }, body, duplex: 'half',
+  }));
+  assert.equal(response.status, 413);
+});
+
+test('setting saves delegate authentication and confirmation without a redundant pre-write snapshot', async () => {
+  globalThis.__v14RouteMocks.calls.length = 0;
+  const command = { kind: 'setting', libraryId, key: 'coverSize', revision: 2, requestId, value: 100 };
+  const response = await post(command);
+  assert.equal(response.status, 200);
+  assert.deepEqual(globalThis.__v14RouteMocks.calls, [
+    ['setting', libraryId, 'coverSize', 2, requestId, 100],
+  ]);
+  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+});
+
+test('episode saves also avoid the unused preflight and retain the prepared retry request', async () => {
+  globalThis.__v14RouteMocks.calls.length = 0;
+  const changes = [{ episode_id: itemId, revision: null, watched: false, watched_at: null }];
+  const response = await post({ kind: 'progress', libraryId, requestId, changes });
+  assert.equal(response.status, 200);
+  assert.deepEqual(globalThis.__v14RouteMocks.calls, [['progress', libraryId, requestId, changes]]);
+});

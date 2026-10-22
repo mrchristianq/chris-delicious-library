@@ -1,25 +1,27 @@
 "use client";
 
-import { cloneElement, useState, useSyncExternalStore, type ReactElement, type ImgHTMLAttributes, type SetStateAction } from "react";
+import { cloneElement, useMemo, useState, useSyncExternalStore, type ReactElement, type ImgHTMLAttributes, type SetStateAction } from "react";
+import { useLibraryBackend } from "../lib/v14/backend-context";
+import { browserPreferenceStorage, type PreferenceStorage } from "../lib/v14/browser-storage";
 
 export const PHYSICAL_COVER_START_Y = 32;
 export const PHYSICAL_COVER_START_X = 2;
 export const DETAILS_COVER_START_Y = 8;
 const DETAILS_COVER_START_X = 0;
-function createCoverPreference(DETAILS_3D_KEY: string) {
-const DETAILS_3D_EVENT = `${DETAILS_3D_KEY}-changed`;
+function createCoverPreferenceStore(DETAILS_3D_KEY: string, storage:PreferenceStorage=browserPreferenceStorage, scope="") {
+const DETAILS_3D_EVENT = `${scope}${DETAILS_3D_KEY}-changed`;
 let unsavedPreference: boolean | undefined;
 
 function readDetails3D() {
   if (typeof window === "undefined") return false;
   if (unsavedPreference !== undefined) return unsavedPreference;
-  try { return window.localStorage.getItem(DETAILS_3D_KEY) === "true"; }
+  try { return storage.getItem(DETAILS_3D_KEY) === "true"; }
   catch { return false; }
 }
 
 function subscribeDetails3D(listener: () => void) {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === DETAILS_3D_KEY || event.key === null) listener();
+    if (event.key === DETAILS_3D_KEY || event.key?.endsWith(`:${DETAILS_3D_KEY}`) || event.key === null) listener();
   };
   window.addEventListener("storage", onStorage);
   window.addEventListener(DETAILS_3D_EVENT, listener);
@@ -32,7 +34,7 @@ function subscribeDetails3D(listener: () => void) {
 function setDetails3D(update: SetStateAction<boolean>) {
   const next = typeof update === "function" ? update(readDetails3D()) : update;
   try {
-    window.localStorage.setItem(DETAILS_3D_KEY, String(next));
+    storage.setItem(DETAILS_3D_KEY, String(next));
     unsavedPreference = undefined;
   } catch {
     // Keep the toggle usable if browser storage is disabled.
@@ -41,10 +43,16 @@ function setDetails3D(update: SetStateAction<boolean>) {
   window.dispatchEvent(new Event(DETAILS_3D_EVENT));
 }
 
-return function useCoverPreference() {
-  const enabled = useSyncExternalStore(subscribeDetails3D, readDetails3D, () => false);
-  return [enabled, setDetails3D] as const;
-};
+return {subscribe:subscribeDetails3D,read:readDetails3D,set:setDetails3D};
+}
+function createCoverPreference(key:string) {
+  const legacy=createCoverPreferenceStore(key);
+  return function useCoverPreference() {
+    const backend=useLibraryBackend();
+    const store=useMemo(()=>backend?createCoverPreferenceStore(key,backend.storage,backend.storageScope):legacy,[backend]);
+    const enabled=useSyncExternalStore(store.subscribe,store.read,()=>false);
+    return [enabled,store.set] as const;
+  };
 }
 
 export const useDetailsCover3D = createCoverPreference("cdl:details-cover-3d");
