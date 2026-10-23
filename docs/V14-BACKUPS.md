@@ -1,4 +1,4 @@
-# Library backups and nightly tracker sync — 14.0.76
+# Library backups and nightly tracker sync — 14.0.78 (local, pending deployment)
 
 ## Approved policy
 
@@ -12,19 +12,29 @@
 
 ## What a full archive contains
 
-All raw records scoped to this library: active **and archived** items, notes, ratings/statuses, metadata, identifiers, episodes, watched progress and revisions, settings, collections/order, asset references, import provenance, audit events, sync targets, baselines, outbox, conflicts and runs. The export is one consistent SQL data snapshot. It also includes the new tracker's pre-sync values, formulas, cell formats and validation.
+All raw records scoped to this library: active **and archived** items, notes, ratings/statuses, metadata, identifiers, episodes, watched progress and revisions, settings, collections/order, asset references, import provenance, audit events, sync targets, baselines, outbox, conflicts and runs. The export is one consistent SQL data snapshot. Separate tracker safety archives preserve Sheet pre-write values; a library restore does not restore Sheet cells.
 
 It does **not** contain account passwords, Auth sessions, provider credentials, Storage/R2 image bytes or the database engine. Cover URLs are preserved, but this is not an independent artwork-byte backup. Archive migration identifiers point to the matching schema in source control; private pre-install schema/data exports are retained separately.
 
 ## Download and recovery
 
-1. Open **Discover → Sync → View / download backups**. Sign-in and library ownership are required; files are not public links.
+1. Open **Discover → Sync → Backups & History → Restore a Backup**. Sign-in and library ownership are required; files are not public links.
 2. Download a dated `.json.gz` archive. The server verifies the stored compressed checksum before returning the attachment. Keep downloaded copies private: they include personal notes.
 3. Restore into a **separate disposable or staging database**, with the matching migration/schema version and the owner's identity. Never start by overwriting the live library.
 4. Verify decompression, checksums, library identity, row counts, IDs, notes, episode watched flags/timestamps/revisions, collections and metadata. Restore raw tables in FK order using `jsonb_populate_recordset`; use the isolated restore rehearsal as the reference.
 5. Compare the restored library with the live one and identify what would be replaced. Back up the current live state. Obtain explicit user approval before a live restoration.
 
-There is intentionally no one-click live Restore action. A download never changes the app or Sheets. The original v13 Sheet is never a sync destination.
+### Guided restore (migration 28 and the 14.0.79 app)
+
+**Back Up Now** uploads a full archive, downloads it, verifies both compressed and decoded hashes, and records the confirmed receipt. Manual and pre-restore safety backups are not automatically rotated.
+
+**Preview Restore** displays item additions, updates and removals relative to the current library, plus settings/progress differences. Confirmation requires an explicit checkbox and **Restore This Version**. The server re-downloads the selected archive, creates and verifies a fresh safety backup, and performs one atomic owner-only SQL restore. If the library changed after preview, a sync is active, the preview expired, any row fails readback or the backup requires a newer schema, no restore is applied. Retry uses the same preview token and safety archive and cannot replay a completed restore.
+
+Restoration preserves current audit/import/sync history rather than rewinding it. Items absent from the version are archived; stale revision counters are replaced with higher counters to reject old-tab saves. User settings, metadata, notes, collections and episode progress are restored. Saved tracker decisions are invalidated. Nightly sync is paused; **Google Sheets remains unchanged**. Review the next manual comparison before arranging to re-enable nightly sync. Recovery does not alter account permissions, credentials, or the original Sheet.
+
+Migration 28 was installed on October 23, 2026 after fresh private schema/data exports and a fingerprint-guarded transaction confirmed all existing CDL data unchanged (2,349 active items; nightly worker remains enabled). The UI and route tests plus `node scripts/v14/rehearse-recovery.mjs` exercise synthetic records in a disposable network-disabled database; they do not authorize a live restore. The independent raw archive recovery procedure above remains available for disaster recovery.
+
+**Review & Restore** first uses a read-only GET to verify the archive and compare it with a fresh owner snapshot. No restore token or record is created by this read, and it works in validation read-only mode. Continuing in write-enabled mode prepares a fresh confirmation; the user reviews it before the final restore. Read-only sessions cannot create backups or restore data.
 
 ## Security and operation
 

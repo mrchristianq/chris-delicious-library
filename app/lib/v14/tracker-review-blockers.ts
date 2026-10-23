@@ -1,5 +1,12 @@
 import type {TrackerChange} from './tracker-preview';
 
+/** One unresolved item must not prevent unrelated, ready rows from applying. */
+export function readyTrackerItemIds(rows:TrackerChange[],choices:Record<string,'app'|'tracker'>,skipped:Record<string,boolean>):string[]{
+  const groups=new Map<string,TrackerChange[]>();
+  for(const row of rows)groups.set(row.itemId,[...(groups.get(row.itemId)??[]),row]);
+  return [...groups].filter(([id,changes])=>!skipped[id]&&trackerReviewBlockers(changes,choices).length===0).map(([id])=>id);
+}
+
 /** Explain existing review gates without authorizing or weakening them. */
 export function trackerReviewBlockers(rows:TrackerChange[],choices:Record<string,'app'|'tracker'>):string[]{
   return rows.flatMap(row=>{

@@ -1,6 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {trackerReviewBlockers as blockers} from '../../app/lib/v14/tracker-review-blockers.ts';
+import {trackerReviewBlockers as blockers,readyTrackerItemIds} from '../../app/lib/v14/tracker-review-blockers.ts';
 const row={id:'one',label:'My Rating',direction:'conflict'};
+test('bulk apply includes only whole ready items and ignores skipped items',()=>{
+ const rows=[{...row,itemId:'a',direction:'export'},{...row,id:'two',itemId:'b'},{...row,id:'three',itemId:'a',direction:'export'},{...row,id:'four',itemId:'c',plannedAction:'add-record'}];
+ assert.deepEqual(readyTrackerItemIds(rows,{},{}),['a','c']);
+ assert.deepEqual(readyTrackerItemIds(rows,{two:'app'},{a:true}),['b','c']);
+ assert.deepEqual(readyTrackerItemIds([...rows,{...row,id:'five',itemId:'a',plannedAction:'provider-correction',planApproved:false}],{},{}),['c']);
+});
 test('unselected conflicts explain the required source choice',()=>{
  assert.match(blockers([row],{})[0],/select the App or Google Sheet/);
  assert.deepEqual(blockers([row],{one:'tracker'}),[]);
