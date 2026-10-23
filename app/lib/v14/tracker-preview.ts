@@ -77,6 +77,7 @@ export function compareTracker(
 }
 
 export type TrackerPreview = {
+  nightly?:{enabled:boolean;status:string|null;startedAt:string|null;finishedAt:string|null;backupAt:string|null;syncedItems:number|null;heldItems:number|null};
   syncedRecords?:number;
   activeRun?:string|null;
   comparisonMode?:"three-way";

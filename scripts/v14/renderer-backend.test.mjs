@@ -10,6 +10,29 @@ const owner='11111111-1111-4111-8111-111111111111';
 const library='22222222-2222-4222-8222-222222222222';
 const id='33333333-3333-4333-8333-333333333333';
 function fixture(){return {schema_version:1,library_id:library,owner_id:owner,observed_at:'2026-10-13T12:00:00Z',change_token:'test',complete:true,counts:{items:1,episodes:0,settings:0},items:[{id,library_id:library,media_type:'book',title:'Book',revision:1,user_status:'Collection',personal_rating:0,completed_on:null,notes:'',user_fields:{},metadata:{}}],episodes:[],settings:[]};}
+test('season artwork survives metadata save and reload without sending watched progress',async()=>{
+ const snapshot=fixture();snapshot.items[0].media_type='tv';snapshot.items[0].user_status='Started';snapshot.items[0].metadata={TMDB_ID:'275139'};
+ const metadata={SeasonTitle:'Season 1',SeasonPosterURL:'https://image.tmdb.org/t/p/w500/season-fixture.jpg',EpisodeTitle:'Pilot'};
+ const episodeId='44444444-4444-4444-8444-444444444444';
+ const backend=createRendererBackend(library,owner,async(url,options)=>{
+  if(options.method==='POST'){
+   const command=JSON.parse(options.body);assert.equal(command.kind,'episode_metadata');
+   assert.deepEqual(command.rows[0].metadata,metadata);
+   assert.equal(Object.hasOwn(command.rows[0].metadata,'Watched'),false);
+   snapshot.episodes=[{id:episodeId,library_id:library,show_id:id,season_number:1,episode_number:1,provider_id:'123',metadata,progress:{watched:true,watched_at:'2026-10-01T12:00:00Z',revision:4}}];
+   snapshot.counts.episodes=1;
+   return Response.json({confirmed:true,snapshot});
+  }
+  return Response.json(snapshot);
+ });
+ const initial=await backend.load(new AbortController().signal);
+ const show=retainDatabaseIdentity({title:'Show'},initial.shows[0]);
+ const saved=await backend.episodeMetadata(show,[{SeasonNumber:'1',EpisodeNumber:'1',EpisodeTMDB_ID:'123',...metadata,Watched:'false',WatchedAt:''}]);
+ for(const rows of [saved,(await backend.load(new AbortController().signal)).episodes]){
+  assert.equal(rows[0].SeasonPosterURL,metadata.SeasonPosterURL);
+  assert.equal(rows[0].SeasonTitle,'Season 1');assert.equal(rows[0].Watched,'true');
+ }
+});
 test('server-started snapshot is consumed once; subsequent refresh is fresh and uncached',async()=>{
  let calls=0;
  const fresh=fixture();fresh.items[0].title='Updated';fresh.items[0].revision=2;

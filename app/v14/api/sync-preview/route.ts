@@ -35,7 +35,8 @@ export async function GET(request:Request) {
     if(error)throw new Error("Library authorization unavailable");
     if(!Array.isArray(data)||!data.some(row=>row.id===id))return json({error:"Library unavailable."},404);
     stage="fresh-sources";
-    const [connection,snapshot,baseline]=await Promise.all([readTrackerConnection(true),readV14LibraryForVerifiedOwner(client,auth.user.id,id),readTrackerBaselineState(client,auth.user.id,id)]);
+    const [connection,snapshot,baseline,nightlyResult]=await Promise.all([readTrackerConnection(true),readV14LibraryForVerifiedOwner(client,auth.user.id,id),readTrackerBaselineState(client,auth.user.id,id),client.rpc('cdl_v14_nightly_status',{p_library_id:id})]);
+    const nightly=nightlyResult.error?undefined:nightlyResult.data as TrackerPreview['nightly'];
     if(connection?.tables){
       if(baseline){
         stage="comparison";
@@ -48,7 +49,7 @@ export async function GET(request:Request) {
         if(JSON.stringify(baseline)!==JSON.stringify(recheck))throw new Error("Confirmed baseline changed during preview");
         const reviewed=attachNewItemDecisions(preview,{items:snapshot.items,tables:connection.tables,baseline},snapshot.settings,context.allowSheetImports);
         const source={items:snapshot.items,tables:connection.tables,baseline},display=attachIdentityReviews(reviewed,snapshot.items,connection.tables,snapshot.settings,baseline);
-        return json({...display,changes:display.changes.map(row=>row.identitySelection?{...row,identitySelection:{...row.identitySelection,...identityReadiness(source,snapshot.settings,context,row.id)}}:row),activeRun:context.activePlan,canSaveDecisions:!context.activePlan&&(process.env.CDL_V14_VALIDATION_READ_ONLY!=="true"||process.env.CDL_V14_REVIEW_ONLY==="true")});
+        return json({...display,nightly,changes:display.changes.map(row=>row.identitySelection?{...row,identitySelection:{...row.identitySelection,...identityReadiness(source,snapshot.settings,context,row.id)}}:row),activeRun:context.activePlan,canSaveDecisions:!context.activePlan&&(process.env.CDL_V14_VALIDATION_READ_ONLY!=="true"||process.env.CDL_V14_REVIEW_ONLY==="true")});
       }
       const provenance=await readTrackerProvenance(client,auth.user.id,id);
       return json({...attachTrackerVerification(attachTrackerDecisions(initialTrackerReview(snapshot.items,connection.tables,connection.observedAt,provenance),snapshot.settings),snapshot.settings,snapshot.items.length),canSaveDecisions:process.env.CDL_V14_VALIDATION_READ_ONLY!=="true"||process.env.CDL_V14_REVIEW_ONLY==="true"});

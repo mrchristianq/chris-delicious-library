@@ -5,6 +5,7 @@ import type { TrackerChange, TrackerPreview } from "../lib/v14/tracker-preview";
 import {applyReviewedSync} from "../lib/v14/tracker-review-flow";
 import {readFreshTrackerPreview} from "../lib/v14/tracker-preview-client";
 import {trackerReviewBlockers} from "../lib/v14/tracker-review-blockers";
+import {LibraryBackups} from './LibraryBackups';
 
 function SummaryIcon({kind}:{kind:"clock"|"collection"|"review"}){const color={clock:"#3789ee",collection:"#55a46b",review:"#e59b3e"}[kind];return <span aria-hidden style={{display:"grid",placeItems:"center",width:44,height:44,borderRadius:14,color,background:color+"18"}}><svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{kind==="clock"?<><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></>:kind==="collection"?<><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 2v6m8-6v6M8 12h8m-8 4h5"/></>:<><path d="M10.3 4.5 2.8 18a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></>}</svg></span>;}
 function IdentityReviewDetails({review}:{review:NonNullable<TrackerChange["identityReview"]>}){
@@ -225,7 +226,9 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
       <div><SummaryIcon kind="collection"/><div><small>Confirmed items</small><b>{preview?.lastConfirmedSync&&preview.syncedRecords!==undefined?preview.syncedRecords.toLocaleString():confirmedSync?confirmedSync.records.toLocaleString():"—"}</b></div></div>
       <div><SummaryIcon kind="review"/><div><small>Needs review</small><b>{ready?reviewItems:"—"}</b></div></div>
     </div>
-    <p className="protection">Sync Now checks for differences. Nothing is applied until you confirm. Original Sheet protected · Nightly off.</p>
+    <p className="protection">Sync Now checks for differences. Manual changes require confirmation. Original Sheet protected · {preview?.nightly ? preview.nightly.enabled ? "Weekly full backups (10 most recent) · Nightly conflict-free sync enabled" : "Nightly off" : "Nightly status not checked"}.</p>
+    {preview?.nightly?.startedAt ? <p className="protection">Last nightly run: {new Date(preview.nightly.startedAt).toLocaleString()} · {preview.nightly.status === "completed" ? "Completed" : preview.nightly.status === "review" ? "Review needed" : preview.nightly.status === "failed" ? "Not completed—review required" : "In progress"}{preview.nightly.backupAt ? " · Full backup verified" : " · Backup not yet confirmed"}{preview.nightly.syncedItems !== null ? ` · ${preview.nightly.syncedItems} items synced` : ""}{preview.nightly.heldItems ? ` · ${preview.nightly.heldItems} held for review` : ""}</p> : null}
+    <LibraryBackups libraryId={libraryId}/>
     {loading?<div className="empty" role="status">Checking your collection against the latest Google Sheet…</div>:error?<p role="alert">{error}</p>:!ready?<div className="empty"><h2>Tracker connection needs attention</h2><p>{preview?.message}</p></div>:groups.size?Array.from(groups.entries()).slice(0,visibleLimit).map(([key,rows])=>{
       const first=rows[0],context=first.displayRecord,cover=safeCover(context?.coverUrl??""),held=rows.some(needsReview);
       const fields=[...new Set([...Object.keys(context?.app??{}),...Object.keys(context?.tracker??{})])];const appFields=context?.app??{},trackerFields=context?.tracker??{};

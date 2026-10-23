@@ -163,7 +163,7 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
     },
     async episodeMetadata(show,rows) {
       const original=identity(show);
-      const metadataKeys=["EpisodeTitle","AirDate","StillURL","Overview","Runtime","Source","UpdatedAt"];
+      const metadataKeys=["EpisodeTitle","AirDate","StillURL","Overview","Runtime","Source","UpdatedAt","SeasonTitle","SeasonPosterURL"];
       const input=rows.map(row=>({season_number:Number(row.SeasonNumber),episode_number:Number(row.EpisodeNumber),provider_id:row.EpisodeTMDB_ID||null,
         metadata:Object.fromEntries(metadataKeys.filter(key=>Object.hasOwn(row,key)).map(key=>[key,row[key]]))}));
       const data=await post(JSON.stringify(["episode_metadata",original.id,original.revision,input]),()=>({kind:"episode_metadata",libraryId,itemId:original.id,revision:original.revision,requestId:crypto.randomUUID(),rows:input}));

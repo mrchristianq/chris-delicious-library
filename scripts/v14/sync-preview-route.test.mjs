@@ -26,7 +26,7 @@ const request=(query=`libraryId=${library}`,headers={})=>new Request(`http://loc
 test('preview is authenticated, uncached, read-only and never presents a disconnected tracker as synced',async()=>{
  const res=await route.GET(request());assert.equal(res.status,200);
  const value=await res.json();assert.equal(value.status,'connection-required');assert.equal(value.lastConfirmedSync,null);assert.deepEqual(value.changes,[]);
- assert.match(res.headers.get('cache-control'),/no-store/);assert.deepEqual(globalThis.__syncPreview.calls,['cdl_v14_my_libraries','tracker-read','snapshot']);
+ assert.match(res.headers.get('cache-control'),/no-store/);assert.deepEqual(globalThis.__syncPreview.calls,['cdl_v14_my_libraries','tracker-read','snapshot','cdl_v14_nightly_status']);
  assert.equal(route.POST,undefined);
 });
 test('preview refuses invalid inputs, foreign origins and unauthenticated or unowned libraries',async()=>{

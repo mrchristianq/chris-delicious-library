@@ -15,7 +15,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-a000-000000000014',true);
 do $$
 declare
-  rows jsonb := '[{"season_number":1,"episode_number":1,"provider_id":"provider-1","metadata":{"EpisodeTitle":"","AirDate":"2026-10-10","Runtime":42,"Overview":null}},{"season_number":1,"episode_number":2,"provider_id":"provider-2","metadata":{"EpisodeTitle":"New episode","Source":"TMDB"}}]';
+  rows jsonb := '[{"season_number":1,"episode_number":1,"provider_id":"provider-1","metadata":{"EpisodeTitle":"","AirDate":"2026-10-10","Runtime":42,"Overview":null,"SeasonTitle":"Season 1","SeasonPosterURL":"https://image.tmdb.org/t/p/w500/season-fixture.jpg"}},{"season_number":1,"episode_number":2,"provider_id":"provider-2","metadata":{"EpisodeTitle":"New episode","Source":"TMDB"}}]';
   first_receipt jsonb;
   retry_receipt jsonb;
   reused_request uuid := '00000000-0000-4000-d000-000000000014';
@@ -25,6 +25,8 @@ begin
   retry_receipt:=public.cdl_v14_episode_metadata(
     '00000000-0000-4000-b000-000000000014','00000000-0000-4000-c000-000000000014',1,reused_request,rows);
   if first_receipt is distinct from retry_receipt then raise exception 'Retry receipt changed'; end if;
+  if first_receipt->'rows'->0->'metadata'->>'SeasonPosterURL'<>'https://image.tmdb.org/t/p/w500/season-fixture.jpg'
+    or first_receipt->'rows'->0->'metadata'->>'SeasonTitle'<>'Season 1' then raise exception 'Season artwork missing from confirmed receipt'; end if;
   if first_receipt->>'show_id'<>'00000000-0000-4000-c000-000000000014' or jsonb_array_length(first_receipt->'rows')<>2 then raise exception 'Receipt shape mismatch'; end if;
   if first_receipt->'rows'->0->>'id'<>'00000000-0000-4000-e000-000000000014' or first_receipt->'rows'->0->'metadata'->>'EpisodeTitle'<>''
     then raise exception 'Receipt omitted stored stable identity or blank metadata'; end if;
@@ -73,6 +75,7 @@ do $$ begin
   if exists(select 1 from cdl.episodes where show_id='00000000-0000-4000-c000-000000000014' and season_number=2) then raise exception 'Duplicate batch partially wrote'; end if;
   if not exists(select 1 from cdl.episodes e where e.id='00000000-0000-4000-e000-000000000014'
       and e.provider_id='provider-1' and e.metadata->>'EpisodeTitle'=''
+      and e.metadata->>'SeasonTitle'='Season 1' and e.metadata->>'SeasonPosterURL'='https://image.tmdb.org/t/p/w500/season-fixture.jpg'
       and e.metadata->>'Unknown'='retain' and e.metadata->>'LegacyBlank'='') then raise exception 'Metadata merge did not retain identity, blank, or legacy fields'; end if;
   if (select to_jsonb(p) from cdl.episode_progress p where p.episode_id='00000000-0000-4000-e000-000000000014')
       is distinct from jsonb_build_object('library_id','00000000-0000-4000-b000-000000000014','episode_id','00000000-0000-4000-e000-000000000014','watched',true,'watched_at','2026-10-01T12:00:00+00:00'::timestamptz,'revision',4)

@@ -13,7 +13,7 @@ const root="/Users/metroclick/Documents/CDL-Recovery/2026-10-09-pre-v14";
 /** Local-only recovery artifact, not a hosted filesystem persistence strategy.
  * Retains actual user-entered formulas, values, formats and validation before
  * any write. Credentials never enter the artifact or returned receipt. */
-export async function saveTrackerRecoverySnapshot(run:string,grids:TrackerGrid[],scope?:{ownerId:string;libraryId:string}){
+export async function captureTrackerRecoveryBytes(run:string,grids:TrackerGrid[]){
   // Local standalone backup scripts intentionally do not have an origin env.
   if((process.env.VERCEL?!isV14RuntimeAllowed():process.env.CDL_V14_TEST!=="true")||!/^[a-f0-9]{64}$/.test(run)||grids.length!==4)throw new Error("Invalid tracker backup request");
   const credential=await loadPrivateTrackerCredentials();if(!credential)throw new Error("Tracker backup connection unavailable");
@@ -32,6 +32,10 @@ export async function saveTrackerRecoverySnapshot(run:string,grids:TrackerGrid[]
   if(snapshot.spreadsheetId!==TRACKER_ID||!Array.isArray(snapshot.sheets)||snapshot.sheets.length!==4||grids.some(g=>!snapshot.sheets.some((s:{properties:TrackerGrid&{gridProperties:{rowCount:number;columnCount:number}}})=>s.properties.title===g.title&&s.properties.sheetId===g.sheetId&&s.properties.gridProperties.rowCount===g.rowCount&&s.properties.gridProperties.columnCount===g.columnCount)))throw new Error("Tracker backup identity changed");
   const bytes=JSON.stringify({version:1,target:TRACKER_ID,run,capturedAt:new Date().toISOString(),snapshot});
   const compressed=gzipSync(bytes);if(compressed.byteLength>24000000)throw new Error("Compressed tracker backup exceeds safe bound");
+  return {bytes,compressed};
+}
+export async function saveTrackerRecoverySnapshot(run:string,grids:TrackerGrid[],scope?:{ownerId:string;libraryId:string}){
+  const {bytes,compressed}=await captureTrackerRecoveryBytes(run,grids);
   if(isApprovedV14Hosted()){
     if(!scope)throw new Error('Recovery owner required');
     const {createV14Client}=await import('./server');

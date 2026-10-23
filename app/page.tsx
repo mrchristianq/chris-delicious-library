@@ -478,7 +478,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.72";
+const APP_VERSION = "14.0.77";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -805,6 +805,31 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "14.0.77",
+    date: "2026-10-23",
+    notes: ["Preserve live cover reordering while dragging instead of reloading the previous saved order."],
+  },
+  {
+    version: "14.0.76",
+    date: "2026-10-23",
+    notes: ["Harden large weekly backup exports against timeouts and allow safe operator retry before any changes are dispatched."],
+  },
+  {
+    version: "14.0.75",
+    date: "2026-10-23",
+    notes: ["Add verified weekly library backups with ten-backup retention and nightly conflict-safe Google tracker sync."],
+  },
+  {
+    version: "14.0.74",
+    date: "2026-10-22",
+    notes: ["Preserve TV season artwork and titles during metadata refresh without changing episode watched progress."],
+  },
+  {
+    version: "14.0.73",
+    date: "2026-10-22",
+    notes: ["Align the Sync icon and label with the other Discover sidebar entries."],
+  },
   {
     version: "14.0.72",
     date: "2026-10-22",
@@ -13210,6 +13235,12 @@ export default function Page() {
       return;
     }
 
+    // Pointer movement intentionally updates the local order before anything is
+    // saved. Hydrating it here would immediately undo every live reorder in v14.
+    // On drop, persistBacklogManualOrder registers pending settings synchronously;
+    // getSetting then reads those until durable backend confirmation arrives.
+    if (wishlistPointerDragRef.current?.active) return;
+
     let sortFieldSettingKey = "";
     let sortOrderSettingKey = "";
     let manualSettingKey = "";
@@ -25308,7 +25339,35 @@ export default function Page() {
                   style={{ ...discoverRowStyle, borderRadius: 10,
                     background: nav === "tracker-sync" ? "rgba(120,128,140,0.09)" : "transparent",
                     border: nav === "tracker-sync" ? "1px solid rgba(146,154,166,0.26)" : "1px solid transparent", cursor: "pointer" }}
-                ><span style={{display:"flex",alignItems:"center",gap:discoverSidebarGap}}><img src={getSidebarIconSrc("tracker-sync", "/icon-statistics.png")} alt="" width={discoverSidebarIconSize} height={discoverSidebarIconSize} onClick={(event)=>openSidebarIconFilePicker(event,"tracker-sync")} title={uploadingSidebarIconKey==="tracker-sync"?"Uploading...":"Change icon"} style={{display:"block",objectFit:"contain",cursor:"pointer"}}/><span style={discoverLabelStyle}>Sync</span></span></button> : null}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: discoverSidebarGap }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 18,
+                        height: 14,
+                        borderRadius: 4,
+                        background: nav === "tracker-sync" ? "rgba(0,0,0,0.05)" : "transparent",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flex: "0 0 auto",
+                        overflow: "visible",
+                      }}
+                    >
+                      <img
+                        src={getSidebarIconSrc("tracker-sync", "/icon-statistics.png")}
+                        alt=""
+                        width={discoverSidebarIconSize}
+                        height={discoverSidebarIconSize}
+                        onClick={(event) => openSidebarIconFilePicker(event, "tracker-sync")}
+                        title={uploadingSidebarIconKey === "tracker-sync" ? "Uploading..." : "Change icon"}
+                        style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
+                      />
+                    </span>
+                    <span style={discoverLabelStyle}>Sync</span>
+                  </span>
+                </button> : null}
 
               </div>
 
