@@ -15,7 +15,9 @@ export async function GET(request:Request){
   if(request.headers.get('origin')&&request.headers.get('origin')!==config.origin||request.headers.get('sec-fetch-site')&&request.headers.get('sec-fetch-site')!=='same-origin')return Response.json({error:'Same-origin request required'},{status:403,headers});
   const preview=url.searchParams.get('preview');
   if(!libraryId||!uuid.test(libraryId)||id!==null&&!uuid.test(id)||preview!==null&&(preview!=='true'||!id)||[...url.searchParams.keys()].some(k=>!['libraryId','id','preview'].includes(k)))return Response.json({error:'Invalid backup request'},{status:400,headers});
-  const client=await createV14Client(true),auth=await client.auth.getUser();
+  // Full recovery snapshots include provenance and history; do not use the
+  // 20-second small-request deadline for this explicitly requested operation.
+  const client=await createV14Client(preview!=='true'),auth=await client.auth.getUser();
   if(auth.error||!auth.data.user)return Response.json({error:'Sign-in required'},{status:401,headers});
   const listed=await client.rpc('cdl_v14_backups',{p_library_id:libraryId});
   if(listed.error||!Array.isArray(listed.data))throw new Error('Backup list unavailable');
