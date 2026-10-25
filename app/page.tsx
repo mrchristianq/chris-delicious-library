@@ -14,6 +14,8 @@ import type { AddExtendedType } from "./components/AddItemModal";
 import { MountOnFirstOpen } from "./components/MountOnFirstOpen";
 import { fetchMediaSearch } from "./lib/mediaSearchClient";
 import { useLibraryBackend } from "./lib/v14/backend-context";
+const SortDialog = dynamic(() => import("./components/SortDialog").then(mod => mod.SortDialog), { ssr: false });
+const ThemesDialog = dynamic(() => import("./components/ThemesDialog").then(mod => mod.ThemesDialog), { ssr: false });
 const TrackerSyncView = dynamic(() => import("./components/TrackerSyncView").then(mod => mod.TrackerSyncView), {
   loading: () => <div style={{ padding: 40, color: "#8a94a3" }}>Loading…</div>,
 });
@@ -478,7 +480,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.80";
+const APP_VERSION = "14.0.87";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -805,6 +807,41 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "14.0.87",
+    date: "2026-10-25",
+    notes: ["Refresh Sort and Display with grouped controls, larger touch targets and a blurred Library backdrop."],
+  },
+  {
+    version: "14.0.86",
+    date: "2026-10-25",
+    notes: ["Use a centered, thicker checkmark for watched episodes and seasons."],
+  },
+  {
+    version: "14.0.85",
+    date: "2026-10-25",
+    notes: ["Show a green confirmation check before watched episodes leave Watch Next."],
+  },
+  {
+    version: "14.0.84",
+    date: "2026-10-24",
+    notes: ["Refresh Themes with a focused popup, live cover preview and simple grouped appearance controls."],
+  },
+  {
+    version: "14.0.83",
+    date: "2026-10-24",
+    notes: ["Make the Sync header icon twice its original size and balance it with the title and subtitle."],
+  },
+  {
+    version: "14.0.82",
+    date: "2026-10-24",
+    notes: ["Restore Sync popup background blur, enlarge and align its icon, and keep Upcoming covers sharp before scrolling."],
+  },
+  {
+    version: "14.0.81",
+    date: "2026-10-24",
+    notes: ["Open Sync in a focused popup with grouped menus, backups and review over your library."],
+  },
   {
     version: "14.0.80",
     date: "2026-10-23",
@@ -4862,6 +4899,8 @@ export default function Page() {
 
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [themesOpen, setThemesOpen] = useState(false);
   const isBacklogSidebarView =
     nav === "now-playing" ||
     nav === "play-next" ||
@@ -7094,7 +7133,7 @@ export default function Page() {
   }, []);
 
   const openThemesView = useCallback(() => {
-    setNav("themes");
+    setThemesOpen(true);
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
@@ -7103,9 +7142,7 @@ export default function Page() {
     setMobileSettingsOpen(false);
   }, []);
 
-  const handleExitThemes = useCallback(() => {
-    setNav(lastLibraryNav || "home");
-  }, [lastLibraryNav]);
+
 
   const openIconsView = useCallback(() => {
     setNav("icons");
@@ -19294,9 +19331,9 @@ export default function Page() {
     [shelfRenderWindow.end, shelfRenderWindow.start, shelves]
   );
   const headerLocalScrollY = Math.max(0, windowScrollY - stageTopAbs);
-  const stickyHeaderOverlayOpacityRaw = Math.max(0, Math.min(1, (headerLocalScrollY + 6) / 28));
+  const stickyHeaderOverlayOpacityRaw = Math.max(0, Math.min(1, headerLocalScrollY / 28));
   const stickyHeaderOverlayOpacity =
-    windowScrollY > 2 ? Math.max(0.26, stickyHeaderOverlayOpacityRaw) : stickyHeaderOverlayOpacityRaw;
+    headerLocalScrollY > 2 ? stickyHeaderOverlayOpacityRaw : 0;
   const stickyHeaderSimpleBackground = hexToRgba(
     simpleShelfBackgroundColor,
     0.8 * stickyHeaderOverlayOpacity,
@@ -25212,13 +25249,13 @@ export default function Page() {
                 <button
                   type="button"
                   onClick={openThemesView}
-                  className={`sideSubItem ${nav === "themes" ? "active" : ""}`}
+                  className={`sideSubItem ${themesOpen ? "active" : ""}`}
                   style={{
                     ...discoverRowStyle,
-                    background: nav === "themes" ? "rgba(120, 128, 140, 0.09)" : "transparent",
-                    border: nav === "themes" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    background: themesOpen ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: themesOpen ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
                     borderRadius: 10,
-                    color: nav === "themes" ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    color: themesOpen ? "rgba(62, 70, 80, 0.92)" : undefined,
                     cursor: "pointer",
                   }}
                 >
@@ -25229,7 +25266,7 @@ export default function Page() {
                         width: 18,
                         height: 14,
                         borderRadius: 4,
-                        background: nav === "themes" ? "rgba(0,0,0,0.05)" : "transparent",
+                        background: themesOpen ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -25338,7 +25375,7 @@ export default function Page() {
                 {libraryBackend ? <button
                   type="button"
                   aria-label="Sync"
-                  onClick={() => { setNav("tracker-sync"); setMobileSidebarOpen(false); setMobileSettingsOpen(false); }}
+                  onClick={() => { setSyncOpen(true); setMobileSidebarOpen(false); setMobileSettingsOpen(false); }}
                   className={`sideSubItem ${nav === "tracker-sync" ? "active" : ""}`}
                   aria-current={nav === "tracker-sync" ? "page" : undefined}
                   style={{ ...discoverRowStyle, borderRadius: 10,
@@ -26591,7 +26628,7 @@ export default function Page() {
             </div>
           ) : null}
 
-          {(faqPopupOpen || (sortPopupOpen && nav !== "statistics")) ? (
+          {faqPopupOpen ? (
             <button
               aria-label="Close popup"
               onMouseDown={(event) => {
@@ -26613,275 +26650,6 @@ export default function Page() {
                 cursor: "pointer",
               }}
             />
-          ) : null}
-
-          {sortPopupOpen && nav !== "statistics" ? (
-            <div
-              style={{
-                position: "fixed",
-                top: "calc(env(safe-area-inset-top, 0px) + 84px)",
-                right: isMobileLayout ? 12 : 74,
-                width: "min(320px, calc(100vw - 40px))",
-	                zIndex: POPUP_PANEL_Z_INDEX,
-	                padding: 14,
-	                display: "flex",
-	                flexDirection: "column",
-	                gap: 10,
-	                background: mobilePanelBackground,
-	                border: mobilePanelBorder,
-	                borderRadius: 14,
-	                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
-	                backdropFilter: "blur(14px) saturate(1.15)",
-                  WebkitBackdropFilter: "blur(14px) saturate(1.15)",
-              }}
-            >
-              <div
-                style={{
-	                  display: "flex",
-	                  alignItems: "center",
-	                  justifyContent: "space-between",
-	                  paddingBottom: 8,
-	                  borderBottom: mobilePanelDivider,
-	                }}
-	              >
-	                <span style={{ fontSize: 14, fontWeight: 800, color: mobilePanelTextColor }}>
-	                  Sort
-	                </span>
-	                <button
-	                  onClick={() => setSortPopupOpen(false)}
-	                  style={{
-	                    border: mobilePanelButtonBorder,
-	                    background: mobilePanelButtonBackground,
-	                    color: mobilePanelButtonTextColor,
-	                    borderRadius: 8,
-	                    padding: "4px 8px",
-	                    cursor: "pointer",
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-	                >
-	                  Close
-	                </button>
-	              </div>
-	              <label
-	                style={{
-	                  display: "flex",
-	                  flexDirection: "column",
-	                  gap: 6,
-	                  fontSize: 11,
-	                  fontWeight: 700,
-	                  color: mobilePanelSectionLabelColor,
-	                }}
-	              >
-	                SORT BY
-	                <select
-	                  value={sortField}
-                  onChange={(e) => handleSortFieldChange(e.target.value)}
-	                  style={mobilePanelSelectStyle}
-                >
-                  {nav === "books" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="CompletedDate">Completed Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "movies" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "tv" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="CompletedDate">Date Completed</option>
-                      <option value="LastAirDate">Last Air Date</option>
-                      <option value="FirstAirDate">First Air Date</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-                  {nav === "games" && (
-                    <>
-                      <option value="Title">Title</option>
-                      <option value="ReleaseDate">Release Date</option>
-                      <option value="CompletedDate">Date Completed</option>
-                      <option value="MyRatingSort">My Rating</option>
-                      <option value="ExternalRatingSort">User Rating</option>
-                    </>
-                  )}
-	                  {(nav === "home" || nav === "upcoming" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
-	                    <>
-	                      <option value="Title">Title</option>
-	                      <option value="ReleaseDate">Release Date</option>
-	                      {nav === "wishlist" || nav === "play-next" ? <option value="CompletedDate">Date Completed</option> : null}
-	                      {nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
-	                    </>
-		                  )}
-	                </select>
-	              </label>
-	              <label
-	                style={{
-	                  display: "flex",
-	                  flexDirection: "column",
-	                  gap: 6,
-	                  fontSize: 11,
-	                  fontWeight: 700,
-	                  color: mobilePanelSectionLabelColor,
-	                }}
-	              >
-	                ORDER
-	                <select
-	                  value={sortOrder}
-                  onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
-	                  disabled={(nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
-	                  style={mobilePanelSelectStyle}
-                >
-                  <option value="Asc">Asc</option>
-                  <option value="Desc">Desc</option>
-                </select>
-              </label>
-              {listViewEligible ? (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    paddingTop: 8,
-                    borderTop: mobilePanelDivider,
-                  }}
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingBottom: 8, borderBottom: mobilePanelDivider }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 900, color: mobilePanelSectionLabelColor, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                        List Size
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => persistListSizePct(100)}
-                        style={{
-                          border: mobilePanelButtonBorder,
-                          background: mobilePanelButtonBackground,
-                          color: mobilePanelButtonTextColor,
-                          borderRadius: 8,
-                          padding: "4px 8px",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                    <label style={{ display: "grid", gridTemplateColumns: "1fr 44px", alignItems: "center", gap: 10 }}>
-                      <input
-                        type="range"
-                        min={70}
-                        max={150}
-                        step={5}
-                        value={activeListSizePct}
-                        onChange={(event) => persistListSizePct(Number(event.target.value))}
-                        style={{ width: "100%", accentColor: "#4f8cff" }}
-                      />
-                      <span style={{ color: mobilePanelTextColor, fontSize: 11, fontWeight: 900, textAlign: "right" }}>
-                        {activeListSizePct}%
-                      </span>
-                    </label>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 900, color: mobilePanelSectionLabelColor, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                      Columns
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => persistListColumns(defaultListColumns)}
-                      style={{
-                        border: mobilePanelButtonBorder,
-                        background: mobilePanelButtonBackground,
-                        color: mobilePanelButtonTextColor,
-                        borderRadius: 8,
-                        padding: "4px 8px",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        fontWeight: 800,
-                      }}
-                    >
-                      Reset
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
-                    {availableListColumns.map((column) => {
-                      const checked = activeListColumns.includes(column.key);
-                      const index = activeListColumns.indexOf(column.key);
-                      const canMoveUp = index > 0;
-                      const canMoveDown = index >= 0 && index < activeListColumns.length - 1;
-                      return (
-                        <div
-                          key={`list-column-setting-${column.key}`}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "minmax(0, 1fr) auto auto",
-                            alignItems: "center",
-                            gap: 6,
-                            border: mobilePanelButtonBorder,
-                            background: checked ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                            borderRadius: 9,
-                            padding: "6px 7px",
-                          }}
-                        >
-                          <label style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, color: checked ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, fontSize: 12, fontWeight: 800 }}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={column.key === "title"}
-                              onChange={(event) => {
-                                if (event.target.checked) {
-                                  persistListColumns([...activeListColumns, column.key]);
-                                } else {
-                                  persistListColumns(activeListColumns.filter((key) => key !== column.key));
-                                }
-                              }}
-                            />
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{column.label}</span>
-                          </label>
-                          <button
-                            type="button"
-                            disabled={!canMoveUp}
-                            onClick={() => {
-                              const next = [...activeListColumns];
-                              const [moved] = next.splice(index, 1);
-                              next.splice(index - 1, 0, moved);
-                              persistListColumns(next);
-                            }}
-                            style={{ border: mobilePanelButtonBorder, background: mobilePanelButtonBackground, color: mobilePanelButtonTextColor, borderRadius: 7, padding: "3px 6px", cursor: canMoveUp ? "pointer" : "default", opacity: canMoveUp ? 1 : 0.4 }}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!canMoveDown}
-                            onClick={() => {
-                              const next = [...activeListColumns];
-                              const [moved] = next.splice(index, 1);
-                              next.splice(index + 1, 0, moved);
-                              persistListColumns(next);
-                            }}
-                            style={{ border: mobilePanelButtonBorder, background: mobilePanelButtonBackground, color: mobilePanelButtonTextColor, borderRadius: 7, padding: "3px 6px", cursor: canMoveDown ? "pointer" : "default", opacity: canMoveDown ? 1 : 0.4 }}
-                          >
-                            ↓
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </div>
           ) : null}
 
           {renderSmartListBuilderModal()}
@@ -27073,305 +26841,6 @@ export default function Page() {
             />
           ) : nav === "roadmap" ? (
             <RoadmapView onExit={handleExitRoadmap} />
-          ) : nav === "tracker-sync" && libraryBackend ? (
-            <TrackerSyncView libraryId={libraryBackend.libraryId} isDark={shelfThemeMode === "dark"} iconSrc={getSidebarIconSrc("tracker-sync", "/icon-statistics.png")} onBack={() => setNav(lastLibraryNav || "home")} onSynced={() => setRefreshNonce(value => value + 1)} />
-          ) : nav === "themes" ? (
-            (() => {
-              const themeChoices: Array<{
-                key: ShelfThemeMode;
-                label: string;
-                description: string;
-                shelfBg: string;
-                tileBg: string;
-                titleColor: string;
-                accent: string;
-              }> = [
-                { key: "light", label: "Light", description: "Bright off-white shelves with crisp covers and dark titles.", shelfBg: "linear-gradient(180deg, #f6f5f3 0%, #e9e8e4 100%)", tileBg: "linear-gradient(135deg, #e6edf3 0%, #c6d4e3 100%)", titleColor: "rgba(48, 56, 70, 0.92)", accent: "#41b65c" },
-                { key: "dark", label: "Dark", description: "Deep slate shelves with soft halos around covers and light titles.", shelfBg: "linear-gradient(180deg, #1c2128 0%, #14181d 100%)", tileBg: "linear-gradient(135deg, #3a4554 0%, #1f2731 100%)", titleColor: "rgba(232, 236, 244, 0.86)", accent: "#5fb3ff" },
-                { key: "classic", label: "Classic", description: "Warm wood-tone shelves echoing the original Delicious Library look.", shelfBg: "linear-gradient(180deg, #8b6a44 0%, #614528 100%)", tileBg: "linear-gradient(135deg, #d6b58a 0%, #9a6f3e 100%)", titleColor: "rgba(247, 235, 215, 0.92)", accent: "#f0b463" },
-                ...(!isMobileLayout
-                  ? [{
-                      key: "wood" as ShelfThemeMode,
-                      label: "Wood Shelf",
-                      description: "Natural honey-oak shelves sized to each cover row.",
-                      shelfBg: `url(${WOOD_SHELF_IMAGE}) center / cover`,
-                      tileBg: "linear-gradient(135deg, #4d6f87 0%, #243746 100%)",
-                      titleColor: "rgba(255, 249, 236, 0.96)",
-                      accent: "#d99a47",
-                    }]
-                  : []),
-              ];
-              const preview = themeChoices.find((c) => c.key === shelfThemeMode) || themeChoices[0];
-              const previewTextOnLight = "#2b3445";
-              const previewTextOnDark = "rgba(235, 240, 248, 0.94)";
-              const previewMutedOnLight = "rgba(70, 78, 90, 0.72)";
-              const previewMutedOnDark = "rgba(220, 226, 236, 0.66)";
-              const previewIsDark = preview.key === "dark";
-              const previewPrimaryText = previewIsDark || preview.key === "classic" || preview.key === "wood" ? previewTextOnDark : previewTextOnLight;
-              const previewMutedText = previewIsDark || preview.key === "classic" || preview.key === "wood" ? previewMutedOnDark : previewMutedOnLight;
-
-              type PreviewSample = { key: string; title: string; coverUrl: string; mediaType: "book" | "movie" | "tv" | "game" };
-              const previewSamples: PreviewSample[] = [];
-              const collectSamples = (
-                source: Array<{ item: any }>,
-                mediaType: PreviewSample["mediaType"],
-                max: number
-              ) => {
-                let added = 0;
-                for (let i = 0; i < source.length && added < max; i++) {
-                  const raw = source[i]?.item;
-                  if (!raw) continue;
-                  const typedItem = { ...raw, __type: mediaType };
-                  const url = getDisplayCoverUrl(typedItem, true);
-                  if (!url) continue;
-                  previewSamples.push({
-                    key: `${mediaType}-${added}-${safeStr(raw.title) || i}`,
-                    title: safeStr(raw.title),
-                    coverUrl: url,
-                    mediaType,
-                  });
-                  added += 1;
-                }
-              };
-              collectSamples(indexedBooks, "book", 2);
-              collectSamples(indexedMovies, "movie", 2);
-              collectSamples(indexedShows, "tv", 2);
-              collectSamples(indexedGames, "game", 2);
-              // Interleave by media type so each row mixes formats.
-              const interleaved: PreviewSample[] = [];
-              const buckets: Record<PreviewSample["mediaType"], PreviewSample[]> = { book: [], movie: [], tv: [], game: [] };
-              for (const s of previewSamples) buckets[s.mediaType].push(s);
-              const order: Array<PreviewSample["mediaType"]> = ["book", "movie", "tv", "game"];
-              while (interleaved.length < previewSamples.length) {
-                let advanced = false;
-                for (const t of order) {
-                  const next = buckets[t].shift();
-                  if (next) { interleaved.push(next); advanced = true; }
-                }
-                if (!advanced) break;
-              }
-              const previewRows: PreviewSample[][] = [interleaved.slice(0, 4), interleaved.slice(4, 8)].filter((row) => row.length > 0);
-              const previewHasItems = previewRows.length > 0;
-              return (
-                <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, rgba(247,248,250,0.96) 0%, rgba(236,240,246,0.94) 100%)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobileLayout ? "12px 14px 10px" : "20px 28px 16px", borderBottom: "1px solid rgba(152, 162, 171, 0.22)", background: "rgba(252,253,255,0.78)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", flexShrink: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: isMobileLayout ? 10 : 14, minWidth: 0 }}>
-                      <button type="button" onClick={handleExitThemes} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#576371", padding: "0 4px", lineHeight: 1, flex: "0 0 auto", display: "flex", alignItems: "center" }} aria-label="Back">
-                        <svg width={isMobileLayout ? 22 : 26} height={isMobileLayout ? 22 : 26} viewBox="0 0 24 24" fill="none" style={{ filter: "drop-shadow(0 1.5px 1px rgba(0,0,0,0.32))" }}>
-                          <path d="M20 12 H5 M11 6 L5 12 L11 18" stroke="currentColor" strokeWidth={3.6} strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </button>
-                      <img src={getSidebarIconSrc("themes", "/icon-theme.png")} alt="" width={isMobileLayout ? 26 : 32} height={isMobileLayout ? 26 : 32} style={{ display: "block", borderRadius: 8, flex: "0 0 auto" }} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: isMobileLayout ? 17 : 22, fontWeight: 750, color: "#1d2735", lineHeight: 1.1 }}>Themes</div>
-                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", marginTop: 2, lineHeight: 1.3, display: isMobileLayout ? "-webkit-box" : "block", WebkitLineClamp: isMobileLayout ? 1 : undefined, WebkitBoxOrient: isMobileLayout ? "vertical" : undefined, overflow: isMobileLayout ? "hidden" : undefined }}>
-                          {isMobileLayout ? "Choose a shelf look." : "Choose a shelf look and decide whether titles appear under each cover."}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", flex: 1, minHeight: 0, padding: isMobileLayout ? 14 : "24px 28px", gap: isMobileLayout ? 16 : 24, overflow: isMobileLayout ? "auto" : "hidden", flexDirection: isMobileLayout ? "column" : "row" }}>
-                    {/* Options column */}
-                    <div style={{ flex: isMobileLayout ? "0 0 auto" : "0 0 360px", display: "flex", flexDirection: "column", gap: isMobileLayout ? 12 : 18, overflowY: isMobileLayout ? "visible" : "auto", paddingRight: isMobileLayout ? 0 : 4 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Shelf Mode</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {themeChoices.map((choice) => {
-                          const active = shelfThemeMode === choice.key;
-                          return (
-                            <button
-                              key={`theme-choice-${choice.key}`}
-                              type="button"
-                              onClick={() => updateShelfThemeMode(choice.key)}
-                              aria-pressed={active}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 14,
-                                padding: "14px 16px",
-                                borderRadius: 14,
-                                border: active ? "2px solid #41b65c" : "1px solid rgba(150, 160, 175, 0.32)",
-                                background: active ? "rgba(65, 182, 92, 0.06)" : "rgba(255, 255, 255, 0.86)",
-                                boxShadow: active ? "0 6px 18px rgba(65, 182, 92, 0.14)" : "0 2px 6px rgba(40, 50, 70, 0.05)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                                transition: "background 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
-                              }}
-                            >
-                              <span aria-hidden style={{ width: 64, height: 44, borderRadius: 10, background: choice.shelfBg, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 4, flex: "0 0 auto" }}>
-                                <span style={{ width: 22, height: 30, borderRadius: 3, background: choice.tileBg, boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
-                              </span>
-                              <span style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
-                                <span style={{ fontSize: 16, fontWeight: 750, color: "#1d2735", letterSpacing: "-0.01em" }}>{choice.label}</span>
-                                <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.35 }}>{choice.description}</span>
-                              </span>
-                              <span aria-hidden style={{ width: 22, height: 22, borderRadius: 999, border: active ? "2px solid #41b65c" : "2px solid rgba(150,160,175,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", background: active ? "#41b65c" : "transparent" }}>
-                                {active ? <span style={{ width: 8, height: 8, borderRadius: 999, background: "#fff" }} /> : null}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div style={{ height: 1, background: "rgba(152, 162, 171, 0.2)", margin: "6px 0" }} />
-
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Cover Labels</div>
-                      <button
-                        type="button"
-                        onClick={() => updateCoverTitlesVisible(!coverTitlesVisible)}
-                        aria-pressed={coverTitlesVisible}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 14,
-                          padding: "14px 16px",
-                          borderRadius: 14,
-                          border: coverTitlesVisible ? "2px solid #41b65c" : "1px solid rgba(150, 160, 175, 0.32)",
-                          background: coverTitlesVisible ? "rgba(65, 182, 92, 0.06)" : "rgba(255, 255, 255, 0.86)",
-                          boxShadow: coverTitlesVisible ? "0 6px 18px rgba(65, 182, 92, 0.14)" : "0 2px 6px rgba(40, 50, 70, 0.05)",
-                          cursor: "pointer",
-                          textAlign: "left",
-                        }}
-                      >
-                        <span aria-hidden style={{ width: 64, height: 44, borderRadius: 10, background: "linear-gradient(180deg, #f6f5f3 0%, #e9e8e4 100%)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", padding: 4, gap: 2, flex: "0 0 auto" }}>
-                          <span style={{ width: 22, height: 26, borderRadius: 3, background: "linear-gradient(135deg, #e6edf3 0%, #c6d4e3 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" }} />
-                          {coverTitlesVisible ? <span style={{ width: 26, height: 3, borderRadius: 1, background: "rgba(48, 56, 70, 0.62)" }} /> : null}
-                        </span>
-                        <span style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
-                          <span style={{ fontSize: 16, fontWeight: 750, color: "#1d2735", letterSpacing: "-0.01em" }}>Show Titles</span>
-                          <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.35 }}>
-                            {coverTitlesVisible ? "Titles appear under every cover." : "Covers only — clean, exact spacing."}
-                          </span>
-                        </span>
-                        <span aria-hidden style={{ width: 44, height: 24, borderRadius: 999, background: coverTitlesVisible ? "#41b65c" : "rgba(150,160,175,0.5)", padding: 2, display: "flex", flex: "0 0 auto", boxShadow: coverTitlesVisible ? "0 0 0 3px rgba(65,182,92,0.16)" : "none", transition: "background 140ms ease" }}>
-                          <span style={{ width: 20, height: 20, borderRadius: 999, background: "#fff", marginLeft: coverTitlesVisible ? 20 : 0, transition: "margin-left 160ms cubic-bezier(0.22, 0.76, 0.2, 1)", boxShadow: "0 1px 3px rgba(0,0,0,0.28)" }} />
-                        </span>
-                      </button>
-
-                      <div style={{ height: 1, background: "rgba(152, 162, 171, 0.2)", margin: "6px 0" }} />
-
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.7)", textTransform: "uppercase" }}>Completed Gallery</div>
-                      <div style={{ fontSize: 12, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.4, marginTop: -8 }}>
-                        Choose the Gallery's own look — independent of the shelf theme above.
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {([
-                          { key: "match" as const, label: "Match App Theme", description: `Follows the shelf theme (currently ${shelfThemeMode === "dark" ? "dark" : "light"}).` },
-                          { key: "light" as const, label: "Always Light", description: "White spotlight background, regardless of shelf theme." },
-                          { key: "dark" as const, label: "Always Dark", description: "Black spotlight background, regardless of shelf theme." },
-                        ]).map((choice) => {
-                          const active = completedGalleryThemeMode === choice.key;
-                          return (
-                            <button
-                              key={`completed-gallery-theme-${choice.key}`}
-                              type="button"
-                              onClick={() => updateCompletedGalleryThemeMode(choice.key)}
-                              aria-pressed={active}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 12,
-                                padding: "11px 14px",
-                                borderRadius: 12,
-                                border: active ? "2px solid #41b65c" : "1px solid rgba(150, 160, 175, 0.32)",
-                                background: active ? "rgba(65, 182, 92, 0.06)" : "rgba(255, 255, 255, 0.86)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                              }}
-                            >
-                              <span style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
-                                <span style={{ fontSize: 13.5, fontWeight: 750, color: "#1d2735", letterSpacing: "-0.01em" }}>{choice.label}</span>
-                                <span style={{ fontSize: 11.5, fontWeight: 500, color: "rgba(80, 90, 105, 0.78)", lineHeight: 1.3 }}>{choice.description}</span>
-                              </span>
-                              <span aria-hidden style={{ width: 18, height: 18, borderRadius: 999, border: active ? "2px solid #41b65c" : "2px solid rgba(150,160,175,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", background: active ? "#41b65c" : "transparent" }}>
-                                {active ? <span style={{ width: 6, height: 6, borderRadius: 999, background: "#fff" }} /> : null}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Preview column */}
-                    <div style={{ flex: isMobileLayout ? "0 0 auto" : 1, minWidth: 0, display: "flex", flexDirection: "column", borderRadius: 18, overflow: "hidden", border: "1px solid rgba(152, 162, 171, 0.28)", background: "rgba(255,255,255,0.55)", boxShadow: "0 12px 28px rgba(40, 50, 70, 0.08)" }}>
-                      <div style={{ padding: isMobileLayout ? "10px 14px" : "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(152, 162, 171, 0.24)", background: "rgba(252,253,255,0.85)", flexWrap: "wrap", gap: 6 }}>
-                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(80,90,105,0.75)", textTransform: "uppercase" }}>Live Preview</div>
-                        <div style={{ fontSize: isMobileLayout ? 11 : 12, fontWeight: 700, color: "#1d2735" }}>{preview.label}{coverTitlesVisible ? " · Titles On" : " · Titles Off"}</div>
-                      </div>
-                      <div style={{ flex: isMobileLayout ? "0 0 auto" : 1, minHeight: 0, overflow: isMobileLayout ? "auto" : "auto", padding: isMobileLayout ? 16 : 24, background: preview.shelfBg, WebkitOverflowScrolling: "touch" }}>
-                        {previewHasItems ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: isMobileLayout ? 20 : 28 }}>
-                            {previewRows.map((row, rowIdx) => {
-                              const coverHeight = isMobileLayout ? 104 : 132;
-                              const coverMaxW = isMobileLayout ? 132 : 160;
-                              return (
-                                <div key={`preview-row-${rowIdx}`} style={{ display: "flex", alignItems: "flex-end", gap: isMobileLayout ? 10 : 18, paddingBottom: 12, borderBottom: previewIsDark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.08)", flexWrap: isMobileLayout ? "wrap" : "nowrap" }}>
-                                  {row.map((sample) => {
-                                    const coverShadow = previewIsDark
-                                      ? "0 0 6px 0 rgba(0, 0, 0, 0.6)"
-                                      : preview.key === "classic"
-                                        ? "8px 10px 14px rgba(40, 22, 8, 0.32)"
-                                        : "8px 10px 14px rgba(40, 50, 70, 0.22)";
-                                    return (
-                                      <div key={sample.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, maxWidth: coverMaxW }}>
-                                        <img
-                                          src={sample.coverUrl}
-                                          alt={sample.title}
-                                          loading="lazy"
-                                          style={{
-                                            height: coverHeight,
-                                            width: "auto",
-                                            maxWidth: coverMaxW,
-                                            display: "block",
-                                            borderRadius: 6,
-                                            objectFit: "cover",
-                                            boxShadow: coverShadow,
-                                            background: preview.tileBg,
-                                          }}
-                                          onError={(e) => {
-                                            e.currentTarget.style.display = "none";
-                                          }}
-                                        />
-                                        {coverTitlesVisible ? (
-                                          <div
-                                            title={sample.title}
-                                            style={{
-                                              fontSize: 11,
-                                              fontWeight: 600,
-                                              lineHeight: 1.2,
-                                              color: previewPrimaryText,
-                                              textAlign: "center",
-                                              maxWidth: coverMaxW - 12,
-                                              display: "-webkit-box",
-                                              WebkitLineClamp: 2,
-                                              WebkitBoxOrient: "vertical",
-                                              overflow: "hidden",
-                                            }}
-                                          >
-                                            {sample.title}
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                    );
-                                  })}
-                                  {!isMobileLayout ? (
-                                    <div style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: previewMutedText, alignSelf: "flex-end", paddingBottom: 6 }}>Shelf {rowIdx + 1}</div>
-                                  ) : null}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 160, color: previewMutedText, fontSize: 13, fontWeight: 600, textAlign: "center", padding: 24 }}>
-                            No covers available yet — add items to your library to see the preview here.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()
           ) : nav === "icons" ? (
             (() => {
               const sidebarCatalog: Array<{ key: string; label: string; fallback: string }> = [
@@ -28336,7 +27805,7 @@ export default function Page() {
                       },
                     },
                     ...(libraryBackend ? [{ key: "tracker-sync", label: "Sync", icon: getSidebarIconSrc("tracker-sync", "/icon-statistics.png"), action: () => {
-                      setMobileSidebarOpen(false); setMobileSettingsOpen(false); setMobileSearchOpen(false); setNav("tracker-sync");
+                      setMobileSidebarOpen(false); setMobileSettingsOpen(false); setMobileSearchOpen(false); setSyncOpen(true);
                     } }] : []),
                   ].map((item) => (
                     <button
@@ -30428,6 +29897,104 @@ export default function Page() {
           </>
           )}
         </main>
+        {sortPopupOpen && nav !== "statistics" ? <SortDialog
+          isDark={shelfThemeMode === "dark"}
+          sortField={sortField}
+          sortOptions={<>
+                  {nav === "books" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="CompletedDate">Completed Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "movies" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "tv" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="CompletedDate">Date Completed</option>
+                      <option value="LastAirDate">Last Air Date</option>
+                      <option value="FirstAirDate">First Air Date</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+                  {nav === "games" && (
+                    <>
+                      <option value="Title">Title</option>
+                      <option value="ReleaseDate">Release Date</option>
+                      <option value="CompletedDate">Date Completed</option>
+                      <option value="MyRatingSort">My Rating</option>
+                      <option value="ExternalRatingSort">User Rating</option>
+                    </>
+                  )}
+	                  {(nav === "home" || nav === "upcoming" || nav === "now-playing" || nav === "play-next" || nav === "wishlist" || nav === "wishlist-books" || nav === "watchlist-movies" || nav === "watchlist-tv" || nav === "current" || nav === "completed" || nav === "abandoned" || nav === "year-this" || nav === "smart-custom") && (
+	                    <>
+	                      <option value="Title">Title</option>
+	                      <option value="ReleaseDate">Release Date</option>
+	                      {nav === "wishlist" || nav === "play-next" ? <option value="CompletedDate">Date Completed</option> : null}
+	                      {nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
+	                    </>
+		                  )}
+
+          </>}
+          sortOrder={sortOrder}
+          manualOrder={sortField === MANUAL_SORT_FIELD}
+          onSortField={handleSortFieldChange}
+          onSortOrder={handleSortOrderChange}
+          listSize={listViewEligible ? activeListSizePct : undefined}
+          onListSize={persistListSizePct}
+          columns={listViewEligible ? availableListColumns.map(column => {
+            const checked = activeListColumns.includes(column.key);
+            const index = activeListColumns.indexOf(column.key);
+            return {
+              key: column.key,
+              label: column.label,
+              checked,
+              required: column.key === "title",
+              canMoveUp: index > 0,
+              canMoveDown: index >= 0 && index < activeListColumns.length - 1,
+              onToggle: () => persistListColumns(checked ? activeListColumns.filter(key => key !== column.key) : [...activeListColumns, column.key]),
+              onMove: (direction: -1 | 1) => {
+                if (index < 0 || index + direction < 0 || index + direction >= activeListColumns.length) return;
+                const next = [...activeListColumns];
+                const [moved] = next.splice(index, 1);
+                next.splice(index + direction, 0, moved);
+                persistListColumns(next);
+              },
+            };
+          }) : []}
+          onResetColumns={() => persistListColumns(defaultListColumns)}
+          onClose={() => setSortPopupOpen(false)}
+        /> : null}
+        {themesOpen ? <ThemesDialog
+          theme={shelfThemeMode}
+          galleryTheme={completedGalleryThemeMode}
+          showTitles={coverTitlesVisible}
+          isMobileLayout={isMobileLayout}
+          iconSrc={getSidebarIconSrc("themes", "/icon-theme.png")}
+          woodImage={WOOD_SHELF_IMAGE}
+          covers={[
+            ...indexedBooks.slice(0, 1).map(row => ({ title: row.item.title, url: getDisplayCoverUrl({ ...row.item, __type: "book" }, true) })),
+            ...indexedMovies.slice(0, 1).map(row => ({ title: row.item.title, url: getDisplayCoverUrl({ ...row.item, __type: "movie" }, true) })),
+            ...indexedShows.slice(0, 1).map(row => ({ title: row.item.title, url: getDisplayCoverUrl({ ...row.item, __type: "tv" }, true) })),
+            ...indexedGames.slice(0, 1).map(row => ({ title: row.item.title, url: getDisplayCoverUrl({ ...row.item, __type: "game" }, true) })),
+          ].filter(cover => Boolean(cover.url))}
+          onTheme={updateShelfThemeMode}
+          onGalleryTheme={updateCompletedGalleryThemeMode}
+          onShowTitles={updateCoverTitlesVisible}
+          onClose={() => setThemesOpen(false)}
+        /> : null}
+        {syncOpen && libraryBackend ? <TrackerSyncView libraryId={libraryBackend.libraryId} isDark={shelfThemeMode === "dark"} iconSrc={getSidebarIconSrc("tracker-sync", "/icon-sync.svg")} onBack={() => setSyncOpen(false)} onSynced={() => setRefreshNonce(value => value + 1)} /> : null}
         {sidebarDetailsVisible && !isMobileLayout && sidebarDetailItem ? (
           <MediaDetailsSidebar
             item={sidebarDetailItem}

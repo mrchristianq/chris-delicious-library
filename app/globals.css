@@ -89,3 +89,12 @@ input[type="range"]::-moz-range-thumb {
     font-size: 16px !important;
   }
 }
+
+/* Keep native dialog backdrop filters outside styled-jsx prefixing. */
+dialog.trackerSync::backdrop,
+dialog.themesDialog::backdrop,
+dialog.sortDialog::backdrop {
+  background: rgba(20, 25, 35, .27);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { TrackerChange, TrackerPreview } from "../lib/v14/tracker-preview";
 import {applyReviewedSync} from "../lib/v14/tracker-review-flow";
 import {readFreshTrackerPreview} from "../lib/v14/tracker-preview-client";
@@ -17,6 +18,18 @@ function IdentityReviewDetails({review}:{review:NonNullable<TrackerChange["ident
   </details>;
 }
 export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon-sync.svg"}:{libraryId:string;isDark:boolean;onBack:()=>void;onSynced?:()=>void;iconSrc?:string}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const [screen,setScreen]=useState<"home"|"review"|"backups"|"history">("home");
+  const [backupBusy,setBackupBusy]=useState(false);
+  useEffect(()=>{
+    const element=dialog.current;
+    const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    const overflow=document.body.style.overflow;
+    element?.showModal();document.body.style.overflow="hidden";
+    return()=>{element?.close();document.body.style.overflow=overflow;previous?.focus();};
+  },[]);
+  useEffect(()=>{heading.current?.focus();dialog.current?.scrollTo({top:0});},[screen]);
   const [preview,setPreview]=useState<TrackerPreview|null>(null);
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
@@ -204,6 +217,7 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
   const readyItemIds=readyTrackerItemIds(changes,choices,skipped);
   const selectedCount=readyItemIds.length;
   const busy=loading||saving!==null||preparing||batchApplying||choosingAll;
+  const closeLocked=saving!==null||batchApplying||choosingAll||backupBusy;
   const safeCover=(url:string)=>/^https?:\/\//i.test(url)?url:"";
   function choiceButtons(row:TrackerChange){
     if(selectableValue(row))return choices[row.id]?<button disabled={busy} onClick={()=>void saveChoice(row,"clear")}>Clear selection</button>:null;
@@ -222,22 +236,35 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
     const selection=row.identitySelection,choice=selection?.choice;if(!selection||!choice)return null;
     return <div className="fieldActions choices">{(["app","tracker"] as const).map(side=><button key={side} disabled={busy||!preview?.canSaveDecisions} aria-label={`Use ${side==="app"?"App":"Sheet"} for ${field}`} aria-pressed={choice.fields[field]===side} onClick={()=>void saveIdentityChoice(row,{mode:choice.mode,fields:{...choice.fields,[field]:side}})}>Use {side==="app"?"App":"Sheet"}</button>)}</div>;
   }
-  return <section className={`trackerSync ${isDark?"dark":""}`}>
+  return typeof document==="undefined"?null:createPortal(<dialog ref={dialog} className={`trackerSync ${isDark?"dark":""}`} aria-labelledby="sync-panel-title" onKeyDown={event=>event.stopPropagation()} onKeyUp={event=>event.stopPropagation()} onCancel={event=>{event.preventDefault();if(!closeLocked)onBack();}}>
+    <div className="panelNavigation">
+      <button disabled={closeLocked} onClick={()=>screen==="home"?onBack():setScreen("home")} aria-label={screen==="home"?"Back to library":"Back to Sync"}>‹</button>
+      <button disabled={closeLocked} onClick={onBack} aria-label="Close Sync">×</button>
+    </div>
     <header>
-      <button onClick={onBack} aria-label="Back to library">‹</button>
       <img className="syncIcon" src={iconSrc} alt="" />
-      <div className="heading"><h1>Sync</h1><p>Keep your collection and tracker together.</p></div>
-      <button className="primary syncNow" disabled={busy} onClick={()=>void refresh()}>{loading?"Checking both sides…":"↻  Sync Now"}</button>
+      <div className="heading"><h1 id="sync-panel-title" ref={heading} tabIndex={-1}>{screen==="home"?"Sync":screen==="review"?"Review Changes":screen==="backups"?"Backups":"Sync History"}</h1><p>{screen==="home"?"Your collection, kept together.":screen==="review"?"Choose what to keep.":screen==="backups"?"A safe copy of your collection.":"Your latest confirmed activity."}</p></div>
     </header>
+    {screen==="home"?<>
+      <button className="primary syncNow" disabled={busy} onClick={()=>{setScreen("review");void refresh();}}>{loading?"Checking both sides…":"Sync Now"}</button>
+      <p className="lastSynced">Last synced {preview?.lastConfirmedSync||confirmedSync?.at?new Date(preview?.lastConfirmedSync||confirmedSync!.at).toLocaleString():"—"}</p>
+      <nav className="menuGroup" aria-label="Sync options">
+        <button onClick={()=>setScreen("review")}><SummaryIcon kind="review"/><span>Changes to Review<small>{loading?"Checking for differences…":error||!ready?"Connection needs attention":`${groups.size} items to review`}</small></span><span aria-hidden>›</span></button>
+        <button onClick={()=>setScreen("backups")}><SummaryIcon kind="collection"/><span>Backups<small>Back up or restore your collection</small></span><span aria-hidden>›</span></button>
+        <button onClick={()=>setScreen("history")}><SummaryIcon kind="clock"/><span>Sync History<small>Last sync and nightly activity</small></span><span aria-hidden>›</span></button>
+      </nav>
+      <p className="lastSynced">Review differences before applying changes.</p>
+    </>:null}
+    <div hidden={screen!=="history"}>
     <div className="stats">
       <div><SummaryIcon kind="clock"/><div><small>Last synced</small><b>{preview?.lastConfirmedSync||confirmedSync?.at?new Date(preview?.lastConfirmedSync||confirmedSync!.at).toLocaleString():"—"}</b></div></div>
       <div><SummaryIcon kind="collection"/><div><small>Items in last sync</small><b>{preview?.lastConfirmedSync&&preview.syncedRecords!==undefined?preview.syncedRecords.toLocaleString():confirmedSync?confirmedSync.records.toLocaleString():"—"}</b></div></div>
       <div><SummaryIcon kind="review"/><div><small>To review</small><b>{ready?reviewItems:"—"}</b></div></div>
     </div>
-    <details className="backupHistory"><summary>Backups &amp; History</summary>
     {preview?.nightly?.startedAt ? <p className="protection">Last nightly run: {new Date(preview.nightly.startedAt).toLocaleString()} · {preview.nightly.status === "completed" ? "Completed" : preview.nightly.status === "review" ? "Review needed" : preview.nightly.status === "failed" ? "Not completed—review required" : "In progress"}{preview.nightly.backupAt ? " · Full backup verified" : " · Backup not yet confirmed"}{preview.nightly.syncedItems !== null ? ` · ${preview.nightly.syncedItems} items synced` : ""}{preview.nightly.heldItems ? ` · ${preview.nightly.heldItems} held for review` : ""}</p> : null}
-    <LibraryBackups libraryId={libraryId}/>
-    </details>
+    </div>
+    {screen==="backups"?<LibraryBackups libraryId={libraryId} onBusyChange={setBackupBusy}/>:null}
+    <div hidden={screen!=="review"}>
     {ready&&groups.size>0?<h2 className="reviewHeading">{groups.size} item{groups.size===1?"":"s"} to review</h2>:null}
     {loading?<div className="empty" role="status">Checking your collection against the latest Google Sheet…</div>:error?<p role="alert">{error}</p>:!ready?<div className="empty"><h2>Tracker connection needs attention</h2><p>{preview?.message}</p></div>:groups.size?Array.from(groups.entries()).slice(0,visibleLimit).map(([key,rows])=>{
       const first=rows[0],context=first.displayRecord,cover=safeCover(context?.coverUrl??""),held=rows.some(needsReview);
@@ -283,6 +310,7 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
     {preview?.activeRun?<p role="status">A previous sync needs confirmation. Resume that saved sync before making new choices; already confirmed steps will not repeat.</p>:null}
     {preview?.comparisonMode!=="three-way"&&ready?<details><summary>Initial tracker setup</summary><button disabled={busy||!preview.canSaveDecisions} onClick={()=>void saveInitialReview()}>Keep app values for initial review</button><button disabled={busy} onClick={()=>void saveInitialReview(true)}>Clear initial approval</button><button disabled={busy} onClick={()=>void checkExecution()}>Check initial plan</button>{preparation?<button disabled={busy||preparation.checkpointSaved} onClick={()=>void saveExecutionCheckpoint()}>Save initial plan</button>:null}</details>:null}
     {selectedCount||preview?.activeRun||manual?.resume?<footer><div><b>{selectedCount} item{selectedCount===1?"":"s"} ready</b><p>Unresolved and skipped items stay for review.</p></div><button className="primary" disabled={busy||!ready||preview?.comparisonMode!=="three-way"} onClick={()=>void applySelected()}>{batchApplying?"Checking confirmation…":preparing?"Checking selected items…":preview?.activeRun||manual?.resume?"Resume Saved Sync":`Apply ${selectedCount} Item${selectedCount===1?"":"s"}`}</button></footer>:null}
+    </div>
     <style jsx>{`
       .backupHistory{margin:18px 0}.backupHistory>summary{text-align:right;color:#2684ef}.reviewHeading{font-size:18px;margin:18px 0 14px}.quickActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.quickActions .choices{margin:0}.comparisonBody{margin-top:16px}.comparisonBody[hidden]{display:none}.reviewHint{margin-top:8px}.mediaCard .artwork{width:76px;flex-basis:76px;min-height:104px}.mediaCard .artwork img{max-height:116px}.mediaCard{padding:16px;gap:18px}.recordHeader{margin-bottom:10px}h2{font-size:19px}:global(.trackerSync button.valueChoice){min-height:54px!important}:global(.trackerSync .selectionHint){display:none!important}@media(max-width:980px){.quickActions,.comparisonBody,.reviewHint{grid-column:1/-1}.quickActions button{flex:1}.quickActions .choices{display:contents}.mediaCard .artwork{width:64px;min-height:90px}.recordHeader{min-height:90px}}
       .applyBlockers{grid-column:1/-1;margin-top:14px;padding:12px 14px;border:1px solid #e59b3e55;border-radius:12px;background:#e59b3e0d;font-size:13px;line-height:1.5}.applyBlockers ul{padding-left:18px;margin:6px 0}.applyBlockers button{min-height:44px;margin-top:6px}
@@ -296,13 +324,21 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
       .newItemSummary{grid-column:1/-1}.rowActions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;grid-column:1/-1;margin-top:18px}.rowActions button{min-height:44px}
       .trackerSync{--bg:#f1f2f4;--surface:rgba(255,255,255,.88);--text:#202a39;--muted:#748094;--line:rgba(145,160,182,.22);background:var(--bg);color:var(--text);min-height:100%;padding:26px 28px 110px;font-family:inherit}
       .dark{--bg:#171b22;--surface:#232a34;--text:#f2f5fa;--muted:#abb5c5;--line:rgba(220,230,245,.16)}
-      header{display:flex;gap:14px;align-items:center;margin-bottom:24px}.heading{flex:1}h1{font-size:28px;margin:0;font-weight:750}h2{font-size:22px;margin:0;letter-spacing:-.025em}p{font-size:13px;color:var(--muted);line-height:1.5;margin:6px 0}small{font-size:12px;color:var(--muted);display:block;line-height:1.5}.syncIcon{width:36px;height:36px;object-fit:contain}
+      header{display:flex;gap:14px;align-items:center;margin-bottom:24px}.heading{flex:1}h1{font-size:28px;margin:0;font-weight:750}h2{font-size:22px;margin:0;letter-spacing:-.025em}p{font-size:13px;color:var(--muted);line-height:1.5;margin:6px 0}small{font-size:12px;color:var(--muted);display:block;line-height:1.5}.syncIcon{width:72px;height:72px;object-fit:contain;flex:0 0 72px;align-self:center}.heading h1{line-height:1.2}.heading p{margin-top:2px}
       button{font:600 13px inherit;font-family:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:11px;min-height:44px;padding:10px 17px;background:var(--surface);color:var(--text);cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}button:focus-visible,summary:focus-visible{outline:2px solid #3492ff;outline-offset:3px}.primary{background:linear-gradient(#579fff,#3188ee);color:white;border-color:#4495f7;box-shadow:0 3px 8px #3492ff20}.syncNow{min-width:180px}
       .stats{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:18px;background:var(--surface);border:1px solid var(--line);border-radius:19px;padding:20px 24px;box-shadow:0 3px 10px #1a294506}.stats>div{display:flex;align-items:center;gap:14px}.stats>div>span{font-size:28px;color:var(--muted)}.stats b{font-size:16px}.protection{font-size:12px;margin:12px 2px 22px}
       .tabs{display:flex;border:1px solid var(--line);border-radius:12px;padding:3px;gap:4px;max-width:720px;margin-bottom:20px}.tabs button{flex:1;background:transparent;border-color:transparent;color:var(--muted)}button[aria-pressed=true]{background:#3492ff10;border-color:#3492ff60;color:#2684ef}.mediaCard{display:flex;gap:24px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:22px;margin-bottom:18px;box-shadow:0 3px 10px #1a294507}.artwork{width:116px;flex:0 0 116px;align-self:flex-start;min-height:150px;border-radius:7px;background:#8391a015;display:grid;place-items:center;overflow:hidden}.artwork img{width:100%;height:auto;max-height:180px;object-fit:contain;display:block;box-shadow:0 6px 16px #0003}.artwork span{font-size:36px}.record{min-width:0;flex:1}.recordHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}.media{font-weight:600}.game{color:#3492ff}.book{color:#5ca65a}.movie{color:#a168d6}.tv{color:#e98e30}.badge{font-size:12px;white-space:nowrap;border-radius:30px;padding:7px 12px;background:#3492ff12;color:#2684ef}.badge.amber{background:#ee98251a;color:#b66b16}.comparisonHead,.field{display:grid;grid-template-columns:minmax(110px,1fr) minmax(0,1fr) minmax(0,1fr);gap:10px}.comparisonHead{font-size:12px;color:var(--muted);padding:8px 10px;background:#8391a009;border-radius:9px}.field{padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;align-items:start}.fieldLabel{font-weight:550;padding:7px 0;overflow-wrap:anywhere}.value{padding:7px 10px;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;background:#8391a00a}.value small{display:none}.difference{background:#ee982514}.selected{background:#3492ff17;box-shadow:inset 0 0 0 1px #3492ff30}.fieldActions{grid-column:1/-1}.choices{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}.fieldActions p{font-size:12px}.allFields{margin-top:10px}summary{cursor:pointer;min-height:44px;align-content:center;color:var(--muted);font-size:13px}dl{font-size:13px}dd{margin:3px 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}.empty{padding:40px 24px;background:var(--surface);border:1px solid var(--line);border-radius:18px;margin-bottom:20px}.error{color:#c65d33}
       footer{position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 20px;background:var(--surface);backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:16px;margin-top:24px;z-index:2}footer b{font-size:13px}footer p{font-size:12px}
-      @media(max-width:980px){.trackerSync{padding:18px 14px 120px}header{flex-wrap:wrap;gap:10px;margin-bottom:18px}h1{font-size:25px}.heading p{font-size:12px}.syncIcon{width:28px;height:28px}.syncNow{width:100%;min-height:48px;order:5}.stats{grid-template-columns:1fr 1fr;gap:16px;padding:16px}.stats>div:first-child{grid-column:1/-1}.stats b{font-size:14px}.stats small{font-size:11px}.tabs{gap:0}.tabs button{padding:8px 6px;font-size:12px}.mediaCard{padding:16px;gap:12px;display:grid;grid-template-columns:64px minmax(0,1fr)}.artwork{width:64px;min-height:90px;grid-column:1;grid-row:1}.artwork img{max-height:100px}.record{display:contents}.recordHeader{grid-column:2;align-items:flex-start;flex-direction:column;min-height:90px;margin:0}h2{font-size:19px}.comparisonHead,.field,.allFields{grid-column:1/-1}.record>.comparisonHead{display:none}.field{grid-template-columns:1fr 1fr}.fieldLabel{grid-column:1/-1;padding:0}.value small{display:block;margin-bottom:3px;font-size:10px}.fieldActions{grid-column:1/-1}.allFields .comparisonHead{display:none}.choices button{flex:1;min-height:44px}.badge{font-size:11px;padding:5px 9px}.empty{padding:28px 18px}footer{bottom:92px;flex-direction:column;align-items:stretch;padding:12px;margin-top:18px}footer button{width:100%;min-height:48px}footer p{margin:3px 0 0}}
+      @media(max-width:980px){.trackerSync{padding:18px 14px 120px}header{flex-wrap:wrap;gap:10px;margin-bottom:18px}h1{font-size:25px}.heading p{font-size:12px}.syncIcon{width:64px;height:64px;flex-basis:64px}.heading h1{line-height:1.2}.syncNow{width:100%;min-height:48px;order:5}.stats{grid-template-columns:1fr 1fr;gap:16px;padding:16px}.stats>div:first-child{grid-column:1/-1}.stats b{font-size:14px}.stats small{font-size:11px}.tabs{gap:0}.tabs button{padding:8px 6px;font-size:12px}.mediaCard{padding:16px;gap:12px;display:grid;grid-template-columns:64px minmax(0,1fr)}.artwork{width:64px;min-height:90px;grid-column:1;grid-row:1}.artwork img{max-height:100px}.record{display:contents}.recordHeader{grid-column:2;align-items:flex-start;flex-direction:column;min-height:90px;margin:0}h2{font-size:19px}.comparisonHead,.field,.allFields{grid-column:1/-1}.record>.comparisonHead{display:none}.field{grid-template-columns:1fr 1fr}.fieldLabel{grid-column:1/-1;padding:0}.value small{display:block;margin-bottom:3px;font-size:10px}.fieldActions{grid-column:1/-1}.allFields .comparisonHead{display:none}.choices button{flex:1;min-height:44px}.badge{font-size:11px;padding:5px 9px}.empty{padding:28px 18px}footer{bottom:92px;flex-direction:column;align-items:stretch;padding:12px;margin-top:18px}footer button{width:100%;min-height:48px}footer p{margin:3px 0 0}}
       @media(min-width:1100px){.record{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:center;gap:0 16px}.recordHeader{grid-column:1;display:block;margin:0}.recordHeader .badge{display:inline-block;margin-top:4px}.quickActions{grid-column:2;justify-content:flex-end}.comparisonBody,.reviewHint{grid-column:1/-1}.mediaCard{align-items:center}}
+      .trackerSync{position:fixed;inset:0;margin:auto;width:min(780px,calc(100vw - 48px));max-width:none;height:fit-content;min-height:0;max-height:calc(100dvh - 64px);overflow:auto;overscroll-behavior:contain;padding:24px 32px 32px;border:1px solid var(--line);border-radius:28px;box-shadow:0 28px 100px #0004;box-sizing:border-box}
+      /* Native ::backdrop styles live in globals.css to preserve blur during compilation. */
+      [hidden]{display:none!important}.panelNavigation{display:flex;justify-content:space-between;margin-bottom:22px;position:sticky;top:-24px;z-index:3;background:var(--bg);padding:8px 0}.panelNavigation button{width:44px;height:44px;padding:0;border-radius:50%;font-size:28px;font-weight:400}
+      header{margin-bottom:24px}h1{font-size:32px;letter-spacing:-.03em;outline:none}.heading p{font-size:15px;margin-top:8px}.syncNow{width:100%;min-height:50px;font-size:16px;border-radius:14px}.lastSynced{margin:12px 0 24px;font-size:13px}
+      .menuGroup{background:var(--surface);border-radius:22px;overflow:hidden;margin:28px 0 20px}.menuGroup button{display:flex;align-items:center;gap:18px;width:100%;text-align:left;border:0;border-radius:0;background:transparent;padding:20px;min-height:88px;font-size:16px;font-weight:600}.menuGroup button+button{border-top:1px solid var(--line)}.menuGroup button>span:nth-child(2){flex:1}.menuGroup small{margin-top:4px;font-size:13px;font-weight:400}.menuGroup button>span:last-child{font-size:25px;color:var(--muted)}.menuGroup button:hover{background:#3492ff08}
+      .stats{grid-template-columns:1fr;box-shadow:none}.mediaCard{padding:18px;gap:16px;align-items:flex-start}.record{display:block}.recordHeader{display:flex;align-items:flex-start}.artwork,.mediaCard .artwork{width:64px;flex-basis:64px;min-height:88px}.quickActions{justify-content:flex-start}.mediaCard h2{font-size:18px}.comparisonBody{margin-top:20px}footer{bottom:-16px}.reviewHeading{font-size:16px;font-weight:500}
+      @media(max-width:980px){.record{display:contents}.quickActions,.comparisonBody,.reviewHint{grid-column:1/-1}.quickActions{display:grid;grid-template-columns:1fr 1fr}.quickActions>.primary{grid-column:1/-1}}
+      @media(max-width:600px){.trackerSync{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);padding:16px 18px calc(22px + env(safe-area-inset-bottom));border-radius:24px}.panelNavigation{margin-bottom:20px;top:-16px}header{flex-wrap:nowrap}.heading p{font-size:14px}h1{font-size:28px}.syncNow{width:100%}.stats{grid-template-columns:1fr}.menuGroup button{padding:16px;gap:14px}.mediaCard{padding:14px}.recordHeader{display:block}footer{bottom:-8px}}
     `}</style>
-  </section>;
+  </dialog>,document.body);
 }

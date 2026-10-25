@@ -6,6 +6,14 @@ import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 import { handleExternalLinkClick, openExternalUrl } from "../native/externalLinks";
 
+function EpisodeWatchedCheck() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" style={{ width: "70%", height: "70%", display: "block", flex: "none" }}>
+      <path d="M5 12 10 17 19 7" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 type TVDetailsPageProps = {
   item: Record<string, unknown>;
   isMobileLayout: boolean;
@@ -399,6 +407,20 @@ export function TVDetailsPage({
     myRating ? { label: "MY RATING", value: myRating } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
+  // Keep the card visible until the save and its confirmation feedback have finished.
+  const [episodeFeedback, setEpisodeFeedback] = useState<Record<string, "saving" | "confirmed">>({});
+  const episodeFeedbackTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const episodeFeedbackInFlight = useRef(new Set<string>());
+  const episodeFeedbackMounted = useRef(false);
+  useEffect(() => {
+    episodeFeedbackMounted.current = true;
+    const timers = episodeFeedbackTimers.current;
+    return () => {
+      episodeFeedbackMounted.current = false;
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
   const [episodeLoading, setEpisodeLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | null>(null);
   const [episodeSyncProgress, setEpisodeSyncProgress] = useState<TVEpisodeBulkSaveProgress | null>(null);
@@ -443,7 +465,7 @@ export function TVDetailsPage({
     totalEpisodeCount ? { label: "TOTAL EPISODES", value: String(totalEpisodeCount), half: true } : null,
     totalEpisodeCount || watchedEpisodeCount ? { label: "EPISODES WATCHED", value: String(watchedEpisodeCount), half: true } : null,
   ].filter(Boolean) as { label: string; value: string; half?: boolean }[];
-  const nextEpisodes = releasedEpisodes.filter((episode) => !isEpisodeWatched(episode)).slice(0, isMobileLayout ? 4 : 6);
+  const nextEpisodes = releasedEpisodes.filter((episode) => !isEpisodeWatched(episode) || Boolean(episodeFeedback[episodeKey(episode)])).slice(0, isMobileLayout ? 4 : 6);
   const episodesBySeason = useMemo(() => {
     const groups = new Map<string, TVEpisodeRow[]>();
     for (const episode of sortedEpisodes) {
@@ -510,6 +532,18 @@ export function TVDetailsPage({
   };
   const toggleEpisodeWatched = async (episode: TVEpisodeRow, nextWatched: boolean) => {
     if (!onUpdateEpisodeProgress) return;
+    const feedbackKey = episodeKey(episode);
+    if (episodeFeedbackInFlight.current.has(feedbackKey) || episodeFeedback[feedbackKey]) return;
+    episodeFeedbackInFlight.current.add(feedbackKey);
+    if (nextWatched) setEpisodeFeedback(previous => ({ ...previous, [feedbackKey]: "saving" }));
+    const clearFeedback = () => {
+      episodeFeedbackInFlight.current.delete(feedbackKey);
+      if (episodeFeedbackMounted.current) setEpisodeFeedback(previous => {
+        const next = { ...previous };
+        delete next[feedbackKey];
+        return next;
+      });
+    };
     const syncJob = episodeSyncJobRef.current + 1;
     episodeSyncJobRef.current = syncJob;
     episodeSyncJobsRef.current[syncJob] = {
@@ -521,6 +555,16 @@ export function TVDetailsPage({
     refreshEpisodeSyncProgress();
     try {
       await onUpdateEpisodeProgress(episode, nextWatched);
+      if (nextWatched && episodeFeedbackMounted.current) {
+        setEpisodeFeedback(previous => ({ ...previous, [feedbackKey]: "confirmed" }));
+        const timer = setTimeout(() => {
+          episodeFeedbackTimers.current.delete(timer);
+          clearFeedback();
+        }, 1000);
+        episodeFeedbackTimers.current.add(timer);
+      } else {
+        clearFeedback();
+      }
       episodeSyncJobsRef.current[syncJob] = {
         ...episodeSyncJobsRef.current[syncJob],
         total: 1,
@@ -531,6 +575,7 @@ export function TVDetailsPage({
       refreshEpisodeSyncProgress();
       clearCompletedEpisodeSyncJobsSoon();
     } catch (error: any) {
+      clearFeedback();
       setEpisodeError(error?.message || "Failed to save episode progress.");
       episodeSyncJobsRef.current[syncJob] = {
         ...episodeSyncJobsRef.current[syncJob],
@@ -585,10 +630,12 @@ export function TVDetailsPage({
   const watchedToggleStyle = (watched: boolean, size = 28): CSSProperties => ({
     width: size,
     height: size,
+    padding: 0,
+    flexShrink: 0,
     borderRadius: "50%",
     border: `1px solid ${watched ? "rgba(255,255,255,0.48)" : "rgba(255,255,255,0.56)"}`,
     background: watched
-      ? "rgba(255,255,255,0.42)"
+      ? "#41b65c"
       : "rgba(255,255,255,0.20)",
     color: "#ffffff",
     boxShadow: watched
@@ -1050,6 +1097,9 @@ export function TVDetailsPage({
                           key={`next-${key}`}
                           type="button"
                           onClick={() => toggleEpisodeWatched(episode, true)}
+                          disabled={Boolean(episodeFeedback[key])}
+                          aria-label={`${episodeFeedback[key] === "confirmed" ? "Watched" : episodeFeedback[key] === "saving" ? "Saving" : "Mark watched"}: season ${episode.SeasonNumber}, episode ${episode.EpisodeNumber}, ${safeStr(episode.EpisodeTitle)}`}
+                          aria-busy={episodeFeedback[key] === "saving"}
                           style={{
                             width: isMobileLayout ? 190 : 230,
                             flex: "0 0 auto",
@@ -1080,8 +1130,9 @@ export function TVDetailsPage({
                               position: "absolute",
                               right: 8,
                               bottom: 8,
-                              ...watchedToggleStyle(false, 26),
-                            }} />
+                              ...watchedToggleStyle(episodeFeedback[key] === "confirmed", 26),
+                            }} aria-hidden="true">{episodeFeedback[key] === "confirmed" ? <EpisodeWatchedCheck /> : episodeFeedback[key] === "saving" ? "…" : ""}</span>
+                            {episodeFeedback[key] ? <span role="status" style={{ position: "absolute", left: 8, bottom: 8, padding: "4px 8px", borderRadius: 8, background: "rgba(0,0,0,.72)", color: "#fff", fontSize: 11, fontWeight: 650 }}>{episodeFeedback[key] === "confirmed" ? "Watched" : "Saving…"}</span> : null}
                           </div>
                           <div style={{ marginTop: 7, fontSize: 10, fontWeight: 900, color: palette.mutedText, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                             S{episode.SeasonNumber} E{episode.EpisodeNumber}
@@ -1178,7 +1229,7 @@ export function TVDetailsPage({
                               style={watchedToggleStyle(complete, 28)}
                               aria-label={complete ? `Mark season ${season} unwatched` : `Mark season ${season} watched`}
                             >
-                              {complete ? "✓" : ""}
+                              {complete ? <EpisodeWatchedCheck /> : ""}
                             </button>
                             <span style={{ fontSize: 18, fontWeight: 900, transform: open ? "rotate(90deg)" : "none", transition: "transform 120ms ease" }}>›</span>
                           </div>
@@ -1216,9 +1267,12 @@ export function TVDetailsPage({
                                   <button
                                     type="button"
                                     onClick={() => toggleEpisodeWatched(episode, !watched)}
-                                    style={watchedToggleStyle(watched, 28)}
+                                    disabled={Boolean(episodeFeedback[key])}
+                                    aria-label={`${watched ? "Mark unwatched" : "Mark watched"}: season ${episode.SeasonNumber}, episode ${episode.EpisodeNumber}, ${safeStr(episode.EpisodeTitle)}`}
+                                    aria-busy={episodeFeedback[key] === "saving"}
+                                    style={watchedToggleStyle(episodeFeedback[key] === "saving" ? false : watched, 28)}
                                   >
-                                    {watched ? "✓" : ""}
+                                    {episodeFeedback[key] === "saving" ? "…" : watched ? <EpisodeWatchedCheck /> : ""}
                                   </button>
                                 </div>
                               );
