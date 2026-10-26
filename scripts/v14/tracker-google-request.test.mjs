@@ -44,3 +44,12 @@ test('dates are actual Sheet date serials and blank values explicitly clear only
  const clearItem={...item,user_status:null},clearOp={...op,value:''};
  const clear=compile([clearOp],[clearItem],[table],[])[0];assert.deepEqual(build(clear,clearItem,table,grid).requests[0].updateCells.rows[0].values[0].userEnteredValue,{});
 });
+
+test('tracker boolean fields use Yes/No dropdown values, with equivalent canonical readback',()=>{
+ for(const header of ['Backlog','Completed'])for(const value of [true,false]){
+  const i={...item,user_status:value?'Completed':'Abandoned',user_fields:{...item.user_fields,[header]:value?'Yes':'No'}},t={...table,headers:[...table.headers,header],rows:[[...table.rows[0],value?'No':'Yes']]};
+  const step=compile([{...op,field:header,value}],[i],[t],[])[0];
+  const request=build(step,i,t,{...grid,columnCount:5}).requests[0];
+  assert.deepEqual(request.updateCells.rows[0].values[0].userEnteredValue,{stringValue:value?'Yes':'No'});
+ }
+});

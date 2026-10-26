@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { TrackerChange, TrackerPreview } from "../lib/v14/tracker-preview";
 import {applyReviewedSync} from "../lib/v14/tracker-review-flow";
 import {readFreshTrackerPreview} from "../lib/v14/tracker-preview-client";
-import {trackerReviewBlockers,readyTrackerItemIds} from "../lib/v14/tracker-review-blockers";
+import {trackerReviewBlockers,readyTrackerItemIds,trackerItemChoiceRows} from "../lib/v14/tracker-review-blockers";
 import {LibraryBackups} from './LibraryBackups';
 
 function SummaryIcon({kind}:{kind:"clock"|"collection"|"review"}){const color={clock:"#3789ee",collection:"#55a46b",review:"#e59b3e"}[kind];return <span aria-hidden style={{display:"grid",placeItems:"center",width:44,height:44,borderRadius:14,color,background:color+"18"}}><svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{kind==="clock"?<><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></>:kind==="collection"?<><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 2v6m8-6v6M8 12h8m-8 4h5"/></>:<><path d="M10.3 4.5 2.8 18a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/></>}</svg></span>;}
@@ -39,6 +39,7 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
   const latestPreview=useRef<TrackerPreview|null>(null);
   const [visibleLimit,setVisibleLimit]=useState(100);
   const [choices,setChoices]=useState<Record<string,"app"|"tracker">>({});
+  const choiceDrafts=useRef(new Map<string,"app"|"tracker"|"clear">());
   const [saving,setSaving]=useState<string|null>(null);
   const [saveError,setSaveError]=useState("");
   const [preparing,setPreparing]=useState(false);
@@ -56,7 +57,7 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
     setManual(null);setManualMessage("");
     preparationRequest.current?.abort();setPreparing(false);setPreparation(null);
     request.current?.abort();const controller=new AbortController();request.current=controller;
-    setLoading(true);setError("");setSaveError("");setPreview(null);latestPreview.current=null;setChoices({});setVisibleLimit(100);
+    setLoading(true);setError("");setSaveError("");setPreview(null);latestPreview.current=null;setChoices({});choiceDrafts.current.clear();setVisibleLimit(100);
     try {
       const next=await readFreshTrackerPreview(libraryId,controller.signal);
       if(!controller.signal.aborted){latestPreview.current=next;setPreview(next);setChoices(Object.fromEntries(next.changes.filter(row=>row.savedChoice).map(row=>[row.id,row.savedChoice!])));return next;}
@@ -65,6 +66,16 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
   }
   async function saveChoice(row:TrackerChange,side:"app"|"tracker"|"clear"){
     if(saving||!row.decisionToken||!preview?.canSaveDecisions)return;
+    if(preview.comparisonMode==="three-way"&&!row.identitySelection&&!row.blockedField){
+      // Selecting values is local and immediate. Apply validates these tokens against fresh sources.
+      preparationRequest.current?.abort();setPreparing(false);setPreparation(null);setManual(null);setManualMessage("");setSaveError("");
+      choiceDrafts.current.set(row.id,side);
+      setChoices(old=>{const next={...old};if(side==="clear")delete next[row.id];else next[row.id]=side;return next;});
+      const current=latestPreview.current??preview;
+      const next={...current,changes:current.changes.map(change=>change.id===row.id?{...change,...(change.plannedAction?{planApproved:side===(change.plannedAction==="import-record"?"tracker":"app")}:{})}:change)};
+      latestPreview.current=next;setPreview(next);
+      return true;
+    }
     preparationRequest.current?.abort();setPreparing(false);setSaving(row.id);setSaveError("");setPreparation(null);setManual(null);setManualMessage("");
     const retryKey=JSON.stringify([libraryId,row.id,row.decisionToken,row.decisionRevision,side]);
     const requestId=retries.current.get(retryKey)??crypto.randomUUID();retries.current.set(retryKey,requestId);
@@ -181,8 +192,37 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
   async function chooseAllValues(rows:TrackerChange[],side:"app"|"tracker"){
     if(choosingAll||saving||batchApplying)return;
     setChoosingAll(true);
-    try{for(const row of rows.filter(selectableValue)){if(!await saveChoice(row,side))return;}}
+    try{for(const row of trackerItemChoiceRows(rows,side)){if(!await saveChoice(row,side))return;}}
     finally{setChoosingAll(false);}
+  }
+  async function confirmChoiceDrafts(itemIds:string[]){
+    const rows=(latestPreview.current??preview)?.changes.filter(row=>itemIds.includes(row.itemId)&&choiceDrafts.current.has(row.id))??[];
+    if(!rows.length)return true;
+    setSaving("__choices");setSaveError("");setManualMessage("Checking your selected values together…");
+    try{
+      for(let offset=0;offset<rows.length;offset+=100){
+        const commands=rows.slice(offset,offset+100).map(row=>{
+          const side=choiceDrafts.current.get(row.id)!;
+          const key=JSON.stringify([libraryId,row.id,row.decisionToken,row.decisionRevision,side]);
+          const requestId=retries.current.get(key)??crypto.randomUUID();retries.current.set(key,requestId);
+          return {changeId:row.id,token:row.decisionToken!,side,revision:row.decisionRevision??null,requestId};
+        });
+        const batchKey=JSON.stringify(["choice-batch",libraryId,commands]),requestId=retries.current.get(batchKey)??crypto.randomUUID();retries.current.set(batchKey,requestId);
+        const response=await fetch('/v14/api/sync-review-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({libraryId,requestId,choices:commands})});
+        const result=await response.json();
+        if(!response.ok)throw new Error(result.error??"Selected values were not confirmed. Retry safely.");
+        if(result.confirmed!==true||result.applied!==false||result.requestId!==requestId||!Array.isArray(result.choices)||result.choices.length!==commands.length||commands.some((command,index)=>{
+          const saved=result.choices[index];return !saved||saved.changeId!==command.changeId||saved.token!==command.token||saved.requestId!==command.requestId||saved.side!==command.side||saved.revision!==(command.revision??0)+1;
+        }))throw new Error("Selected value readback was not confirmed.");
+        const savedById=new Map(commands.map(command=>[command.changeId,command]));
+        const current=latestPreview.current??preview;
+        if(current){const next={...current,changes:current.changes.map(row=>{const command=savedById.get(row.id);return command?{...row,decisionRevision:(command.revision??0)+1,savedChoice:command.side==="clear"?undefined:command.side}:row;})};latestPreview.current=next;setPreview(next);}
+        for(const command of commands){choiceDrafts.current.delete(command.changeId);retries.current.delete(JSON.stringify([libraryId,command.changeId,command.token,command.revision,command.side]));}
+        retries.current.delete(batchKey);
+      }
+      setManualMessage("");return true;
+    }catch(cause){setManualMessage("");setSaveError(cause instanceof Error?cause.message:"Selected values were not confirmed.");return false;}
+    finally{setSaving(null);}
   }
   async function applySelected(ids?:string[]){
     if(applying.current||loading||saving||preparing)return;
@@ -193,7 +233,10 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
       if(preview?.activeRun){await applyReviewedSync(()=>checkManual(),manualCommand);return;}
       const selected=ids??readyItemIds;
       if(!selected.length)return;
-      const selectedRows=(latestPreview.current??preview)?.changes.filter(r=>selected.includes(r.itemId))??[];
+      let selectedRows=(latestPreview.current??preview)?.changes.filter(r=>selected.includes(r.itemId))??[];
+      for(const row of selectedRows.filter(r=>["add-record","import-record"].includes(r.plannedAction??"")&&!r.planApproved))if(!await saveChoice(row,row.plannedAction==="import-record"?"tracker":"app"))return;
+      if(!await confirmChoiceDrafts(selected))return;
+      selectedRows=(latestPreview.current??preview)?.changes.filter(r=>selected.includes(r.itemId))??[];
       if(selectedRows.every(r=>r.plannedAction!=="import-record"&&!r.identitySelection)){
         for(const row of selectedRows.filter(r=>r.plannedAction==="add-record"&&!r.planApproved))if(!await saveChoice(row,"app"))return;
         const status=await applyReviewedSync(()=>checkManual(selected),manualCommand);
@@ -265,9 +308,9 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
     </div>
     {screen==="backups"?<LibraryBackups libraryId={libraryId} onBusyChange={setBackupBusy}/>:null}
     <div hidden={screen!=="review"}>
-    {ready&&groups.size>0?<h2 className="reviewHeading">{groups.size} item{groups.size===1?"":"s"} to review</h2>:null}
+    {ready&&groups.size>0?<><h2 className="reviewHeading">{groups.size} item{groups.size===1?"":"s"} to review</h2><p className="reviewHint">Choose the values to keep, then Apply. Selections are instant; nothing is synced until you apply.</p></>:null}
     {loading?<div className="empty" role="status">Checking your collection against the latest Google Sheet…</div>:error?<p role="alert">{error}</p>:!ready?<div className="empty"><h2>Tracker connection needs attention</h2><p>{preview?.message}</p></div>:groups.size?Array.from(groups.entries()).slice(0,visibleLimit).map(([key,rows])=>{
-      const first=rows[0],context=first.displayRecord,cover=safeCover(context?.coverUrl??""),held=rows.some(needsReview);
+      const first=rows[0],context=first.displayRecord,cover=safeCover(context?.coverUrl??""),held=rows.some(needsReview),blockers=trackerReviewBlockers(rows,choices);
       const fields=[...new Set([...Object.keys(context?.app??{}),...Object.keys(context?.tracker??{})])];const appFields=context?.app??{},trackerFields=context?.tracker??{};
       const edition=String(trackerFields.Platform||trackerFields.Type||appFields.Platform||appFields.Type||"");
       return <article className="mediaCard" key={key} style={{opacity:skipped[first.itemId]?0.65:1}}>
@@ -275,12 +318,12 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
         <div className="record">
           <div className="recordHeader"><div><h2>{first.title}</h2><p className={"media "+first.media}>{first.media==="tv"?"TV Show":first.media==="game"?"Game":first.media==="book"?"Book":"Movie"}{edition?" · "+edition:""}</p></div><span className={held?"badge amber":"badge"}>{held?"Needs review":first.plannedAction==="add-record"?"New to tracker":first.plannedAction==="import-record"?"New to app":rows.length+" difference"+(rows.length===1?"":"s")}</span></div>
           <div className="quickActions">
-          {rows.some(selectableValue)?<div className="choices">{(["app","tracker"] as const).map(side=><button key={side} aria-pressed={rows.filter(selectableValue).every(row=>choices[row.id]===side)} disabled={busy||!preview?.canSaveDecisions} onClick={()=>void chooseAllValues(rows,side)}>Keep {side==="app"?"App":"Sheet"}</button>)}</div>:null}
+          {rows.some(selectableValue)?<div className="choices">{(["app","tracker"] as const).map(side=><button key={side} aria-pressed={trackerItemChoiceRows(rows,side).length>0&&trackerItemChoiceRows(rows,side).every(row=>choices[row.id]===side)} disabled={busy||!preview?.canSaveDecisions} onClick={()=>void chooseAllValues(rows,side)}>Keep {side==="app"?"App":"Sheet"}</button>)}</div>:null}
           <button aria-expanded={!!expanded[key]} aria-controls={`comparison-${first.itemId}`} onClick={()=>setExpanded(old=>({...old,[key]:!old[key]}))}>{expanded[key]?"Compare ▴":"Compare ▾"}</button>
           <button disabled={busy} aria-pressed={!!skipped[first.itemId]} onClick={()=>setSkipped(old=>({...old,[first.itemId]:!old[first.itemId]}))}>{skipped[first.itemId]?"Include":"Skip"}</button>
           <button className="primary" disabled={busy||rowBlocked(rows)||!!preview?.activeRun||!!manual?.resume||!!skipped[first.itemId]} onClick={()=>void applySelected([first.itemId])}>{first.plannedAction==="add-record"?"Add to Google Sheet":first.plannedAction==="import-record"?"Add to Library":"Apply"}</button>
           </div>
-          {held&&!expanded[key]?<p className="reviewHint">Open Compare to choose values{rows.some(r=>r.plannedAction==="provider-correction"||r.identitySelection)?" and confirm the item match":""}.</p>:null}
+          {blockers.length?<p className="reviewHint" role="status">{blockers[0]} <button type="button" className="reviewLink" onClick={()=>setExpanded(old=>({...old,[key]:true}))}>Review details</button></p>:choiceDrafts.current.size>0&&rows.some(row=>choiceDrafts.current.has(row.id))?<p className="reviewHint">Selected. Click Apply to sync this item.</p>:null}
           <div id={`comparison-${first.itemId}`} className="comparisonBody" hidden={!expanded[key]}>
           {context?.candidate?<p style={{gridColumn:"1 / -1"}}>Artwork and app fields below belong to a possible match—not a confirmed link. Review its edition before syncing.</p>:null}
           {first.identitySelection?<div className="fieldActions" style={{gridColumn:"1 / -1",marginBottom:12}}><div className="choices">{(["same","separate"] as const).map(mode=><button key={mode} disabled={busy||!preview?.canSaveDecisions} aria-pressed={first.identitySelection?.choice?.mode===mode} onClick={()=>void saveIdentityChoice(first,{mode,fields:first.identitySelection?.choice?.mode===mode?first.identitySelection.choice.fields:{}})}>{mode==="same"?"Same item":"Separate edition"}</button>)}{first.identitySelection.choice?<button disabled={busy||!preview?.canSaveDecisions} onClick={()=>void saveIdentityChoice(first,null)}>Clear identity choice</button>:null}</div>{first.identitySelection.choice?<div className="choices">{(["app","tracker"] as const).map(side=><button key={side} disabled={busy||!preview?.canSaveDecisions} onClick={()=>void saveIdentityChoice(first,{mode:first.identitySelection!.choice!.mode,fields:Object.fromEntries(first.identitySelection!.fields.map(field=>[field,side]))})}>Use {side==="app"?"App":"Sheet"} for all fields</button>)}</div>:null}<p role="status">{first.identitySelection.reason??"Select how these records relate, then choose which field values to keep. Nothing changes until Apply."}</p></div>:null}
@@ -312,7 +355,7 @@ export function TrackerSyncView({libraryId,isDark,onBack,onSynced,iconSrc="/icon
     {selectedCount||preview?.activeRun||manual?.resume?<footer><div><b>{selectedCount} item{selectedCount===1?"":"s"} ready</b><p>Unresolved and skipped items stay for review.</p></div><button className="primary" disabled={busy||!ready||preview?.comparisonMode!=="three-way"} onClick={()=>void applySelected()}>{batchApplying?"Checking confirmation…":preparing?"Checking selected items…":preview?.activeRun||manual?.resume?"Resume Saved Sync":`Apply ${selectedCount} Item${selectedCount===1?"":"s"}`}</button></footer>:null}
     </div>
     <style jsx>{`
-      .backupHistory{margin:18px 0}.backupHistory>summary{text-align:right;color:#2684ef}.reviewHeading{font-size:18px;margin:18px 0 14px}.quickActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.quickActions .choices{margin:0}.comparisonBody{margin-top:16px}.comparisonBody[hidden]{display:none}.reviewHint{margin-top:8px}.mediaCard .artwork{width:76px;flex-basis:76px;min-height:104px}.mediaCard .artwork img{max-height:116px}.mediaCard{padding:16px;gap:18px}.recordHeader{margin-bottom:10px}h2{font-size:19px}:global(.trackerSync button.valueChoice){min-height:54px!important}:global(.trackerSync .selectionHint){display:none!important}@media(max-width:980px){.quickActions,.comparisonBody,.reviewHint{grid-column:1/-1}.quickActions button{flex:1}.quickActions .choices{display:contents}.mediaCard .artwork{width:64px;min-height:90px}.recordHeader{min-height:90px}}
+      .backupHistory{margin:18px 0}.backupHistory>summary{text-align:right;color:#2684ef}.reviewHeading{font-size:18px;margin:18px 0 14px}.quickActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.quickActions .choices{margin:0}.comparisonBody{margin-top:16px}.comparisonBody[hidden]{display:none}.reviewHint{margin-top:8px}.reviewLink{border:0;background:transparent;color:#3492ff;padding:4px 6px;min-height:32px}.mediaCard .artwork{width:76px;flex-basis:76px;min-height:104px}.mediaCard .artwork img{max-height:116px}.mediaCard{padding:16px;gap:18px}.recordHeader{margin-bottom:10px}h2{font-size:19px}:global(.trackerSync button.valueChoice){min-height:54px!important}:global(.trackerSync .selectionHint){display:none!important}@media(max-width:980px){.quickActions,.comparisonBody,.reviewHint{grid-column:1/-1}.quickActions button{flex:1}.quickActions .choices{display:contents}.mediaCard .artwork{width:64px;min-height:90px}.recordHeader{min-height:90px}}
       .applyBlockers{grid-column:1/-1;margin-top:14px;padding:12px 14px;border:1px solid #e59b3e55;border-radius:12px;background:#e59b3e0d;font-size:13px;line-height:1.5}.applyBlockers ul{padding-left:18px;margin:6px 0}.applyBlockers button{min-height:44px;margin-top:6px}
       .itemChoices{grid-column:1/-1;margin-bottom:12px}.itemChoices p{font-size:13px;color:var(--muted)}
       :global(.trackerSync button.valueChoice){display:flex;flex-direction:column;align-items:flex-start;text-align:left;width:100%;min-height:90px;padding:10px 12px;border-radius:10px;font:inherit;line-height:1.5;color:var(--text);border:1px solid var(--line);background:#8391a00a;cursor:pointer;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}

@@ -33,7 +33,7 @@ function finalReadback(plan:TrackerMixedPlan,items:SnapshotItem[],tables:Tracker
   return plan.selection?buildSelectedTrackerBaseline(items,tables,plan.selection.itemIds):buildInitialTrackerBaseline(items,tables);
 }
 /** Stage/claim happens before this runner writes. SQL imports have audited
- * idempotent retries. An uncertain Google batch is NEVER blindly reissued.
+ * idempotent retries. Only existing-cell assignments may be retried after fresh before/after checks.
  * No success/last-sync is returned until the atomic confirmation is read back. */
 export async function advanceTrackerMixedRun(plan:TrackerMixedPlan,adapter:MixedAdapter){
   decodeMixedPlan(encodeMixedPlan(plan),plan.libraryId,plan.fingerprint);
@@ -69,7 +69,15 @@ export async function advanceTrackerMixedRun(plan:TrackerMixedPlan,adapter:Mixed
       let states=await exportStates();if(states.includes("conflict"))return {status:"conflict" as const,plan:plan.fingerprint};
       const tail=record.journal.steps.slice(start),pending=tail.every(s=>s.state==="pending"),dispatched=tail.every(s=>s.state==="dispatched")&&new Set(tail.map(s=>s.attempt)).size===1;
       if(!pending&&!dispatched)throw new Error("Mixed export checkpoint stages require recovery");
-      if(dispatched&&!states.every(s=>s==="after"))return {status:"uncertain" as const,plan:plan.fingerprint};
+      if(dispatched&&!states.every(s=>s==="after")){
+        // An unchanged existing row can safely receive the SAME cell values
+        // again. Re-resolve addresses and source guards on every retry; never
+        // replay append/delete operations whose position or count can change.
+        if(plan.exports.some(step=>step.kind!=="fields"))return {status:"uncertain" as const,plan:plan.fingerprint};
+        try{await adapter.export(plan);}catch{/* Independent readback is authoritative. */}
+        states=await exportStates();
+        if(!states.every(s=>s==="after"))return {status:states.includes("conflict")?"conflict" as const:"uncertain" as const,plan:plan.fingerprint};
+      }
       if(pending){
         const next=structuredClone(record.journal),attempt=randomUUID();for(let n=start;n<next.steps.length;n++)next.steps[n]={...next.steps[n],state:"dispatched",attempt};record=await persist(adapter.journal,record,next);
         states=await exportStates();if(states.includes("conflict"))return {status:"conflict" as const,plan:plan.fingerprint};

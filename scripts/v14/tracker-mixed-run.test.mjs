@@ -3,6 +3,7 @@ import {fixtureItems,fixtureTables,fixtureBaseline,changeFixture} from './tracke
 const h=registerHooks({resolve(s,c,n){return n(c.parentURL?.includes('/app/lib/v14/')&&s.startsWith('./')&&!s.endsWith('.ts')?s+'.ts':s,c);}});
 const {compileTrackerMixedPlan:compile,mixedJournal,encodeMixedPlan,decodeMixedPlan}=await import('../../app/lib/v14/tracker-mixed-plan.ts');
 const {advanceTrackerMixedRun:advance}=await import('../../app/lib/v14/tracker-mixed-run.ts');
+const {compileNightlyPlan}=await import('../../app/lib/v14/nightly-plan.ts');
 const {trackerRowIdentity}=await import('../../app/lib/v14/tracker-write-plan.ts');
 const {trackerBaselineGeneration,attachTrackerConflictDecisions,conflictDecisionKey,conflictDecisionValue}=await import('../../app/lib/v14/tracker-conflict-decisions.ts');
 const {previewTrackerThreeWay}=await import('../../app/lib/v14/tracker-three-way.ts');h.deregister();
@@ -51,8 +52,8 @@ test('lost import acknowledgement resumes a durable dispatched command through t
 test('lost Google acknowledgement is confirmed by destination readback, not a second send',async()=>{
  const s=mixedFixture(),a=adapter(s),send=a.export;a.export=async p=>{await send(p);throw new Error('lost response');};assert.equal((await advance(s.plan,a)).status,'verified');assert.equal(a.stats().exports,1);
 });
-test('an uncertain unapplied Google batch is never automatically resent and cannot advance baselines',async()=>{
- const s=mixedFixture(),a=adapter(s);let sends=0;a.export=async()=>{sends++;throw new Error('no known outcome');};assert.equal((await advance(s.plan,a)).status,'uncertain');assert.equal((await advance(s.plan,a)).status,'uncertain');assert.equal(sends,1);assert.equal(a.stats().confirmations,0);
+test('unchanged cell-only exports can retry the same assignment, but failed readback never advances baselines',async()=>{
+ const s=mixedFixture(),a=adapter(s);let sends=0;a.export=async()=>{sends++;throw new Error('no known outcome');};assert.equal((await advance(s.plan,a)).status,'uncertain');assert.equal((await advance(s.plan,a)).status,'uncertain');assert.equal(sends,2);assert.equal(a.stats().confirmations,0);
 });
 test('lost final commit acknowledgement recovers its durable receipt without a second confirmation',async()=>{
  const s=mixedFixture(),a=adapter(s),confirm=a.confirm;a.confirm=async(...args)=>{await confirm(...args);throw new Error('commit response lost');};await assert.rejects(advance(s.plan,a),/lost/);assert.equal((await advance(s.plan,a)).status,'verified');assert.equal(a.stats().confirmations,1);
@@ -63,4 +64,30 @@ test('source revision or metadata changes prevent final confirmation',async()=>{
 });
 test('zero-operation agreement can advance a stale baseline and classify the next one-sided edit correctly',async()=>{
  const s=mixedFixture(true);s.items[2].personal_rating=4.9;changeFixture(s.tables,2,'My Rating','4.9');s.plan=compile(s.items,s.tables,[],s.baseline,s.context,'now');assert.equal(s.plan.imports.length+s.plan.exports.length,0);const a=adapter(s);assert.equal((await advance(s.plan,a)).status,'verified');assert.equal(a.stats().exports,0);assert.equal(a.stats().imports,0);changeFixture(s.tables,2,'My Rating','4.8');assert.equal(previewTrackerThreeWay(s.items,s.tables,s.baseline,'now').changes[0].direction,'import');
+});
+
+test('resume repairs an unapplied cell batch, without repeating confirmed imports',async()=>{
+ const s=mixedFixture(),a=adapter(s),send=a.export;let first=true;
+ a.export=async p=>{if(first){first=false;throw new Error('rejected before applying');}return send(p);};
+ assert.equal((await advance(s.plan,a)).status,'uncertain');
+ assert.equal((await advance(s.plan,a)).status,'verified');
+ assert.equal(a.stats().imports,4);assert.equal(a.stats().exports,1);
+ assert.equal((await advance(s.plan,a)).status,'verified');assert.equal(a.stats().exports,1);
+});
+test('a third-party cell change blocks resume instead of overwriting it',async()=>{
+ const s=mixedFixture(),a=adapter(s);let sends=0;a.export=async()=>{sends++;throw new Error('lost');};
+ assert.equal((await advance(s.plan,a)).status,'uncertain');
+ changeFixture(s.tables,0,'My Rating','2.1');
+ assert.equal((await advance(s.plan,a)).status,'conflict');assert.equal(sends,1);assert.equal(a.stats().confirmations,0);
+});
+
+test('an uncertain append remains readback-only and is never blindly repeated',async()=>{
+ const s=mixedFixture(true);
+ const game={...s.items[0],id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',title:'New unique game',metadata:{IGDB_ID:'123456'},user_status:'Wishlist'};
+ s.items.push(game);
+ s.plan=compileNightlyPlan({items:s.items,settings:[]},s.tables,s.baseline,s.context,'2026-10-25T10:00:00Z').plan;
+ assert.equal(s.plan.exports[0].kind,'add-record');
+ const a=adapter(s);let sends=0;a.export=async()=>{sends++;throw new Error('unknown append outcome');};
+ assert.equal((await advance(s.plan,a)).status,'uncertain');
+ assert.equal((await advance(s.plan,a)).status,'uncertain');assert.equal(sends,1);assert.equal(a.stats().confirmations,0);
 });

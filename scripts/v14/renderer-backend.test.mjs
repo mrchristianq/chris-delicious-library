@@ -323,3 +323,18 @@ test('a save waits for an older refresh; cancellation does not block later saves
  await backend.write('',{key:'theme',value:'light'});
  assert.deepEqual(commands.map(command=>command.revision),[null,1]);
 });
+
+test('activity labels episode progress from the loaded library without extra snapshot reads',async()=>{
+ const snapshot=fixture();snapshot.items[0].media_type='tv';snapshot.items[0].title='Show';snapshot.items[0].user_status='Started';snapshot.items[0].metadata={TMDB_ID:'123'};
+ const episodeId='44444444-4444-4444-8444-444444444444';
+ snapshot.episodes=[{id:episodeId,library_id:library,show_id:id,season_number:2,episode_number:3,provider_id:'456',metadata:{},progress:null}];snapshot.counts.episodes=1;
+ let reads=0;
+ const backend=createRendererBackend(library,owner,async(url,options)=>{
+  assert.equal(options.cache,'no-store');
+  if(url.startsWith('/v14/api/activity'))return Response.json({rows:[{EpisodeID:episodeId,Field:'Watched',Title:'',ItemID:'','New Value':'true'}]});
+  reads++;return Response.json(snapshot);
+ });
+ await backend.load(new AbortController().signal);
+ const [entry]=await backend.activity();
+ assert.equal(entry.Title,'Show');assert.equal(entry.ItemID,id);assert.equal(entry.Field,'S2 E3 · Watched');assert.equal(reads,1);
+});

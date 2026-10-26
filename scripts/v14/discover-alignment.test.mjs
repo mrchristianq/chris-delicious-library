@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 test('Sync uses the same icon slot, image sizing and label spacing as every Discover entry',()=>{
  const file=ts.createSourceFile('page.tsx',readFileSync(new URL('../../app/page.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
- const labels=['Statistics','Roadmap','Themes','Icons','Activity Log','Sync'];
+ const labels=['Statistics','Roadmap','Themes','Icons','Library Activity','Sync'];
  const rows=new Map();
  function walk(node){
   if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(file)==='button'){
@@ -18,6 +18,11 @@ test('Sync uses the same icon slot, image sizing and label spacing as every Disc
   const found=[];
   if(ts.isJsxElement(node)&&node.openingElement.attributes.properties.some(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='style'&&p.initializer?.getText(file)==='{discoverLabelStyle}')){
    found.push(node.children.filter(ts.isJsxText).map(c=>c.text.trim()).join(''));
+   for(const child of node.children){
+    if(ts.isJsxExpression(child)&&child.expression&&ts.isConditionalExpression(child.expression)){
+     for(const branch of [child.expression.whenTrue,child.expression.whenFalse])if(ts.isStringLiteral(branch))found.push(branch.text);
+    }
+   }
   }
   ts.forEachChild(node,child=>found.push(...findLabels(child)));
   return found;

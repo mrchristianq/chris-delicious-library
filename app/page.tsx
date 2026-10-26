@@ -15,6 +15,7 @@ import { MountOnFirstOpen } from "./components/MountOnFirstOpen";
 import { fetchMediaSearch } from "./lib/mediaSearchClient";
 import { useLibraryBackend } from "./lib/v14/backend-context";
 const SortDialog = dynamic(() => import("./components/SortDialog").then(mod => mod.SortDialog), { ssr: false });
+const LibraryActivityDialog = dynamic(() => import("./components/LibraryActivityDialog").then(mod => mod.LibraryActivityDialog), { ssr: false });
 const ThemesDialog = dynamic(() => import("./components/ThemesDialog").then(mod => mod.ThemesDialog), { ssr: false });
 const TrackerSyncView = dynamic(() => import("./components/TrackerSyncView").then(mod => mod.TrackerSyncView), {
   loading: () => <div style={{ padding: 40, color: "#8a94a3" }}>Loading…</div>,
@@ -480,7 +481,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.87";
+const APP_VERSION = "14.0.93";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -807,6 +808,36 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "14.0.93",
+    date: "2026-10-26",
+    notes: ["Replace the legacy activity dashboard with a searchable Library Activity timeline, grouped saves, covers and before-and-after details."],
+  },
+  {
+    version: "14.0.92",
+    date: "2026-10-26",
+    notes: ["Soften the Cover/List capsule with a more transparent fill and lighter outline."],
+  },
+  {
+    version: "14.0.91",
+    date: "2026-10-26",
+    notes: ["Connect Cover and List in a subtle transparent display-mode capsule."],
+  },
+  {
+    version: "14.0.90",
+    date: "2026-10-25",
+    notes: ["Write tracker Yes/No fields in the accepted format and safely resume unchanged existing-row sync updates."],
+  },
+  {
+    version: "14.0.89",
+    date: "2026-10-25",
+    notes: ["Make Sort and Display compact and keep the library clear behind it for live feedback."],
+  },
+  {
+    version: "14.0.88",
+    date: "2026-10-25",
+    notes: ["Make Sync source selections instant, include app identification in Keep App, and confirm selected choices together on Apply."],
+  },
   {
     version: "14.0.87",
     date: "2026-10-25",
@@ -4900,6 +4931,7 @@ export default function Page() {
   // Sidebar nav
   const [nav, setNav] = useState<NavKey>("home");
   const [syncOpen, setSyncOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [themesOpen, setThemesOpen] = useState(false);
   const isBacklogSidebarView =
     nav === "now-playing" ||
@@ -7123,14 +7155,15 @@ export default function Page() {
   }, [lastLibraryNav]);
 
   const openCoverSyncView = useCallback(() => {
-    setNav("cover-sync");
+    if (libraryBackend) setActivityOpen(true);
+    else setNav("cover-sync");
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
     setShowVersionNotes(false);
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
-  }, []);
+  }, [libraryBackend]);
 
   const openThemesView = useCallback(() => {
     setThemesOpen(true);
@@ -25333,13 +25366,13 @@ export default function Page() {
                 <button
                   type="button"
                   onClick={openCoverSyncView}
-                  className={`sideSubItem ${nav === "cover-sync" ? "active" : ""}`}
+                  className={`sideSubItem ${(activityOpen || nav === "cover-sync") ? "active" : ""}`}
                   style={{
                     ...discoverRowStyle,
-                    background: nav === "cover-sync" ? "rgba(120, 128, 140, 0.09)" : "transparent",
-                    border: nav === "cover-sync" ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
+                    background: (activityOpen || nav === "cover-sync") ? "rgba(120, 128, 140, 0.09)" : "transparent",
+                    border: (activityOpen || nav === "cover-sync") ? "1px solid rgba(146, 154, 166, 0.26)" : "1px solid transparent",
                     borderRadius: 10,
-                    color: nav === "cover-sync" ? "rgba(62, 70, 80, 0.92)" : undefined,
+                    color: (activityOpen || nav === "cover-sync") ? "rgba(62, 70, 80, 0.92)" : undefined,
                     cursor: "pointer",
                   }}
                 >
@@ -25350,7 +25383,7 @@ export default function Page() {
                         width: 18,
                         height: 14,
                         borderRadius: 4,
-                        background: nav === "cover-sync" ? "rgba(0,0,0,0.05)" : "transparent",
+                        background: (activityOpen || nav === "cover-sync") ? "rgba(0,0,0,0.05)" : "transparent",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -25368,7 +25401,7 @@ export default function Page() {
                         style={{ display: "block", background: "transparent", maxWidth: "none", maxHeight: "none", cursor: "pointer" }}
                       />
                     </span>
-                    <span style={discoverLabelStyle}>Activity Log</span>
+                    <span style={discoverLabelStyle}>{libraryBackend ? "Library Activity" : "Activity Log"}</span>
                   </span>
                 </button>
 
@@ -27795,13 +27828,13 @@ export default function Page() {
                     },
                     {
                       key: "cover-sync",
-                      label: "Activity Log",
+                      label: libraryBackend ? "Library Activity" : "Activity Log",
                       icon: getSidebarIconSrc("r2-sync", "/icon-statistics.png"),
                       action: () => {
                         setMobileSidebarOpen(false);
                         setMobileSettingsOpen(false);
                         setMobileSearchOpen(false);
-                        setNav("cover-sync");
+                        openCoverSyncView();
                       },
                     },
                     ...(libraryBackend ? [{ key: "tracker-sync", label: "Sync", icon: getSidebarIconSrc("tracker-sync", "/icon-statistics.png"), action: () => {
@@ -28609,10 +28642,19 @@ export default function Page() {
                           alignItems: "center",
                           height: 30,
                           padding: 2,
-                          borderRadius: 10,
-                          background: isSimpleHeaderTheme ? simpleHeaderBackground : "rgba(28, 18, 10, 0.52)",
-                          border: isSimpleHeaderTheme ? simpleHeaderBorderColor : "1px solid rgba(10, 6, 3, 0.78)",
-                          boxShadow: isSimpleHeaderTheme ? simpleHeaderShadow : "0 3px 8px rgba(0, 0, 0, 0.34)",
+                          borderRadius: 11,
+                          background: isSimpleHeaderTheme
+                            ? simpleSidebarIsLight
+                              ? "linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0.14))"
+                              : "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))"
+                            : "linear-gradient(180deg, rgba(61,43,27,0.36), rgba(28,18,10,0.24))",
+                          border: simpleSidebarIsLight && isSimpleHeaderTheme
+                            ? "1px solid rgba(255,255,255,0.38)"
+                            : "1px solid rgba(255,255,255,0.10)",
+                          boxShadow: simpleSidebarIsLight && isSimpleHeaderTheme
+                            ? "inset 0 1px 0 rgba(255,255,255,0.32), 0 1px 5px rgba(31,41,55,0.05)"
+                            : "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 5px rgba(0,0,0,0.10)",
+                          flexShrink: 0,
                         }}
                       >
                         {(["cover", "list"] as DisplayMode[]).map((mode) => {
@@ -29975,6 +30017,18 @@ export default function Page() {
           }) : []}
           onResetColumns={() => persistListColumns(defaultListColumns)}
           onClose={() => setSortPopupOpen(false)}
+        /> : null}
+        {activityOpen && libraryBackend ? <LibraryActivityDialog
+          load={libraryBackend.activity}
+          isDark={shelfThemeMode === "dark"}
+          iconSrc={getSidebarIconSrc("r2-sync", "/icon-statistics.png")}
+          onClose={() => setActivityOpen(false)}
+          covers={([
+            ["book", allBooks], ["movie", allMovies], ["tv", allShows], ["game", allGames],
+          ] as Array<[MediaType, Array<Book | Movie | Show | Game>]>).flatMap(([media, items]) => items.map(item => ({
+            id: (item as unknown as { __cdlIdentity?: { itemId?: string } }).__cdlIdentity?.itemId || "",
+            title: item.title, media, url: getDisplayCoverUrl({ ...item, __type: media }, true),
+          })))}
         /> : null}
         {themesOpen ? <ThemesDialog
           theme={shelfThemeMode}

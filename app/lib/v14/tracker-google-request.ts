@@ -9,7 +9,10 @@ const sheetIds:Record<string,number>={Games:1374715809,Shows:1246289004,Books:51
 export type TrackerGrid={spreadsheetId:string;title:string;sheetId:number;rowCount:number;columnCount:number};
 function enteredValue(header:string,value:TrackerValue){
   if(value===null||value==="")return {};
-  if(typeof value==="boolean")return {boolValue:value};
+  // The tracker retains Yes/No dropdowns for these canonical boolean fields.
+  // Writing boolValue would violate their strict ONE_OF_LIST validation.
+  if(typeof value==="boolean")return header==="Backlog"||header==="Completed"
+    ? {stringValue:value?"Yes":"No"} : {boolValue:value};
   if(typeof value==="number"){
     if(!Number.isFinite(value))throw new Error("Invalid numeric tracker value");
     return {numberValue:value};

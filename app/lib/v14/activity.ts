@@ -1,4 +1,8 @@
 export type ActivityRow = {
+  EventID?: string | null;
+  ItemID?: string | null;
+  EventKind?: string | null;
+  EpisodeID?: string | null;
   Timestamp: string | null;
   Source: string | null;
   Sheet: string | null;
@@ -89,6 +93,9 @@ function diffRows(event: RecordValue): ActivityRow[] {
   const base = emptyRow();
   base.Timestamp = text(event.created_at);
   base.Source = "v14";
+  base.EventKind = String(kind);
+  if (typeof event.id === "string") base.EventID = event.id;
+  if (typeof event.entity_id === "string" && kind !== "episode_progress") base.ItemID = event.entity_id;
   base.Row = text(event.source_row);
 
   if (["item", "full_edit", "create", "archive"].includes(String(kind))) {
@@ -147,7 +154,7 @@ function diffRows(event: RecordValue): ActivityRow[] {
         if (!Object.hasOwn(current, key)) continue;
         const oldEntry = record(previous) ? previous : {};
         if (Object.hasOwn(oldEntry, key) && equalJson(oldEntry[key], current[key])) continue;
-        const row = { ...base, Field: key === "watched" ? "Watched" : "Watched At" };
+        const row = { ...base, EpisodeID: text(current.episode_id) || "", Field: key === "watched" ? "Watched" : "Watched At" };
         row["Old Value"] = Object.hasOwn(oldEntry, key) ? text(oldEntry[key]) : null;
         row["New Value"] = text(current[key]);
         output.push(row);

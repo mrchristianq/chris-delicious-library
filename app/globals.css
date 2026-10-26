@@ -93,8 +93,15 @@ input[type="range"]::-moz-range-thumb {
 /* Keep native dialog backdrop filters outside styled-jsx prefixing. */
 dialog.trackerSync::backdrop,
 dialog.themesDialog::backdrop,
-dialog.sortDialog::backdrop {
+dialog.libraryActivity::backdrop {
   background: rgba(20, 25, 35, .27);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+}
+
+/* Sorting should leave the live collection fully visible. */
+dialog.sortDialog::backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }

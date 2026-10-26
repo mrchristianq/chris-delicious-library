@@ -80,9 +80,15 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
       const response=await fetcher(`/v14/api/activity?libraryId=${encodeURIComponent(libraryId)}`,{cache:"no-store",credentials:"same-origin"});
       const data=await response.json();
       if(!response.ok || !Array.isArray(data.rows)) throw new Error("Activity loading failed");
-      return data.rows.slice(0,300).map((value:unknown)=>{
+      return data.rows.slice(0,400).map((value:unknown)=>{
         if(!value || typeof value!=="object" || Array.isArray(value)) throw new Error("Invalid activity row");
-        return Object.fromEntries(Object.entries(value).map(([key,cell])=>{
+        const enriched={...value} as Record<string,unknown>;
+        if(typeof enriched.EpisodeID==='string'){
+          const episode=latest?.episodes.find(e=>e.id===enriched.EpisodeID);
+          const show=episode&&latest?.items.find(i=>i.id===episode.show_id);
+          if(episode&&show){enriched.ItemID=show.id;enriched.Title=show.title;enriched.Field=`S${episode.season_number} E${episode.episode_number} · ${enriched.Field}`;}
+        }
+        return Object.fromEntries(Object.entries(enriched).map(([key,cell])=>{
           if(cell!==null && typeof cell!=="string") throw new Error("Invalid activity value");
           return [key,cell??""];
         }));
