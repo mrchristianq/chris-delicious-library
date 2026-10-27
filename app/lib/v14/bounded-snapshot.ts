@@ -67,3 +67,19 @@ export async function readBoundedSnapshot(rpc: Rpc, libraryId: string): Promise<
   }
   throw new Error('Library changed during both fresh read attempts. Please retry.');
 }
+
+/** Renderer-only projection; full exports and sync keep the original reader.
+ * A missing migration can safely use the original fresh read during rollout. */
+export async function readBoundedRendererSnapshot(rpc: Rpc, libraryId: string): Promise<LibrarySnapshot> {
+  let missing=false;
+  try {
+    return await readBoundedSnapshot(async (name,args)=>{
+      const result=await rpc(name === "cdl_v14_snapshot_guard" ? "cdl_v14_renderer_guard" : "cdl_v14_renderer_page",args);
+      if (result.error?.code === "PGRST202") missing=true;
+      return result;
+    },libraryId);
+  } catch (error) {
+    if (!missing) throw error;
+    return readBoundedSnapshot(rpc,libraryId);
+  }
+}

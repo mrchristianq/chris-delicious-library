@@ -1,3 +1,4 @@
+import { mergeTargetedReadback } from "./targeted-readback";
 import type { LibraryBackend } from "./backend-context";
 import { rendererSnapshot } from "./renderer-snapshot";
 import { projectLegacyRow } from "./legacy-row";
@@ -23,6 +24,16 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
   const uploading=new Map<string,Promise<string>>();
   let latest:LibrarySnapshot|null=null;
   let queue:Promise<unknown>=Promise.resolve();
+  function snapshotFromRead(data:unknown):LibrarySnapshot {
+    if(data && typeof data === "object" && (data as {unchanged?:unknown}).unchanged === true) {
+      const fresh=data as {owner_id?:string;library_id?:string;change_token?:string;observed_at?:string};
+      if(!latest || fresh.owner_id!==ownerId || fresh.library_id!==libraryId || fresh.change_token!==latest.change_token ||
+        typeof fresh.observed_at!=="string" || !Number.isFinite(Date.parse(fresh.observed_at))) throw new Error("Invalid library revalidation");
+      return {...latest,observed_at:fresh.observed_at};
+    }
+    return data as LibrarySnapshot;
+  }
+
   const endpoint="/v14/api/library";
   function identity(item:Record<string,unknown>) {
     const id=item.__cdlIdentity as {itemId?:string;libraryId?:string;revision?:number}|undefined;
@@ -45,6 +56,10 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
       rendererSnapshot(data.snapshot);
       latest=data.snapshot;
     }
+    if(data.readback) {
+      if(!latest || command.readback!=="targeted") throw new Error("Unexpected save readback");
+      latest=mergeTargetedReadback(latest,data.readback,command);
+    } else if(command.readback==="targeted" && !data.snapshot) throw new Error("Save readback unavailable");
     pending.delete(key);
     return data;
   }
@@ -107,9 +122,10 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
         if ("error" in result) throw new Error(result.error);
         data=result.snapshot;
       } else {
-        const response=await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}`,{cache:"no-store",credentials:"same-origin",signal});
+        const token = latest && /^[a-f0-9]{32}$/i.test(latest.change_token) ? `&changeToken=${encodeURIComponent(latest.change_token)}` : "";
+        const response=await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}${token}`,{cache:"no-store",credentials:"same-origin",signal});
         if (!response.ok) throw new Error("Fresh library read failed");
-        data=await response.json();
+        data=snapshotFromRead(await response.json());
       }
       const snapshot=data as LibrarySnapshot;
       if (snapshot?.owner_id!==ownerId || snapshot.library_id!==libraryId) throw new Error("Unexpected library owner");
@@ -129,10 +145,11 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
         const result=queue.catch(()=>{}).then(async()=>{
           // A no-op still checks current state; do not call a cached baseline saved.
           // It must also wait for earlier saves/reads, just like a changed edit.
-          const response=await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}`,{cache:"no-store",credentials:"same-origin"});
+          const token = latest && /^[a-f0-9]{32}$/i.test(latest.change_token) ? `&changeToken=${encodeURIComponent(latest.change_token)}` : "";
+          const response=await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}${token}`,{cache:"no-store",credentials:"same-origin"});
           if (!response.ok) throw new Error("Edit readback failed");
           const data=await response.json();
-          const fresh=data as LibrarySnapshot;
+          const fresh=snapshotFromRead(data);
           if (fresh?.owner_id!==ownerId || fresh.library_id!==libraryId) throw new Error("Unexpected library owner");
           rendererSnapshot(fresh);
           const current=fresh.items.find(candidate=>candidate.id===original.id);
@@ -161,10 +178,11 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
         if (!episode.__cdlEpisodeId || episode.__cdlLibraryId!==libraryId) throw new Error("Missing episode identity. Refresh before saving.");
         return {episode_id:episode.__cdlEpisodeId,revision:episode.__cdlRevision===""?null:Number(episode.__cdlRevision)};
       });
-      const data=await post(JSON.stringify(["progress",targets,watched]),()=>({kind:"progress",libraryId,requestId:crypto.randomUUID(),changes:targets.map(target=>({...target,watched,watched_at:watched?new Date().toISOString():null}))}));
-      if (data.snapshot?.owner_id!==ownerId || data.snapshot?.library_id!==libraryId) throw new Error("Episode snapshot owner mismatch");
-      const rendered=rendererSnapshot(data.snapshot);
-      latest=data.snapshot;
+      const data=await post(JSON.stringify(["progress",targets,watched]),()=>({kind:"progress",readback:"targeted",libraryId,requestId:crypto.randomUUID(),changes:targets.map(target=>({...target,watched,watched_at:watched?new Date().toISOString():null}))}));
+      const confirmed=data.snapshot??latest;
+      if (confirmed?.owner_id!==ownerId || confirmed?.library_id!==libraryId) throw new Error("Episode snapshot owner mismatch");
+      const rendered=rendererSnapshot(confirmed);
+      latest=confirmed;
       return rendered.episodes;
     },
     async episodeMetadata(show,rows) {
@@ -217,11 +235,12 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
     async write(_url,payload) {
       if (typeof payload.key!=="string" || !Object.hasOwn(payload,"value") || !latest) throw new Error("Unsupported legacy write. No Sheet request was sent.");
       const key=payload.key;
-      const data=await post(JSON.stringify(["setting",key,payload.value]),()=>({kind:"setting",libraryId,key,revision:latest?.settings.find(entry=>entry.key===key)?.revision??null,requestId:crypto.randomUUID(),value:String(payload.value)}));
-      if (data.snapshot?.owner_id!==ownerId || data.snapshot?.library_id!==libraryId) throw new Error("Setting snapshot owner mismatch");
-      rendererSnapshot(data.snapshot);
-      latest=data.snapshot;
-      return JSON.stringify({status:"Success",settings:rendererSnapshot(data.snapshot).settings});
+      const data=await post(JSON.stringify(["setting",key,payload.value]),()=>({kind:"setting",readback:"targeted",libraryId,key,revision:latest?.settings.find(entry=>entry.key===key)?.revision??null,requestId:crypto.randomUUID(),value:String(payload.value)}));
+      const confirmed=data.snapshot??latest;
+      if (confirmed?.owner_id!==ownerId || confirmed?.library_id!==libraryId) throw new Error("Setting snapshot owner mismatch");
+      rendererSnapshot(confirmed);
+      latest=confirmed;
+      return JSON.stringify({status:"Success",settings:rendererSnapshot(confirmed).settings});
     },
   };
 }

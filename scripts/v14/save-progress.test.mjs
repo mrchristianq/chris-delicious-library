@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 const hooks=registerHooks({resolve(specifier,context,next){
- if(context.parentURL?.includes('/app/lib/v14/') && ['./read-library','./library-snapshot','./legacy-row'].includes(specifier))return next(specifier+'.ts',context);
+ if(context.parentURL?.includes('/app/lib/v14/') && ['./targeted-readback','./read-library','./library-snapshot','./legacy-row'].includes(specifier))return next(specifier+'.ts',context);
  return next(specifier,context);
 }});
 const {saveEpisodeProgress}=await import('../../app/lib/v14/save-progress.ts');hooks.deregister();

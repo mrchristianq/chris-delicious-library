@@ -13,7 +13,7 @@ globalThis.__v14RouteMocks = {
 const stubs = {
   config: `export function getV14Config(){return {origin:'http://localhost:3014'}}`,
   server: `export async function createV14Client(){return {auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},rpc:async(name,args)=>{globalThis.__v14RouteMocks.calls.push(['rpc',name,args]);if(name==='cdl_v14_full_edit'){const p=args.p_patch;const old=globalThis.__v14RouteMocks.current;const next={...old,...p,user_fields:{...old.user_fields,...(p.overrides??{})},revision:args.p_revision+1};globalThis.__v14RouteMocks.current=next;return {data:next,error:null}}return {data:globalThis.__v14RouteMocks.current,error:null}}}}`,
-  read: `export async function readV14Library(id){globalThis.__v14RouteMocks.calls.push(['read',id]);return globalThis.__v14RouteMocks.snapshot}`,
+  read: `export async function readV14Library(id){globalThis.__v14RouteMocks.calls.push(['read',id]);return globalThis.__v14RouteMocks.snapshot} export async function revalidateV14Library(id,token){globalThis.__v14RouteMocks.calls.push(['revalidate',id,token]);return {unchanged:true,library_id:id,change_token:token}}`,
   create: `export async function createV14Item(input){globalThis.__v14RouteMocks.calls.push(['create',input]);return {confirmed:true}}`,
   archive: `export async function saveV14Archive(...args){globalThis.__v14RouteMocks.calls.push(['archive',...args]);return {confirmed:true}}`,
   setting: `export async function saveV14Setting(...args){globalThis.__v14RouteMocks.calls.push(['setting',...args]);return {confirmed:true}}`,
@@ -100,4 +100,17 @@ test('episode saves also avoid the unused preflight and retain the prepared retr
   const response = await post({ kind: 'progress', libraryId, requestId, changes });
   assert.equal(response.status, 200);
   assert.deepEqual(globalThis.__v14RouteMocks.calls, [['progress', libraryId, requestId, changes]]);
+});
+
+test('fresh revision checks reject malformed tokens and delegate valid tokens without reading the entire library',async()=>{
+ globalThis.__v14RouteMocks.calls=[];
+ for(const query of [`libraryId=${libraryId}&changeToken=invalid`,`libraryId=${libraryId}&changeToken=${'a'.repeat(32)}&changeToken=${'a'.repeat(32)}`])assert.equal((await GET(new Request('http://localhost:3014/v14/api/library?'+query))).status,400);
+ const response=await GET(new Request(`http://localhost:3014/v14/api/library?libraryId=${libraryId}&changeToken=${'a'.repeat(32)}`));
+ assert.equal(response.status,200);assert.equal((await response.json()).unchanged,true);assert.match(response.headers.get('cache-control'),/no-store/);assert.deepEqual(globalThis.__v14RouteMocks.calls,[['revalidate',libraryId,'a'.repeat(32)]]);
+});
+test('targeted save readbacks are explicit opt-in; arbitrary modes are rejected',async()=>{
+ globalThis.__v14RouteMocks.calls=[];
+ const c={kind:'setting',libraryId,key:'theme',revision:1,requestId,value:'light',readback:'targeted'};
+ assert.equal((await post({...c,readback:'skip'})).status,400);assert.equal((await post(c)).status,200);
+ assert.deepEqual(globalThis.__v14RouteMocks.calls,[['setting',libraryId,'theme',1,requestId,'light',true]]);
 });

@@ -338,3 +338,37 @@ test('activity labels episode progress from the loaded library without extra sna
  const [entry]=await backend.activity();
  assert.equal(entry.Title,'Show');assert.equal(entry.ItemID,id);assert.equal(entry.Field,'S2 E3 · Watched');assert.equal(reads,1);
 });
+
+test('unchanged activations use fresh validation; changed or failed validation never serves stale success',async()=>{
+ const seed=fixture();seed.change_token='a'.repeat(32);let mode='same',calls=0;
+ const backend=createRendererBackend(library,owner,async(url)=>{
+  calls++;assert.ok(url.includes('changeToken='+seed.change_token));
+  if(mode==='fail')return Response.json({error:'Authentication required'},{status:401});
+  if(mode==='changed')return Response.json({...seed,change_token:'b'.repeat(32),items:[{...seed.items[0],title:'Fresh title',revision:2}]});
+  return Response.json({unchanged:true,owner_id:mode==='wrong'?library:owner,library_id:library,change_token:seed.change_token,observed_at:'2026-10-27T12:00:00Z'});
+ },Promise.resolve({snapshot:seed}));
+ await backend.load(new AbortController().signal);assert.equal(calls,0);
+ assert.equal((await backend.load(new AbortController().signal)).books[0].Title,'Book');assert.equal(calls,1);
+ mode='wrong';await assert.rejects(backend.load(new AbortController().signal),/revalidation/);
+ mode='fail';await assert.rejects(backend.load(new AbortController().signal),/Fresh library read failed/);
+ mode='changed';assert.equal((await backend.load(new AbortController().signal)).books[0].Title,'Fresh title');
+});
+test('targeted settings saves merge only verified preferences and retain revision-safe retry behavior',async()=>{
+ const seed=fixture();seed.change_token='a'.repeat(32);let attempts=0,previousId;
+ const backend=createRendererBackend(library,owner,async(url,options)=>{
+  const command=JSON.parse(options.body);assert.equal(command.readback,'targeted');attempts++;
+  if(attempts===1){previousId=command.requestId;throw Error('lost acknowledgement');}
+  assert.equal(command.requestId,previousId);assert.equal(command.revision,null);
+  return Response.json({confirmed:true,readback:{owner_id:owner,library_id:library,observed_at:'2026-10-27T12:00:00Z',episodes:[],settings:[{key:'theme',revision:1,value:{value:'dark'}}]}});
+ },Promise.resolve({snapshot:seed}));
+ await backend.load(new AbortController().signal);
+ await assert.rejects(backend.write('',{key:'theme',value:'dark'}),/lost acknowledgement/);
+ const saved=JSON.parse(await backend.write('',{key:'theme',value:'dark'}));assert.equal(saved.status,'Success');assert.equal(attempts,2);
+});
+
+test('an unchanged no-op editor still revalidates and does not request a write',async()=>{
+ const seed=fixture();seed.change_token='a'.repeat(32);let checks=0;
+ const backend=createRendererBackend(library,owner,async(url,options)=>{assert.notEqual(options.method,'POST');assert.ok(url.includes('changeToken='));checks++;return Response.json({unchanged:true,owner_id:owner,library_id:library,change_token:seed.change_token,observed_at:'2026-10-27T12:00:00Z'});},Promise.resolve({snapshot:seed}));
+ const initial=await backend.load(new AbortController().signal);const book=retainDatabaseIdentity({title:'Book'},initial.books[0]);
+ assert.equal((await backend.edit(book,{})).Title,'Book');assert.equal(checks,1);
+});

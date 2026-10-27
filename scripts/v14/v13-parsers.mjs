@@ -6,7 +6,7 @@ import ts from 'typescript';
 const names=['safeStr','getGitHubCoverUrl','chooseCover','mapBookGenre','normalizeBookGenres','rowToBook','rowToMovie','rowToShow','rowToGame'];
 function extract(source){
  const ast=ts.createSourceFile('page.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
- const functions=new Map(ast.statements.filter(ts.isFunctionDeclaration).filter(node=>names.includes(node.name?.text)).map(node=>[node.name.text,node.getText(ast)]));
+ const functions=new Map(ast.statements.filter(ts.isFunctionDeclaration).filter(node=>names.includes(node.name?.text)).map(node=>[node.name.text,ts.createPrinter().printNode(ts.EmitHint.Unspecified,node,ast)]));
  if(functions.size!==names.length)throw new Error('Reference parser dependency changed; review the test harness');
  return names.map(name=>functions.get(name)).join('\n');
 }

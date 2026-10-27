@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
-const hooks=registerHooks({resolve(s,c,n){return n(c.parentURL?.includes('/app/lib/v14/')&&['./read-library','./library-snapshot','./tracker-projection','./edit-contract','./legacy-row'].includes(s)?s+'.ts':s,c);}});
+const hooks=registerHooks({resolve(s,c,n){return n(c.parentURL?.includes('/app/lib/v14/')&&['./targeted-readback','./read-library','./library-snapshot','./tracker-projection','./edit-contract','./legacy-row'].includes(s)?s+'.ts':s,c);}});
 const {saveSetting}=await import('../../app/lib/v14/save-setting.ts');hooks.deregister();
 const owner='11111111-1111-4111-8111-111111111111',library='22222222-2222-4222-8222-222222222222',request='33333333-3333-4333-8333-333333333333';
 function writer(value){const setting={key:'theme',revision:2,value:{value}};return {authenticatedOwner:async()=>owner,write:async()=>({...setting,library_id:library}),snapshot:async()=>({schema_version:1,complete:true,library_id:library,owner_id:owner,observed_at:new Date().toISOString(),change_token:'test',counts:{items:0,episodes:0,settings:1},items:[],episodes:[],settings:[setting]})};}

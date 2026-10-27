@@ -1,10 +1,19 @@
 import { createV14Client } from "./server";
-import { saveSetting, type SettingValue } from "./save-setting";
+import { saveSetting, saveSettingWithReadback, type SettingValue } from "./save-setting";
 import { readBoundedSnapshot } from "./bounded-snapshot";
 
-export async function saveV14Setting(libraryId: string, key: string, revision: number | null, requestId: string, value: SettingValue) {
+export function saveV14Setting(libraryId:string,key:string,revision:number|null,requestId:string,value:SettingValue,targeted?:false):Promise<Awaited<ReturnType<typeof saveSetting>>>;
+export function saveV14Setting(libraryId:string,key:string,revision:number|null,requestId:string,value:SettingValue,targeted:boolean):Promise<Awaited<ReturnType<typeof saveSettingWithReadback>>>;
+export async function saveV14Setting(libraryId: string, key: string, revision: number | null, requestId: string, value: SettingValue, targeted = false) {
   const client = await createV14Client();
-  return saveSetting({
+  const readback = targeted ? async (id:string,keys:string[],episodes:string[]) => {
+    const {data,error}=await client.rpc("cdl_v14_save_readback",{p_library_id:id,p_setting_keys:keys,p_episode_ids:episodes});
+    if(error?.code==="PGRST202")return null; // Old database: verified full read during rollout.
+    if(error)throw new Error("Independent save readback failed");
+    return data;
+  } : undefined;
+  return (targeted ? saveSettingWithReadback : saveSetting)({
+    readback,
     async authenticatedOwner() {
       const { data, error } = await client.auth.getUser();
       return error ? null : data.user?.id ?? null;

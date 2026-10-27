@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-const {readBoundedSnapshot}=await import('../../app/lib/v14/bounded-snapshot.ts');
+const {readBoundedSnapshot,readBoundedRendererSnapshot}=await import('../../app/lib/v14/bounded-snapshot.ts');
 const library='22222222-2222-4222-8222-222222222222',owner='11111111-1111-4111-8111-111111111111';
 const fixture=()=>({items:Array.from({length:405},(_,id)=>({id})),episodes:[{id:'episode',progress:null}],settings:[{key:'theme'}],identifiers:[],collections:[{id:'collection',key:'list',definition:{}}],collection_items:[{collection_id:'collection',item_id:'item',position:3}]});
 function transport(rows=fixture(),change=()=>{},token='a'.repeat(32)) {
@@ -47,4 +47,17 @@ test('rejects partial pages, wrong owners, malformed counts and failed reads',as
    await assert.rejects(readBoundedSnapshot(async(n,a)=>{const response=await t.rpc(n,a);mutate(response.data);return response;},library));
  }
  await assert.rejects(readBoundedSnapshot(async()=>({data:null,error:{code:'57014'}}),library),/57014/);
+});
+
+test('renderer projection uses scoped RPCs without changing the full-reader contract',async()=>{
+ const rows=fixture();rows.identifiers=[];rows.collections=[];rows.collection_items=[];
+ const t=transport(rows),names=[];
+ const snapshot=await readBoundedRendererSnapshot((name,args)=>{names.push(name);return t.rpc(name==='cdl_v14_renderer_guard'?'cdl_v14_snapshot_guard':'cdl_v14_snapshot_page',args);},library);
+ assert.equal(snapshot.items.length,405);assert.ok(names.every(n=>n==='cdl_v14_renderer_guard'||n==='cdl_v14_renderer_page'));
+});
+test('only a missing migration permits legacy fresh-read fallback; permission and database failures remain errors',async()=>{
+ const t=transport();let scoped=0;
+ const snapshot=await readBoundedRendererSnapshot((name,args)=>{if(name.startsWith('cdl_v14_renderer_')){scoped++;return {data:null,error:{code:'PGRST202'}};}return t.rpc(name,args);},library);
+ assert.equal(scoped,1);assert.equal(snapshot.items.length,405);
+ for(const code of ['42501','57014'])await assert.rejects(readBoundedRendererSnapshot(async()=>({data:null,error:{code}}),library),new RegExp(code));
 });

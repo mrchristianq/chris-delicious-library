@@ -12,12 +12,12 @@ const hooks=registerHooks({
   resolve(specifier,context,next){
     if(context.parentURL?.endsWith('/read-library-server.ts') && specifier==='./server')return {url:'file:///v14-identity-server.mjs',shortCircuit:true};
     if(context.parentURL?.endsWith('/read-library-server.ts') && specifier==='./bounded-snapshot')return {url:'file:///v14-identity-snapshot.mjs',shortCircuit:true};
-    if(context.parentURL?.includes('/app/lib/v14/') && ['./read-library','./library-snapshot','./legacy-row'].includes(specifier))return next(specifier+'.ts',context);
+    if(context.parentURL?.includes('/app/lib/v14/') && ['./targeted-readback','./read-library','./library-snapshot','./legacy-row'].includes(specifier))return next(specifier+'.ts',context);
     return next(specifier,context);
   },
   load(url,context,next){
     if(url==='file:///v14-identity-server.mjs')return {format:'module',source:'export async function createV14Client(){globalThis.__v14ServerIdentity.state.creates++;return globalThis.__v14ServerIdentity.client;}',shortCircuit:true};
-    if(url==='file:///v14-identity-snapshot.mjs')return {format:'module',source:'export async function readBoundedSnapshot(rpc,id){return rpc("snapshot",{id});}',shortCircuit:true};
+    if(url==='file:///v14-identity-snapshot.mjs')return {format:'module',source:'export async function readBoundedSnapshot(rpc,id){return rpc("snapshot",{id});} export const readBoundedRendererSnapshot=readBoundedSnapshot;',shortCircuit:true};
     return next(url,context);
   },
 });

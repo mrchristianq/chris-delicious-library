@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {registerHooks} from 'node:module';
-const h=registerHooks({resolve(s,c,n){return n(['./read-library','./save-setting','./tracker-checkpoint','./tracker-read','./library-snapshot','./tracker-projection','./edit-contract','./legacy-row'].includes(s)?s+'.ts':s,c);}});
+const h=registerHooks({resolve(s,c,n){return n(['./targeted-readback','./read-library','./save-setting','./tracker-checkpoint','./tracker-read','./library-snapshot','./tracker-projection','./edit-contract','./legacy-row'].includes(s)?s+'.ts':s,c);}});
 const {createTrackerJournalStore:create}=await import('../../app/lib/v14/tracker-journal-store.ts');
 const {newSyncJournal}=await import('../../app/lib/v14/tracker-checkpoint.ts');h.deregister();
 const owner='11111111-1111-4111-8111-111111111111',library='22222222-2222-4222-8222-222222222222',request='33333333-3333-4333-8333-333333333333';

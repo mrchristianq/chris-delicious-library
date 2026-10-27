@@ -1,14 +1,16 @@
+import { confirmProgressReadback } from "./targeted-readback";
 import { readLibrary, type LibraryReader } from "./read-library";
 
 export type EpisodeChange = { episode_id: string; revision: number | null; watched: boolean; watched_at: string | null };
 export type ProgressWriter = LibraryReader & {
+  readback?(libraryId:string,keys:string[],episodes:string[]):Promise<unknown>;
   write(libraryId: string, requestId: string, changes: EpisodeChange[]): Promise<unknown>;
 };
 type SavedProgress = EpisodeChange & { library_id: string; revision: number };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const sameTime = (a: string | null, b: string | null) => a === b || (a !== null && b !== null && Date.parse(a) === Date.parse(b));
 
-export async function saveEpisodeProgress(writer: ProgressWriter, libraryId: string, requestId: string, changes: EpisodeChange[]) {
+export async function saveEpisodeProgressWithReadback(writer: ProgressWriter, libraryId: string, requestId: string, changes: EpisodeChange[]) {
   if (!uuid.test(libraryId) || !uuid.test(requestId) || !Array.isArray(changes) || changes.length < 1 || changes.length > 1000) throw new Error("Invalid episode save");
   const ids = new Set<string>();
   for (const change of changes) {
@@ -26,6 +28,14 @@ export async function saveEpisodeProgress(writer: ProgressWriter, libraryId: str
     if (!receipt || !ids.has(receipt.episode_id) || receipts.has(receipt.episode_id) || receipt.library_id !== libraryId || !Number.isSafeInteger(receipt.revision)) throw new Error("Save not confirmed: invalid receipt");
     receipts.set(receipt.episode_id, receipt);
   }
+  if (writer.readback) {
+    for (const change of changes) {
+      const receipt=receipts.get(change.episode_id)!;
+      if(receipt.revision!==(change.revision??0)+1 || receipt.watched!==change.watched || !sameTime(receipt.watched_at,change.watched_at)) throw new Error("Save not confirmed: episode receipt mismatch");
+    }
+    const valueRead=await writer.readback(libraryId,[],changes.map(c=>c.episode_id));
+    if(valueRead!==null) return {requestId,confirmed:true as const,readback:confirmProgressReadback(valueRead,owner,libraryId,changes)};
+  }
   const snapshot = await readLibrary(writer, libraryId);
   if (snapshot.owner_id !== owner) throw new Error("Save not confirmed: session changed");
   const episodes = new Map(snapshot.episodes.map(episode => [episode.id, episode]));
@@ -38,4 +48,10 @@ export async function saveEpisodeProgress(writer: ProgressWriter, libraryId: str
     }
   }
   return { requestId, confirmed: true as const, snapshot };
+}
+
+export async function saveEpisodeProgress(writer:ProgressWriter,libraryId:string,requestId:string,changes:EpisodeChange[]) {
+ const result=await saveEpisodeProgressWithReadback({...writer,readback:undefined},libraryId,requestId,changes);
+ if(!result.snapshot)throw new Error("Episode snapshot not confirmed");
+ return {requestId:result.requestId,confirmed:result.confirmed,snapshot:result.snapshot};
 }

@@ -1,6 +1,7 @@
 import { getV14Config } from "../../../lib/v14/config";
 import { createV14Client } from "../../../lib/v14/server";
-import { readV14Library } from "../../../lib/v14/read-library-server";
+import * as libraryReads from "../../../lib/v14/read-library-server";
+const { readV14Library } = libraryReads;
 import { createV14Item } from "../../../lib/v14/create-item-server";
 import type { CreateInput } from "../../../lib/v14/create-item";
 import { saveV14Archive } from "../../../lib/v14/save-archive-server";
@@ -20,8 +21,8 @@ const noStore = { "Cache-Control": "no-store, max-age=0", Pragma: "no-cache", Va
 type EditCommand = { kind: "edit"; libraryId: string; itemId: string; revision: number; requestId: string; patch: EditPatch };
 type CreateCommand = { kind: "create"; libraryId: string; input: CreateInput };
 type ArchiveCommand = { kind: "archive"; libraryId: string; itemId: string; revision: number; requestId: string; archived: boolean };
-type SettingCommand = { kind: "setting"; libraryId: string; key: string; revision: number | null; requestId: string; value: SettingValue };
-type ProgressCommand = { kind: "progress"; libraryId: string; requestId: string; changes: EpisodeChange[] };
+type SettingCommand = { readback?: "targeted"; kind: "setting"; libraryId: string; key: string; revision: number | null; requestId: string; value: SettingValue };
+type ProgressCommand = { readback?: "targeted"; kind: "progress"; libraryId: string; requestId: string; changes: EpisodeChange[] };
 type EpisodeMetadataCommand = {kind:"episode_metadata";libraryId:string;itemId:string;revision:number;requestId:string;rows:Array<{season_number:number;episode_number:number;provider_id:string|null;metadata:Record<string,string>}>};
 type LibraryCommand = EditCommand | CreateCommand | ArchiveCommand | SettingCommand | ProgressCommand | EpisodeMetadataCommand;
 
@@ -110,13 +111,15 @@ function validateCommand(value: unknown): value is LibraryCommand {
         UUID.test(String(value.itemId ?? "")) && validRevision(value.revision) && UUID.test(String(value.requestId ?? "")) &&
         typeof value.archived === "boolean";
     case "setting":
-      return exactKeys(value, ["kind", "libraryId", "key", "revision", "requestId", "value"]) &&
+      if (value.readback !== undefined && value.readback !== "targeted") return false;
+      return exactKeys(value, ["kind", "libraryId", "key", "revision", "requestId", "value", "readback"]) &&
         typeof value.key === "string" && value.key.trim().length > 0 && value.key.length <= 500 &&
         (value.revision === null || validRevision(value.revision)) && UUID.test(String(value.requestId ?? "")) &&
         (value.value === null || ["string", "boolean"].includes(typeof value.value) ||
           (typeof value.value === "number" && Number.isFinite(value.value)));
     case "progress":
-      return exactKeys(value, ["kind", "libraryId", "requestId", "changes"]) && UUID.test(String(value.requestId ?? "")) &&
+      if (value.readback !== undefined && value.readback !== "targeted") return false;
+      return exactKeys(value, ["kind", "libraryId", "requestId", "changes", "readback"]) && UUID.test(String(value.requestId ?? "")) &&
         Array.isArray(value.changes) && value.changes.length > 0 && value.changes.length <= 1000 &&
         value.changes.every((change: unknown) => isRecord(change) && exactKeys(change, ["episode_id", "revision", "watched", "watched_at"]) &&
           UUID.test(String(change.episode_id ?? "")) && (change.revision === null || validRevision(change.revision)) &&
@@ -173,10 +176,13 @@ export async function GET(request: Request) {
     getV14Config();
     const url = new URL(request.url);
     const libraryId = url.searchParams.get("libraryId");
-    if (!libraryId || !UUID.test(libraryId) || [...url.searchParams.keys()].some((key) => key !== "libraryId")) {
+    const token = url.searchParams.get("changeToken");
+    if (!libraryId || !UUID.test(libraryId) || (token !== null && !/^[a-f0-9]{32}$/i.test(token)) ||
+        [...url.searchParams.keys()].some((key) => !["libraryId", "changeToken"].includes(key)) ||
+        url.searchParams.getAll("libraryId").length !== 1 || url.searchParams.getAll("changeToken").length > 1) {
       return json({ error: "A valid libraryId is required." }, 400);
     }
-    return json(await readV14Library(libraryId));
+    return json(token === null ? await readV14Library(libraryId, true) : await libraryReads.revalidateV14Library(libraryId, token));
   } catch (error) {
     const status = errorStatus(error);
     return json({ error: status === 401 ? "Authentication required." : "Library snapshot unavailable." }, status);
@@ -198,13 +204,15 @@ export async function POST(request: Request) {
     }
     if (!validateCommand(command)) return json({ error: "Invalid library command." }, 400);
 
-    // These writers authenticate independently and confirm a fresh full snapshot
-    // after writing. Neither uses the route's item preflight snapshot.
+    // These writers authenticate and independently read back persisted changes.
+    // New clients opt into target-only reads; old clients retain full snapshots.
     if (command.kind === "setting") {
-      return json(await saveV14Setting(command.libraryId, command.key, command.revision, command.requestId, command.value));
+      return json(command.readback === "targeted"
+        ? await saveV14Setting(command.libraryId, command.key, command.revision, command.requestId, command.value, true)
+        : await saveV14Setting(command.libraryId, command.key, command.revision, command.requestId, command.value));
     }
     if (command.kind === "progress") {
-      return json(await saveV14EpisodeProgress(command.libraryId, command.requestId, command.changes));
+      return json(await saveV14EpisodeProgress(command.libraryId, command.requestId, command.changes, ...(command.readback === "targeted" ? [true] as const : [])));
     }
     const snapshot = await readV14Library(command.libraryId);
     switch (command.kind) {
