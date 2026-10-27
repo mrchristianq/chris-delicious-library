@@ -7,7 +7,6 @@
 import { PhysicalCoverPlanes, PhysicalCoverFrame, useShelfCover3D, DETAILS_COVER_START_Y } from "./components/PhysicalCover";
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Papa from "papaparse";
 import type { AddExtendedType } from "./components/AddItemModal";
@@ -15,6 +14,7 @@ import { MountOnFirstOpen } from "./components/MountOnFirstOpen";
 import { fetchMediaSearch } from "./lib/mediaSearchClient";
 import { useLibraryBackend } from "./lib/v14/backend-context";
 const SortDialog = dynamic(() => import("./components/SortDialog").then(mod => mod.SortDialog), { ssr: false });
+const SettingsDialog = dynamic(() => import("./components/SettingsDialog").then(mod => mod.SettingsDialog), { ssr: false });
 const LibraryActivityDialog = dynamic(() => import("./components/LibraryActivityDialog").then(mod => mod.LibraryActivityDialog), { ssr: false });
 const ThemesDialog = dynamic(() => import("./components/ThemesDialog").then(mod => mod.ThemesDialog), { ssr: false });
 const TrackerSyncView = dynamic(() => import("./components/TrackerSyncView").then(mod => mod.TrackerSyncView), {
@@ -481,7 +481,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.93";
+const APP_VERSION = "14.0.95";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -808,6 +808,16 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {
+    version: "14.0.95",
+    date: "2026-10-27",
+    notes: ["Simplify Settings into grouped categories with cover previews, live adjustments and accessible step controls."],
+  },
+  {
+    version: "14.0.94",
+    date: "2026-10-27",
+    notes: ["Use the modern Sort and Display controls on mobile with a translucent panel, live cover sizing and touch-friendly filters."],
+  },
   {
     version: "14.0.93",
     date: "2026-10-26",
@@ -3037,6 +3047,7 @@ const ENV_KEY = "NEXT_PUBLIC_TV_SHEET_CSV_URL";
 const BOOKS_ENV_KEY = "NEXT_PUBLIC_BOOKS_SHEET_CSV_URL";
 const MOVIES_ENV_KEY = "NEXT_PUBLIC_MOVIES_SHEET_CSV_URL";
 const GAMES_ENV_KEY = "NEXT_PUBLIC_GAMES_SHEET_CSV_URL";
+const SETTINGS_FONT_WEIGHTS = [{value:"300",label:"Light"},{value:"400",label:"Normal"},{value:"500",label:"Medium"},{value:"600",label:"Semibold"},{value:"700",label:"Bold"}];
 const SETTINGS_WINDOW_DRAG_BLOCK_SELECTOR = "button, input, select, textarea, a, [role='button']";
 
 // ✅ Put these in /public
@@ -3846,7 +3857,7 @@ function getGitHubCoverUrl(title: string, category: 'books' | 'movies' | 'tv' | 
     .replace(/\s+/g, '-')           // Replace spaces with hyphens
     .replace(/-+/g, '-')            // Collapse multiple hyphens
     .substring(0, 50);
-  
+
   return `/covers/${category}/${sanitized}.jpg`;
 }
 
@@ -4800,7 +4811,7 @@ export default function Page() {
     () => writeConfigChecks.filter((entry) => !entry.configured),
     [writeConfigChecks]
   );
-  
+
   // In-memory cache for settings to avoid repeated localStorage parsing
   const settingsCacheRef = useRef<Record<string, string> | null>(null);
   const databasePendingSettingsRef = useRef<Record<string,string>>({});
@@ -4842,7 +4853,7 @@ export default function Page() {
     const value = getCachedSettingValue(key);
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   }, [getCachedSettingValue]);
-  
+
   // Debounce timers for settings persistence
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
@@ -5445,9 +5456,9 @@ export default function Page() {
   const isSimpleShelfPresentation = true;
   const isElectricBlueShelfPresentation = false;
   const currentTopHeaderImage = "";
-  
+
   // Mac redesign baseline: Mac sidebar is the only sidebar theme.
-  
+
   // Theme configurations
   const simpleSidebarTheme = buildSimpleSidebarTheme(simpleShelfBackgroundColor);
   const sidebarThemes = {
@@ -5546,7 +5557,7 @@ export default function Page() {
     },
     simple: simpleSidebarTheme
   };
-  
+
   const currentTheme = sidebarThemes.mac;
   const simpleSidebarIsLight = simpleSidebarTheme.isLightBackground;
   const simpleSidebarTextHex = simpleSidebarTheme.baseTextHex;
@@ -5999,9 +6010,6 @@ export default function Page() {
   const mobilePanelActiveButtonTextColor = simpleHeaderStrongTextColor;
   const mobilePanelCountBackground = hexToRgba(simpleSidebarTextHex, simpleSidebarIsLight ? 0.12 : 0.18, simpleSidebarTextHex);
   const mobilePanelCountTextColor = simpleHeaderStrongTextColor;
-  const mobilePanelLeftShadow = simpleSidebarIsLight
-    ? "18px 0 34px rgba(0,0,0,0.18)"
-    : "18px 0 34px rgba(0,0,0,0.34)";
   const mobilePanelRightShadow = simpleSidebarIsLight
     ? "-18px 0 34px rgba(0,0,0,0.18)"
     : "-18px 0 34px rgba(0,0,0,0.34)";
@@ -6128,18 +6136,6 @@ export default function Page() {
     color: mobilePanelCountTextColor,
     background: mobilePanelCountBackground,
   };
-  const mobilePanelSelectStyle: CSSProperties = {
-    width: "100%",
-    padding: "9px 10px",
-    borderRadius: 9,
-    border: mobilePanelButtonBorder,
-    background: mobilePanelButtonBackground,
-    color: mobilePanelButtonTextColor,
-    fontSize: 14,
-    fontWeight: 600,
-    outline: "none",
-    cursor: "pointer",
-  };
   const getMobileMenuButtonStyle = (active: boolean): CSSProperties => ({
     ...mobilePanelButtonStyle,
     border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
@@ -6198,10 +6194,9 @@ export default function Page() {
   // leaving only the wall texture there and letting the lip overlay own the ledge exclusively.
   const WOOD_SHELF_WALL_FRACTION = 180 / WOOD_SHELF_IMAGE_HEIGHT;
   const WOOD_SHELF_MAIN_BACKGROUND_SIZE = `100% ${(100 / WOOD_SHELF_WALL_FRACTION).toFixed(2)}%`;
-  const SETTINGS_WINDOW_DEFAULT_WIDTH = 784;
+  const SETTINGS_WINDOW_DEFAULT_WIDTH = 840;
   const SETTINGS_WINDOW_DEFAULT_HEIGHT = 680;
   const SETTINGS_WINDOW_MARGIN = 16;
-  const SETTINGS_WINDOW_Z_INDEX = 9000;
   const { ref: stageRef, width: stageWidth, nodeRef: stageNodeRef } = useElementWidth<HTMLDivElement>();
   const shelfGap = shelfSpacing.horizontal;
   const woodShelfVerticalClearance = shelfThemeMode === "wood" && !isMobileLayout ? 22 : 0;
@@ -6223,10 +6218,8 @@ export default function Page() {
   // Track known platforms for game filters.
   const [customizedPlatforms] = useState<Set<string>>(new Set());
   const [, setThemeSaveNotice] = useState<string>("");
-  const [showVersionNotes, setShowVersionNotes] = useState(false);
   const [settingsWindowPosition, setSettingsWindowPosition] = useState<{ x: number; y: number } | null>(null);
   const settingsWindowRef = useRef<HTMLDivElement | null>(null);
-  const settingsBodyRef = useRef<HTMLDivElement | null>(null);
   const sidebarModuleDefaultsRef = useRef<SidebarModuleDefaults | null>(null);
   const settingsWindowDragRef = useRef<{
     pointerId: number;
@@ -6235,12 +6228,6 @@ export default function Page() {
     width: number;
     height: number;
   } | null>(null);
-  const [, setSettingsScrollMetrics] = useState({
-    hasOverflow: false,
-    thumbTop: 0,
-    thumbHeight: 24,
-  });
-  
   const [posterSizeGames, setPosterSizeGames] = useState<number>(108);
   const [mobileCoverScaleByGroup, setMobileCoverScaleByGroup] = useState<Record<CoverScaleGroupKey, number>>({
     home: 100,
@@ -6892,8 +6879,8 @@ export default function Page() {
     const syncSettingsWindowPosition = () => {
       const { width, height } = getSettingsWindowSize();
       setSettingsWindowPosition((prev) => {
-        const fallbackX = Math.round((window.innerWidth - width) / 2);
-        const fallbackY = SETTINGS_WINDOW_MARGIN;
+        const fallbackX = Math.round(Math.min(window.innerWidth-width-SETTINGS_WINDOW_MARGIN,(window.innerWidth-width+Math.min(240,window.innerWidth*0.2))/2));
+        const fallbackY = Math.max(SETTINGS_WINDOW_MARGIN,Math.round((window.innerHeight-height)/2));
         const source = prev ?? { x: fallbackX, y: fallbackY };
         return clampSettingsWindowPosition(source.x, source.y, width, height);
       });
@@ -6953,36 +6940,6 @@ export default function Page() {
     }
   }, []);
 
-  const updateSettingsScrollMetrics = useCallback(() => {
-    const node = settingsBodyRef.current;
-    if (!node) {
-      setSettingsScrollMetrics({ hasOverflow: false, thumbTop: 0, thumbHeight: 24 });
-      return;
-    }
-    const visible = node.clientHeight;
-    const total = node.scrollHeight;
-    const overflow = total > visible + 1;
-    if (!overflow) {
-      setSettingsScrollMetrics({ hasOverflow: false, thumbTop: 0, thumbHeight: 24 });
-      return;
-    }
-    const trackHeight = Math.max(40, visible - 16);
-    const ratio = Math.max(0, Math.min(1, node.scrollTop / Math.max(1, total - visible)));
-    const thumbHeight = Math.max(24, Math.round((visible / total) * trackHeight));
-    const thumbTop = Math.round(ratio * Math.max(0, trackHeight - thumbHeight));
-    setSettingsScrollMetrics({ hasOverflow: true, thumbTop, thumbHeight });
-  }, []);
-
-  useEffect(() => {
-    if (!settingsPopupOpen) return;
-    const node = settingsBodyRef.current;
-    if (!node) return;
-    updateSettingsScrollMetrics();
-    const onResize = () => updateSettingsScrollMetrics();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [settingsPopupOpen, updateSettingsScrollMetrics]);
-
   useEffect(() => {
     if (!settingsPopupOpen && !sortPopupOpen && !faqPopupOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -7002,7 +6959,7 @@ export default function Page() {
       event.stopPropagation();
     }
     setSortPopupOpen(false);
-    setShowVersionNotes(false);
+
     sidebarModuleDefaultsRef.current = {
       library: {
         iconSize,
@@ -7121,7 +7078,7 @@ export default function Page() {
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
-    setShowVersionNotes(false);
+
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
   }, []);
@@ -7143,7 +7100,7 @@ export default function Page() {
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
-    setShowVersionNotes(false);
+
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
   }, []);
@@ -7160,7 +7117,7 @@ export default function Page() {
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
-    setShowVersionNotes(false);
+
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
   }, [libraryBackend]);
@@ -7170,7 +7127,7 @@ export default function Page() {
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
-    setShowVersionNotes(false);
+
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
   }, []);
@@ -7182,7 +7139,7 @@ export default function Page() {
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
     setFaqPopupOpen(false);
-    setShowVersionNotes(false);
+
     setMobileSidebarOpen(false);
     setMobileSettingsOpen(false);
   }, []);
@@ -12496,7 +12453,7 @@ export default function Page() {
       if (settingsCacheRef.current === null) {
         settingsCacheRef.current = JSON.parse(localStorage.getItem("cdlSettingsCache") || "{}");
       }
-      
+
       // Update in-memory cache
       if (settingsCacheRef.current) {
         settingsCacheRef.current[key] = String(value);
@@ -12653,7 +12610,7 @@ export default function Page() {
       setCoverScaleByGroup(previous =>
         (Object.keys(scales) as CoverScaleGroupKey[]).every(group => previous[group] === scales[group]) ? previous : scales);
     }
-    
+
     setPosterSizeTv(getSetting("posterSizeTv", 100));
     setPosterSizeMovies(getSetting("posterSizeMovies", 108));
     setPosterSizeBooks(getSetting("posterSizeBooks", 115));
@@ -12704,11 +12661,11 @@ export default function Page() {
       games: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.games, DEFAULT_MEDIA_COVER_SIZE_PCT.games))))),
       audiobooks: Math.max(40, Math.min(140, Math.round(Number(getSetting(MEDIA_COVER_SIZE_SETTING_KEYS.audiobooks, DEFAULT_MEDIA_COVER_SIZE_PCT.audiobooks))))),
     });
-    
+
     setLogoSize(getSetting("logoSize", 230));
     setLogoTop(getSetting("logoTop", 12));
     setLogoLeft(getSetting("logoLeft", -28));
-    
+
     setSyncIconSize(getSetting("syncIconSize", 12));
     setSyncIconTop(getSetting("syncIconTop", 8));
     setStatusIconScale(getSetting("statusIconScale", 100));
@@ -12737,7 +12694,7 @@ export default function Page() {
     }
 
     setIconSize(getSetting("iconSize", 16));
-    
+
     setSidebarFontSize(getSetting("sidebarFontSize", 11));
     setSidebarFontWeight(getSetting("sidebarFontWeight", "150"));
     setSidebarGap(getSetting("sidebarGap", 8));
@@ -12782,7 +12739,7 @@ export default function Page() {
       loadedDarkHighlightColors.tv.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO &&
       loadedDarkHighlightColors.games.toLowerCase() === LEGACY_DARK_HIGHLIGHT_MONO;
     setSidebarHighlightColorsDark(hasLegacyMonoDarkHighlights ? { ...DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK } : loadedDarkHighlightColors);
-    
+
     setCounterTileSize(getSetting("counterTileSize", 44));
     setCounterTileSpacing(getSetting("counterTileSpacing", 3));
     setCounterNumberFontSize(getSetting("counterNumberFontSize", 22));
@@ -12822,7 +12779,7 @@ export default function Page() {
       });
     }
     setSmartListManualOrderKeysById(loadedSmartListManualOrders);
-    
+
     setSimpleShelfBackgroundColor("#ececec");
     setStartupSettingsHydrated(true);
   }, [getCachedNumericSetting, getSetting, settingsRows, libraryBackend]);
@@ -12873,7 +12830,7 @@ export default function Page() {
     smartListCreateIdRef.current = null;
     setSortPopupOpen(false);
     setSettingsPopupOpen(false);
-    setShowVersionNotes(false);
+
     setSmartListBuilderError(null);
     const defaultDraft = createDefaultSmartListDraft();
     setSmartListDraft(defaultDraft);
@@ -12892,7 +12849,7 @@ export default function Page() {
       if (!list) return;
       setSortPopupOpen(false);
       setSettingsPopupOpen(false);
-      setShowVersionNotes(false);
+
       setSmartListBuilderError(null);
       setSmartListDraft({
         name: list.name,
@@ -13488,7 +13445,7 @@ export default function Page() {
   // ============================================================================
   // HOW TO ADD NEW SETTINGS IN THE FUTURE:
   // ============================================================================
-  // 
+  //
   // All settings automatically get localStorage caching and persistence by
   // following this pattern. Do NOT hardcode defaults - use getSetting() instead.
   //
@@ -13582,7 +13539,7 @@ export default function Page() {
     setCompletedGalleryThemeMode(value);
     saveSetting(COMPLETED_GALLERY_THEME_SETTING_KEY, value, "Themes", "Completed Gallery Theme");
   };
-  
+
   // Update UI immediately; debounce only persistence so controls remain responsive.
   const debouncedUpdate = useCallback((key: string, value: number, setter: (v: number) => void, category: string, description: string) => {
     // Apply the visual/state update immediately.
@@ -13598,7 +13555,7 @@ export default function Page() {
       delete debounceTimers.current[key];
     }, 150);
   }, [saveSetting]);
-  
+
   const updateMediaCoverSizePct = useCallback(
     (key: keyof typeof mediaCoverSizePct, value: number) => {
       const nextValue = Math.max(40, Math.min(140, Math.round(value)));
@@ -13935,83 +13892,6 @@ export default function Page() {
     saveSetting("ratingBadgeOffsetY", DEFAULT_RATING_BADGE_SETTINGS.offsetY, "Status Icon", "Rating Badge Vertical Offset (px)");
     resetAllStatusIconOverrides();
   };
-  const resetSidebarDefaults = () => {
-    setIconSize(DEFAULT_SIDEBAR_SETTINGS.iconSize);
-    setSidebarFontSize(DEFAULT_SIDEBAR_SETTINGS.fontSize);
-    setSidebarFontWeight(DEFAULT_SIDEBAR_SETTINGS.fontWeight);
-    setSidebarGap(DEFAULT_SIDEBAR_SETTINGS.iconGap);
-    setSidebarHeaderFontSize(DEFAULT_SIDEBAR_SETTINGS.headerFontSize);
-    setSidebarHeaderFontWeight(DEFAULT_SIDEBAR_SETTINGS.headerFontWeight);
-    setSmartListsSidebarFontSize(DEFAULT_SIDEBAR_SETTINGS.smartFontSize);
-    setSmartListsSidebarFontWeight(DEFAULT_SIDEBAR_SETTINGS.smartFontWeight);
-    setSmartListsSidebarGap(DEFAULT_SIDEBAR_SETTINGS.smartGap);
-    setSmartListsSidebarHeaderFontSize(DEFAULT_SIDEBAR_SETTINGS.smartHeaderSize);
-    setSmartListsSidebarHeaderFontWeight(DEFAULT_SIDEBAR_SETTINGS.smartHeaderWeight);
-    setSmartListsSidebarIconSize(DEFAULT_SIDEBAR_SETTINGS.smartIconSize);
-    setDiscoverSidebarFontSize(DEFAULT_SIDEBAR_SETTINGS.discoverFontSize);
-    setDiscoverSidebarFontWeight(DEFAULT_SIDEBAR_SETTINGS.discoverFontWeight);
-    setDiscoverSidebarGap(DEFAULT_SIDEBAR_SETTINGS.discoverGap);
-    setDiscoverSidebarHeaderFontSize(DEFAULT_SIDEBAR_SETTINGS.discoverHeaderSize);
-    setDiscoverSidebarHeaderFontWeight(DEFAULT_SIDEBAR_SETTINGS.discoverHeaderWeight);
-    setDiscoverSidebarIconSize(DEFAULT_SIDEBAR_SETTINGS.discoverIconSize);
-    setSidebarSectionGap(DEFAULT_SIDEBAR_SETTINGS.sectionGap);
-    setLibrarySidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.libraryItemGap);
-    setSmartListsSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.smartItemGap);
-    setDiscoverSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.discoverItemGap);
-    setSidebarSubmenuGap(DEFAULT_SIDEBAR_SETTINGS.submenuGap);
-    setSidebarRowDensityOffset(DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset);
-    setSidebarHighlightColorsLight({
-      home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
-      books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
-      movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
-      tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
-      games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
-    });
-    setSidebarHighlightColorsDark({
-      home: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home,
-      books: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books,
-      movies: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies,
-      tv: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv,
-      games: DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games,
-    });
-    Object.entries({
-      iconSize: DEFAULT_SIDEBAR_SETTINGS.iconSize,
-      sidebarFontSize: DEFAULT_SIDEBAR_SETTINGS.fontSize,
-      sidebarFontWeight: DEFAULT_SIDEBAR_SETTINGS.fontWeight,
-      sidebarGap: DEFAULT_SIDEBAR_SETTINGS.iconGap,
-      sidebarHeaderFontSize: DEFAULT_SIDEBAR_SETTINGS.headerFontSize,
-      sidebarHeaderFontWeight: DEFAULT_SIDEBAR_SETTINGS.headerFontWeight,
-      smartListsSidebarFontSize: DEFAULT_SIDEBAR_SETTINGS.smartFontSize,
-      smartListsSidebarFontWeight: DEFAULT_SIDEBAR_SETTINGS.smartFontWeight,
-      smartListsSidebarGap: DEFAULT_SIDEBAR_SETTINGS.smartGap,
-      smartListsSidebarHeaderFontSize: DEFAULT_SIDEBAR_SETTINGS.smartHeaderSize,
-      smartListsSidebarHeaderFontWeight: DEFAULT_SIDEBAR_SETTINGS.smartHeaderWeight,
-      smartListsSidebarIconSize: DEFAULT_SIDEBAR_SETTINGS.smartIconSize,
-      discoverSidebarFontSize: DEFAULT_SIDEBAR_SETTINGS.discoverFontSize,
-      discoverSidebarFontWeight: DEFAULT_SIDEBAR_SETTINGS.discoverFontWeight,
-      discoverSidebarGap: DEFAULT_SIDEBAR_SETTINGS.discoverGap,
-      discoverSidebarHeaderFontSize: DEFAULT_SIDEBAR_SETTINGS.discoverHeaderSize,
-      discoverSidebarHeaderFontWeight: DEFAULT_SIDEBAR_SETTINGS.discoverHeaderWeight,
-      discoverSidebarIconSize: DEFAULT_SIDEBAR_SETTINGS.discoverIconSize,
-      sidebarSectionGap: DEFAULT_SIDEBAR_SETTINGS.sectionGap,
-      librarySidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.libraryItemGap,
-      smartListsSidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.smartItemGap,
-      discoverSidebarItemGap: DEFAULT_SIDEBAR_SETTINGS.discoverItemGap,
-      sidebarSubmenuGap: DEFAULT_SIDEBAR_SETTINGS.submenuGap,
-      sidebarRowDensityOffset: DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset,
-      "sidebarHighlightColorLight:home": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.home,
-      "sidebarHighlightColorLight:books": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.books,
-      "sidebarHighlightColorLight:movies": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.movies,
-      "sidebarHighlightColorLight:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.tv,
-      "sidebarHighlightColorLight:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS.games,
-      "sidebarHighlightColorDark:home": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.home,
-      "sidebarHighlightColorDark:books": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.books,
-      "sidebarHighlightColorDark:movies": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.movies,
-      "sidebarHighlightColorDark:tv": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.tv,
-      "sidebarHighlightColorDark:games": DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK.games,
-    }).forEach(([key, value]) => saveSetting(key, value, "Sidebar", key));
-  };
-
   // Helper to check if a value contains spreadsheet error #REF!
   const hasRefError = (value: any): boolean => {
     if (value == null) return false;
@@ -15492,18 +15372,18 @@ export default function Page() {
   // Priority: Steam > Epic Games Store > First platform in list
   const getPrimaryPlatform = (platformString: string | undefined): string => {
     if (!platformString) return "Default";
-    
+
     // Split by comma and trim whitespace
     const platforms = platformString.split(',').map(p => p.trim()).filter(Boolean);
-    
+
     if (platforms.length === 0) return "Default";
-    
+
     // Check for Steam first (highest priority)
     if (platforms.some(p => p === "Steam")) return "Steam";
-    
+
     // Check for Epic Games Store second
     if (platforms.some(p => p === "Epic Games Store")) return "Epic Games Store";
-    
+
     // Return the first platform in the list
     return platforms[0];
   };
@@ -16075,9 +15955,9 @@ export default function Page() {
         bVal = getExternalRating(b);
       } else if (field === "ReleaseDate") {
         // For TV shows, use firstAirDate; for others use releaseDate
-        aVal = (a as any).firstAirDate ? Date.parse((a as any).firstAirDate) : 
+        aVal = (a as any).firstAirDate ? Date.parse((a as any).firstAirDate) :
                (a as any).releaseDate ? Date.parse((a as any).releaseDate) : NaN;
-        bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) : 
+        bVal = (b as any).firstAirDate ? Date.parse((b as any).firstAirDate) :
                (b as any).releaseDate ? Date.parse((b as any).releaseDate) : NaN;
       } else if (field === "CompletedDate") {
         const aCompleted = getCompletedDateValue(a);
@@ -16189,7 +16069,7 @@ export default function Page() {
       const qs = q ? qsBase.filter((s) => s.titleLC.includes(q)) : qsBase;
       const qm = q ? qmBase.filter((m) => m.titleLC.includes(q)) : qmBase;
       const qg = q ? qgBase.filter((g) => g.titleLC.includes(q)) : qgBase;
-      
+
       const combined = [
         ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
@@ -16545,27 +16425,27 @@ export default function Page() {
     // Smart List: This Year - Filter all items with appropriate year field matching current year
     if (nav === "year-this") {
       const currentYear = new Date().getFullYear().toString();
-      
+
       // Books: Use year from CompletedDate
-      const qb = q 
+      const qb = q
         ? indexedBooks.filter((b) => b.titleLC.includes(q) && b.completedYear === currentYear)
         : indexedBooks.filter((b) => b.completedYear === currentYear);
-      
+
       // TV Shows: Use Tags column
-      const qs = q 
+      const qs = q
         ? indexedShows.filter((s) => s.titleLC.includes(q) && s.watchYears.includes(currentYear))
         : indexedShows.filter((s) => s.watchYears.includes(currentYear));
-      
+
       // Movies: Use Tags column
-      const qm = q 
+      const qm = q
         ? indexedMovies.filter((m) => m.titleLC.includes(q) && m.tagValue === currentYear)
         : indexedMovies.filter((m) => m.tagValue === currentYear);
-      
+
       // Games: Use Year Played column
-      const qg = q 
+      const qg = q
         ? indexedGames.filter((g) => g.titleLC.includes(q) && g.yearPlayedValue === currentYear)
         : indexedGames.filter((g) => g.yearPlayedValue === currentYear);
-      
+
       const combined = [
         ...qb.map((b) => ({ ...b.item, __type: "book" } as Book & { __type: "book" })),
         ...qs.map((s) => ({ ...s.item, __type: "tv" } as Show & { __type: "tv" })),
@@ -19396,7 +19276,6 @@ export default function Page() {
     movieDetailsEditOpen ||
     tvDetailsEditOpen ||
     gameDetailsEditOpen;
-  const mobileSidebarShowsMediaFiltersOnly = nav === "books" || nav === "movies" || nav === "tv" || nav === "games";
   const isManualSortView =
     nav === "wishlist" ||
     nav === "now-playing" ||
@@ -20581,7 +20460,7 @@ export default function Page() {
           onClick={() => {
             setSettingsPopupOpen(false);
             setSortPopupOpen((prev) => !prev);
-            setShowVersionNotes(false);
+
           }}
           title="Open sort options"
           aria-label="Open sort options"
@@ -20617,7 +20496,7 @@ export default function Page() {
           onClick={() => {
             setSortPopupOpen(false);
             setSettingsPopupOpen(false);
-            setShowVersionNotes(false);
+
             setAddModalOpen(true);
           }}
           title="Add new item"
@@ -22851,7 +22730,7 @@ export default function Page() {
           }}
         />
       ) : null}
-      {isMobileLayout && (mobileSidebarOpen || mobileSettingsOpen) ? (
+      {isMobileLayout && mobileSettingsOpen ? (
         <button
           aria-label="Close mobile panel"
           onClick={() => {
@@ -22873,401 +22752,11 @@ export default function Page() {
           }}
         />
       ) : null}
-      {isMobileLayout && mobileSidebarOpen ? (
-        <div
-          style={{
-            position: "fixed",
-            top: "calc(env(safe-area-inset-top, 0px) + 45px)",
-            left: 0,
-            bottom: mobileBottomDockVisible ? mobileBottomDockReservedSpace : 0,
-            width: "min(90vw, 360px)",
-            zIndex: 2500,
-            background: mobilePanelBackground,
-            borderRight: mobilePanelBorder,
-            boxShadow: mobilePanelLeftShadow,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 12px",
-              borderBottom: mobilePanelDivider,
-              background: mobilePanelCardBackground,
-            }}
-          >
-            <span style={{ fontSize: 14, fontWeight: 800, color: mobilePanelTextColor, letterSpacing: "0.03em" }}>
-              {mobileSidebarShowsMediaFiltersOnly ? "FILTERS" : "MENU"}
-            </span>
-            <button
-              type="button"
-              onClick={() => setMobileSidebarOpen(false)}
-              style={{
-                ...mobilePanelButtonStyle,
-                width: "auto",
-                borderRadius: 8,
-                padding: "4px 8px",
-                fontSize: 11,
-                fontWeight: 700,
-              }}
-            >
-              Close
-            </button>
-          </div>
-          <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-            {isManualSortView ? (
-              <button
-                type="button"
-                onClick={() => setMobileSortEditMode((v) => !v)}
-                aria-pressed={mobileSortEditMode}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  padding: "11px 12px",
-                  borderRadius: 12,
-                  border: mobileSortEditMode ? "1px solid rgba(91, 158, 72, 0.55)" : mobilePanelBorder,
-                  background: mobileSortEditMode ? "rgba(105, 190, 88, 0.18)" : mobilePanelCardBackground,
-                  color: mobilePanelTextColor,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em" }}>REORDER COVERS</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.7 }}>
-                    Turn on to drag-sort. Off keeps scrolling safe.
-                  </span>
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 900, color: mobileSortEditMode ? "#1f6f35" : undefined }}>
-                  <span
-                    aria-hidden
-                    style={{ width: 9, height: 9, borderRadius: "50%", background: mobileSortEditMode ? "#41b65c" : "#9aa5b1" }}
-                  />
-                  {mobileSortEditMode ? "On" : "Off"}
-                </span>
-              </button>
-            ) : null}
-            {listViewEligible ? (
-              <div
-                style={{
-                  border: mobilePanelBorder,
-                  borderRadius: 12,
-                  background: mobilePanelCardBackground,
-                  padding: 10,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 900, color: mobilePanelSectionLabelColor, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                  View
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  {(["cover", "list"] as DisplayMode[]).map((mode) => {
-                    const active = activeDisplayMode === mode;
-                    return (
-                      <button
-                        key={`mobile-display-mode-${mode}`}
-                        type="button"
-                        onClick={() => persistDisplayMode(mode)}
-                        aria-pressed={active}
-                        style={{
-                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                          borderRadius: 10,
-                          padding: "8px 10px",
-                          fontSize: 12,
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          textTransform: "capitalize",
-                        }}
-                      >
-                        {mode}
-                      </button>
-                    );
-                  })}
-                </div>
-                {activeDisplayMode === "list" ? (
-                  <div style={{ display: "grid", gridTemplateColumns: listEditMode ? "1fr 1fr" : "1fr", gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (listEditMode) {
-                          void handleSaveListEdits();
-                        } else {
-                          setListEditMode(true);
-                        }
-                      }}
-                      disabled={listEditSaving}
-                      style={{
-                        border: mobilePanelActiveButtonBorder,
-                        background: mobilePanelActiveButtonBackground,
-                        color: mobilePanelActiveButtonTextColor,
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        cursor: listEditSaving ? "wait" : "pointer",
-                        fontSize: 12,
-                        fontWeight: 900,
-                      }}
-                    >
-                      {listEditSaving ? "Saving..." : listEditMode ? "Save Edits" : "Edit List"}
-                    </button>
-                    {listEditMode ? (
-                      <button
-                        type="button"
-                        onClick={clearListEdits}
-                        disabled={listEditSaving}
-                        style={{
-                          border: mobilePanelButtonBorder,
-                          background: mobilePanelButtonBackground,
-                          color: mobilePanelButtonTextColor,
-                          borderRadius: 10,
-                          padding: "8px 10px",
-                          cursor: listEditSaving ? "default" : "pointer",
-                          fontSize: 12,
-                          fontWeight: 900,
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {mobileSidebarShowsMediaFiltersOnly && nav === "movies" ? (
-              <>
-                <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {["Started", "Watched", "Backlog", "Abandoned"].map((status) => {
-                    const active = movieWatchFilter === status;
-                    return (
-                      <button
-                        key={`mobile-movie-status-${status}`}
-                        type="button"
-                        onClick={() => {
-                          setMovieHomeMode(false);
-                          setMovieWatchFilter(active ? null : status);
-                        }}
-                        style={{
-                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                          borderRadius: 999,
-                          padding: "5px 9px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {status}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>TAGS</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
-                  {movieTags.map((tag) => {
-                    const active = movieTagFilter === tag;
-                    return (
-                      <button
-                        key={`mobile-movie-tag-${tag}`}
-                        type="button"
-                        onClick={() => updateMobileViewFilter("movieTag", active ? null : tag)}
-                        style={{
-                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                          borderRadius: 999,
-                          padding: "5px 9px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {tag} ({movieTagCounts[tag] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>GENRE</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
-                  {movieGenres.map((genre) => {
-                    const active = movieGenreFilter === genre;
-                    return (
-                      <button
-                        key={`mobile-movie-genre-${genre}`}
-                        type="button"
-                        onClick={() => updateMobileViewFilter("movieGenre", active ? null : genre)}
-                        style={{
-                          border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                          background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                          color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                          borderRadius: 999,
-                          padding: "5px 9px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {genre} ({movieGenreCounts[genre] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            ) : null}
-            {mobileSidebarShowsMediaFiltersOnly && nav === "games" ? (
-              <>
-                <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {gameStatusOptions.map((option) => {
-                    const active = gameStatusFilter === option;
-                    return (
-                      <button key={`mobile-game-status-${option}`} type="button" onClick={() => updateMobileViewFilter("gameStatus", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {option} ({gameStatusCounts[option] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>PLATFORM</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
-                  {gamePlatformOptions.map((option) => {
-                    const active = gamePlatformFilter === option;
-                    return (
-                      <button key={`mobile-game-platform-${option}`} type="button" onClick={() => updateMobileViewFilter("gamePlatform", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {option} ({gamePlatformCounts[option] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>OWNERSHIP</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {gameOwnershipOptions.map((option) => {
-                    const active = gameOwnershipFilter === option;
-                    return (
-                      <button key={`mobile-game-ownership-${option}`} type="button" onClick={() => updateMobileViewFilter("gameOwnership", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {option} ({gameOwnershipCounts[option] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>FORMAT</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {gameFormatOptions.map((option) => {
-                    const active = gameFormatFilter === option;
-                    return (
-                      <button key={`mobile-game-format-${option}`} type="button" onClick={() => updateMobileViewFilter("gameFormat", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {option} ({gameFormatCounts[option] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>YEAR PLAYED</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", paddingRight: 2 }}>
-                  {gameYearPlayedOptions.map((option) => {
-                    const active = gameYearPlayedFilter === option;
-                    return (
-                      <button key={`mobile-game-year-${option}`} type="button" onClick={() => updateMobileViewFilter("gameYearPlayed", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {option} ({gameYearPlayedCounts[option] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>GENRES</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
-                  {gameGenres.map((option) => {
-                    const active = gameGenreFilter === option;
-                    return (
-                      <button key={`mobile-game-genre-${option}`} type="button" onClick={() => updateMobileViewFilter("gameGenre", active ? null : option)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {option} ({gameGenreCounts[option] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            ) : null}
-            {mobileSidebarShowsMediaFiltersOnly && nav === "tv" ? (
-              <>
-                <div style={mobilePanelSectionHeadingStyle}>STATUS</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {watchStatuses.map((status) => {
-                    const active = watchFilter === status;
-                    return (
-                      <button key={`mobile-tv-watch-status-${status}`} type="button" onClick={() => updateMobileViewFilter("tvWatchStatus", active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {status}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>SHOW STATUS</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {showStatuses.map((status) => {
-                    const active = showFilter === status;
-                    return (
-                      <button key={`mobile-tv-show-status-${status}`} type="button" onClick={() => updateMobileViewFilter("tvShowStatus", active ? null : status)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {status}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={mobilePanelSectionHeadingStyle}>TAGS</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
-                  {tvTags.map((tag) => {
-                    const active = tagFilter === tag;
-                    return (
-                      <button key={`mobile-tv-tag-${tag}`} type="button" onClick={() => updateMobileViewFilter("tvTag", active ? null : tag)} style={{ border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder, background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground, color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        {tag} ({tvTagCounts[tag] ?? 0})
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            ) : null}
-            <div style={mobilePanelCardStyle}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <span style={mobilePanelSectionHeadingStyle}>
-                  {`${mobileViewPreferenceLabel} COVER SIZE`}
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: mobilePanelTextColor }}>
-                  {`${mobileCoverScalePct}%`}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={50}
-                max={250}
-                step={1}
-                value={mobileCoverScalePct}
-                onChange={(event) => updateMobileCoverScalePct(Number(event.target.value))}
-                aria-label={`Scale ${activeViewPreferenceKey} covers for mobile view`}
-                style={{ width: "100%" }}
-              />
-            </div>
-            <>
-                <div style={mobilePanelSectionHeadingStyle}>SORT</div>
-                <label
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: mobilePanelSectionLabelColor,
-                  }}
-                >
-                  SORT BY
-                  <select
-                    value={sortField}
-                    onChange={(e) => handleSortFieldChange(e.target.value)}
-                    style={mobilePanelSelectStyle}
-                  >
+      {isMobileLayout && mobileSidebarOpen ? <SortDialog
+        isDark={shelfThemeMode === "dark"}
+        sortField={sortField}
+        sortOptions={<>
+
                     {nav === "books" ? (
                       <>
                         <option value="Title">Title</option>
@@ -23315,141 +22804,52 @@ export default function Page() {
                         {nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort) ? <option value={MANUAL_SORT_FIELD}>Manual</option> : null}
                       </>
                     )}
-                  </select>
-                </label>
-                <label
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: mobilePanelSectionLabelColor,
-                  }}
-                >
-                  ORDER
-                  <select
-                    value={sortOrder}
-                    onChange={(e) => handleSortOrderChange(e.target.value as "Asc" | "Desc")}
-                    disabled={(nav === "wishlist" || nav === "now-playing" || nav === "wishlist-books" || nav === "play-next" || nav === "watchlist-movies" || nav === "watchlist-tv" || (nav === "smart-custom" && activeSmartList?.allowManualSort)) && sortField === MANUAL_SORT_FIELD}
-                    style={mobilePanelSelectStyle}
-                  >
-                    <option value="Asc">Asc</option>
-                    <option value="Desc">Desc</option>
-                  </select>
-                </label>
-            </>
-            {nav === "books" ? (
-              <>
-                <div style={mobilePanelSectionHeadingStyle}>BOOK FILTERS</div>
-                <div style={mobilePanelCardStyle}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Reading Status</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {readingStatuses.map((status) => {
-                      const active = readingStatusFilter === status;
-                      return (
-                        <button
-                          key={`mobile-reading-status-${status}`}
-                          type="button"
-                          onClick={() => setReadingStatusFilter(active ? null : status)}
-                          style={{
-                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                            borderRadius: 999,
-                            padding: "5px 9px",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {status} ({readingStatusCounts[status] ?? 0})
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Formats</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {bookFormats.map((format) => {
-                      const active = formatFilter === format;
-                      return (
-                        <button
-                          key={`mobile-book-format-${format}`}
-                          type="button"
-                          onClick={() => updateMobileViewFilter("bookFormat", active ? null : format)}
-                          style={{
-                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                            borderRadius: 999,
-                            padding: "5px 9px",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {format} ({formatCounts[format] ?? 0})
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Series</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", paddingRight: 2 }}>
-                    {bookSeries.map((series) => {
-                      const active = seriesFilter === series;
-                      return (
-                        <button
-                          key={`mobile-book-series-${series}`}
-                          type="button"
-                          onClick={() => updateMobileViewFilter("bookSeries", active ? null : series)}
-                          style={{
-                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                            borderRadius: 999,
-                            padding: "5px 9px",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {series} ({seriesCounts[series] ?? 0})
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: mobilePanelSectionLabelColor }}>Genres</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", paddingRight: 2 }}>
-                    {bookGenres.map((genre) => {
-                      const active = genreFilter === genre;
-                      return (
-                        <button
-                          key={`mobile-book-genre-${genre}`}
-                          type="button"
-                          onClick={() => updateMobileViewFilter("bookGenre", active ? null : genre)}
-                          style={{
-                            border: active ? mobilePanelActiveButtonBorder : mobilePanelButtonBorder,
-                            background: active ? mobilePanelActiveButtonBackground : mobilePanelButtonBackground,
-                            color: active ? mobilePanelActiveButtonTextColor : mobilePanelButtonTextColor,
-                            borderRadius: 999,
-                            padding: "5px 9px",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {genre} ({genreCounts[genre] ?? 0})
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            ) : null}
 
-          </div>
-        </div>
-      ) : null}
+        </>}
+        sortOrder={sortOrder}
+        manualOrder={sortField === MANUAL_SORT_FIELD}
+        onSortField={handleSortFieldChange}
+        onSortOrder={handleSortOrderChange}
+        listSize={listViewEligible && activeDisplayMode === "list" ? activeListSizePct : undefined}
+        onListSize={persistListSizePct}
+        columns={listViewEligible ? availableListColumns.map(column => {
+          const checked = activeListColumns.includes(column.key), index = activeListColumns.indexOf(column.key);
+          return { key: column.key, label: column.label, checked, required: column.key === "title", canMoveUp: index > 0, canMoveDown: index >= 0 && index < activeListColumns.length - 1,
+            onToggle: () => persistListColumns(checked ? activeListColumns.filter(key => key !== column.key) : [...activeListColumns, column.key]),
+            onMove: (direction: -1 | 1) => { if (index < 0 || index + direction < 0 || index + direction >= activeListColumns.length) return; const next = [...activeListColumns]; const [moved] = next.splice(index, 1); next.splice(index + direction, 0, moved); persistListColumns(next); },
+          };
+        }) : []}
+        onResetColumns={() => persistListColumns(defaultListColumns)}
+        onClose={() => setMobileSidebarOpen(false)}
+        mobileControls={{
+          displayMode: listViewEligible ? activeDisplayMode : undefined,
+          onDisplayMode: persistDisplayMode,
+          coverSize: mobileCoverScalePct, coverLabel: mobileViewPreferenceLabel, onCoverSize: updateMobileCoverScalePct,
+          reorder: isManualSortView ? { enabled: mobileSortEditMode, onToggle: () => setMobileSortEditMode(value => !value) } : undefined,
+          listEdit: { enabled: listEditMode, saving: listEditSaving, onEdit: () => { if (listEditMode) void handleSaveListEdits(); else setListEditMode(true); }, onCancel: clearListEdits },
+          filters: nav === "movies" ? [
+            { label: "Status", options: ["Started", "Watched", "Backlog", "Abandoned"], selected: movieWatchFilter, onSelect: value => { setMovieHomeMode(false); setMovieWatchFilter(value); } },
+            { label: "Tags", options: movieTags, selected: movieTagFilter, counts: movieTagCounts, onSelect: value => updateMobileViewFilter("movieTag", value) },
+            { label: "Genre", options: movieGenres, selected: movieGenreFilter, counts: movieGenreCounts, onSelect: value => updateMobileViewFilter("movieGenre", value) },
+          ] : nav === "games" ? [
+            { label: "Status", options: gameStatusOptions, selected: gameStatusFilter, counts: gameStatusCounts, onSelect: value => updateMobileViewFilter("gameStatus", value) },
+            { label: "Platform", options: gamePlatformOptions, selected: gamePlatformFilter, counts: gamePlatformCounts, onSelect: value => updateMobileViewFilter("gamePlatform", value) },
+            { label: "Ownership", options: gameOwnershipOptions, selected: gameOwnershipFilter, counts: gameOwnershipCounts, onSelect: value => updateMobileViewFilter("gameOwnership", value) },
+            { label: "Format", options: gameFormatOptions, selected: gameFormatFilter, counts: gameFormatCounts, onSelect: value => updateMobileViewFilter("gameFormat", value) },
+            { label: "Year played", options: gameYearPlayedOptions, selected: gameYearPlayedFilter, counts: gameYearPlayedCounts, onSelect: value => updateMobileViewFilter("gameYearPlayed", value) },
+            { label: "Genre", options: gameGenres, selected: gameGenreFilter, counts: gameGenreCounts, onSelect: value => updateMobileViewFilter("gameGenre", value) },
+          ] : nav === "tv" ? [
+            { label: "Status", options: watchStatuses, selected: watchFilter, onSelect: value => updateMobileViewFilter("tvWatchStatus", value) },
+            { label: "Show status", options: showStatuses, selected: showFilter, onSelect: value => updateMobileViewFilter("tvShowStatus", value) },
+            { label: "Tags", options: tvTags, selected: tagFilter, counts: tvTagCounts, onSelect: value => updateMobileViewFilter("tvTag", value) },
+          ] : nav === "books" ? [
+            { label: "Reading status", options: readingStatuses, selected: readingStatusFilter, counts: readingStatusCounts, onSelect: setReadingStatusFilter },
+            { label: "Formats", options: bookFormats, selected: formatFilter, counts: formatCounts, onSelect: value => updateMobileViewFilter("bookFormat", value) },
+            { label: "Series", options: bookSeries, selected: seriesFilter, counts: seriesCounts, onSelect: value => updateMobileViewFilter("bookSeries", value) },
+            { label: "Genres", options: bookGenres, selected: genreFilter, counts: genreCounts, onSelect: value => updateMobileViewFilter("bookGenre", value) },
+          ] : [],
+        }}
+      /> : null}
       {isMobileLayout && mobileSettingsOpen ? (
         <div
           style={{
@@ -23548,7 +22948,7 @@ export default function Page() {
               onClick={() => {
                 setSortPopupOpen(true);
                 setSettingsPopupOpen(false);
-                setShowVersionNotes(false);
+
                 setMobileSettingsOpen(false);
                 setMobileSidebarOpen(false);
               }}
@@ -23561,7 +22961,7 @@ export default function Page() {
               onClick={() => {
                 setSortPopupOpen(false);
                 setSettingsPopupOpen(false);
-                setShowVersionNotes(false);
+
                 setAddModalOpen(true);
                 setMobileSettingsOpen(false);
                 setMobileSidebarOpen(false);
@@ -23641,7 +23041,7 @@ export default function Page() {
               onClick={() => {
                 setSortPopupOpen(false);
                 setSettingsPopupOpen(false);
-                setShowVersionNotes(false);
+
                 setMobileSettingsOpen(false);
                 setMobileSidebarOpen(false);
                 setAddModalOpen(true);
@@ -25450,903 +24850,735 @@ export default function Page() {
             </div>
 
 
-            {settingsPopupOpen && typeof document !== "undefined" ? createPortal(
-              <div
-                style={{
-                  position: "fixed",
-                  zIndex: SETTINGS_WINDOW_Z_INDEX,
-                  display: "flex",
-                  inset: 0,
-                  justifyContent: "center",
-                  alignItems: "stretch",
-                  padding: `${SETTINGS_WINDOW_MARGIN}px`,
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  ref={settingsWindowRef}
+            {
+              settingsPopupOpen ? (
+                <SettingsDialog
+                  isDark={shelfThemeMode === "dark"}
+                  version={APP_VERSION}
+                  notes={VERSION_HISTORY.slice(0, 3)}
+                  onClose={() => {
+                    setSettingsPopupOpen(false);
+                  }}
+                  windowRef={settingsWindowRef}
+                  position={settingsWindowPosition}
                   onPointerDown={handleSettingsWindowPointerDown}
                   onPointerMove={handleSettingsWindowPointerMove}
                   onPointerUp={handleSettingsWindowPointerUp}
-                  onPointerCancel={handleSettingsWindowPointerUp}
-                  style={{
-                    position: "fixed",
-                    top: settingsWindowPosition?.y ?? SETTINGS_WINDOW_MARGIN,
-                    left: settingsWindowPosition?.x ?? `calc((100vw - min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))) / 2)`,
-                    display: "flex",
-                    flexDirection: "column",
-                    width: `min(${SETTINGS_WINDOW_DEFAULT_WIDTH}px, calc(100vw - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
-                    height: `min(${SETTINGS_WINDOW_DEFAULT_HEIGHT}px, calc(100dvh - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
-                    maxHeight: `min(${SETTINGS_WINDOW_DEFAULT_HEIGHT}px, calc(100dvh - ${SETTINGS_WINDOW_MARGIN * 2}px))`,
-                    minHeight: 0,
-                    background: "rgba(246, 245, 243, 0.76)",
-                    border: "1px solid rgba(255, 255, 255, 0.42)",
-                    borderRadius: 16,
-                    boxShadow: "0 28px 70px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(139, 175, 244, 0.16)",
-                    backdropFilter: "blur(18px) saturate(1.12)",
-                    WebkitBackdropFilter: "blur(18px) saturate(1.12)",
-                    overflow: "hidden",
-                    pointerEvents: "auto",
-                  }}
-                >
-                {/* Title bar */}
-                <div
-                  data-settings-window-drag-handle="true"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "13px 16px 12px",
-                    borderBottom: "1px solid rgba(139, 175, 244, 0.18)",
-                    cursor: "grab",
-                    userSelect: "none",
-                    touchAction: "none",
-                    background: "rgba(255,255,255,0.48)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ opacity: 0.55 }}>
-                      <circle cx="7" cy="7" r="6" stroke="#8baff4" strokeWidth="1.5" />
-                      <path d="M7 4v3l2 1.5" stroke="#8baff4" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#2c2c2e", letterSpacing: "-0.01em" }}>Settings</span>
-                  </div>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <button
-                      onClick={() => setShowVersionNotes((prev) => !prev)}
-                      title="Show recent version notes"
-                      aria-label="Show recent version notes"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "3px 9px",
-                        background: showVersionNotes ? "#8baff4" : "rgba(139, 175, 244, 0.14)",
-                        border: "1px solid rgba(139, 175, 244, 0.4)",
-                        borderRadius: 20,
-                        color: showVersionNotes ? "#fff" : "#4a7ed4",
-                        cursor: "pointer",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: "0.02em",
-                        lineHeight: 1,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      v{APP_VERSION}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSettingsPopupOpen(false);
-                        setShowVersionNotes(false);
-                      }}
-                      style={{
-                        border: "1px solid rgba(0,0,0,0.14)",
-                        background: "rgba(0,0,0,0.06)",
-                        color: "#636366",
-                        borderRadius: 20,
-                        padding: "3px 10px",
-                        cursor: "pointer",
-                        fontSize: 10,
-                        fontWeight: 600,
-                        letterSpacing: "0.02em",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-
-                {/* Scrollable body */}
-                <div
-                  ref={settingsBodyRef}
-                  onScroll={updateSettingsScrollMetrics}
-                  style={{
-                    overflowY: "auto",
-                    overflowX: "hidden",
-                    overscrollBehavior: "contain",
-                    WebkitOverflowScrolling: "touch",
-                    scrollbarWidth: "thin",
-                    scrollbarGutter: "stable",
-                    position: "relative",
-                    flex: 1,
-                    minHeight: 0,
-                    padding: "14px 16px 28px",
-                    display: "grid",
-                    gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                    alignContent: "start",
-                    alignItems: "start",
-                    gap: 12,
-                  }}
-                  className="settingsScrollArea"
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-                {/* Version Notes */}
-                {showVersionNotes ? (
-                  <div
-                    style={{
-                      borderRadius: 10,
-                      border: "1px solid rgba(139, 175, 244, 0.22)",
-                      background: "rgba(139, 175, 244, 0.07)",
-                      padding: "10px 12px",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.06em", marginBottom: 8, textTransform: "uppercase" }}>Recent Updates</div>
-                    {VERSION_HISTORY.slice(0, 3).map((entry) => (
-                      <div key={entry.version} style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2c2c2e" }}>
-                          v{entry.version} <span style={{ opacity: 0.45, fontWeight: 500, fontSize: 10 }}>{entry.date}</span>
-                        </div>
-                        <ul style={{ margin: "3px 0 0 14px", padding: 0, fontSize: 10.5, lineHeight: 1.4, color: "#48484a" }}>
-                          {entry.notes.map((note) => (
-                            <li key={note}>{note}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {/* Cover Sizes section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(139, 175, 244, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ padding: "10px 14px 10px", borderBottom: "1px solid rgba(139, 175, 244, 0.14)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Cover Sizes</div>
-                      <button
-                        type="button"
-                        onClick={resetMediaCoverSizesToDefault}
-                        style={{
-                          border: "1px solid rgba(139, 175, 244, 0.35)",
-                          background: "rgba(139,175,244,0.1)",
-                          color: "#4a7ed4",
-                          fontSize: 10,
-                          fontWeight: 700,
-                          borderRadius: 999,
-                          padding: "3px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Reset Defaults
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                    {(
-                      [
-                        { label: "Movies", key: "movies", value: mediaCoverSizePct.movies, min: 40, max: 140, step: 1 },
-                        { label: "TV", key: "tv", value: mediaCoverSizePct.tv, min: 40, max: 140, step: 1 },
-                        { label: "Books", key: "books", value: mediaCoverSizePct.books, min: 40, max: 140, step: 1 },
-                        { label: "Audiobooks", key: "audiobooks", value: mediaCoverSizePct.audiobooks, min: 40, max: 140, step: 1 },
-                        { label: "Games", key: "games", value: mediaCoverSizePct.games, min: 40, max: 140, step: 1 },
-                      ] as { label: string; key: keyof typeof mediaCoverSizePct; value: number; min: number; max: number; step: number }[]
-                    ).map(({ label, key, value, min, max, step }) => (
-                      <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>{label}</span>
-                        <input
-                          type="range"
-                          min={min}
-                          max={max}
-                          step={step}
-                          value={value}
-                          onChange={(e) => updateMediaCoverSizePct(key, Number(e.target.value))}
-                          style={{ width: "100%", accentColor: "#8baff4" }}
-                        />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{value}%</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Theme spacing section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(74, 126, 212, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(74, 126, 212, 0.14)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: "#4a7ed4", letterSpacing: "0.07em", textTransform: "uppercase" }}>
-                          Cover Spacing
-                        </div>
-                        <div style={{ marginTop: 2, fontSize: 9.5, color: "#7a7a80" }}>
-                          Applies to every theme
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={resetShelfSpacing}
-                        style={{
-                          border: "1px solid rgba(74, 126, 212, 0.32)",
-                          background: "rgba(74,126,212,0.08)",
-                          color: "#4a7ed4",
-                          fontSize: 10,
-                          fontWeight: 700,
-                          borderRadius: 999,
-                          padding: "3px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    {(
-                      [
+                  sections={[
+                    {
+                      category: "covers",
+                      title: "Cover sizes",
+                      reset: resetMediaCoverSizesToDefault,
+                      ranges: (
+                        [
+                          {
+                            label: "Movies",
+                            key: "movies",
+                            items: allMovies,
+                            accent: "#9463ca",
+                          },
+                          {
+                            label: "TV Shows",
+                            key: "tv",
+                            items: allShows,
+                            accent: "#dc8c31",
+                          },
+                          {
+                            label: "Books",
+                            key: "books",
+                            items: allBooks.filter((item) => !isAudiobookItem(item)),
+                            accent: "#3a965d",
+                          },
+                          {
+                            label: "Audiobooks",
+                            key: "audiobooks",
+                            items: allBooks.filter((item) => isAudiobookItem(item)),
+                            accent: "#d9a72b",
+                          },
+                          {
+                            label: "Games",
+                            key: "games",
+                            items: allGames,
+                            accent: "#3489ee",
+                          },
+                        ] as const
+                      ).map(({ label, key, items, accent }) => ({
+                        label,
+                        value: mediaCoverSizePct[key],
+                        min: 40,
+                        max: 140,
+                        step: 1,
+                        unit: "%",
+                        accent,
+                        update: (value: number) => updateMediaCoverSizePct(key, value),
+                        image: items[0]
+                          ? getDisplayCoverUrl(
+                              {
+                                ...items[0],
+                                __type:
+                                  key === "audiobooks" || key === "books"
+                                    ? "book"
+                                    : key === "movies"
+                                      ? "movie"
+                                      : key === "games"
+                                        ? "game"
+                                        : "tv",
+                              },
+                              true,
+                            )
+                          : undefined,
+                      })),
+                    },
+                    {
+                      category: "spacing",
+                      title: "Shelf spacing",
+                      reset: resetShelfSpacing,
+                      ranges: [
                         {
                           label: "Horizontal",
-                          axis: "horizontal",
                           value: shelfSpacing.horizontal,
+                          min: 0,
                           max: 40,
+                          step: 1,
+                          unit: "px",
                           help: "Space between covers",
+                          update: (value: number) =>
+                            updateShelfSpacing("horizontal", value),
                         },
                         {
                           label: "Vertical",
-                          axis: "vertical",
                           value: shelfSpacing.vertical,
+                          min: 0,
                           max: 60,
+                          step: 1,
+                          unit: "px",
                           help: "Space above each cover row",
+                          update: (value: number) => updateShelfSpacing("vertical", value),
                         },
-                      ] as const
-                    ).map(({ label, axis, value, max, help }) => (
-                      <label key={axis} style={{ display: "grid", gridTemplateColumns: "64px 1fr 38px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span>
-                          <span style={{ display: "block", fontWeight: 600 }}>{label}</span>
-                          <span style={{ display: "block", marginTop: 1, fontSize: 8.5, lineHeight: 1.15, color: "#8a8a8f" }}>{help}</span>
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={max}
-                          step={1}
-                          value={value}
-                          onChange={(e) => updateShelfSpacing(axis, Number(e.target.value))}
-                          style={{ width: "100%", accentColor: "#4a7ed4" }}
-                        />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{value}px</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Logo section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(244, 153, 16, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSettingsOpen({ ...settingsOpen, logoSize: !settingsOpen.logoSize })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, logoSize: !settingsOpen.logoSize });
-                    }}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      borderBottom: settingsOpen.logoSize ? "1px solid rgba(244, 153, 16, 0.14)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Logo</div>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); resetLogoDefaults(); }} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.logoSize ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                          <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  {settingsOpen.logoSize ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      {(
-                        [
-                          { label: "Size", value: logoSize, min: 60, max: 500, step: 5, update: updateLogoSize },
-                          { label: "Top", value: logoTop, min: -50, max: 50, step: 1, update: updateLogoTop },
-                          { label: "Left", value: logoLeft, min: -50, max: 50, step: 1, update: updateLogoLeft },
-                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                      ).map(({ label, value, min, max, step, update }) => (
-                        <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                          <span style={{ fontWeight: 500 }}>{label}</span>
-                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Sync Status section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(139, 146, 14, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSettingsOpen({ ...settingsOpen, syncIcon: !settingsOpen.syncIcon })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, syncIcon: !settingsOpen.syncIcon });
-                    }}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      borderBottom: settingsOpen.syncIcon ? "1px solid rgba(139, 146, 14, 0.14)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#8b920e", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sync Status</div>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); resetSyncDefaults(); }} style={{ border: "1px solid rgba(139, 146, 14, 0.35)", background: "rgba(139,146,14,0.1)", color: "#6a7006", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.syncIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                          <path d="M2 4l4 4 4-4" stroke="#8b920e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  {settingsOpen.syncIcon ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      {(
-                        [
-                          { label: "Size", value: syncIconSize, min: 8, max: 24, step: 1, update: updateSyncIconSize },
-                          { label: "Top", value: syncIconTop, min: -50, max: 50, step: 1, update: updateSyncIconTop },
-                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                      ).map(({ label, value, min, max, step, update }) => (
-                        <label key={label} style={{ display: "grid", gridTemplateColumns: "64px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                          <span style={{ fontWeight: 500 }}>{label}</span>
-                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#8b920e" }} />
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#5c6200", fontSize: 11 }}>{value}</span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                {/* Status Icon section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(139, 175, 244, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, statusIcon: !settingsOpen.statusIcon });
-                    }}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      borderBottom: settingsOpen.statusIcon ? "1px solid rgba(139, 175, 244, 0.14)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#8baff4", letterSpacing: "0.07em", textTransform: "uppercase" }}>Status Icon</div>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); resetStatusIconDefaults(); }} style={{ border: "1px solid rgba(139, 175, 244, 0.35)", background: "rgba(139,175,244,0.1)", color: "#4a7ed4", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.statusIcon ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                          <path d="M2 4l4 4 4-4" stroke="#8baff4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  {settingsOpen.statusIcon ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Size</span>
-                        <input type="range" min={50} max={220} step={5} value={statusIconScale} onChange={(e) => updateStatusIconScale(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconScale}%</span>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Offset X</span>
-                        <input type="range" min={-30} max={30} step={1} value={statusIconOffsetX} onChange={(e) => updateStatusIconOffsetX(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconOffsetX}</span>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Offset Y</span>
-                        <input type="range" min={-30} max={30} step={1} value={statusIconOffsetY} onChange={(e) => updateStatusIconOffsetY(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{statusIconOffsetY}</span>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Rating Sz</span>
-                        <input type="range" min={50} max={180} step={5} value={ratingBadgeScale} onChange={(e) => updateRatingBadgeScale(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{ratingBadgeScale}%</span>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Rating X</span>
-                        <input type="range" min={-30} max={30} step={1} value={ratingBadgeOffsetX} onChange={(e) => updateRatingBadgeOffsetX(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{ratingBadgeOffsetX}</span>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "64px 1fr 40px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Rating Y</span>
-                        <input type="range" min={-30} max={30} step={1} value={ratingBadgeOffsetY} onChange={(e) => updateRatingBadgeOffsetY(Number(e.target.value))} style={{ width: "100%", accentColor: "#8baff4" }} />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#4a7ed4", fontSize: 11 }}>{ratingBadgeOffsetY}</span>
-                      </label>
-                      <div style={{ height: 1, background: "rgba(139, 175, 244, 0.18)", margin: "4px 0" }} />
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#4a7ed4", letterSpacing: "0.05em", textTransform: "uppercase" }}>Status Icon Files</div>
-                      {statusIconOptions.map((option) => {
-                        const customSrc = getStatusIconSrc(option.key);
-                        return (
-                          <div key={`status-icon-option-${option.key}`} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center" }}>
-                            <button
-                              type="button"
-                              onClick={(event) => openStatusIconFilePicker(event, option.key)}
+                      ],
+                    },
+                    {
+                      category: "sidebar",
+                      title: "Section spacing",
+                      reset: () => {
+                        updateSidebarSectionGap(DEFAULT_SIDEBAR_SETTINGS.sectionGap);
+                        updateLibrarySidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.libraryItemGap);
+                        updateSmartListsSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.smartItemGap);
+                        updateDiscoverSidebarItemGap(DEFAULT_SIDEBAR_SETTINGS.discoverItemGap);
+                        updateSidebarSubmenuGap(DEFAULT_SIDEBAR_SETTINGS.submenuGap);
+                        updateSidebarRowDensityOffset(DEFAULT_SIDEBAR_SETTINGS.rowDensityOffset);
+                      },
+                      ranges: [
+                        {
+                          label: "Between sections",
+                          value: sidebarSectionGap,
+                          min: -8,
+                          max: 20,
+                          step: 1,
+                          update: updateSidebarSectionGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Library rows",
+                          value: librarySidebarItemGap,
+                          min: -8,
+                          max: 12,
+                          step: 1,
+                          update: updateLibrarySidebarItemGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Smart list rows",
+                          value: smartListsSidebarItemGap,
+                          min: -8,
+                          max: 12,
+                          step: 1,
+                          update: updateSmartListsSidebarItemGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Discover rows",
+                          value: discoverSidebarItemGap,
+                          min: -8,
+                          max: 12,
+                          step: 1,
+                          update: updateDiscoverSidebarItemGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Submenus",
+                          value: sidebarSubmenuGap,
+                          min: -8,
+                          max: 12,
+                          step: 1,
+                          update: updateSidebarSubmenuGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Row density",
+                          value: sidebarRowDensityOffset,
+                          min: -8,
+                          max: 8,
+                          step: 1,
+                          update: updateSidebarRowDensityOffset,
+                          unit: "px",
+                        },
+                      ],
+                    },
+                    {
+                      category: "sidebar",
+                      title: "Library logo",
+                      reset: resetLogoDefaults,
+                      ranges: [
+                        {
+                          label: "Size",
+                          value: logoSize,
+                          min: 60,
+                          max: 500,
+                          step: 5,
+                          update: updateLogoSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Vertical position",
+                          value: logoTop,
+                          min: -50,
+                          max: 50,
+                          step: 1,
+                          update: updateLogoTop,
+                          unit: "px",
+                        },
+                        {
+                          label: "Horizontal position",
+                          value: logoLeft,
+                          min: -50,
+                          max: 50,
+                          step: 1,
+                          update: updateLogoLeft,
+                          unit: "px",
+                        },
+                      ],
+                    },
+                    {
+                      category: "sidebar",
+                      title: "Saved-status indicator",
+                      reset: resetSyncDefaults,
+                      ranges: [
+                        {
+                          label: "Size",
+                          value: syncIconSize,
+                          min: 8,
+                          max: 24,
+                          step: 1,
+                          update: updateSyncIconSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Vertical position",
+                          value: syncIconTop,
+                          min: -50,
+                          max: 50,
+                          step: 1,
+                          update: updateSyncIconTop,
+                          unit: "px",
+                        },
+                      ],
+                    },
+                    {
+                      category: "text",
+                      title: "Library",
+                      reset: resetLibrarySidebarDefaults,
+                      ranges: [
+                        {
+                          label: "Icon size",
+                          value: iconSize,
+                          min: 8,
+                          max: 64,
+                          step: 1,
+                          update: updateIconSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Font size",
+                          value: sidebarFontSize,
+                          min: 10,
+                          max: 20,
+                          step: 1,
+                          update: updateSidebarFontSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Icon gap",
+                          value: sidebarGap,
+                          min: 4,
+                          max: 20,
+                          step: 1,
+                          update: updateSidebarGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Heading size",
+                          value: sidebarHeaderFontSize,
+                          min: 8,
+                          max: 16,
+                          step: 1,
+                          update: updateSidebarHeaderFontSize,
+                          unit: "px",
+                        },
+                      ],
+                      choices: [
+                        {
+                          label: "Font weight",
+                          value: sidebarFontWeight,
+                          update: updateSidebarFontWeight,
+                          options: SETTINGS_FONT_WEIGHTS,
+                        },
+                        {
+                          label: "Heading weight",
+                          value: sidebarHeaderFontWeight,
+                          update: updateSidebarHeaderFontWeight,
+                          options: SETTINGS_FONT_WEIGHTS,
+                        },
+                      ],
+                    },
+                    {
+                      category: "text",
+                      title: "Smart Lists",
+                      reset: resetSmartListsSidebarDefaults,
+                      ranges: [
+                        {
+                          label: "Icon size",
+                          value: smartListsSidebarIconSize,
+                          min: 8,
+                          max: 64,
+                          step: 1,
+                          update: updateSmartListsSidebarIconSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Font size",
+                          value: smartListsSidebarFontSize,
+                          min: 10,
+                          max: 20,
+                          step: 1,
+                          update: updateSmartListsSidebarFontSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Icon gap",
+                          value: smartListsSidebarGap,
+                          min: 4,
+                          max: 20,
+                          step: 1,
+                          update: updateSmartListsSidebarGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Heading size",
+                          value: smartListsSidebarHeaderFontSize,
+                          min: 8,
+                          max: 16,
+                          step: 1,
+                          update: updateSmartListsSidebarHeaderFontSize,
+                          unit: "px",
+                        },
+                      ],
+                      choices: [
+                        {
+                          label: "Font weight",
+                          value: smartListsSidebarFontWeight,
+                          update: updateSmartListsSidebarFontWeight,
+                          options: SETTINGS_FONT_WEIGHTS,
+                        },
+                        {
+                          label: "Heading weight",
+                          value: smartListsSidebarHeaderFontWeight,
+                          update: updateSmartListsSidebarHeaderFontWeight,
+                          options: SETTINGS_FONT_WEIGHTS,
+                        },
+                      ],
+                    },
+                    {
+                      category: "text",
+                      title: "Discover",
+                      reset: resetDiscoverSidebarDefaults,
+                      ranges: [
+                        {
+                          label: "Icon size",
+                          value: discoverSidebarIconSize,
+                          min: 8,
+                          max: 64,
+                          step: 1,
+                          update: updateDiscoverSidebarIconSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Font size",
+                          value: discoverSidebarFontSize,
+                          min: 10,
+                          max: 20,
+                          step: 1,
+                          update: updateDiscoverSidebarFontSize,
+                          unit: "px",
+                        },
+                        {
+                          label: "Icon gap",
+                          value: discoverSidebarGap,
+                          min: 4,
+                          max: 20,
+                          step: 1,
+                          update: updateDiscoverSidebarGap,
+                          unit: "px",
+                        },
+                        {
+                          label: "Heading size",
+                          value: discoverSidebarHeaderFontSize,
+                          min: 8,
+                          max: 16,
+                          step: 1,
+                          update: updateDiscoverSidebarHeaderFontSize,
+                          unit: "px",
+                        },
+                      ],
+                      choices: [
+                        {
+                          label: "Font weight",
+                          value: discoverSidebarFontWeight,
+                          update: updateDiscoverSidebarFontWeight,
+                          options: SETTINGS_FONT_WEIGHTS,
+                        },
+                        {
+                          label: "Heading weight",
+                          value: discoverSidebarHeaderFontWeight,
+                          update: updateDiscoverSidebarHeaderFontWeight,
+                          options: SETTINGS_FONT_WEIGHTS,
+                        },
+                      ],
+                    },
+                    {
+                      category: "advanced",
+                      title: "Status & rating badges",
+                      reset: resetStatusIconDefaults,
+                      ranges: [
+                        {
+                          label: "Status size",
+                          value: statusIconScale,
+                          min: 50,
+                          max: 220,
+                          step: 5,
+                          unit: "%",
+                          update: updateStatusIconScale,
+                        },
+                        {
+                          label: "Status offset X",
+                          value: statusIconOffsetX,
+                          min: -30,
+                          max: 30,
+                          step: 1,
+                          unit: "px",
+                          update: updateStatusIconOffsetX,
+                        },
+                        {
+                          label: "Status offset Y",
+                          value: statusIconOffsetY,
+                          min: -30,
+                          max: 30,
+                          step: 1,
+                          unit: "px",
+                          update: updateStatusIconOffsetY,
+                        },
+                        {
+                          label: "Rating size",
+                          value: ratingBadgeScale,
+                          min: 50,
+                          max: 180,
+                          step: 5,
+                          unit: "%",
+                          update: updateRatingBadgeScale,
+                        },
+                        {
+                          label: "Rating offset X",
+                          value: ratingBadgeOffsetX,
+                          min: -30,
+                          max: 30,
+                          step: 1,
+                          unit: "px",
+                          update: updateRatingBadgeOffsetX,
+                        },
+                        {
+                          label: "Rating offset Y",
+                          value: ratingBadgeOffsetY,
+                          min: -30,
+                          max: 30,
+                          step: 1,
+                          unit: "px",
+                          update: updateRatingBadgeOffsetY,
+                        },
+                      ],
+                    },
+                    {
+                      category: "advanced",
+                      title: "Custom status icons",
+                      content: (
+                        <div style={{ padding: "4px 0" }}>
+                          {statusIconOptions.map((option) => {
+                            const customSrc = getStatusIconSrc(option.key);
+                            return (
+                              <div
+                                key={option.key}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "10px 4px",
+                                  borderTop: "1px solid rgba(128,140,160,.12)",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(event) =>
+                                    openStatusIconFilePicker(event, option.key)
+                                  }
+                                  disabled={uploadingStatusIconKey === option.key}
+                                  aria-label={`Replace ${option.label} icon`}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    flex: 1,
+                                    textAlign: "left",
+                                    minHeight: 44,
+                                    border: 0,
+                                    borderRadius: 10,
+                                    background: "transparent",
+                                    color: "inherit",
+                                    padding: 8,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: 24,
+                                      height: 24,
+                                      borderRadius: "50%",
+                                      background: option.color,
+                                      overflow: "hidden",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {customSrc ? (
+                                      <img
+                                        src={customSrc}
+                                        alt=""
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "cover",
+                                        }}
+                                      />
+                                    ) : null}
+                                  </span>
+                                  <span style={{ fontSize: 13 }}>
+                                    {option.label}
+                                    <small
+                                      style={{
+                                        display: "block",
+                                        fontSize: 11,
+                                        opacity: 0.65,
+                                      }}
+                                    >
+                                      {uploadingStatusIconKey === option.key
+                                        ? "Uploading…"
+                                        : customSrc
+                                          ? "Custom"
+                                          : "Default"}
+                                    </small>
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => resetStatusIconOverride(option.key)}
+                                  disabled={!customSrc}
+                                  aria-label={`Reset ${option.label} icon`}
+                                  style={{
+                                    minHeight: 44,
+                                    border: 0,
+                                    borderRadius: 10,
+                                    padding: 8,
+                                    color: "#438ff1",
+                                    background: "transparent",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={resetAllStatusIconOverrides}
+                            style={{
+                              minHeight: 44,
+                              border: 0,
+                              color: "#438ff1",
+                              background: "transparent",
+                              cursor: "pointer",
+                              padding: 8,
+                            }}
+                          >
+                            Reset all status icons
+                          </button>
+                        </div>
+                      ),
+                    },
+                    {
+                      category: "advanced",
+                      title: "Highlight colors",
+                      reset: () => {
+                        const defaults =
+                          highlightThemeEditorMode === "dark"
+                            ? DEFAULT_SIDEBAR_HIGHLIGHT_COLORS_DARK
+                            : DEFAULT_SIDEBAR_HIGHLIGHT_COLORS;
+                        (Object.keys(defaults) as CoverScaleGroupKey[]).forEach((key) =>
+                          updateSidebarHighlightColor(
+                            key,
+                            defaults[key],
+                            highlightThemeEditorMode,
+                          ),
+                        );
+                      },
+                      content: (
+                        <div style={{ padding: "4px 0" }}>
+                          <div
+                            role="group"
+                            aria-label="Highlight color theme"
+                            style={{ display: "flex", gap: 8, padding: "6px 0 12px" }}
+                          >
+                            {(["light", "dark"] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                type="button"
+                                aria-pressed={highlightThemeEditorMode === mode}
+                                onClick={() => setHighlightThemeEditorMode(mode)}
+                                style={{
+                                  flex: 1,
+                                  minHeight: 44,
+                                  border: "1px solid rgba(128,140,160,.18)",
+                                  borderRadius: 12,
+                                  background:
+                                    highlightThemeEditorMode === mode
+                                      ? "rgba(139,175,244,.2)"
+                                      : "transparent",
+                                  color: "inherit",
+                                  textTransform: "capitalize",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {mode}
+                              </button>
+                            ))}
+                          </div>
+                          {(
+                            [
+                              { label: "Home", key: "home" },
+                              { label: "Books", key: "books" },
+                              { label: "Movies", key: "movies" },
+                              { label: "TV Shows", key: "tv" },
+                              { label: "Games", key: "games" },
+                            ] as Array<{ label: string; key: CoverScaleGroupKey }>
+                          ).map(({ label, key }) => (
+                            <label
+                              key={key}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 8,
-                                width: "100%",
-                                border: "1px solid rgba(139, 175, 244, 0.35)",
-                                background: "rgba(255,255,255,0.9)",
-                                borderRadius: 8,
-                                padding: "6px 8px",
-                                cursor: "pointer",
+                                justifyContent: "space-between",
+                                gap: 14,
+                                minHeight: 54,
+                                fontSize: 13,
                               }}
-                              title={uploadingStatusIconKey === option.key ? "Uploading..." : `Replace ${option.label} icon`}
                             >
-                              <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: option.color, border: `1px solid color-mix(in srgb, ${option.color} 75%, black)` }}>
-                                {customSrc ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={customSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                                ) : null}
+                              {label}
+                              <span
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 12,
+                                  fontSize: 11,
+                                }}
+                              >
+                                {(highlightThemeEditorMode === "dark"
+                                  ? sidebarHighlightColorsDark
+                                  : sidebarHighlightColorsLight)[key].toUpperCase()}
+                                <input
+                                  aria-label={`${label} ${highlightThemeEditorMode} highlight color`}
+                                  type="color"
+                                  value={
+                                    (highlightThemeEditorMode === "dark"
+                                      ? sidebarHighlightColorsDark
+                                      : sidebarHighlightColorsLight)[key]
+                                  }
+                                  onChange={(event) =>
+                                    updateSidebarHighlightColor(
+                                      key,
+                                      event.target.value,
+                                      highlightThemeEditorMode,
+                                    )
+                                  }
+                                  style={{
+                                    width: 50,
+                                    height: 44,
+                                    padding: 3,
+                                    border: "1px solid rgba(128,140,160,.18)",
+                                    borderRadius: 10,
+                                    background: "transparent",
+                                    cursor: "pointer",
+                                  }}
+                                />
                               </span>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: "#3a3a3c", textAlign: "left" }}>{option.label}</span>
-                            </button>
-                            <span style={{ fontSize: 10, color: customSrc ? "#2f8f5b" : "#6a7484", fontWeight: 700 }}>{customSrc ? "Custom" : "Default"}</span>
-                            <button
-                              type="button"
-                              onClick={() => resetStatusIconOverride(option.key)}
-                              disabled={!customSrc}
-                              style={{
-                                border: "1px solid rgba(139, 175, 244, 0.35)",
-                                background: customSrc ? "rgba(139, 175, 244, 0.12)" : "rgba(200,200,200,0.15)",
-                                color: customSrc ? "#4a7ed4" : "#9aa3af",
-                                borderRadius: 7,
-                                padding: "5px 7px",
-                                cursor: customSrc ? "pointer" : "default",
-                                fontSize: 10,
-                                fontWeight: 700,
-                              }}
-                            >
-                              Reset
-                            </button>
-                          </div>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={resetAllStatusIconOverrides}
-                        style={{
-                          border: "1px solid rgba(139, 175, 244, 0.35)",
-                          background: "rgba(139, 175, 244, 0.12)",
-                          color: "#4a7ed4",
-                          borderRadius: 8,
-                          padding: "7px 8px",
-                          cursor: "pointer",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        Reset All To Default
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                            </label>
+                          ))}
+                        </div>
+                      ),
+                    },
+                    ...(settingSyncConflicts.length
+                      ? [
+                          {
+                            category: "advanced",
+                            title: "Settings conflicts",
+                            content: (
+                              <div style={{ padding: 12, fontSize: 13, lineHeight: 1.5 }}>
+                                <p>
+                                  {settingSyncConflicts.length} local settings differ from
+                                  their saved values.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={clearSettingSyncConflicts}
+                                  style={{
+                                    minHeight: 44,
+                                    border: 0,
+                                    borderRadius: 10,
+                                    padding: 10,
+                                    background: "rgba(220,120,80,.12)",
+                                    color: "inherit",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Clear conflicting local cache values
+                                </button>
+                              </div>
+                            ),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              ) : null
+            }
 
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-                {/* Sidebar section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(244, 153, 16, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSettingsOpen({ ...settingsOpen, sidebar: !settingsOpen.sidebar });
-                    }}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      borderBottom: settingsOpen.sidebar ? "1px solid rgba(244, 153, 16, 0.14)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Sidebar Spacing</div>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); resetSidebarDefaults(); }} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: settingsOpen.sidebar ? "rotate(180deg)" : "none", transition: "transform 0.2s", opacity: 0.5 }}>
-                          <path d="M2 4l4 4 4-4" stroke="#f49910" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  {settingsOpen.sidebar ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>Sidebar Spacing</div>
-                      {(
-                        [
-                          { label: "Between", value: sidebarSectionGap, min: -8, max: 20, step: 1, update: updateSidebarSectionGap },
-                          { label: "Library", value: librarySidebarItemGap, min: -8, max: 12, step: 1, update: updateLibrarySidebarItemGap },
-                          { label: "Smart", value: smartListsSidebarItemGap, min: -8, max: 12, step: 1, update: updateSmartListsSidebarItemGap },
-                          { label: "Discover", value: discoverSidebarItemGap, min: -8, max: 12, step: 1, update: updateDiscoverSidebarItemGap },
-                          { label: "Submenus", value: sidebarSubmenuGap, min: -8, max: 12, step: 1, update: updateSidebarSubmenuGap },
-                          { label: "Rows", value: sidebarRowDensityOffset, min: -8, max: 8, step: 1, update: updateSidebarRowDensityOffset },
-                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                      ).map(({ label, value, min, max, step, update }) => (
-                        <label key={`global-gap-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                          <span style={{ fontWeight: 500 }}>{label}</span>
-                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
 
-                {/* Library Sidebar section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(244, 153, 16, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(244, 153, 16, 0.14)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Library</div>
-                    <button type="button" onClick={resetLibrarySidebarDefaults} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                  </div>
-                  {settingsOpen.sidebar ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>Library</div>
-                      {(
-                        [
-                          { label: "Icon Size", value: iconSize, min: 8, max: 64, step: 1, update: updateIconSize },
-                          { label: "Font Size", value: sidebarFontSize, min: 10, max: 20, step: 1, update: updateSidebarFontSize },
-                          { label: "Icon Gap", value: sidebarGap, min: 4, max: 20, step: 1, update: updateSidebarGap },
-                          { label: "Header Sz", value: sidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateSidebarHeaderFontSize },
-                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                      ).map(({ label, value, min, max, step, update }) => (
-                        <label key={`library-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                          <span style={{ fontWeight: 500 }}>{label}</span>
-                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
-                        </label>
-                      ))}
-                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Font Wt</span>
-                        <select value={sidebarFontWeight} onChange={(e) => updateSidebarFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
-                          <option value="300">Light (300)</option>
-                          <option value="400">Normal (400)</option>
-                          <option value="500">Medium (500)</option>
-                          <option value="600">Semi-Bold (600)</option>
-                          <option value="700">Bold (700)</option>
-                        </select>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Header Wt</span>
-                        <select value={sidebarHeaderFontWeight} onChange={(e) => updateSidebarHeaderFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
-                          <option value="300">Light (300)</option>
-                          <option value="400">Normal (400)</option>
-                          <option value="500">Medium (500)</option>
-                          <option value="600">Semi-Bold (600)</option>
-                          <option value="700">Bold (700)</option>
-                        </select>
-                      </label>
-
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Smart Lists Sidebar section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(244, 153, 16, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(244, 153, 16, 0.14)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Smart Lists</div>
-                    <button type="button" onClick={resetSmartListsSidebarDefaults} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                  </div>
-                  {settingsOpen.sidebar ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase" }}>Smart Lists</div>
-                      {(
-                        [
-                          { label: "Icon Size", value: smartListsSidebarIconSize, min: 8, max: 64, step: 1, update: updateSmartListsSidebarIconSize },
-                          { label: "Font Size", value: smartListsSidebarFontSize, min: 10, max: 20, step: 1, update: updateSmartListsSidebarFontSize },
-                          { label: "Icon Gap", value: smartListsSidebarGap, min: 4, max: 20, step: 1, update: updateSmartListsSidebarGap },
-                          { label: "Header Sz", value: smartListsSidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateSmartListsSidebarHeaderFontSize },
-                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                      ).map(({ label, value, min, max, step, update }) => (
-                        <label key={`smart-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                          <span style={{ fontWeight: 500 }}>{label}</span>
-                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
-                        </label>
-                      ))}
-                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Font Wt</span>
-                        <select value={smartListsSidebarFontWeight} onChange={(e) => updateSmartListsSidebarFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
-                          <option value="300">Light (300)</option>
-                          <option value="400">Normal (400)</option>
-                          <option value="500">Medium (500)</option>
-                          <option value="600">Semi-Bold (600)</option>
-                          <option value="700">Bold (700)</option>
-                        </select>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Header Wt</span>
-                        <select value={smartListsSidebarHeaderFontWeight} onChange={(e) => updateSmartListsSidebarHeaderFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
-                          <option value="300">Light (300)</option>
-                          <option value="400">Normal (400)</option>
-                          <option value="500">Medium (500)</option>
-                          <option value="600">Semi-Bold (600)</option>
-                          <option value="700">Bold (700)</option>
-                        </select>
-                      </label>
-
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Discover Sidebar section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(244, 153, 16, 0.2)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(244, 153, 16, 0.14)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#f49910", letterSpacing: "0.07em", textTransform: "uppercase" }}>Discover</div>
-                    <button type="button" onClick={resetDiscoverSidebarDefaults} style={{ border: "1px solid rgba(244, 153, 16, 0.35)", background: "rgba(244,153,16,0.1)", color: "#c07800", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                  </div>
-                  {settingsOpen.sidebar ? (
-                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 9 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: "#c07800", letterSpacing: "0.05em", textTransform: "uppercase" }}>Discover</div>
-                      {(
-                        [
-                          { label: "Icon Size", value: discoverSidebarIconSize, min: 8, max: 64, step: 1, update: updateDiscoverSidebarIconSize },
-                          { label: "Font Size", value: discoverSidebarFontSize, min: 10, max: 20, step: 1, update: updateDiscoverSidebarFontSize },
-                          { label: "Icon Gap", value: discoverSidebarGap, min: 4, max: 20, step: 1, update: updateDiscoverSidebarGap },
-                          { label: "Header Sz", value: discoverSidebarHeaderFontSize, min: 8, max: 16, step: 1, update: updateDiscoverSidebarHeaderFontSize },
-                        ] as { label: string; value: number; min: number; max: number; step: number; update: (v: number) => void }[]
-                      ).map(({ label, value, min, max, step, update }) => (
-                        <label key={`discover-${label}`} style={{ display: "grid", gridTemplateColumns: "72px 1fr 32px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                          <span style={{ fontWeight: 500 }}>{label}</span>
-                          <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => update(Number(e.target.value))} style={{ width: "100%", accentColor: "#f49910" }} />
-                          <span style={{ textAlign: "right", fontWeight: 600, color: "#c07800", fontSize: 11 }}>{value}</span>
-                        </label>
-                      ))}
-                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Font Wt</span>
-                        <select value={discoverSidebarFontWeight} onChange={(e) => updateDiscoverSidebarFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
-                          <option value="300">Light (300)</option>
-                          <option value="400">Normal (400)</option>
-                          <option value="500">Medium (500)</option>
-                          <option value="600">Semi-Bold (600)</option>
-                          <option value="700">Bold (700)</option>
-                        </select>
-                      </label>
-                      <label style={{ display: "grid", gridTemplateColumns: "72px 1fr", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>Header Wt</span>
-                        <select value={discoverSidebarHeaderFontWeight} onChange={(e) => updateDiscoverSidebarHeaderFontWeight(e.target.value)} style={{ fontSize: 11, borderRadius: 6, border: "1px solid rgba(244, 153, 16, 0.3)", padding: "3px 6px", background: "rgba(255,255,255,0.8)", color: "#3a3a3c" }}>
-                          <option value="300">Light (300)</option>
-                          <option value="400">Normal (400)</option>
-                          <option value="500">Medium (500)</option>
-                          <option value="600">Semi-Bold (600)</option>
-                          <option value="700">Bold (700)</option>
-                        </select>
-                      </label>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Highlight Colors section */}
-                <div
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid rgba(123, 132, 145, 0.25)",
-                    background: "rgba(255,255,255,0.7)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      borderBottom: "1px solid rgba(123, 132, 145, 0.14)",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#66707d", letterSpacing: "0.07em", textTransform: "uppercase" }}>Highlight Colors</div>
-                    <button type="button" onClick={resetSidebarDefaults} style={{ border: "1px solid rgba(123, 132, 145, 0.35)", background: "rgba(123,132,145,0.1)", color: "#53606f", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", cursor: "pointer" }}>Reset</button>
-                  </div>
-                  <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ display: "inline-flex", gap: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => setHighlightThemeEditorMode("light")}
-                        style={{
-                          borderRadius: 999,
-                          border: highlightThemeEditorMode === "light" ? "1px solid rgba(123, 132, 145, 0.46)" : "1px solid rgba(123, 132, 145, 0.26)",
-                          background: highlightThemeEditorMode === "light" ? "rgba(123,132,145,0.16)" : "rgba(255,255,255,0.64)",
-                          color: "#53606f",
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: "3px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Light
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setHighlightThemeEditorMode("dark")}
-                        style={{
-                          borderRadius: 999,
-                          border: highlightThemeEditorMode === "dark" ? "1px solid rgba(123, 132, 145, 0.46)" : "1px solid rgba(123, 132, 145, 0.26)",
-                          background: highlightThemeEditorMode === "dark" ? "rgba(123,132,145,0.16)" : "rgba(255,255,255,0.64)",
-                          color: "#53606f",
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: "3px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Dark
-                      </button>
-                    </div>
-                    {(
-                      [
-                        { label: "Home", key: "home" as CoverScaleGroupKey },
-                        { label: "Books", key: "books" as CoverScaleGroupKey },
-                        { label: "Movies", key: "movies" as CoverScaleGroupKey },
-                        { label: "TV", key: "tv" as CoverScaleGroupKey },
-                        { label: "Games", key: "games" as CoverScaleGroupKey },
-                      ]
-                    ).map(({ label, key }) => (
-                      <label key={`highlight-${key}`} style={{ display: "grid", gridTemplateColumns: "64px 1fr 64px", alignItems: "center", gap: 10, fontSize: 11, color: "#3a3a3c" }}>
-                        <span style={{ fontWeight: 500 }}>{label}</span>
-                        <input
-                          type="color"
-                          value={(highlightThemeEditorMode === "dark" ? sidebarHighlightColorsDark : sidebarHighlightColorsLight)[key]}
-                          onChange={(e) => updateSidebarHighlightColor(key, e.target.value, highlightThemeEditorMode)}
-                          style={{ width: "100%", height: 28, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, background: "transparent", padding: 2, cursor: "pointer" }}
-                        />
-                        <span style={{ textAlign: "right", fontWeight: 600, color: "#53606f", fontSize: 10 }}>
-                          {(highlightThemeEditorMode === "dark" ? sidebarHighlightColorsDark : sidebarHighlightColorsLight)[key].toUpperCase()}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Sync conflicts */}
-                {settingSyncConflicts.length ? (
-                  <div
-                    style={{
-                      borderRadius: 10,
-                      border: "1px solid rgba(255, 100, 100, 0.35)",
-                      background: "rgba(255, 240, 240, 0.9)",
-                      padding: "10px 12px",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#c0392b", letterSpacing: "0.05em", marginBottom: 4, textTransform: "uppercase" }}>
-                      {settingSyncConflicts.length} Sync Conflict{settingSyncConflicts.length === 1 ? "" : "s"}
-                    </div>
-                    <div style={{ fontSize: 10, marginBottom: 8, lineHeight: 1.4, color: "#7b2020" }}>
-                      {`Local ${settingSyncConflicts.length === 1 ? "value" : "values"} for ${settingSyncConflicts[0]}${settingSyncConflicts.length > 1 ? ", etc." : ""} differ from sheet values.`}
-                    </div>
-                    <button
-                      onClick={clearSettingSyncConflicts}
-                      style={{
-                        width: "100%",
-                        border: "1px solid rgba(192, 57, 43, 0.4)",
-                        background: "rgba(192, 57, 43, 0.12)",
-                        color: "#c0392b",
-                        borderRadius: 7,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                        fontSize: 10,
-                        fontWeight: 700,
-                      }}
-                    >
-                      Clear conflicting local cache values
-                    </button>
-                  </div>
-                ) : null}
-
-                  </div>
-                </div>
-              </div>
-            </div>,
-              document.body
-            ) : null}
 
 
             </div>
@@ -26670,7 +25902,7 @@ export default function Page() {
                 setSettingsPopupOpen(false);
                 setSortPopupOpen(false);
                 setFaqPopupOpen(false);
-                setShowVersionNotes(false);
+
               }}
               style={{
                 position: "fixed",
@@ -27387,7 +26619,7 @@ export default function Page() {
                       </div>
                     </div>
                   );
-                })()} 
+                })()}
               </div>
             </div>
           ) : nav === "completed-gallery" && !bookDetailItem && !movieDetailItem && !tvDetailItem && !gameDetailItem ? (
@@ -28748,7 +27980,7 @@ export default function Page() {
                       onClick={() => {
                         setSettingsPopupOpen(false);
                         setSortPopupOpen((prev) => !prev);
-                        setShowVersionNotes(false);
+
                       }}
                       title="Open sort options"
                       aria-label="Open sort options"
@@ -28829,7 +28061,7 @@ export default function Page() {
                       onClick={() => {
                         setSortPopupOpen(false);
                         setSettingsPopupOpen(false);
-                        setShowVersionNotes(false);
+
                         setAddModalOpen(true);
                       }}
                       title="Add new item"
@@ -31009,7 +30241,7 @@ export default function Page() {
           cursor: pointer;
           transition: all 150ms ease;
         }
-        .sideItem:hover { 
+        .sideItem:hover {
           background: ${sidebarItemHoverBackground};
         }
         .sideItem.active {

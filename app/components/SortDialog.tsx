@@ -14,8 +14,20 @@ type ColumnControl = {
   onMove: (direction: -1 | 1) => void;
 };
 
+type MobileControls = {
+  displayMode?: "cover" | "list";
+  onDisplayMode: (mode: "cover" | "list") => void;
+  coverSize: number;
+  coverLabel: string;
+  onCoverSize: (size: number) => void;
+  reorder?: { enabled: boolean; onToggle: () => void };
+  listEdit?: { enabled: boolean; saving: boolean; onEdit: () => void; onCancel: () => void };
+  filters: { label: string; options: readonly string[]; selected: string | null; counts?: Record<string, number>; onSelect: (value: string | null) => void }[];
+};
+
 type Props = {
   isDark: boolean;
+  mobileControls?: MobileControls;
   sortField: string;
   sortOptions: ReactNode;
   sortOrder: "Asc" | "Desc";
@@ -29,7 +41,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function SortDialog({ isDark, sortField, sortOptions, sortOrder, manualOrder, onSortField, onSortOrder, listSize, onListSize, columns, onResetColumns, onClose }: Props) {
+export function SortDialog({ mobileControls, isDark, sortField, sortOptions, sortOrder, manualOrder, onSortField, onSortOrder, listSize, onListSize, columns, onResetColumns, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const element = dialog.current;
@@ -40,12 +52,18 @@ export function SortDialog({ isDark, sortField, sortOptions, sortOrder, manualOr
     return () => { element?.close(); document.body.style.overflow = overflow; previous?.focus(); };
   }, []);
   if (typeof document === "undefined") return null;
-  return createPortal(<dialog ref={dialog} className={`sortDialog ${isDark ? "dark" : ""}`} aria-labelledby="sort-dialog-title" onCancel={event => { event.preventDefault(); onClose(); }} onKeyDown={event => event.stopPropagation()} onKeyUp={event => event.stopPropagation()}>
+  return createPortal(<dialog ref={dialog} className={`sortDialog ${isDark ? "dark" : ""} ${mobileControls ? "mobileFilters" : ""}`} aria-labelledby="sort-dialog-title" onCancel={event => { event.preventDefault(); onClose(); }} onKeyDown={event => event.stopPropagation()} onKeyUp={event => event.stopPropagation()}>
     <header>
       <span className="heroIcon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M5 8h22M5 16h22M5 24h22" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" /><rect x="10" y="4" width="5" height="8" rx="2" /><rect x="20" y="12" width="5" height="8" rx="2" /><rect x="8" y="20" width="5" height="8" rx="2" /></svg></span>
       <h1 id="sort-dialog-title">Sort &amp; Display</h1>
       <button className="closeButton" type="button" aria-label="Close Sort" onClick={onClose}>×</button>
     </header>
+    {mobileControls ? <>
+      {mobileControls.displayMode ? <section aria-label="View"><div className="group displayGroup"><span className="rowTitle">View</span><div className="segments" role="group" aria-label="Display mode">{(["cover", "list"] as const).map(mode => <button type="button" key={mode} aria-pressed={mobileControls.displayMode === mode} onClick={() => mobileControls.onDisplayMode(mode)}>{mode === "cover" ? "Cover" : "List"}</button>)}</div>
+        {mobileControls.displayMode === "list" && mobileControls.listEdit ? <div className="listActions"><button type="button" disabled={mobileControls.listEdit.saving} onClick={mobileControls.listEdit.onEdit}>{mobileControls.listEdit.saving ? "Saving…" : mobileControls.listEdit.enabled ? "Save edits" : "Edit list"}</button>{mobileControls.listEdit.enabled ? <button type="button" disabled={mobileControls.listEdit.saving} onClick={mobileControls.listEdit.onCancel}>Cancel</button> : null}</div> : null}
+      </div></section> : null}
+      {mobileControls.displayMode !== "list" ? <section aria-labelledby="mobile-cover-size-label"><div className="sectionHeading"><h2 id="mobile-cover-size-label">Cover size</h2><button className="reset" type="button" onClick={() => mobileControls.onCoverSize(100)} aria-label="Reset cover size">Reset</button></div><div className="group sizeGroup"><div className="sizeHeader"><span>{mobileControls.coverLabel}</span><output htmlFor="mobile-cover-size">{mobileControls.coverSize}%</output></div><div className="sizeControls"><button className="step" type="button" aria-label="Decrease cover size" disabled={mobileControls.coverSize <= 50} onClick={() => mobileControls.onCoverSize(Math.max(50, mobileControls.coverSize - 5))}>−</button><input id="mobile-cover-size" aria-label="Cover size" type="range" min="50" max="250" step="1" value={mobileControls.coverSize} onChange={event => mobileControls.onCoverSize(Number(event.target.value))}/><button className="step" type="button" aria-label="Increase cover size" disabled={mobileControls.coverSize >= 250} onClick={() => mobileControls.onCoverSize(Math.min(250, mobileControls.coverSize + 5))}>+</button></div></div></section> : null}
+    </> : null}
     <section aria-label="Sorting"><div className="group">
       <label className="settingRow sortField"><span>Sort by</span><select value={sortField} onChange={event => onSortField(event.target.value)}>{sortOptions}</select><span className="chevron" aria-hidden="true">⌄</span></label>
       <div className="orderRow"><div className="segments" role="group" aria-label="Sort order"><button type="button" disabled={manualOrder} aria-pressed={!manualOrder && sortOrder === "Asc"} onClick={() => onSortOrder("Asc")}>↑ Ascending</button><button type="button" disabled={manualOrder} aria-pressed={!manualOrder && sortOrder === "Desc"} onClick={() => onSortOrder("Desc")}>↓ Descending</button></div>{manualOrder ? <small>Drag your covers to set their order.</small> : null}</div>
@@ -54,6 +72,8 @@ export function SortDialog({ isDark, sortField, sortOptions, sortOrder, manualOr
       <section aria-labelledby="list-size-title"><div className="sectionHeading"><h2 id="list-size-title">List size</h2><button className="reset" type="button" onClick={() => onListSize(100)} aria-label="Reset list size">Reset</button></div><div className="group sizeGroup"><div className="sizeHeader"><span>Text &amp; rows</span><output htmlFor="sort-list-size">{listSize}%</output></div><div className="sizeControls"><button className="step" type="button" aria-label="Decrease list size" disabled={listSize <= 70} onClick={() => onListSize(Math.max(70, listSize - 5))}>−</button><input id="sort-list-size" aria-label="List size" type="range" min="70" max="150" step="5" value={listSize} onChange={event => onListSize(Number(event.target.value))} /><button className="step" type="button" aria-label="Increase list size" disabled={listSize >= 150} onClick={() => onListSize(Math.min(150, listSize + 5))}>+</button></div></div></section>
       <section aria-label="List columns"><details className="group columnGroup"><summary><span><strong>Columns</strong><small>{columns.filter(column => column.checked).length} visible · choose and arrange</small></span><span className="disclosure" aria-hidden="true">›</span></summary><div className="columns"><div className="columnIntro"><small>Title always stays visible.</small><button className="reset" type="button" onClick={onResetColumns} aria-label="Reset columns">Reset</button></div>{columns.map(column => <div className="columnRow" key={column.key}><label><input type="checkbox" checked={column.checked} disabled={column.required} onChange={column.onToggle} /><span>{column.label}</span></label><button type="button" className="move" aria-label={`Move ${column.label} up`} disabled={!column.canMoveUp} onClick={() => column.onMove(-1)}>↑</button><button type="button" className="move" aria-label={`Move ${column.label} down`} disabled={!column.canMoveDown} onClick={() => column.onMove(1)}>↓</button></div>)}</div></details></section>
     </> : null}
+    {mobileControls?.reorder ? <section className="group reorderRow"><label><span>Reorder covers<small>Turn off for easier scrolling.</small></span><input type="checkbox" checked={mobileControls.reorder.enabled} onChange={mobileControls.reorder.onToggle}/></label></section> : null}
+    {mobileControls?.filters.map(group => group.options.length ? <section key={group.label}><details className="group filterGroup" open={group.selected ? true : undefined}><summary><span>{group.label}{group.selected ? <small>{group.selected}</small> : null}</span><span className="disclosure" aria-hidden="true">›</span></summary><div className="filterOptions"><button type="button" aria-pressed={!group.selected} onClick={() => group.onSelect(null)}>All</button>{group.options.map(option => <button type="button" key={option} aria-pressed={group.selected === option} onClick={() => group.onSelect(group.selected === option ? null : option)}>{option}{group.counts ? <small>{group.counts[option] ?? 0}</small> : null}</button>)}</div></details></section> : null)}
     <style jsx>{`
       .sortDialog{--bg:#f1f2f4;--surface:#fff;--text:#202936;--muted:#748094;--line:rgba(40,50,70,.08);position:fixed;inset:0;margin:auto;width:min(620px,calc(100vw - 48px));max-width:none;max-height:calc(100dvh - 64px);overflow:auto;overscroll-behavior:contain;padding:24px 32px 28px;border:1px solid var(--line);border-radius:28px;background:var(--bg);color:var(--text);box-shadow:0 28px 100px #0004;box-sizing:border-box}
       .dark{--bg:#20242c;--surface:#2b303a;--text:#f4f6fa;--muted:#a4aebb;--line:rgba(255,255,255,.08)}button,select,input{font:inherit;color:inherit}button{cursor:pointer}button:disabled{opacity:.35;cursor:default}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #3492ff;outline-offset:3px}.navigation{display:flex;justify-content:space-between;margin-bottom:22px}.navigation button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:28px;line-height:1}
@@ -63,6 +83,8 @@ export function SortDialog({ isDark, sortField, sortOptions, sortOrder, manualOr
       header{gap:10px;margin-bottom:16px}.heroIcon{width:38px;height:38px;border-radius:12px}.heroIcon svg{width:26px;height:26px}h1{font-size:19px;flex:1}.closeButton{width:44px;height:44px;padding:0;flex:none;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:25px;line-height:1}
       section+section{margin-top:14px}.group{border-radius:16px}.settingRow{min-height:56px;padding:10px 14px;font-size:13px}.sortField select{padding:10px 32px 10px 78px;font-size:13px}.chevron{right:14px}.orderRow{padding:10px}.segments{margin-top:0}.segments button{font-size:12px}.sectionHeading{margin-bottom:4px}h2{font-size:12px}.sizeGroup{padding:12px 14px}.sizeHeader{font-size:13px}.sizeControls{gap:10px;margin-top:6px}.columnGroup summary{min-height:64px;padding:12px 14px}.columnGroup strong{font-size:13px}.columnGroup small{font-size:11px}.columns{padding:0 14px 8px}.columnRow{gap:4px}.columnRow label{font-size:13px;gap:8px}
       @media(max-width:600px){.sortDialog{top:auto;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);width:min(340px,calc(100vw - 24px));max-height:65dvh;padding:14px}.sortField select{font-size:16px}h1{font-size:18px}}
+      .mobileFilters{--bg:rgba(241,242,244,.84);--surface:rgba(255,255,255,.72);top:auto;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 170px);max-height:min(65dvh,calc(100dvh - 170px));backdrop-filter:none;-webkit-backdrop-filter:none}
+      .mobileFilters.dark{--bg:rgba(32,36,44,.86);--surface:rgba(43,48,58,.76)}.displayGroup{padding:12px 14px}.displayGroup .segments{margin-top:8px}.listActions{display:flex;gap:8px;margin-top:10px}.listActions button{flex:1;min-height:44px;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:#3492ff;font-size:13px}.reorderRow{padding:12px 14px}.reorderRow label{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:13px}.reorderRow input{width:24px;height:24px;accent-color:#3492ff}.filterGroup summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;min-height:52px;font-size:13px;cursor:pointer}.filterGroup summary::-webkit-details-marker{display:none}.filterGroup summary small{margin-top:3px;color:#3492ff}.filterOptions{display:flex;flex-wrap:wrap;gap:7px;padding:0 12px 12px;max-height:240px;overflow:auto}.filterOptions button{min-height:44px;padding:9px 13px;border:1px solid var(--line);border-radius:13px;background:transparent;font-size:13px;display:flex;align-items:center;gap:7px;text-align:left}.filterOptions button[aria-pressed=true]{color:#fff;background:#3492ff;border-color:transparent}.filterOptions button[aria-pressed=true] small{color:inherit}.filterOptions small{font-size:11px}.mobileFilters .reset{min-height:44px}.mobileFilters .sortField select{font-size:16px}
     `}</style>
   </dialog>, document.body);
 }
