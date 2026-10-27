@@ -1,3 +1,5 @@
+import { mergeRecordDelta, type IndexedSnapshot, type RecordDelta } from "./incremental-snapshot";
+import { createSnapshotStore, type SnapshotStore } from "./snapshot-store";
 import { mergeTargetedReadback } from "./targeted-readback";
 import type { LibraryBackend } from "./backend-context";
 import { rendererSnapshot } from "./renderer-snapshot";
@@ -13,7 +15,7 @@ export type InitialLibraryRead = { snapshot: LibrarySnapshot } | { error: string
 
 /** Per-mounted-library state, never a server-wide cache. Original revisions are
  * retained for open editors; a focus refresh must not silently rebase an edit. */
-export function createRendererBackend(libraryId:string, ownerId:string, fetcher:typeof fetch=fetch, initialRead?:Promise<InitialLibraryRead>):LibraryBackend {
+export function createRendererBackend(libraryId:string, ownerId:string, fetcher:typeof fetch=fetch, initialRead?:Promise<InitialLibraryRead>, snapshotStore:SnapshotStore=createSnapshotStore(ownerId,libraryId)):LibraryBackend {
   // A request-scoped server read, not a cache. Consume at most once; every
   // later refresh still requests a fresh authenticated snapshot.
   let startupRead=initialRead;
@@ -22,9 +24,11 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
   const inFlight=new Map<string,Promise<Awaited<ReturnType<Response["json"]>>>>();
   const uploads=new Map<string,string>();
   const uploading=new Map<string,Promise<string>>();
-  let latest:LibrarySnapshot|null=null;
+  let latest:IndexedSnapshot|null=null;
+  let triedLocalCopy=false;
   let queue:Promise<unknown>=Promise.resolve();
-  function snapshotFromRead(data:unknown):LibrarySnapshot {
+  function snapshotFromRead(data:unknown):IndexedSnapshot {
+    if(data && typeof data === "object" && (data as {delta?:unknown}).delta===true) return mergeRecordDelta(latest,data as RecordDelta,ownerId,libraryId);
     if(data && typeof data === "object" && (data as {unchanged?:unknown}).unchanged === true) {
       const fresh=data as {owner_id?:string;library_id?:string;change_token?:string;observed_at?:string};
       if(!latest || fresh.owner_id!==ownerId || fresh.library_id!==libraryId || fresh.change_token!==latest.change_token ||
@@ -35,6 +39,13 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
   }
 
   const endpoint="/v14/api/library";
+  async function fetchFresh(signal?:AbortSignal) {
+    const response=latest?.record_index
+      ? await fetcher(`${endpoint}/read`,{method:"POST",cache:"no-store",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({libraryId,changeToken:latest.change_token,records:latest.record_index}),signal})
+      : await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}${latest && /^[a-f0-9]{32}$/i.test(latest.change_token)?`&changeToken=${latest.change_token}`:""}`,{cache:"no-store",credentials:"same-origin",signal});
+    if(!response.ok) throw new Error("Fresh library read failed");
+    return snapshotFromRead(await response.json());
+  }
   function identity(item:Record<string,unknown>) {
     const id=item.__cdlIdentity as {itemId?:string;libraryId?:string;revision?:number}|undefined;
     if (!id?.itemId || id.libraryId!==libraryId || !Number.isSafeInteger(id.revision)) throw new Error("Missing database item identity. Reload before saving.");
@@ -122,16 +133,23 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
         if ("error" in result) throw new Error(result.error);
         data=result.snapshot;
       } else {
-        const token = latest && /^[a-f0-9]{32}$/i.test(latest.change_token) ? `&changeToken=${encodeURIComponent(latest.change_token)}` : "";
-        const response=await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}${token}`,{cache:"no-store",credentials:"same-origin",signal});
-        if (!response.ok) throw new Error("Fresh library read failed");
-        data=snapshotFromRead(await response.json());
+        if(!triedLocalCopy && !latest) {
+          triedLocalCopy=true;
+          latest=await snapshotStore.read();
+          // Disk data is never returned to Page before authenticated revalidation.
+          if(latest){try{rendererSnapshot(latest);if(latest.owner_id!==ownerId || latest.library_id!==libraryId)throw new Error("Local owner mismatch");}catch{latest=null;await snapshotStore.clear();}}
+        }
+        data=await fetchFresh(signal);
       }
       const snapshot=data as LibrarySnapshot;
       if (snapshot?.owner_id!==ownerId || snapshot.library_id!==libraryId) throw new Error("Unexpected library owner");
       const rendered=rendererSnapshot(snapshot);
       if (signal.aborted) throw new Error("Library read cancelled");
+      const changed=latest?.change_token!==snapshot.change_token || !triedLocalCopy;
       latest=snapshot;
+      // Persist only a complete server-verified version, never optimistic edits.
+      if(changed) await snapshotStore.write(snapshot);
+      signal.throwIfAborted();
       snapshot.items.forEach(item=>baselines.set(`${item.id}:${item.revision}`,structuredClone(item)));
       return rendered;
       });
@@ -145,11 +163,7 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
         const result=queue.catch(()=>{}).then(async()=>{
           // A no-op still checks current state; do not call a cached baseline saved.
           // It must also wait for earlier saves/reads, just like a changed edit.
-          const token = latest && /^[a-f0-9]{32}$/i.test(latest.change_token) ? `&changeToken=${encodeURIComponent(latest.change_token)}` : "";
-          const response=await fetcher(`${endpoint}?libraryId=${encodeURIComponent(libraryId)}${token}`,{cache:"no-store",credentials:"same-origin"});
-          if (!response.ok) throw new Error("Edit readback failed");
-          const data=await response.json();
-          const fresh=snapshotFromRead(data);
+          const fresh=await fetchFresh();
           if (fresh?.owner_id!==ownerId || fresh.library_id!==libraryId) throw new Error("Unexpected library owner");
           rendererSnapshot(fresh);
           const current=fresh.items.find(candidate=>candidate.id===original.id);

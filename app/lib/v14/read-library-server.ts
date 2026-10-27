@@ -31,7 +31,15 @@ function readWithClient(
   return readLibrary({
     authenticatedOwner,
     async snapshot(id) {
-      return (renderer ? readBoundedRendererSnapshot : readBoundedSnapshot)((name, args) => client.rpc(name, args), id);
+      if (!renderer) return readBoundedSnapshot((name, args) => client.rpc(name, args), id);
+      const { readRecordDelta, mergeRecordDelta } = await import("./incremental-snapshot");
+      try {
+        const delta=await readRecordDelta((name,args)=>client.rpc(name,args),id,undefined,null);
+        return mergeRecordDelta(null,delta,delta.owner_id,id);
+      } catch(error) {
+        if((error as {code?:string}).code!=="PGRST202")throw error;
+        return readBoundedRendererSnapshot((name,args)=>client.rpc(name,args),id);
+      }
     },
   }, libraryId);
 }

@@ -32,3 +32,9 @@ test('read-only smoke validation blocks mutation routes and actions, not provide
   assert.equal(blocksValidationWrite(path,'DELETE',true),true);
  }
 });
+
+test('incremental comparison is read-only even though the inventory uses POST',()=>{
+ assert.equal(blocksValidationWrite('/v14/api/library/read','POST',true),false);
+ for(const method of ['DELETE','PUT','PATCH'])assert.equal(blocksValidationWrite('/v14/api/library/read',method,true),true);
+ assert.equal(blocksValidationWrite('/v14/api/library','POST',true),true);
+});

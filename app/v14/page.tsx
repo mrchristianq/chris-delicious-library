@@ -4,8 +4,6 @@ import { SignIn } from "./SignIn";
 import { signOut } from "./actions";
 import { Renderer } from "./Renderer";
 import { rendererIdentity } from "../lib/v14/renderer-entry";
-import { readV14LibraryForVerifiedOwner } from "../lib/v14/read-library-server";
-import type { InitialLibraryRead } from "../lib/v14/renderer-backend";
 import "./v14.css";
 import { isApprovedV14Production } from "../lib/v14/hosted-preview";
 
@@ -21,16 +19,13 @@ export default async function V14Page() {
   const validationReadOnly = process.env.CDL_V14_VALIDATION_READ_ONLY === "true";
   const suppressAutomaticRefresh = process.env.CDL_V14_MANUAL_WRITES_ONLY === "true";
   if (identity) {
-    // Start before the large legacy interface downloads/hydrates. React streams
-    // this request-scoped promise; do not await it or cache it across requests.
-    const initialRead:Promise<InitialLibraryRead>=readV14LibraryForVerifiedOwner(client, identity.ownerId, identity.libraryId, true)
-      .then(snapshot=>({snapshot}))
-      .catch(()=>({error:"Fresh library read failed. Please refresh to retry."}));
-    return <Renderer key={`${identity.key}:${validationReadOnly}:${suppressAutomaticRefresh}`} ownerId={identity.ownerId} libraryId={identity.libraryId} validationReadOnly={validationReadOnly} suppressAutomaticRefresh={suppressAutomaticRefresh} initialRead={initialRead} />;
+    // The client first checks its owner-scoped local copy against the server.
+    // Do not stream a second complete snapshot before that check can run.
+    return <Renderer key={`${identity.key}:${validationReadOnly}:${suppressAutomaticRefresh}`} ownerId={identity.ownerId} libraryId={identity.libraryId} validationReadOnly={validationReadOnly} suppressAutomaticRefresh={suppressAutomaticRefresh} />;
   }
   return <main className="v14-root">
     <div className={`v14-panel ${libraries?.length ? "v14-wide" : ""}`}>
-<span className="v14-badge">{isApprovedV14Production() ? "YOUR LIBRARY" : "PRIVATE TEST"} · 14.0.96</span>
+<span className="v14-badge">{isApprovedV14Production() ? "YOUR LIBRARY" : "PRIVATE TEST"} · 14.0.97</span>
       <h1>Chris’ Delicious Library</h1>
       <p className="v14-intro">{isApprovedV14Production() ? "Sign in to your collection." : "Your next chapter, safely separated."}</p>
       <div className="v14-safety">{isApprovedV14Production() ? "Saved to Supabase · Manual tracker sync · Original Google Sheet protected" : "Original app unchanged · Original Google Sheet untouched · Sync off"}</div>

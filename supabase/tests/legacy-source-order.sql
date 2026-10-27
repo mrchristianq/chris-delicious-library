@@ -12,7 +12,7 @@ insert into cdl.items(id,library_id,media_type,title,import_row_id) values
 ('00000000-0000-4000-c000-000000000051','00000000-0000-4000-b000-000000000051','game','New app item',null);
 set local role authenticated;
 select set_config('request.jwt.claim.sub','00000000-0000-4000-a000-000000000051',true);
-do $$ declare rows jsonb:='[]'; part jsonb; n integer; begin
+do $$ declare idx jsonb; rows jsonb:='[]'; part jsonb; n integer; begin
  for n in 0..2 loop
   part:=public.cdl_v14_snapshot_page('00000000-0000-4000-b000-000000000051','items',n,1);
   rows:=rows||(part->'rows');
@@ -20,6 +20,14 @@ do $$ declare rows jsonb:='[]'; part jsonb; n integer; begin
  if rows->0->>'title'<>'Earlier source row' or rows->1->>'title'<>'Later source row' or rows->2->>'title'<>'New app item' then raise exception 'Imported source order lost across page boundaries'; end if;
  if exists(select 1 from jsonb_array_elements(rows) r where r ? 'import_row_id' or r ? 'legacy_source_position' or r ? 'raw_cells') then raise exception 'Private import fields leaked'; end if;
  if jsonb_array_length(rows)<>3 then raise exception 'Items lost or duplicated'; end if;
+ idx:=public.cdl_v14_renderer_index('00000000-0000-4000-b000-000000000051');
+ if idx->'records'->'items'->0->>0<>rows->0->>'id' or idx->'records'->'items'->1->>0<>rows->1->>'id' or idx->'records'->'items'->2->>0<>rows->2->>'id' then raise exception 'Incremental inventory reordered imports';end if;
+
 end $$;
 reset role;
+do $$ declare old_revision text; begin
+ old_revision:=public.cdl_v14_renderer_state('00000000-0000-4000-b000-000000000051')->>'change_token';
+ update cdl.import_rows set source_row=5 where id='00000000-0000-4000-f000-000000000051';
+ if old_revision=public.cdl_v14_renderer_state('00000000-0000-4000-b000-000000000051')->>'change_token' then raise exception 'Freshness check missed imported order change';end if;
+end $$;
 rollback;

@@ -26,6 +26,7 @@ const hooks = registerHooks({
       specifier.endsWith('/save-archive-server') ? 'archive' : specifier.endsWith('/save-setting-server') ? 'setting' :
       specifier.endsWith('/save-progress-server') ? 'progress' : specifier.endsWith('/server') ? 'server' : null;
     if (key) return { url: `file:///v14-route-${key}.mjs`, shortCircuit: true };
+    if(specifier.endsWith('/stream-json'))return nextResolve(specifier+'.ts',context);
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {

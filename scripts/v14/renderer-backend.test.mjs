@@ -372,3 +372,26 @@ test('an unchanged no-op editor still revalidates and does not request a write',
  const initial=await backend.load(new AbortController().signal);const book=retainDatabaseIdentity({title:'Book'},initial.books[0]);
  assert.equal((await backend.edit(book,{})).Title,'Book');assert.equal(checks,1);
 });
+
+test('device copy is never rendered until fresh server verification, then survives a new backend session',async()=>{
+ let saved=null,reads=0;const store={read:async()=>saved,write:async value=>{saved=structuredClone(value);},clear:async()=>{saved=null;}};
+ const initial=fixture();initial.change_token='a'.repeat(32);
+ const first=createRendererBackend(library,owner,async()=>Response.json(initial),undefined,store);
+ await first.load(new AbortController().signal);assert.ok(saved);
+ const second=createRendererBackend(library,owner,async(url)=>{reads++;assert.ok(String(url).includes('changeToken='+initial.change_token));return Response.json({unchanged:true,owner_id:owner,library_id:library,change_token:initial.change_token,observed_at:'2026-10-27T12:00:00Z'});},undefined,store);
+ assert.equal(reads,0);assert.equal((await second.load(new AbortController().signal)).books[0].Title,'Book');assert.equal(reads,1);
+ const failed=createRendererBackend(library,owner,async()=>new Response('offline',{status:503}),undefined,store);
+ await assert.rejects(failed.load(new AbortController().signal),/Fresh library read failed/);
+});
+test('indexed device copy requests only deltas and a foreign cached owner cannot be reused',async()=>{
+ const initial=fixture();initial.change_token='a'.repeat(32);initial.record_index={items:[[id,'a'.repeat(32)]],episodes:[],settings:[]};
+ const store={read:async()=>structuredClone(initial),write:async()=>{},clear:async()=>{}};
+ const backend=createRendererBackend(library,owner,async(url,opts)=>{
+  assert.equal(url,'/v14/api/library/read');assert.equal(opts.method,'POST');const body=JSON.parse(opts.body);assert.deepEqual(body.records,initial.record_index);
+  return Response.json({delta:true,base_token:initial.change_token,owner_id:owner,library_id:library,change_token:'b'.repeat(32),observed_at:'2026-10-27T12:00:00Z',record_index:{...initial.record_index,items:[[id,'b'.repeat(32)]]},rows:{items:[{...initial.items[0],title:'New',revision:2}],episodes:[],settings:[]}});
+ },undefined,store);
+ assert.equal((await backend.load(new AbortController().signal)).books[0].Title,'New');
+ let cleared=0;const foreign={...store,read:async()=>({...initial,owner_id:library}),clear:async()=>{cleared++;}};
+ const other=createRendererBackend(library,owner,async(url)=>{assert.equal(String(url).includes('changeToken='),false);return Response.json(initial);},undefined,foreign);
+ await other.load(new AbortController().signal);assert.equal(cleared,1);
+});

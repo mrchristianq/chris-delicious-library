@@ -1,6 +1,7 @@
 // Only these existing provider calls may enter an authenticated v14 wrapper.
 export function blocksValidationWrite(path:string,method:string,readOnly:boolean,reviewOnly=false):boolean {
   if (!readOnly || method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  if(method==="POST" && path==="/v14/api/library/read")return false; // Authenticated read-only inventory comparison.
   if(reviewOnly&&method==="POST"&&(path==="/v14/api/sync-review"||path==="/v14/api/sync-review-batch"||path==="/v14/api/sync-execution"||path==="/v14/api/sync-manual"))return false;
   // Recommendation POSTs only read provider data; their wrapper still checks
   // authentication and origin. No mutations or server actions are admitted.

@@ -481,7 +481,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.96";
+const APP_VERSION = "14.0.97";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -808,6 +808,7 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {version: "14.0.97",date: "2026-10-27",notes: ["Remember the library on each device and verify freshness while downloading only changed records."]},
   {version: "14.0.96",date: "2026-10-27",notes: ["Reduce database bandwidth with fresh revision checks, targeted save verification and lighter library reads."]},
   {
     version: "14.0.95",

@@ -1,3 +1,4 @@
+import { streamLibraryJson } from "../../../lib/v14/stream-json";
 import { getV14Config } from "../../../lib/v14/config";
 import { createV14Client } from "../../../lib/v14/server";
 import * as libraryReads from "../../../lib/v14/read-library-server";
@@ -182,7 +183,7 @@ export async function GET(request: Request) {
         url.searchParams.getAll("libraryId").length !== 1 || url.searchParams.getAll("changeToken").length > 1) {
       return json({ error: "A valid libraryId is required." }, 400);
     }
-    return json(token === null ? await readV14Library(libraryId, true) : await libraryReads.revalidateV14Library(libraryId, token));
+    return streamLibraryJson(token === null ? await readV14Library(libraryId, true) : await libraryReads.revalidateV14Library(libraryId, token), noStore);
   } catch (error) {
     const status = errorStatus(error);
     return json({ error: status === 401 ? "Authentication required." : "Library snapshot unavailable." }, status);
