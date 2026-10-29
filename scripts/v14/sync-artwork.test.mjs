@@ -176,3 +176,18 @@ test('failed item edits do not start an artwork continuation',async()=>{
  const save=createDatabaseEditSaver({edit:async()=>{throw new Error('Revision conflict');},artwork:async()=>assert.fail('Unexpected upload')},(_type,row)=>row);
  await assert.rejects(save('movie',{__cdlIdentity:{itemId:'one',libraryId:'library'}},{posterUrl:'new'}),/Revision conflict/);
 });
+
+test('Full Edit artwork retries retain the original activity after a confirmed cover',async()=>{
+ const id='11111111-1111-4111-8111-111111111111',rows=new Map(),calls=[];
+ const item={__cdlIdentity:{itemId:'item',libraryId:'lib',revision:1},coverUrl:'old',backdropUrl:'old'};
+ const apply=(_type,row)=>({...row,__cdlIdentity:{itemId:'item',libraryId:'lib',revision:Number(row.revision)}});
+ let first=true;
+ const backend={storage:{getItem:k=>rows.get(k)??null,setItem:(k,v)=>rows.set(k,v),removeItem:k=>rows.delete(k)},
+  edit:async()=>({revision:'2',__cdlActivityId:id}),
+  artwork:async(_item,_source,kind,context)=>{calls.push({kind,context});if(kind==='backdrop'&&first){first=false;throw Error('timeout');}return {revision:kind==='cover'?'3':'4',__cdlActivityId:id,R2CoverUrl:'r2'};}};
+ await assert.rejects(createDatabaseEditSaver(backend,apply)('game',item,{coverUrl:'new',backdropUrl:'new'}),/artwork was not confirmed/);
+ const journal=JSON.parse([...rows.values()][0]);assert.equal(journal.activityId,id);assert.equal(journal.sources.cover,'');
+ backend.edit=async()=>({revision:'3'}); // Fresh, unchanged text read has no new action ID.
+ await createDatabaseEditSaver(backend,apply)('game',{...item,__cdlIdentity:{...item.__cdlIdentity,revision:3}},{});
+ assert.equal(calls.length,3);assert.ok(calls.every(c=>c.context?.id===id && c.context.role==='artwork'));assert.equal(rows.size,0);
+});

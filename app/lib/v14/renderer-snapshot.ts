@@ -41,5 +41,5 @@ export function retainDatabaseIdentity<T>(item:T,row:RendererRow):T {
   if (!item || !row.__cdlItemId) return item;
   const revision=Number(row.__cdlRevision);
   if (!Number.isSafeInteger(revision) || revision<1) throw new Error("Invalid renderer item revision");
-  return {...item,__cdlIdentity:{itemId:row.__cdlItemId,libraryId:row.__cdlLibraryId,revision,mediaType:row.__cdlMediaType}};
+  return {...item,...(typeof row.__cdlActivityId==="string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(row.__cdlActivityId)?{__cdlActivityId:row.__cdlActivityId}:{}),__cdlIdentity:{itemId:row.__cdlItemId,libraryId:row.__cdlLibraryId,revision,mediaType:row.__cdlMediaType}};
 }

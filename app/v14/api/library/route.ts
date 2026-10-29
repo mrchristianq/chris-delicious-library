@@ -1,3 +1,4 @@
+import {parseActivityContext,type ActivityContext} from "../../../lib/v14/activity-context";
 import { streamLibraryJson } from "../../../lib/v14/stream-json";
 import { getV14Config } from "../../../lib/v14/config";
 import { createV14Client } from "../../../lib/v14/server";
@@ -130,16 +131,17 @@ function validateCommand(value: unknown): value is LibraryCommand {
   }
 }
 
-async function saveEdit(command: EditCommand, item: V14Item) {
+async function saveEdit(command: EditCommand, item: V14Item,activity?:ActivityContext) {
   const client = await createV14Client();
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) throw new Error("Authentication required");
 
-  const { data: receipt, error } = await client.rpc("cdl_v14_full_edit", {
+  const { data: receipt, error } = await client.rpc(activity?"cdl_v14_full_edit_activity":"cdl_v14_full_edit", {
     p_id: command.itemId,
     p_revision: command.revision,
     p_request_id: command.requestId,
     p_patch: command.patch,
+    ...(activity?{p_activity_id:activity.id,p_activity_role:activity.role}:{}),
   });
   if (error || !isRecord(receipt) || receipt.id !== item.id || receipt.revision !== command.revision + 1) {
     throw new Error("Edit not confirmed: invalid receipt or revision conflict");
@@ -203,7 +205,12 @@ export async function POST(request: Request) {
       return json({ error: error instanceof Error && error.message === "BODY_TOO_LARGE" ? "Request body exceeds 512 KiB." : "Invalid JSON body." },
         error instanceof Error && error.message === "BODY_TOO_LARGE" ? 413 : 400);
     }
+    let activity:ActivityContext|undefined;
+    try {activity=parseActivityContext(request.headers.get("x-cdl-activity-id"),request.headers.get("x-cdl-activity-role"));}
+    catch{return json({error:"Invalid activity context."},400);}
     if (!validateCommand(command)) return json({ error: "Invalid library command." }, 400);
+
+    if (activity && command.kind !== "edit" && command.kind !== "create") return json({error:"Activity context is only supported for item saves."},400);
 
     // These writers authenticate and independently read back persisted changes.
     // New clients opt into target-only reads; old clients retain full snapshots.
@@ -234,10 +241,10 @@ export async function POST(request: Request) {
         if (item.revision !== command.revision && item.revision !== command.revision + 1) {
           return json({ error: "Item changed elsewhere. Reload before saving." }, 409);
         }
-        return json(await saveEdit(command, item));
+        return json(await saveEdit(command, item,activity));
       }
       case "create":
-        return json(await createV14Item(command.input), 201);
+        return json(await createV14Item(command.input,activity), 201);
       case "archive": {
         const client=await createV14Client();
         const {data:state,error}=await client.rpc("cdl_v14_archive_state",{p_id:command.itemId});

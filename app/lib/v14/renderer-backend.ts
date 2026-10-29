@@ -53,13 +53,15 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
     if (!baseline) throw new Error("Original edit revision unavailable. Reload before saving.");
     return baseline;
   }
-  function row(item:V14Item) {
+  function row(item:V14Item,activityId?:string) {
     const projected=projectLegacyRow(item,libraryId);
     baselines.set(`${item.id}:${item.revision}`,structuredClone(item));
-    return {...projected.row,__cdlItemId:item.id,__cdlLibraryId:libraryId,__cdlRevision:String(item.revision),__cdlMediaType:item.media_type};
+    return {...projected.row,...(activityId?{__cdlActivityId:activityId}:{}),__cdlItemId:item.id,__cdlLibraryId:libraryId,__cdlRevision:String(item.revision),__cdlMediaType:item.media_type};
   }
   async function send(key:string,command:Record<string,unknown>) {
-    const response=await fetcher(endpoint,{method:"POST",cache:"no-store",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(command)});
+    const {activity,...payload}=command;
+    const context=activity as {id:string;role:string}|undefined;
+    const response=await fetcher(endpoint,{method:"POST",cache:"no-store",credentials:"same-origin",headers:{"Content-Type":"application/json",...(context?{"X-CDL-Activity-ID":context.id,"X-CDL-Activity-Role":context.role}:{})},body:JSON.stringify(payload)});
     const data=await response.json();
     if (!response.ok || data.confirmed!==true) throw new Error(data.error||"Save not confirmed");
     if (data.snapshot) {
@@ -72,7 +74,7 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
       latest=mergeTargetedReadback(latest,data.readback,command);
     } else if(command.readback==="targeted" && !data.snapshot) throw new Error("Save readback unavailable");
     pending.delete(key);
-    return data;
+    return {...data,activityId:context?.id};
   }
   async function post(key:string,build:()=>Record<string,unknown>) {
     const existing=inFlight.get(key);
@@ -88,6 +90,9 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
           }
           // A retry above may have advanced the confirmed setting revision.
           command=build();
+        }
+        if ((command.kind==="edit" || command.kind==="create") && !command.activity) {
+          command.activity={id:command.requestId??(command.input as {requestId:string}).requestId,role:"user"};
         }
         pending.set(key,command);
       }
@@ -156,7 +161,7 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
       queue=result;
       return result;
     },
-    async edit(item,values) {
+    async edit(item,values,activity) {
       const original=identity(item);
       const patch=fullEditPatch(original,values);
       if (!Object.keys(patch).length) {
@@ -168,19 +173,19 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
           rendererSnapshot(fresh);
           const current=fresh.items.find(candidate=>candidate.id===original.id);
           if (!current || current.revision!==original.revision) throw new Error("Item changed elsewhere. Reload before saving.");
-          return row(current);
+          return row(current,activity?.id);
         });
         queue=result;
         return result;
       }
-      const key=JSON.stringify(["edit",original.id,original.revision,patch]);
-      const data=await post(key,()=>({kind:"edit",libraryId,itemId:original.id,revision:original.revision,requestId:crypto.randomUUID(),patch}));
-      return row(data.item);
+      const key=JSON.stringify(["edit",original.id,original.revision,patch,activity??null]);
+      const data=await post(key,()=>({kind:"edit",libraryId,itemId:original.id,revision:original.revision,requestId:crypto.randomUUID(),patch,...(activity?{activity}:{})}));
+      return row(data.item,data.activityId);
     },
     async create(mediaType,values) {
       const key=JSON.stringify(["create",mediaType,values]);
       const data=await post(key,()=>({kind:"create",libraryId,input:prepareCreate(libraryId,crypto.randomUUID(),crypto.randomUUID(),mediaType,values,new Date().toISOString().slice(0,10))}));
-      return row(data.item);
+      return row(data.item,data.activityId);
     },
     async archive(item) {
       const original=identity(item);
@@ -210,9 +215,9 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
       latest=data.snapshot;
       return rendered.episodes;
     },
-    async artwork(item,source,kind) {
+    async artwork(item,source,kind,activity) {
       const original=identity(item);
-      const key=JSON.stringify([original.id,original.revision,kind,typeof source==="string"?source:[source.name,source.size,source.lastModified]]);
+      const key=JSON.stringify([original.id,original.revision,kind,typeof source==="string"?source:[source.name,source.size,source.lastModified],activity??null]);
       let url=uploads.get(key);
       if (!url) {
         let upload=uploading.get(key);
@@ -236,9 +241,9 @@ export function createRendererBackend(libraryId:string, ownerId:string, fetcher:
       }
       const values:Record<string,string>=kind==="cover"?{r2CoverUrl:url!,r2CoverUrlDate:new Date().toISOString()}:{r2BackdropUrl:url!,r2BackdropUrlDate:new Date().toISOString()};
       // Freeze timestamp/URL inside the retained command for retry safety.
-      const data=await post(`artwork:${key}`,()=>({kind:"edit",libraryId,itemId:original.id,revision:original.revision,requestId:crypto.randomUUID(),patch:fullEditPatch(original,values)}));
+      const data=await post(`artwork:${key}`,()=>({kind:"edit",libraryId,itemId:original.id,revision:original.revision,requestId:crypto.randomUUID(),patch:fullEditPatch(original,values),...(activity?{activity}:{})}));
       uploads.delete(key);
-      return row(data.item);
+      return row(data.item,data.activityId);
     },
     async icon(form) {
       const safeForm=new FormData();safeForm.set("libraryId",libraryId);safeForm.set("scope","icon");

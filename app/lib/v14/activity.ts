@@ -1,5 +1,7 @@
 export type ActivityRow = {
   EventID?: string | null;
+  ActivityID?: string | null;
+  ActivityRole?: string | null;
   ItemID?: string | null;
   EventKind?: string | null;
   EpisodeID?: string | null;
@@ -74,7 +76,7 @@ function legacyRow(value: unknown): ActivityRow | null {
 }
 
 function labelField(key: string): string {
-  return ({ user_status: "Status", personal_rating: "Rating", completed_on: "Completed Date", notes: "Notes" } as Record<string, string>)[key] ?? key;
+  return ({ user_status: "Status", personal_rating: "My Rating", completed_on: "Completed Date", notes: "Notes" } as Record<string, string>)[key] ?? key;
 }
 
 function entitySheet(value: unknown): string | null {
@@ -94,6 +96,9 @@ function diffRows(event: RecordValue): ActivityRow[] {
   base.Timestamp = text(event.created_at);
   base.Source = "v14";
   base.EventKind = String(kind);
+  if (typeof changes.activity_id === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(changes.activity_id) && ["user","metadata","artwork"].includes(String(changes.activity_role))) {
+    base.ActivityID=changes.activity_id; base.ActivityRole=String(changes.activity_role);
+  }
   if (typeof event.id === "string") base.EventID = event.id;
   if (typeof event.entity_id === "string" && kind !== "episode_progress") base.ItemID = event.entity_id;
   base.Row = text(event.source_row);
@@ -117,9 +122,14 @@ function diffRows(event: RecordValue): ActivityRow[] {
     const newFields = record(afterRow.user_fields) ? afterRow.user_fields : {};
     for (const key of new Set([...Object.keys(oldFields), ...Object.keys(newFields)])) {
       if (equalJson(oldFields[key], newFields[key])) continue;
-      const row = { ...base, Field: key };
+      const providerScore = base.Sheet === "Games" && ["Rating","IGDB Rating"].includes(key);
+      const row = { ...base, Field: providerScore ? "IGDB Rating" : key === "TMDB_Rating" ? "TMDB Rating" : ["MyRating","My Rating"].includes(key) ? "My Rating" : key };
       row["Old Value"] = Object.hasOwn(oldFields, key) ? text(oldFields[key]) : null;
       row["New Value"] = Object.hasOwn(newFields, key) ? text(newFields[key]) : null;
+      if(providerScore) {
+        const format=(value:string|null)=>{if(!value?.trim())return value;const n=Number(value);return Number.isFinite(n)&&n>=0&&n<=100?`${(n>10?n/10:n).toFixed(1)}/10`:value;};
+        row["Old Value"]=format(row["Old Value"]);row["New Value"]=format(row["New Value"]);
+      }
       output.push(row);
     }
     if (kind === "archive" && typeof changes.archived === "boolean") {

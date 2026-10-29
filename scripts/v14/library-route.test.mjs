@@ -12,7 +12,7 @@ globalThis.__v14RouteMocks = {
 
 const stubs = {
   config: `export function getV14Config(){return {origin:'http://localhost:3014'}}`,
-  server: `export async function createV14Client(){return {auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},rpc:async(name,args)=>{globalThis.__v14RouteMocks.calls.push(['rpc',name,args]);if(name==='cdl_v14_full_edit'){const p=args.p_patch;const old=globalThis.__v14RouteMocks.current;const next={...old,...p,user_fields:{...old.user_fields,...(p.overrides??{})},revision:args.p_revision+1};globalThis.__v14RouteMocks.current=next;return {data:next,error:null}}return {data:globalThis.__v14RouteMocks.current,error:null}}}}`,
+  server: `export async function createV14Client(){return {auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},rpc:async(name,args)=>{globalThis.__v14RouteMocks.calls.push(['rpc',name,args]);if(name==='cdl_v14_full_edit'||name==='cdl_v14_full_edit_activity'){const p=args.p_patch;const old=globalThis.__v14RouteMocks.current;const next={...old,...p,user_fields:{...old.user_fields,...(p.overrides??{})},revision:args.p_revision+1};globalThis.__v14RouteMocks.current=next;return {data:next,error:null}}return {data:globalThis.__v14RouteMocks.current,error:null}}}}`,
   read: `export async function readV14Library(id){globalThis.__v14RouteMocks.calls.push(['read',id]);return globalThis.__v14RouteMocks.snapshot} export async function revalidateV14Library(id,token){globalThis.__v14RouteMocks.calls.push(['revalidate',id,token]);return {unchanged:true,library_id:id,change_token:token}}`,
   create: `export async function createV14Item(input){globalThis.__v14RouteMocks.calls.push(['create',input]);return {confirmed:true}}`,
   archive: `export async function saveV14Archive(...args){globalThis.__v14RouteMocks.calls.push(['archive',...args]);return {confirmed:true}}`,
@@ -26,7 +26,7 @@ const hooks = registerHooks({
       specifier.endsWith('/save-archive-server') ? 'archive' : specifier.endsWith('/save-setting-server') ? 'setting' :
       specifier.endsWith('/save-progress-server') ? 'progress' : specifier.endsWith('/server') ? 'server' : null;
     if (key) return { url: `file:///v14-route-${key}.mjs`, shortCircuit: true };
-    if(specifier.endsWith('/stream-json'))return nextResolve(specifier+'.ts',context);
+    if(specifier.endsWith('/stream-json') || specifier.endsWith('/activity-context'))return nextResolve(specifier+'.ts',context);
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
@@ -114,4 +114,14 @@ test('targeted save readbacks are explicit opt-in; arbitrary modes are rejected'
  const c={kind:'setting',libraryId,key:'theme',revision:1,requestId,value:'light',readback:'targeted'};
  assert.equal((await post({...c,readback:'skip'})).status,400);assert.equal((await post(c)).status,200);
  assert.deepEqual(globalThis.__v14RouteMocks.calls,[['setting',libraryId,'theme',1,requestId,'light',true]]);
+});
+
+test('activity headers choose the grouped RPC without changing the edit body',async()=>{
+ const mocks=globalThis.__v14RouteMocks;mocks.current={...item,revision:2};mocks.snapshot.items=[mocks.current];mocks.calls=[];
+ const command={kind:'edit',libraryId,itemId,revision:2,requestId,patch:{notes:'Activity test'}};
+ const response=await post(command,{'X-CDL-Activity-ID':requestId,'X-CDL-Activity-Role':'user'});
+ assert.equal(response.status,200);
+ const rpc=mocks.calls.find(c=>c[1]==='cdl_v14_full_edit_activity');assert.ok(rpc);assert.equal(rpc[2].p_activity_id,requestId);assert.equal(rpc[2].p_activity_role,'user');
+ assert.equal((await post(command,{'X-CDL-Activity-ID':'bad','X-CDL-Activity-Role':'user'})).status,400);
+ assert.equal((await post({...command,kind:'archive',archived:true},{'X-CDL-Activity-ID':requestId,'X-CDL-Activity-Role':'user'})).status,400);
 });

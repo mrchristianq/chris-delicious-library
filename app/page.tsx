@@ -481,7 +481,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.97";
+const APP_VERSION = "14.0.99";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -808,6 +808,8 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {version: "14.0.99",date: "2026-10-29",notes: ["Keep related item saves together using shared activity IDs, preserve separate edits, and distinguish provider scores from personal ratings."]},
+  {version: "14.0.98",date: "2026-10-28",notes: ["Condense initial cover and background saves into one Added to your library activity, while retaining later edits and full change details."]},
   {version: "14.0.97",date: "2026-10-27",notes: ["Remember the library on each device and verify freshness while downloading only changed records."]},
   {version: "14.0.96",date: "2026-10-27",notes: ["Reduce database bandwidth with fresh revision checks, targeted save verification and lighter library reads."]},
   {
@@ -8327,14 +8329,15 @@ export default function Page() {
   const syncSingleItemCoverToR2 = async (
     item: any,
     mediaType: "book" | "movie" | "tv" | "game",
-    sourceOverrideUrl?: string
+    sourceOverrideUrl?: string,
+    activityId?: string
   ) => {
     try {
       if (libraryBackend) {
         return await syncDatabaseArtwork(libraryBackend, retainDatabaseIdentity(item,item), automaticArtworkSources(item, {
           cover: getDisplayCover(item,mediaType),
           backdrop: mediaType === "book" ? "" : getDisplayBackdrop(item,mediaType),
-        }, safeStr(sourceOverrideUrl)), row => applyDatabaseItem(mediaType,row));
+        }, safeStr(sourceOverrideUrl)), row => applyDatabaseItem(mediaType,row),activityId?{id:activityId,role:"artwork"}:undefined);
       }
       const displayUrl = safeStr(sourceOverrideUrl) || getDisplayCover(item, mediaType);
       const existingR2Url = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
@@ -11449,7 +11452,7 @@ export default function Page() {
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
   const handleSaveNewMovie = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("movie",values); const addedItem=applyDatabaseItem("movie",row); setMovieDetailsEditOpen(false); openNewlyAddedItemFromRow("movie",row); void syncSingleItemCoverToR2(addedItem,"movie"); return; }
+    if (libraryBackend) { const row=await libraryBackend.create("movie",values); const addedItem=applyDatabaseItem("movie",row); setMovieDetailsEditOpen(false); openNewlyAddedItemFromRow("movie",row); void syncSingleItemCoverToR2(addedItem,"movie",undefined,row.__cdlActivityId); return; }
     if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11475,7 +11478,7 @@ export default function Page() {
   }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("tv",values); const addedItem=applyDatabaseItem("tv",row); setTvDetailsEditOpen(false); openNewlyAddedItemFromRow("tv",row); void syncSingleItemCoverToR2(addedItem,"tv"); return; }
+    if (libraryBackend) { const row=await libraryBackend.create("tv",values); const addedItem=applyDatabaseItem("tv",row); setTvDetailsEditOpen(false); openNewlyAddedItemFromRow("tv",row); void syncSingleItemCoverToR2(addedItem,"tv",undefined,row.__cdlActivityId); return; }
     if (!showsWriteUrl) throw new Error("Shows write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11503,7 +11506,7 @@ export default function Page() {
   }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("book",values); const addedItem=applyDatabaseItem("book",row); setBookDetailsEditOpen(false); openNewlyAddedItemFromRow("book",row); void syncSingleItemCoverToR2(addedItem,"book"); return; }
+    if (libraryBackend) { const row=await libraryBackend.create("book",values); const addedItem=applyDatabaseItem("book",row); setBookDetailsEditOpen(false); openNewlyAddedItemFromRow("book",row); void syncSingleItemCoverToR2(addedItem,"book",undefined,row.__cdlActivityId); return; }
     if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11532,7 +11535,7 @@ export default function Page() {
   }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
 
   const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("game",values); const addedItem=applyDatabaseItem("game",row); setGameDetailsEditOpen(false); openNewlyAddedItemFromRow("game",row); void syncSingleItemCoverToR2(addedItem,"game"); return; }
+    if (libraryBackend) { const row=await libraryBackend.create("game",values); const addedItem=applyDatabaseItem("game",row); setGameDetailsEditOpen(false); openNewlyAddedItemFromRow("game",row); void syncSingleItemCoverToR2(addedItem,"game",undefined,row.__cdlActivityId); return; }
     if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");

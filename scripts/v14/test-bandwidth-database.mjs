@@ -8,6 +8,6 @@ try {
  let ready=false;for(let n=0;n<40;n++){if(spawnSync('docker',['exec',name,'pg_isready','-h','127.0.0.1','-U','postgres'],{stdio:'ignore'}).status===0){ready=true;break;}await new Promise(r=>setTimeout(r,500));}if(!ready)throw Error('Disposable database unavailable');
  // The read-path baseline precedes Storage/nightly migrations; those contracts
  // are unchanged and need the separate Storage service rehearsal to run.
- for(const file of readdirSync(resolve(root,'supabase/migrations')).filter(f=>f.endsWith('.sql')&&(f<'20261021002400'||f.startsWith('20261027003000')||f.startsWith('20261027003100'))).sort())sql(readFileSync(resolve(root,'supabase/migrations',file),'utf8'));
- for(const file of ['incremental-reads.sql','bandwidth-reads.sql','bounded-snapshot.sql','legacy-source-order.sql','settings.sql','episode-progress.sql']) {sql(readFileSync(resolve(root,'supabase/tests',file),'utf8'));console.log('PASS '+file);}
+ for(const file of readdirSync(resolve(root,'supabase/migrations')).filter(f=>f.endsWith('.sql')&&(f<'20261021002400'||f.startsWith('20261027003000')||f.startsWith('20261027003100')||f.startsWith('20261029003200'))).sort())sql(readFileSync(resolve(root,'supabase/migrations',file),'utf8'));
+ for(const file of ['incremental-reads.sql','bandwidth-reads.sql','bounded-snapshot.sql','legacy-source-order.sql','settings.sql','episode-progress.sql','activity-groups.sql']) {sql(readFileSync(resolve(root,'supabase/tests',file),'utf8'));console.log('PASS '+file);}
 } catch(e) {console.error(String(e.stderr??e.message).slice(-2000));process.exitCode=1;} finally {if(created){docker(['rm','--force',name]);console.log('Removed disposable database. Live database writes: 0');}}

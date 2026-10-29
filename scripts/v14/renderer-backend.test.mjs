@@ -395,3 +395,47 @@ test('indexed device copy requests only deltas and a foreign cached owner cannot
  const other=createRendererBackend(library,owner,async(url)=>{assert.equal(String(url).includes('changeToken='),false);return Response.json(initial);},undefined,foreign);
  await other.load(new AbortController().signal);assert.equal(cleared,1);
 });
+
+test('activity headers link create and artwork; new user edits get new IDs and retries reuse the same ID',async()=>{
+ const snapshot=fixture(),requests=[];let fail=false;
+ const backend=createRendererBackend(library,owner,async(url,options)=>{
+  if(url==='/v14/api/artwork')return Response.json({ok:true,url:'https://example.test/r2.jpg'});
+  if(options.method==='POST' && url==='/v14/api/library'){
+   const command=JSON.parse(options.body);requests.push({command,headers:options.headers});assert.equal(command.activity,undefined);
+   if(fail){fail=false;throw Error('timeout');}
+   const p=command.patch??command.input.patch;
+   snapshot.items[0]={...snapshot.items[0],...p,user_fields:{...snapshot.items[0].user_fields,...p.overrides},revision:snapshot.items[0].revision+1};
+   return Response.json({confirmed:true,item:snapshot.items[0],snapshot});
+  }
+  return Response.json(snapshot);
+ });
+ const initial=await backend.load(new AbortController().signal);
+ let item=retainDatabaseIdentity({},initial.books[0]);
+ fail=true;await assert.rejects(backend.edit(item,{notes:'First'}),/timeout/);
+ let saved=await backend.edit(item,{notes:'First'});
+ const root=requests[0].headers['X-CDL-Activity-ID'];assert.equal(root,requests[1].headers['X-CDL-Activity-ID']);assert.equal(root,requests[0].command.requestId);
+ item=retainDatabaseIdentity({},saved);assert.equal(item.__cdlActivityId,root);
+ saved=await backend.artwork(item,'https://example.test/provider.jpg','cover',{id:root,role:'artwork'});
+ assert.equal(requests[2].headers['X-CDL-Activity-ID'],root);assert.equal(requests[2].headers['X-CDL-Activity-Role'],'artwork');
+ item=retainDatabaseIdentity({},saved);await backend.edit(item,{notes:'Separate action'});
+ assert.notEqual(requests[3].headers['X-CDL-Activity-ID'],root);assert.equal(requests[3].headers['X-CDL-Activity-Role'],'user');
+});
+
+test('new library items carry their creation activity into cover and background saves',async()=>{
+ const snapshot=fixture();let current=snapshot.items[0];const commands=[];
+ const backend=createRendererBackend(library,owner,async(url,options)=>{
+  if(url==='/v14/api/artwork')return Response.json({ok:true,url:'https://example.test/'+options.body.get('sourceUrl').split('/').pop()});
+  if(options.method==='POST'&&url==='/v14/api/library'){
+   const command=JSON.parse(options.body);commands.push({command,headers:options.headers});
+   if(command.kind==='create')current={...current,id:command.input.itemId,...command.input.patch,revision:2};
+   else current={...current,...command.patch,user_fields:{...current.user_fields,...command.patch.overrides},revision:current.revision+1};
+   snapshot.items=[current];return Response.json({confirmed:true,item:current,snapshot});
+  }
+  return Response.json(snapshot);
+ });
+ await backend.load(new AbortController().signal);
+ let saved=await backend.create('book',{title:'Created book'});const action=saved.__cdlActivityId;
+ assert.equal(action,commands[0].command.input.requestId);
+ for(const kind of ['cover','backdrop'])saved=await backend.artwork(retainDatabaseIdentity({},saved),'https://example.test/'+kind,kind,{id:action,role:'artwork'});
+ assert.equal(commands.length,3);assert.ok(commands.every(c=>c.headers['X-CDL-Activity-ID']===action));
+});
