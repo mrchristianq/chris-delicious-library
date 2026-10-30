@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchMediaSearch } from "../lib/mediaSearchClient";
+import { MediaEditDialog } from "./MediaEditDialog";
+import type { EditorArtworkDraft } from "../lib/v14/editor-layout";
 import { editorDelta } from "../lib/v14/editor-delta";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 
@@ -12,12 +14,13 @@ type BookDetailsEditModalProps = {
   isReplacingCover?: boolean;
   replaceCoverError?: string | null;
   onClose: () => void;
-  onSave: (item: Record<string, unknown>, updates: Record<string, string>) => Promise<void> | void;
+  onSave: (item: Record<string, unknown>, updates: Record<string, string>, artwork?: EditorArtworkDraft) => Promise<void> | void;
   onSaved?: () => void;
   onReplaceCover: (item: Record<string, unknown>, file: File) => Promise<void> | void;
   onSyncCoverToR2?: (item: Record<string, unknown>, sourceUrl: string) => Promise<void> | void;
   onCoverModeChange: (item: Record<string, unknown>, mode: "custom" | "default") => void;
   isNew?: boolean;
+  isDark?: boolean;
   statusOptions?: Array<{ value: string; label: string }>;
 };
 
@@ -110,43 +113,6 @@ const HARDCOVER_SYNC_FIELDS: SyncFieldDef[] = [
   { key: "type",              label: "Type" },
 ];
 
-const INPUT_STYLE: React.CSSProperties = {
-  border: "1px solid rgba(149,161,178,0.52)",
-  borderRadius: 9,
-  padding: "8px 9px",
-  background: "rgba(255,255,255,0.94)",
-  fontSize: 12,
-  color: "#1c2738",
-  width: "100%",
-  boxSizing: "border-box",
-  fontFamily: "inherit",
-};
-
-const LABEL_STYLE: React.CSSProperties = {
-  fontSize: 10.5,
-  fontWeight: 800,
-  letterSpacing: 0.25,
-  color: "#516279",
-  display: "block",
-  marginBottom: 4,
-};
-
-function FieldInput({ field, value, onChange }: { field: FieldDef; value: string; onChange: (v: string) => void }) {
-  if (field.multiline) {
-    return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={5} placeholder={field.placeholder} style={{ ...INPUT_STYLE, resize: "vertical" }} />;
-  }
-  if (field.options) {
-    const opts = field.options as readonly string[];
-    return (
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={INPUT_STYLE}>
-        <option value="">— select —</option>
-        {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        {field.key !== "type" && value && !opts.includes(value as never) ? <option value={value}>{value}</option> : null}
-      </select>
-    );
-  }
-  return <input type={field.isDate ? "date" : "text"} value={value} onChange={(e) => onChange(e.target.value)} style={INPUT_STYLE} />;
-}
 
 function safeStr(value: unknown): string {
   return String(value ?? "").trim();
@@ -208,7 +174,8 @@ function formatDateForInput(dateStr: string): string {
   // Try M/DD/YY or MM/DD/YY or M/D/YY or M/D/YYYY format
   const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (slashMatch) {
-    let [, month, day, year] = slashMatch;
+    const [, month, day] = slashMatch;
+    let year = slashMatch[3];
     // Convert 2-digit year to 4-digit
     if (year.length === 2) {
       const yNum = parseInt(year, 10);
@@ -256,25 +223,18 @@ function buildBookEditValues(item: Record<string, unknown>): Record<string, stri
 export function BookDetailsEditModal({
   open,
   item,
-  popupCoverMode,
-  isReplacingCover = false,
   replaceCoverError,
   onClose,
   onSave,
   onSaved,
-  onReplaceCover,
-  onSyncCoverToR2,
-  onCoverModeChange,
   isNew,
+  isDark,
   statusOptions,
 }: BookDetailsEditModalProps) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-  const [selectedMode, setSelectedMode] = useState<"custom" | "default">("default");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Create BOOK_FIELDS with dynamic status options
   const BOOK_FIELDS = useMemo(() => createBookFields(statusOptions), [statusOptions]);
@@ -289,13 +249,6 @@ export function BookDetailsEditModal({
   const [syncEditionResults, setSyncEditionResults] = useState<Array<{ id: string; format: string; isbn: string; pages: string; imageUrl: string; releaseDate: string; publisher: string; data: Record<string, string> }>>([]);
   const [selectedBookData, setSelectedBookData] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const updateLayout = () => setIsMobileLayout(window.innerWidth <= 980);
-    updateLayout();
-    window.addEventListener("resize", updateLayout);
-    return () => window.removeEventListener("resize", updateLayout);
-  }, []);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -312,24 +265,6 @@ export function BookDetailsEditModal({
     setSelectedBookData({});
   }, [open, item]);
 
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isSaving && !isSyncing) {
-        if (syncDiff) { setSyncDiff(null); return; }
-        if (syncStep === "editions") { setSyncStep("books"); return; }
-        if (syncStep === "books") { setSyncStep(null); return; }
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isSaving, isSyncing, onClose, open, syncDiff]);
 
   const coverCandidates = useMemo(() => {
     if (!item || !Array.isArray(item.coverCandidates)) return [] as Array<{ label?: string; url?: string }>;
@@ -357,12 +292,7 @@ export function BookDetailsEditModal({
   const r2CoverUrl = safeStr(item?.r2CoverUrl || item?.R2CoverUrl);
   const backupUrl = safeStr(item?.coverOverrideUrl || customUrl);
   const previewUrl = r2CoverUrl || defaultUrl || backupUrl;
-  const imageUrlSyncSource = defaultUrl;
 
-  useEffect(() => {
-    if (!open) return;
-    setSelectedMode(popupCoverMode || "default");
-  }, [open, popupCoverMode]);
 
   const set = (key: string, val: string) => setValues((prev) => ({ ...prev, [key]: val }));
 
@@ -376,7 +306,7 @@ export function BookDetailsEditModal({
       const before = safeStr(values[key]);
       const after = safeStr(proposed[key]);
       if (before === after) return null;
-      return { key, label, before: before || "—", after: after || "—", selected: true };
+      return { key, label, before: before || "—", after: after || "—", selected: !["imageUrl", "posterUrl", "coverUrl", "backdropUrl", "screenshotsUrl", "platform", "type"].includes(key) };
     }).filter(Boolean) as DiffRow[];
   };
 
@@ -497,7 +427,7 @@ export function BookDetailsEditModal({
     ? { width: 44, height: 44 }
     : { width: 36, height: 52 };
   const syncEditionImageHeight = syncSource === "audnexus" ? "auto" : 100;
-  const handleSave = async () => {
+  const handleSave = async (artwork?: EditorArtworkDraft) => {
     if (!item) return;
     setIsSaving(true);
     setSaveError(null);
@@ -506,7 +436,7 @@ export function BookDetailsEditModal({
       const nextValues = { ...values, type: normalizeBookTypeForSheet(values.type) };
       const initial = buildBookEditValues(item);
       initial.type = normalizeBookTypeForSheet(initial.type);
-      await Promise.resolve(onSave(item, editorDelta(item, nextValues, initial)));
+      await Promise.resolve(onSave(item, editorDelta(item, nextValues, initial), artwork));
       onSaved?.();
       onClose();
     } catch (error: unknown) {
@@ -519,104 +449,9 @@ export function BookDetailsEditModal({
 
   if (!open || !item) return null;
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed", inset: 0, zIndex: 9000,
-        background: "rgba(7, 10, 16, 0.42)",
-        backdropFilter: "blur(14px) saturate(1.08)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 10,
-      }}
-      onClick={() => {
-        if (!isSaving && !isSyncing) {
-          if (syncDiff) { setSyncDiff(null); }
-          else if (syncStep === "editions") { setSyncStep("books"); }
-          else if (syncStep === "books") { setSyncStep(null); }
-          else { onClose(); }
-        }
-      }}
-    >
-      <div
-        style={{
-          width: "min(1300px, 100%)",
-          maxHeight: "calc(100vh - 20px)",
-          overflow: "auto",
-          borderRadius: 18,
-          border: "1px solid rgba(255,255,255,0.55)",
-          background: "linear-gradient(180deg, rgba(251,252,254,0.96) 0%, rgba(241,244,249,0.98) 100%)",
-          boxShadow: "0 24px 48px rgba(15,23,40,0.26), inset 0 1px 0 rgba(255,255,255,0.86)",
-          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", sans-serif',
-        }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* Title bar */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: "1px solid rgba(167,177,191,0.42)", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
-            <div style={{ marginLeft: 8, fontSize: 13, fontWeight: 650, color: "#1d2735" }}>{isNew ? "Add Book" : "Edit Book"}</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {syncNotice && !syncDiff ? <span style={{ fontSize: 11, color: "#335480" }}>{syncNotice}</span> : null}
-            {syncError ? <span style={{ fontSize: 11, color: "#b4232f" }}>{syncError}</span> : null}
-            {saveError || saveSuccess ? <span style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480" }}>{saveError || saveSuccess}</span> : null}
-            <button
-              type="button"
-              disabled={isSyncing || isSaving}
-              onClick={() => handleSync("audnexus")}
-              style={{
-                border: "1px solid rgba(15,118,110,0.4)", borderRadius: 8,
-                padding: "6px 12px",
-                background: isSyncing && syncSource === "audnexus" ? "rgba(15,118,110,0.07)" : "rgba(15,118,110,0.09)",
-                color: "#0f766e", cursor: isSyncing || isSaving ? "default" : "pointer",
-                fontSize: 12, fontWeight: 650,
-                opacity: isSyncing || isSaving ? 0.6 : 1,
-                transition: "opacity 120ms",
-              }}
-            >
-              {isSyncing && syncSource === "audnexus" ? "Syncing…" : "Sync from Audnexus"}
-            </button>
-            <button
-              type="button"
-              disabled={isSyncing || isSaving}
-              onClick={() => handleSync("hardcover")}
-              style={{
-                border: "1px solid rgba(124,58,237,0.4)", borderRadius: 8,
-                padding: "6px 12px",
-                background: isSyncing && syncSource === "hardcover" ? "rgba(124,58,237,0.07)" : "rgba(124,58,237,0.09)",
-                color: "#7c3aed", cursor: isSyncing || isSaving ? "default" : "pointer",
-                fontSize: 12, fontWeight: 650,
-                opacity: isSyncing || isSaving ? 0.6 : 1,
-                transition: "opacity 120ms",
-              }}
-            >
-              {isSyncing && syncSource === "hardcover" ? "Syncing…" : "Sync from Hardcover"}
-            </button>
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={handleSave}
-              style={{ border: "1px solid rgba(27,83,217,0.5)", borderRadius: 8, padding: "6px 12px", background: "linear-gradient(180deg, rgba(86,150,255,0.95) 0%, rgba(45,109,237,0.98) 100%)", color: "#f6f9ff", cursor: isSaving ? "default" : "pointer", fontSize: 12, fontWeight: 750 }}
-            >
-              {isSaving ? "Adding…" : isNew ? "Add to Library" : "Save Changes"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              style={{ border: "1px solid rgba(149,161,178,0.5)", borderRadius: 8, padding: "6px 10px", background: "rgba(255,255,255,0.86)", color: "#243244", cursor: "pointer", fontSize: 12, fontWeight: 650 }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        {/* Step 1: Book picker */}
-        {syncStep === "books" ? (
+  return <MediaEditDialog media="book" isDark={isDark} isNew={isNew} fields={BOOK_FIELDS} initialValues={buildBookEditValues(item)} values={values} onChange={set} onClose={onClose} onSave={handleSave}
+    cover={previewUrl} defaultCover={defaultUrl} saving={isSaving} syncing={isSyncing} error={saveError || syncError || replaceCoverError} notice={syncNotice || saveSuccess}
+    refresh={[{label:"Find on Hardcover",onClick:()=>handleSync("hardcover")},{label:"Find on Audnexus",onClick:()=>handleSync("audnexus")}]} review={(syncDiff || syncStep) ? <>{syncStep === "books" ? (
           <div style={{ margin: "12px 12px 0", border: `1px solid ${syncAccent}33`, borderRadius: 12, background: `${syncAccent}08`, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: `1px solid ${syncAccent}22`, background: `${syncAccent}0a` }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: syncAccent }}>Select the correct book from {syncLabel}</div>
@@ -723,104 +558,5 @@ export function BookDetailsEditModal({
               </button>
             </div>
           </div>
-        ) : null}
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "minmax(184px, 220px) minmax(0,1fr)", gap: 12, padding: isMobileLayout ? 10 : 12 }}>
-          {/* Cover panel */}
-          <div style={{ border: "1px solid rgba(167,177,191,0.34)", borderRadius: 14, background: "linear-gradient(180deg,rgba(255,255,255,0.9),rgba(246,249,253,0.88))", padding: 12, boxShadow: "0 8px 24px rgba(31,45,61,0.08)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ fontSize: 12, fontWeight: 850, letterSpacing: 0.35, color: "#3f4d61" }}>ARTWORK</div>
-              <span style={{ borderRadius: 999, padding: "3px 8px", fontSize: 10, fontWeight: 800, color: r2CoverUrl ? "#0f766e" : "#806200", background: r2CoverUrl ? "rgba(15,118,110,0.1)" : "rgba(245,158,11,0.12)" }}>
-                {r2CoverUrl ? "R2 ready" : "Needs sync"}
-              </span>
-            </div>
-            <div style={{ marginTop: 10, padding: 8, borderRadius: 12, background: "rgba(255,255,255,0.72)", border: "1px solid rgba(167,177,191,0.24)" }}>
-              {previewUrl ? (
-                <img src={previewUrl} alt={safeStr(item.title) || "Book cover"} style={{ display: "block", margin: "0 auto", width: "auto", height: "auto", maxWidth: "100%", objectFit: "contain", maxHeight: isMobileLayout ? 360 : 250, ...COVER_IMAGE_RADIUS_STYLE }} />
-              ) : (
-                <div style={{ height: 180, borderRadius: 8, border: "1px dashed rgba(149,161,178,0.58)", display: "flex", alignItems: "center", justifyContent: "center", color: "#5f6e82", fontSize: 11 }}>
-                  No cover
-                </div>
-              )}
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
-              <button
-                type="button"
-                disabled={isReplacingCover || !imageUrlSyncSource || !onSyncCoverToR2}
-                onClick={async () => {
-                  if (!imageUrlSyncSource || !onSyncCoverToR2) return;
-                  await Promise.resolve(onSyncCoverToR2(item, imageUrlSyncSource));
-                }}
-                style={{
-                  border: "1px solid rgba(15,118,110,0.34)",
-                  borderRadius: 10,
-                  padding: "9px 10px",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: isReplacingCover || !imageUrlSyncSource || !onSyncCoverToR2 ? "default" : "pointer",
-                  background: "linear-gradient(180deg,rgba(236,253,245,0.98),rgba(209,250,229,0.88))",
-                  color: isReplacingCover || !imageUrlSyncSource || !onSyncCoverToR2 ? "#8a929d" : "#0f766e",
-                }}
-              >
-                {isReplacingCover ? "Updating..." : "Use metadata artwork"}
-              </button>
-              <button
-                type="button"
-                disabled={isReplacingCover}
-                onClick={() => fileInputRef.current?.click()}
-                style={{ border: "1px solid rgba(149,161,178,0.42)", borderRadius: 10, padding: "9px 10px", background: "rgba(255,255,255,0.95)", color: "#243244", fontSize: 12, fontWeight: 800, cursor: isReplacingCover ? "default" : "pointer" }}
-              >
-                {isReplacingCover ? "Uploading..." : "Choose custom artwork"}
-              </button>
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}>
-                <span>Default artwork</span>
-                <strong style={{ color: defaultUrl ? "#0f766e" : "#8a929d" }}>{defaultUrl ? "Available" : "Missing"}</strong>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#4b5b70" }}>
-                <span>Displayed cover</span>
-                <strong style={{ color: r2CoverUrl ? "#0f766e" : "#8a929d" }}>{r2CoverUrl ? "Stored in R2" : "Using default"}</strong>
-              </div>
-            </div>
-            <details style={{ marginTop: 10, borderTop: "1px solid rgba(149,161,178,0.24)", paddingTop: 8 }}>
-              <summary style={{ cursor: "pointer", color: "#66758a", fontSize: 10.5, fontWeight: 750 }}>Source details</summary>
-              <div style={{ marginTop: 7, display: "grid", gap: 5 }}>
-                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>Default:</strong> {defaultUrl || "—"}</div>
-                <div style={{ fontSize: 10, color: "#3f4d61", wordBreak: "break-all" }}><strong>R2:</strong> {r2CoverUrl || "—"}</div>
-              </div>
-            </details>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: "none" }}
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                event.currentTarget.value = "";
-                if (!file) return;
-                await Promise.resolve(onReplaceCover(item, file));
-              }}
-            />
-            {replaceCoverError ? <div style={{ marginTop: 6, color: "#b4232f", fontSize: 11 }}>{replaceCoverError}</div> : null}
-          </div>
-
-          {/* Fields panel */}
-          <div style={{ border: "1px solid rgba(167,177,191,0.42)", borderRadius: 12, background: "rgba(255,255,255,0.78)", padding: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: isMobileLayout ? "1fr" : "repeat(3, minmax(0,1fr))", gap: 8 }}>
-              {BOOK_FIELDS.map((field) => (
-                <label key={field.key} style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: field.multiline ? "1 / -1" : undefined }}>
-                  <span style={LABEL_STYLE}>{field.label}</span>
-                  <FieldInput field={field} value={values[field.key] ?? ""} onChange={(v) => set(field.key, v)} />
-                </label>
-              ))}
-            </div>
-            <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 11, color: saveError ? "#b4232f" : "#335480" }}>{saveError || saveSuccess || " "}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+        ) : null}</> : null} />;
 }

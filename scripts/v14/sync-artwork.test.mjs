@@ -191,3 +191,29 @@ test('Full Edit artwork retries retain the original activity after a confirmed c
  await createDatabaseEditSaver(backend,apply)('game',{...item,__cdlIdentity:{...item.__cdlIdentity,revision:3}},{});
  assert.equal(calls.length,3);assert.ok(calls.every(c=>c.context?.id===id && c.context.role==='artwork'));assert.equal(rows.size,0);
 });
+
+test('custom artwork stays in the save chain; retrying a partial add does not create another item',async()=>{
+ const {createDatabaseAddSaver}=await import('../../app/lib/v14/sync-artwork.ts');
+ const root='11111111-1111-4111-8111-111111111111';let creates=0,uploads=0,current;
+ const storageValues=new Map();const file=new File(['fixture'],'custom.png',{type:'image/png'});
+ const apply=(_type,row)=>(current={...row,__cdlIdentity:{itemId:'created',libraryId:'lib',revision:Number(row.revision)}});
+ const backend={storage:{getItem:k=>storageValues.get(k)??null,setItem:(k,v)=>storageValues.set(k,v),removeItem:k=>storageValues.delete(k)},
+  create:async()=>{creates++;return {title:'New game',revision:'2',__cdlActivityId:root};},
+  edit:async()=>({title:'New game',revision:'2'}),
+  artwork:async(_item,source,_kind,activity)=>{assert.equal(source,file);assert.equal(activity.id,root);if(++uploads===1)throw Error('Upload interrupted');return {revision:'3',R2CoverUrl:'https://example.test/custom'};}};
+ const save=createDatabaseEditSaver(backend,apply),draft={};
+ const add=createDatabaseAddSaver(backend,apply,save);
+ await assert.rejects(add('game',draft,{title:'New game',coverUrl:'https://example.test/provider'},{cover:file}),/artwork was not confirmed/);
+ assert.equal(creates,1);assert.deepEqual(JSON.parse([...storageValues.values()][0]).fileKinds,['cover']);
+ const result=await add('game',draft,{title:'New game',coverUrl:'https://example.test/provider'});
+ assert.equal(creates,1);assert.equal(uploads,2);assert.equal(result.R2CoverUrl,'https://example.test/custom');assert.equal(storageValues.size,0);
+});
+test('reopening a file upload retry requires reselection and does not silently finish an incomplete save',async()=>{
+ const cache=new Map(),file=new File(['fixture'],'cover.png',{type:'image/png'});let edits=0;
+ const item={__cdlIdentity:{itemId:'id',libraryId:'lib',revision:2}};
+ const apply=(_type,row)=>({...row,__cdlIdentity:{...item.__cdlIdentity,revision:Number(row.revision)}});
+ const backend={storage:{getItem:k=>cache.get(k)??null,setItem:(k,v)=>cache.set(k,v),removeItem:k=>cache.delete(k)},edit:async()=>{edits++;return {revision:'2'};},artwork:async()=>{throw Error('Offline');}};
+ await assert.rejects(createDatabaseEditSaver(backend,apply)('book',item,{}, {cover:file}),/artwork was not confirmed/);
+ const count=edits;
+ await assert.rejects(createDatabaseEditSaver(backend,apply)('book',item,{}),/Choose the custom artwork file again/);assert.equal(edits,count);
+});

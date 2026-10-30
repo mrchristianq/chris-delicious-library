@@ -1,3 +1,4 @@
+import type { EditorArtworkDraft } from "./editor-layout";
 import type { ActivityContext } from "./activity-context";
 import type { LibraryBackend } from "./backend-context";
 
@@ -42,7 +43,7 @@ export function editedArtworkSources(
 export async function syncDatabaseArtwork(
   backend: Pick<LibraryBackend, "artwork">,
   item: Record<string, unknown>,
-  sources: { cover: string; backdrop: string },
+  sources: { cover: File | string; backdrop: File | string },
   onConfirmed: (row: Record<string, string>, kind: "cover" | "backdrop") => Record<string, unknown>,
   activity?: ActivityContext,
 ) {
@@ -68,9 +69,9 @@ export function createDatabaseEditSaver(
   backend: Pick<LibraryBackend, "edit" | "artwork"> & Partial<Pick<LibraryBackend, "storage">>,
   apply: (type: "book" | "movie" | "tv" | "game", row: Record<string, string>) => Record<string, unknown>,
 ) {
-  type Pending = { current: Record<string, unknown>; sources: { cover: string; backdrop: string }; activityId?:string };
+  type Pending = { current: Record<string, unknown>; sources: { cover: File | string; backdrop: File | string }; activityId?:string };
   const unfinished = new Map<string, Pending>();
-  return async (type: "book" | "movie" | "tv" | "game", item: Record<string, unknown>, updates: Record<string, string>) => {
+  return async (type: "book" | "movie" | "tv" | "game", item: Record<string, unknown>, updates: Record<string, string>, artwork?: EditorArtworkDraft, activityId?: string) => {
     const identity = item.__cdlIdentity as { itemId?: string; libraryId?: string; revision?: number } | undefined;
     if (!identity?.itemId || !identity.libraryId) throw new Error("Missing database item identity. Reload before saving.");
     const key = JSON.stringify([identity.libraryId, type, identity.itemId]);
@@ -83,6 +84,7 @@ export function createDatabaseEditSaver(
         try { entry = JSON.parse(raw); } catch { throw new Error("Artwork retry record is unreadable; save was not confirmed."); }
         if (entry?.version !== 1 || !Number.isSafeInteger(entry.revision) || entry.revision < 1
           || (entry.activityId !== undefined && (typeof entry.activityId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(entry.activityId)))
+          || (entry.fileKinds !== undefined && (!Array.isArray(entry.fileKinds) || entry.fileKinds.some((kind:unknown)=>kind!=="cover")))
           || typeof entry.sources?.cover !== "string" || typeof entry.sources?.backdrop !== "string") {
           throw new Error("Artwork retry record is invalid; save was not confirmed.");
         }
@@ -90,12 +92,15 @@ export function createDatabaseEditSaver(
           // Only an explicit replacement/clear of every unfinished source may
           // supersede an old intent after another writer advanced the revision.
           const coverKey = type === "book" ? "imageUrl" : type === "game" ? "coverUrl" : "posterUrl";
-          if ((entry.sources.cover && !Object.hasOwn(updates, coverKey))
+          if (((entry.sources.cover || entry.fileKinds?.includes("cover")) && !Object.hasOwn(updates, coverKey) && !artwork?.cover)
             || (entry.sources.backdrop && !Object.hasOwn(updates, "backdropUrl"))) {
             throw new Error("Artwork retry conflicts with a newer item revision. Re-select or clear the unfinished artwork sources before saving.");
           }
           backend.storage.removeItem(journalKey);
-        } else previous = { current: item, sources: entry.sources,activityId:entry.activityId };
+        } else {
+          if (entry.fileKinds?.length && !artwork?.cover) throw new Error("Choose the custom artwork file again to finish this saved item. No duplicate item was added.");
+          previous = { current: item, sources: entry.sources,activityId:entry.activityId };
+        }
       }
     }
     const sources = previous ? { ...previous.sources } : editedArtworkSources(type, item, updates);
@@ -105,8 +110,10 @@ export function createDatabaseEditSaver(
       if (Object.hasOwn(updates, coverKey)) sources.cover = updates[coverKey].trim();
       if (type !== "book" && Object.hasOwn(updates, "backdropUrl")) sources.backdrop = updates.backdropUrl.trim();
     }
+    if (artwork?.cover) sources.cover = artwork.cover;
+    if (artwork?.backdrop) sources.backdrop = artwork.backdrop;
     const saved = apply(type, await backend.edit(previous?.current ?? item, updates));
-    const pending: Pending = { current: saved, sources,activityId:typeof saved.__cdlActivityId==="string"?saved.__cdlActivityId:previous?.activityId };
+    const pending: Pending = { current: saved, sources,activityId:typeof saved.__cdlActivityId==="string"?saved.__cdlActivityId:activityId ?? previous?.activityId };
     unfinished.set(key, pending);
     // This owner/library-scoped journal stores retry intent only, never a cached
     // item/notes or an authoritative read. The backend still requires fresh
@@ -115,7 +122,7 @@ export function createDatabaseEditSaver(
       if (!backend.storage) return;
       const revision = (pending.current.__cdlIdentity as { revision?: number } | undefined)?.revision;
       if (!Number.isSafeInteger(revision)) throw new Error("Artwork retry revision is missing.");
-      backend.storage.setItem(journalKey, JSON.stringify({ version: 1, revision, sources: pending.sources,activityId:pending.activityId }));
+      backend.storage.setItem(journalKey, JSON.stringify({ version: 1, revision, sources: {cover:typeof pending.sources.cover==="string"?pending.sources.cover:"",backdrop:typeof pending.sources.backdrop==="string"?pending.sources.backdrop:""},...(pending.sources.cover instanceof File?{fileKinds:["cover"]}:{}),activityId:pending.activityId }));
     };
     try {
       if (sources.cover || sources.backdrop) remember();
@@ -128,8 +135,39 @@ export function createDatabaseEditSaver(
       },pending.activityId?{id:pending.activityId,role:"artwork"}:undefined);
       backend.storage?.removeItem(journalKey);
       unfinished.delete(key);
+      return pending.current;
     } catch (error) {
       throw new Error(`Item changes saved, but artwork was not confirmed: ${error instanceof Error ? error.message : "Please retry artwork sync."}`);
     }
+  };
+}
+
+/** Add retries use the confirmed item's identity after a partial artwork save.
+ * A failed upload must never cause another create request for the same editor. */
+export function createDatabaseAddSaver(
+  backend: Pick<LibraryBackend,"create">,
+  apply: Parameters<typeof createDatabaseEditSaver>[1],
+  save: ReturnType<typeof createDatabaseEditSaver>,
+) {
+  // Per-mounted backend/editor, never keyed by title or shared between accounts.
+  const pendingCreates=new WeakMap<Record<string,unknown>,{current:Record<string,unknown>;values:Record<string,string>;activityId?:string}>();
+  return async (type:"book"|"movie"|"tv"|"game",item:Record<string,unknown>,values:Record<string,string>,artwork?:EditorArtworkDraft) => {
+    let pending=pendingCreates.get(item);
+    let createdNow=false;
+    if(!item.__cdlIdentity && !pending) {
+      const row=await backend.create(type,values);
+      pending={current:apply(type,row),values:{...values},activityId:row.__cdlActivityId};
+      pendingCreates.set(item,pending);
+      createdNow=true;
+    }
+    const current=item.__cdlIdentity?item:pending!.current;
+    // The Add form can still hold its original draft after creation. Do not
+    // replay unchanged provider URLs over a pending custom upload on retry.
+    const updates=createdNow?{}:pending?Object.fromEntries(Object.entries(values).filter(([key,value])=>pending!.values[key]!==value)):values;
+    const cover=type==="book"?values.imageUrl:type==="game"?values.coverUrl:values.posterUrl;
+    const backdrop=type==="book"?"":type==="game"?values.screenshotsUrl?.split(",")[0]?.trim():values.backdropUrl;
+    const confirmed=await save(type,current,updates,createdNow?{cover,backdrop,...artwork}:artwork,pending?.activityId);
+    pendingCreates.delete(item);
+    return confirmed;
   };
 }

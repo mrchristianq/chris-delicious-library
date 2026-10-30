@@ -23,7 +23,8 @@ const TrackerSyncView = dynamic(() => import("./components/TrackerSyncView").the
 import { browserPreferenceStorage } from "./lib/v14/browser-storage";
 import { retainDatabaseIdentity } from "./lib/v14/renderer-snapshot";
 import { stableItemKey } from "./lib/v14/stable-item-key";
-import { automaticArtworkSources, createDatabaseEditSaver, syncDatabaseArtwork } from "./lib/v14/sync-artwork";
+import type { EditorArtworkDraft } from "./lib/v14/editor-layout";
+import { automaticArtworkSources, createDatabaseEditSaver, createDatabaseAddSaver, syncDatabaseArtwork } from "./lib/v14/sync-artwork";
 import { manualOrderSettings, saveManualOrder } from "./lib/v14/manual-order";
 import { subscribeLibraryRefresh } from "./lib/v14/refresh-events";
 import { freshCoverScales } from "./lib/v14/cover-scale-settings";
@@ -481,7 +482,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.99";
+const APP_VERSION = "14.0.100";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -808,6 +809,7 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {version: "14.0.100",date: "2026-10-30",notes: ["Refresh Add and Edit forms with grouped controls, advanced metadata sections and artwork previews saved with your changes. Ownership remains exclusive to books and games."]},
   {version: "14.0.99",date: "2026-10-29",notes: ["Keep related item saves together using shared activity IDs, preserve separate edits, and distinguish provider scores from personal ratings."]},
   {version: "14.0.98",date: "2026-10-28",notes: ["Condense initial cover and background saves into one Added to your library activity, while retaining later edits and full change details."]},
   {version: "14.0.97",date: "2026-10-27",notes: ["Remember the library on each device and verify freshness while downloading only changed records."]},
@@ -9455,13 +9457,15 @@ export default function Page() {
 
   const databaseEditSaver = useMemo(() => libraryBackend ? createDatabaseEditSaver(libraryBackend, applyDatabaseItem) : null,
     [libraryBackend, applyDatabaseItem]);
-  const saveDatabaseEdit = async (mediaType: MediaType, item: Record<string,unknown>, updates: Record<string,string>) => {
+  const databaseAddSaver = useMemo(() => libraryBackend && databaseEditSaver ? createDatabaseAddSaver(libraryBackend,applyDatabaseItem,databaseEditSaver) : null,
+    [libraryBackend,applyDatabaseItem,databaseEditSaver]);
+  const saveDatabaseEdit = async (mediaType: MediaType, item: Record<string,unknown>, updates: Record<string,string>, artwork?: EditorArtworkDraft, activityId?:string) => {
     if (!databaseEditSaver) throw new Error("Database backend unavailable");
-    await databaseEditSaver(mediaType, item, updates);
+    return await databaseEditSaver(mediaType, item, updates, artwork, activityId);
   };
 
-  const handleSaveBookEdits = async (item: any, updates: Record<string, string>) => {
-    if (libraryBackend) { await saveDatabaseEdit("book",item,updates); return; }
+  const handleSaveBookEdits = async (item: any, updates: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend) { await saveDatabaseEdit("book",item,updates,artwork); return; }
     if (!booksWriteUrl) {
       throw new Error("Books write URL is not configured. Set NEXT_PUBLIC_BOOKS_WRITE_URL in .env.local.");
     }
@@ -9847,8 +9851,8 @@ export default function Page() {
     }
   };
 
-  const handleSaveShowEdits = async (item: any, updates: Record<string, string>) => {
-    if (libraryBackend) { await saveDatabaseEdit("tv",item,updates); return; }
+  const handleSaveShowEdits = async (item: any, updates: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend) { await saveDatabaseEdit("tv",item,updates,artwork); return; }
     if (!showsWriteUrl) {
       throw new Error(
         "Shows write URL is not configured. Set NEXT_PUBLIC_SHOWS_WRITE_URL (or NEXT_PUBLIC_TV_WRITE_URL) in .env.local."
@@ -10067,8 +10071,8 @@ export default function Page() {
     }
   };
 
-  const handleSaveMovieEdits = async (item: any, updates: Record<string, string>) => {
-    if (libraryBackend) { await saveDatabaseEdit("movie",item,updates); return; }
+  const handleSaveMovieEdits = async (item: any, updates: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend) { await saveDatabaseEdit("movie",item,updates,artwork); return; }
     if (!moviesWriteUrl) {
       throw new Error("Movies write URL is not configured. Set NEXT_PUBLIC_MOVIES_WRITE_URL in .env.local.");
     }
@@ -10289,8 +10293,8 @@ export default function Page() {
     }
   };
 
-  const handleSaveGameEdits = async (item: any, updates: Record<string, string>) => {
-    if (libraryBackend) { await saveDatabaseEdit("game",item,updates); return; }
+  const handleSaveGameEdits = async (item: any, updates: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend) { await saveDatabaseEdit("game",item,updates,artwork); return; }
     if (!gamesWriteUrl) {
       throw new Error("Games write URL is not configured. Set NEXT_PUBLIC_GAMES_WRITE_URL in .env.local.");
     }
@@ -11451,8 +11455,11 @@ export default function Page() {
 
   // Save handlers for "Add New" mode — each mirrors handleAddLibraryItem's persistence
   // but then navigates to the new item's detail page instead of just switching nav tabs.
-  const handleSaveNewMovie = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("movie",values); const addedItem=applyDatabaseItem("movie",row); setMovieDetailsEditOpen(false); openNewlyAddedItemFromRow("movie",row); void syncSingleItemCoverToR2(addedItem,"movie",undefined,row.__cdlActivityId); return; }
+  const handleSaveNewMovie = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend && databaseAddSaver) {
+      const confirmed=await databaseAddSaver("movie",_item,values,artwork);
+      setMovieDetailsEditOpen(false);finalizeAddAndOpen(confirmed);return;
+    }
     if (!moviesWriteUrl) throw new Error("Movies write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11475,10 +11482,13 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "movie").catch(() => {
       // Silently ignore sync failures
     });
-  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
+  }, [moviesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem, databaseAddSaver, finalizeAddAndOpen]);
 
-  const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("tv",values); const addedItem=applyDatabaseItem("tv",row); setTvDetailsEditOpen(false); openNewlyAddedItemFromRow("tv",row); void syncSingleItemCoverToR2(addedItem,"tv",undefined,row.__cdlActivityId); return; }
+  const handleSaveNewTV = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend && databaseAddSaver) {
+      const confirmed=await databaseAddSaver("tv",_item,values,artwork);
+      setTvDetailsEditOpen(false);finalizeAddAndOpen(confirmed);return;
+    }
     if (!showsWriteUrl) throw new Error("Shows write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11503,10 +11513,13 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "tv").catch(() => {
       // Silently ignore sync failures
     });
-  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
+  }, [showsWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem, databaseAddSaver, finalizeAddAndOpen]);
 
-  const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("book",values); const addedItem=applyDatabaseItem("book",row); setBookDetailsEditOpen(false); openNewlyAddedItemFromRow("book",row); void syncSingleItemCoverToR2(addedItem,"book",undefined,row.__cdlActivityId); return; }
+  const handleSaveNewBook = useCallback(async (_item: Record<string, unknown>, values: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend && databaseAddSaver) {
+      const confirmed=await databaseAddSaver("book",_item,values,artwork);
+      setBookDetailsEditOpen(false);finalizeAddAndOpen(confirmed);return;
+    }
     if (!booksWriteUrl) throw new Error("Books write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11532,10 +11545,13 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "book").catch(() => {
       // Silently ignore sync failures
     });
-  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
+  }, [booksWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem, databaseAddSaver, finalizeAddAndOpen]);
 
-  const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>) => {
-    if (libraryBackend) { const row=await libraryBackend.create("game",values); const addedItem=applyDatabaseItem("game",row); setGameDetailsEditOpen(false); openNewlyAddedItemFromRow("game",row); void syncSingleItemCoverToR2(addedItem,"game",undefined,row.__cdlActivityId); return; }
+  const handleSaveNewGame = useCallback(async (_item: any, values: Record<string, string>, artwork?: EditorArtworkDraft) => {
+    if (libraryBackend && databaseAddSaver) {
+      const confirmed=await databaseAddSaver("game",_item,values,artwork);
+      setGameDetailsEditOpen(false);finalizeAddAndOpen(confirmed);return;
+    }
     if (!gamesWriteUrl) throw new Error("Games write URL is not configured.");
     const title = safeStr(values.title);
     if (!title) throw new Error("Title is required.");
@@ -11567,7 +11583,7 @@ export default function Page() {
     syncSingleItemCoverToR2(row, "game").catch(() => {
       // Silently ignore sync failures
     });
-  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem]);
+  }, [gamesWriteUrl, postSheetWrite, openNewlyAddedItemFromRow, syncSingleItemCoverToR2, libraryBackend, applyDatabaseItem, databaseAddSaver, finalizeAddAndOpen]);
 
   useEffect(() => {
     // Need at least one CSV URL to proceed
@@ -29842,6 +29858,7 @@ export default function Page() {
 
       <MountOnFirstOpen open={bookDetailsEditOpen && Boolean(bookDetailItem)}>
       <BookDetailsEditModal
+        isDark={shelfThemeMode === "dark"}
         open={bookDetailsEditOpen && Boolean(bookDetailItem)}
         item={bookDetailItem}
         onClose={() => {
@@ -29865,6 +29882,7 @@ export default function Page() {
 
       <MountOnFirstOpen open={movieDetailsEditOpen && Boolean(movieDetailItem)}>
       <MovieDetailsEditModal
+        isDark={shelfThemeMode === "dark"}
         open={movieDetailsEditOpen && Boolean(movieDetailItem)}
         item={movieDetailItem}
         onClose={() => {
@@ -29883,6 +29901,8 @@ export default function Page() {
 
       <MountOnFirstOpen open={tvDetailsEditOpen && Boolean(tvDetailItem)}>
       <TVDetailsEditModal
+        onOpenEpisodes={() => { setTvDetailsEditOpen(false); if(tvDetailItem) openFullSelectedItem(tvDetailItem); }}
+        isDark={shelfThemeMode === "dark"}
         open={tvDetailsEditOpen && Boolean(tvDetailItem)}
         item={tvDetailItem}
         onClose={() => {
@@ -29901,6 +29921,7 @@ export default function Page() {
 
       <MountOnFirstOpen open={gameDetailsEditOpen && Boolean(gameDetailEditItem)}>
       <GameDetailsEditModal
+        isDark={shelfThemeMode === "dark"}
         open={gameDetailsEditOpen && Boolean(gameDetailEditItem)}
         item={gameDetailEditItem}
         onClose={() => {
