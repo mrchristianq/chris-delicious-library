@@ -482,7 +482,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.100";
+const APP_VERSION = "14.0.102";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -809,6 +809,8 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {version: "14.0.102",date: "2026-10-30",notes: ["Carry the updated Add to Library style through search, results, book editions and manual-entry steps."]},
+  {version: "14.0.101",date: "2026-10-30",notes: ["Refresh the Add to Library picker to match Sync and Themes with white media cards, subtle illustrations and clearer touch controls."]},
   {version: "14.0.100",date: "2026-10-30",notes: ["Refresh Add and Edit forms with grouped controls, advanced metadata sections and artwork previews saved with your changes. Ownership remains exclusive to books and games."]},
   {version: "14.0.99",date: "2026-10-29",notes: ["Keep related item saves together using shared activity IDs, preserve separate edits, and distinguish provider scores from personal ratings."]},
   {version: "14.0.98",date: "2026-10-28",notes: ["Condense initial cover and background saves into one Added to your library activity, while retaining later edits and full change details."]},
