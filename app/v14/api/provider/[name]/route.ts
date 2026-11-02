@@ -1,3 +1,5 @@
+import { episodeRefreshGuard } from "../../../../lib/v14/episode-refresh-guard";
+import { createV14Client } from "../../../../lib/v14/server";
 import { NextRequest } from "next/server";
 import { GET as mediaSearch } from "../../../../api/media-search/route";
 import { GET as tvEpisodes } from "../../../../api/tv-episodes/route";
@@ -58,7 +60,13 @@ async function dispatch(request: NextRequest, context: RouteContext) {
     });
   }
   if (name === "media-search") return noStoreResponse(await mediaSearch(request));
-  if (name === "tv-episodes") return noStoreResponse(await tvEpisodes(request));
+  if (name === "tv-episodes") {
+    const id = request.nextUrl.searchParams.get("tmdbId") ?? "";
+    if (!/^[1-9][0-9]{0,14}$/.test(id)) return responseError("Valid TV show ID required.", 400);
+    const blocked = await episodeRefreshGuard(await createV14Client(), "provider", id);
+    if (blocked) return blocked;
+    return noStoreResponse(await tvEpisodes(request));
+  }
 
   if ((request.headers.get("content-type") ?? "").toLowerCase().split(";", 1)[0].trim() !== "application/json") {
     return responseError("Content-Type must be application/json.", 415);

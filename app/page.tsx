@@ -482,7 +482,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.103";
+const APP_VERSION = "14.0.104";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -809,6 +809,7 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {version: "14.0.104",date: "2026-11-02",notes: ["Add shared server-side episode refresh safety limits before provider fetches and library snapshots."]},
   {version: "14.0.103",date: "2026-11-02",notes: ["Fix repeated TV episode auto-refreshes by preserving show identity and preventing render-driven retries."]},
   {version: "14.0.102",date: "2026-10-30",notes: ["Carry the updated Add to Library style through search, results, book editions and manual-entry steps."]},
   {version: "14.0.101",date: "2026-10-30",notes: ["Refresh the Add to Library picker to match Sync and Themes with white media cards, subtle illustrations and clearer touch controls."]},

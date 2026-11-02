@@ -26,7 +26,7 @@ const hooks = registerHooks({
       specifier.endsWith('/save-archive-server') ? 'archive' : specifier.endsWith('/save-setting-server') ? 'setting' :
       specifier.endsWith('/save-progress-server') ? 'progress' : specifier.endsWith('/server') ? 'server' : null;
     if (key) return { url: `file:///v14-route-${key}.mjs`, shortCircuit: true };
-    if(specifier.endsWith('/stream-json') || specifier.endsWith('/activity-context'))return nextResolve(specifier+'.ts',context);
+    if(specifier.endsWith('/stream-json') || specifier.endsWith('/activity-context') || specifier.endsWith('/episode-refresh-guard'))return nextResolve(specifier+'.ts',context);
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
@@ -124,4 +124,13 @@ test('activity headers choose the grouped RPC without changing the edit body',as
  const rpc=mocks.calls.find(c=>c[1]==='cdl_v14_full_edit_activity');assert.ok(rpc);assert.equal(rpc[2].p_activity_id,requestId);assert.equal(rpc[2].p_activity_role,'user');
  assert.equal((await post(command,{'X-CDL-Activity-ID':'bad','X-CDL-Activity-Role':'user'})).status,400);
  assert.equal((await post({...command,kind:'archive',archived:true},{'X-CDL-Activity-ID':requestId,'X-CDL-Activity-Role':'user'})).status,400);
+});
+
+test('episode circuit breaker rejects repeated metadata writes before reading the full library', async()=>{
+ globalThis.__v14RouteMocks.calls.length=0;
+ const response=await post({kind:'episode_metadata',libraryId,itemId,revision:1,requestId,rows:[{season_number:1,episode_number:1,provider_id:'1',metadata:{EpisodeTitle:'Fixture'}}]});
+ // This route fixture has no guard RPC receipt: protection must fail closed.
+ assert.equal(response.status,503);
+ assert.equal(globalThis.__v14RouteMocks.calls.filter(([kind])=>kind==='read').length,0);
+ assert.deepEqual(globalThis.__v14RouteMocks.calls.filter(([kind])=>kind==='rpc').map(([,name])=>name),['cdl_v14_episode_refresh_guard']);
 });

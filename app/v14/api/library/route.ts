@@ -1,3 +1,4 @@
+import { episodeRefreshGuard } from "../../../lib/v14/episode-refresh-guard";
 import {parseActivityContext,type ActivityContext} from "../../../lib/v14/activity-context";
 import { streamLibraryJson } from "../../../lib/v14/stream-json";
 import { getV14Config } from "../../../lib/v14/config";
@@ -221,6 +222,10 @@ export async function POST(request: Request) {
     }
     if (command.kind === "progress") {
       return json(await saveV14EpisodeProgress(command.libraryId, command.requestId, command.changes, ...(command.readback === "targeted" ? [true] as const : [])));
+    }
+    if (command.kind === "episode_metadata") {
+      const blocked = await episodeRefreshGuard(await createV14Client(), "metadata", command.itemId);
+      if (blocked) return blocked;
     }
     const snapshot = await readV14Library(command.libraryId);
     switch (command.kind) {
