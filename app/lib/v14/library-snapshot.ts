@@ -38,11 +38,18 @@ export function projectLibrarySnapshot(snapshot: LibrarySnapshot, ownerId: strin
   }
   const itemIds = new Set<string>();
   const shows = new Map<string, SnapshotItem>();
+  const showProviderIds = new Map<string, string>();
   const items = snapshot.items.map(item => {
     if (item.library_id !== libraryId || itemIds.has(item.id)) throw new Error("Mixed library or duplicate item");
     itemIds.add(item.id);
-    if (item.media_type === "tv") shows.set(item.id, item);
-    return { mediaType: item.media_type, ...projectLegacyRow(item, libraryId) };
+    const projected = projectLegacyRow(item, libraryId);
+    if (item.media_type === "tv") {
+      shows.set(item.id, item);
+      // Use the same effective provider identity as the parent renderer,
+      // including IDs added or corrected through the app. Explicit clears win.
+      showProviderIds.set(item.id, projected.row.TMDB_ID ?? "");
+    }
+    return { mediaType: item.media_type, ...projected };
   });
   const episodeIds = new Set<string>();
   const episodeSlots = new Set<string>();
@@ -62,7 +69,7 @@ export function projectLibrarySnapshot(snapshot: LibrarySnapshot, ownerId: strin
     }
     // Parent identity and progress always override potentially stale import metadata.
     row.ShowTitle = show.title;
-    row.ShowTMDB_ID = scalar(show.metadata.TMDB_ID);
+    row.ShowTMDB_ID = showProviderIds.get(show.id) ?? "";
     row.SeasonNumber = String(episode.season_number);
     row.EpisodeNumber = String(episode.episode_number);
     row.EpisodeTMDB_ID = episode.provider_id ?? "";

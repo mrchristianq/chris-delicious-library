@@ -2,6 +2,7 @@
 import { DetailsCover3D, Cover3DToggle, useDetailsCover3D } from "./PhysicalCover";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createAutomaticEpisodeLoader } from "../lib/v14/automatic-episode-load";
 import { COVER_IMAGE_RADIUS_STYLE } from "./coverStyles";
 import { scaledPx, useDesktopDetailScale, useFitToViewportScale } from "./detailScale";
 import { handleExternalLinkClick, openExternalUrl } from "../native/externalLinks";
@@ -482,13 +483,18 @@ export function TVDetailsPage({
       setExpandedSeason(firstUnwatched?.[0] || episodesBySeason[episodesBySeason.length - 1]?.[0] || "");
     }
   }, [episodesBySeason, showEpisodeKey]);
+  const [loadEpisodesAutomatically] = useState(() => createAutomaticEpisodeLoader<TVEpisodeRow[]>());
   useEffect(() => {
     if (!onRefreshEpisodes || !showEpisodeKey) return;
     if (episodeRows.length) return;
+    // Re-subscribe to the same attempt after renders/Strict Mode cleanup.
+    // Empty results and failures never create an automatic retry loop.
+    // The explicit Refresh button remains available for another attempt.
+    const load = loadEpisodesAutomatically(showEpisodeKey, () => onRefreshEpisodes(item, false));
     let cancelled = false;
     setEpisodeLoading(true);
     setEpisodeError(null);
-    onRefreshEpisodes(item, false)
+    load
       .catch((error) => {
         if (!cancelled) setEpisodeError(error?.message || "Failed to load episodes.");
       })
@@ -498,7 +504,7 @@ export function TVDetailsPage({
     return () => {
       cancelled = true;
     };
-  }, [episodeRows.length, item, onRefreshEpisodes, showEpisodeKey]);
+  }, [episodeRows.length, item, onRefreshEpisodes, showEpisodeKey, loadEpisodesAutomatically]);
   const refreshEpisodeSyncProgress = () => {
     const jobs = Object.values(episodeSyncJobsRef.current);
     if (!jobs.length) {

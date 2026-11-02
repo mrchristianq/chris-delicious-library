@@ -482,7 +482,7 @@ type SmartListYearSourceOption = {
 };
 
 const APP_TITLE = "Chris’ Delicious Library";
-const APP_VERSION = "14.0.102";
+const APP_VERSION = "14.0.103";
 const STATIC_SITE_WRITE_MESSAGE =
   "This GitHub Pages version is read-only for server-backed actions. Use the server-hosted version to save edits.";
 const MANUAL_SORT_FIELD = "Manual";
@@ -809,6 +809,7 @@ const getCoverScaleGroupForNav = (nav: NavKey | null | undefined): CoverScaleGro
   return "home";
 };
 const VERSION_HISTORY = [
+  {version: "14.0.103",date: "2026-11-02",notes: ["Fix repeated TV episode auto-refreshes by preserving show identity and preventing render-driven retries."]},
   {version: "14.0.102",date: "2026-10-30",notes: ["Carry the updated Add to Library style through search, results, book editions and manual-entry steps."]},
   {version: "14.0.101",date: "2026-10-30",notes: ["Refresh the Add to Library picker to match Sync and Themes with white media cards, subtle illustrations and clearer touch controls."]},
   {version: "14.0.100",date: "2026-10-30",notes: ["Refresh Add and Edit forms with grouped controls, advanced metadata sections and artwork previews saved with your changes. Ownership remains exclusive to books and games."]},
@@ -8664,7 +8665,7 @@ export default function Page() {
   }, []);
 
   const mergeTvEpisodeRows = useCallback(
-    (metadataRows: TVEpisodeRow[], existingRows: TVEpisodeRow[] = tvEpisodeRows) => {
+    (metadataRows: TVEpisodeRow[], existingRows: TVEpisodeRow[] = tvEpisodeRowsRef.current) => {
       const existingByKey = new Map(existingRows.map((row) => [getTvEpisodeKey(row), row]));
       return metadataRows.map((row) => {
         const key = getTvEpisodeKey(row);
@@ -8677,7 +8678,7 @@ export default function Page() {
         };
       });
     },
-    [getTvEpisodeKey, tvEpisodeRows]
+    [getTvEpisodeKey]
   );
 
   const ensureTvEpisodeRowsExistForProgress = useCallback(
@@ -8732,7 +8733,7 @@ export default function Page() {
         throw new Error("This show needs a TMDB ID before episodes can be loaded.");
       }
 
-      const existingForShow = tvEpisodeRows.filter((row) => safeStr(row.ShowTMDB_ID) === tmdbId);
+      const existingForShow = tvEpisodeRowsRef.current.filter((row) => safeStr(row.ShowTMDB_ID) === tmdbId);
       const newestUpdatedAt = existingForShow
         .map((row) => Date.parse(safeStr(row.UpdatedAt)))
         .filter((value) => Number.isFinite(value))
@@ -8780,7 +8781,7 @@ export default function Page() {
 
       return mergedRows;
     },
-    [getTvEpisodeKey, isNativeApp, mergeTvEpisodeRows, postSheetWrite, showsWriteUrl, tvEpisodeRows, libraryBackend]
+    [getTvEpisodeKey, isNativeApp, mergeTvEpisodeRows, postSheetWrite, showsWriteUrl, libraryBackend]
   );
 
   const queueTvEpisodeProgressWrite = useCallback(

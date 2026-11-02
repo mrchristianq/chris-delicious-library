@@ -34,6 +34,16 @@ test('settings retain consumer profiles, false, zero and blank without fallback'
  for(const value of [false,0,'',null]){input.settings[0].value.legacy_profiles.general_getSetting=value;assert.equal(projectLibrarySnapshot(input,owner,library).settingValue('cover'),value);}
  assert.equal(result.settingValue('missing'),undefined);
 });
+test('new and corrected TV provider IDs keep saved episodes visible after metadata refresh',()=>{
+ for (const [metadata,overrides,expected] of [[{}, {TMDB_ID:'275139'}, '275139'], [{TMDB_ID:'123'}, {TMDB_ID:'275139'}, '275139'], [{TMDB_ID:'123'}, {}, '123'], [{TMDB_ID:'123'}, {TMDB_ID:''}, '']]) {
+  const input=fixture();input.items[0].metadata=metadata;input.items[0].user_fields=overrides;
+  const projected=projectLibrarySnapshot(input,owner,library);
+  assert.equal(projected.items[0].row.TMDB_ID??'',expected);
+  assert.equal(projected.episodes[0].row.ShowTMDB_ID,expected);
+  assert.equal(projected.episodes.filter(e=>e.row.ShowTMDB_ID===expected).length,1);
+  assert.equal(projected.episodes[0].identity.showId,showId);
+ }
+});
 test('rejects incomplete, foreign, duplicate and orphaned snapshots',()=>{
  const changes=[s=>s.complete=false,s=>s.counts.items=2,s=>s.owner_id=library,s=>s.items[0].library_id=owner,s=>s.episodes[0].show_id=owner,s=>s.episodes[0].progress={watched:'false',revision:1,watched_at:null},s=>{s.items.push(s.items[0]);s.counts.items++;},s=>{s.settings.push(s.settings[0]);s.counts.settings++;}];
  for(const mutate of changes){const input=fixture();mutate(input);assert.throws(()=>projectLibrarySnapshot(input,owner,library));}
